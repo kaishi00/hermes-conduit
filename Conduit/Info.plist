@@ -99,6 +99,10 @@
 	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Conduit uses Face ID to unlock saved Hermes credentials.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>When you turn on background sharing, Conduit tells your own Hermes server when you arrive at or leave your saved places, and where you are when your agent asks, at the detail you choose. Nothing goes to Conduit's developer.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>When you turn on location sharing, Conduit sends your location to your own Hermes server as you send a message or talk to Hermes, so your agent can answer questions about where you are. Nothing goes to Conduit's developer.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Conduit uses the microphone for voice conversations and foreground wake phrases.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

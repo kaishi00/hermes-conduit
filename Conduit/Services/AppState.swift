@@ -1406,7 +1406,10 @@ final class AppState: ObservableObject {
     @Published var showWorkspaceSheet = false
     @Published var showGatewaySheet = false
     @Published var showAgentsSheet = false
-    @Published var showVoiceSheet = false
+    @Published var showVoiceSheet = false {
+        // Talking to Hermes in Voice shares location, when the user chose to.
+        didSet { if showVoiceSheet, !oldValue { noteVoiceCallStartedForLocation() } }
+    }
     /// Mirrors MainView's Settings sheet item so return-surface decisions can
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
@@ -2859,6 +2862,7 @@ final class AppState: ObservableObject {
 
     func setCarPlayVoiceSurfaceActive(_ active: Bool) {
         isCarPlayVoiceSurfaceActive = active
+        if active { noteVoiceCallStartedForLocation() }
         // CarPlay feeds BOTH gates (`hasActiveVoiceSurface` and
         // `hasForegroundApplicationSurface`), so this publishes both rather
         // than only the app-foreground one: the adjacent
@@ -4601,6 +4605,7 @@ final class AppState: ObservableObject {
         pendingHermesCall = nil
         hermesCallbackEngine = engine
         beginHermesCallPresence()
+        noteVoiceCallStartedForLocation()
         // Read now, so "call me when it's done" knows whether Hermes can.
         if supportsHermesCalls { Task { await refreshHermesCallsStatus() } }
         guard voiceCallSavingEnabled else {
@@ -13126,6 +13131,9 @@ final class AppState: ObservableObject {
             sceneHasBeenActive = true
             widgetLaunchCoordinator.readinessChanged()
             noteActiveChatSeen(respectingMarks: true)
+            // Location permissions may have changed; unsent location goes.
+            activateLocationSharing()
+            LocationSharingController.shared.appBecameActive()
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -17880,6 +17888,8 @@ final class AppState: ObservableObject {
         // Settings Hermes may change: share them, take its requests.
         Task { await syncAgentSettings() }
         await provisionNotificationEncryption(bridge: bridge)
+        // Location waiting to go to this host, and its host pass.
+        Task { await locationHostConnected() }
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
@@ -18152,6 +18162,10 @@ final class AppState: ObservableObject {
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
+        // A fix for Hermes, when the user shares location while talking to
+        // it: taken alongside the upload and waited for briefly before the
+        // prompt goes, never failing or holding up the send.
+        let locationShare = LocationSharingController.shared.shareBeforeSending(.message)
 
         let userMessage = ChatMessage(
             id: "local-\(Date().timeIntervalSince1970)",
@@ -18238,6 +18252,7 @@ final class AppState: ObservableObject {
         // The bubble keeps the typed text; Hermes gets the files' references
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
+        await locationShare?.value
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {

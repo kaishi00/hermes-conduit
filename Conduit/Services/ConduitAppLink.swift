@@ -21,7 +21,8 @@
 //  `conduit://settings/calls` opens Settings at Calls from Hermes: Hermes
 //  links it when the user asks for a call while calls are off.
 //  `conduit://settings/voice` opens Voice, where the user lets Hermes
-//  change settings. Only inside the app, like a bot link.
+//  change settings. `conduit://settings/location` opens Location sharing.
+//  Only inside the app, like a bot link.
 //
 
 import Foundation
@@ -41,6 +42,8 @@ enum ConduitAppLink: Equatable {
         case calls
         /// Voice, where "Let Hermes change settings" lives.
         case voice
+        /// Location, where sharing the user's location with Hermes is set up.
+        case location
     }
 
     static let scheme = "conduit"

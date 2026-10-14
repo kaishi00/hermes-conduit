@@ -272,6 +272,7 @@ struct MainView: View {
         switch page {
         case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
         case .voice: settingsOpensAt = page
+        case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
         }
         if appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()

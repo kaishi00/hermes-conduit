@@ -24,6 +24,9 @@ struct HermesCallSettingsModel {
     var current: @MainActor () -> HermesCallSettings?
     /// Saves every setting; false when the host didn't take them.
     var save: (HermesCallSettings) async -> Bool
+    /// This iPhone's saved places (Settings > Location), for "Don't call me
+    /// while I'm at"; their ids are what the host keeps.
+    var places: [LocationSavedPlace] = []
 }
 
 /// Formats for the call settings, in the app's language.
@@ -264,6 +267,9 @@ struct HermesCallSettingsSection: View {
                     Text("Past a limit, a finished job sends its usual notification instead of calling. These settings are this profile's, kept on your Hermes host.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if draft.avoidPlaces != nil {
+                        avoidPlacesRows
+                    }
                 }
             } else if loadFailed {
                 Text("Couldn't read Hermes' call settings.")
@@ -304,6 +310,51 @@ struct HermesCallSettingsSection: View {
                 Button("Done") { rulesFocused = false }
             }
         }
+    }
+
+    /// "Don't call me while I'm at": the saved places where a call becomes
+    /// the usual notification instead.
+    @ViewBuilder
+    private var avoidPlacesRows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Don't call me while I'm at")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            if model.places.isEmpty {
+                Text("Save places in Settings under Location first.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(model.places) { place in
+                Toggle(isOn: avoidBinding(place.id)) {
+                    Label {
+                        Text(verbatim: place.name)
+                    } icon: {
+                        Image(systemName: place.kind.symbol)
+                    }
+                }
+            }
+            if draft.avoidUnknownPlace != nil {
+                Toggle("Also when Conduit doesn't know where you are", isOn: optionalBinding(\.avoidUnknownPlace))
+            }
+            Text("A call Hermes would make while you're at one of these places comes as the usual “Hermes wants to talk” notification instead. Needs location shared in the background.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func avoidBinding(_ placeID: String) -> Binding<Bool> {
+        Binding(
+            get: { draft.avoidPlaces?.contains(placeID) ?? false },
+            set: { on in
+                change { settings in
+                    var places = settings.avoidPlaces ?? []
+                    places.removeAll { $0 == placeID }
+                    if on { places.append(placeID) }
+                    settings.avoidPlaces = Array(places.prefix(HermesCallSettings.maxAvoidPlaces))
+                }
+            }
+        )
     }
 
     private func testCallRow(_ start: @escaping () -> Void) -> some View {

@@ -435,12 +435,13 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, location, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
         case .calls: self = .hermesCalls
         case .voice: self = .voice
+        case .location: self = .location
         }
     }
 }
@@ -765,7 +766,8 @@ struct SettingsView: View {
                     current: { appState.activeHermesCallsStatus?.settings },
                     save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
                         await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
-                    }
+                    },
+                    places: appState.locationPlacesForCalls
                 ),
                 hearsMissedCalls: appState.supportsHermesCallOutcomes,
                 startTestCall: {
@@ -778,6 +780,8 @@ struct SettingsView: View {
                 }
             )
                 .navigationTitle("Calls from Hermes")
+        case .location:
+            LocationSettingsPage(controller: LocationSharingController.shared, engine: LocationSharingController.shared.engine)
         case .screenQuestion:
             SettingsDetailContainer {
                 ScreenQuestionSettingsSection()
@@ -882,6 +886,9 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("On this device"), tint: .conduitAccent) {
                         settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+                        if appState.showsLocationSettings {
+                            settingsLink(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location")
+                        }
                         settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
                         settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
                     }

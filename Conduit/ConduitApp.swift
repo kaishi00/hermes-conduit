@@ -22,6 +22,13 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
             HermesNativeCalls.shared.activate()
+            // Saved places, visits and significant moves relaunch Conduit
+            // in the background: their monitors are set up again before
+            // launch returns so the event that woke it arrives.
+            let location = LocationSharingController.shared
+            if location.settings.isOn || location.configUnreadable {
+                AppStateRuntimeRegistry.shared.appState.activateLocationSharing()
+            }
         }
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()
