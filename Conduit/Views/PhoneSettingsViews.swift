@@ -298,6 +298,8 @@ struct PhoneSettingsPage: View {
                 loadCalendars()
             } catch {
                 errorMessage = PhoneSyncEngine.describe(error)
+                // Not applied (a permission was refused): show what's in effect.
+                if preferences.isOn { self.choices = preferences }
             }
         }
     }

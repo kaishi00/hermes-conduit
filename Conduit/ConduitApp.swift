@@ -9,6 +9,9 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import os
+
+private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category: "BackgroundPush")
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -55,12 +58,18 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     /// A background push: the host saying Hermes asked for a calendar change
     /// that applies without asking. Conduit fetches it from the host and
     /// applies it in the time iOS gives.
+    ///
+    /// This is the only silent push the relay sends. Visible pushes are
+    /// handled by the notification center delegate (willPresent / didReceive),
+    /// so anything else here has nothing to do; it's logged so an unexpected
+    /// one shows up.
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         guard AppState.isPhoneChangesPush(userInfo) else {
+            backgroundPushLogger.info("Background push that isn't a phone.changes push: nothing to do")
             completionHandler(.noData)
             return
         }

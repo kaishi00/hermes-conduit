@@ -104,8 +104,11 @@ struct PhoneSyncStateStore {
 final class PhoneSyncStateWriter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.milim.relay.phone-sync.state", qos: .utility)
 
-    func save(_ state: PhoneSyncState, to store: PhoneSyncStateStore) {
-        queue.async { store.save(state) }
+    func save(_ state: PhoneSyncState, to store: PhoneSyncStateStore, failed: @escaping @MainActor () -> Void) {
+        queue.async {
+            guard !store.save(state) else { return }
+            Task { @MainActor in failed() }
+        }
     }
 }
 
@@ -246,7 +249,11 @@ final class PhoneSyncEngine: ObservableObject {
     private func persist() {
         guard state != saved else { return }
         saved = state
-        writer.save(state, to: store)
+        let written = state
+        writer.save(state, to: store) { [weak self] in
+            // Not on disk (still locked, or full): the next change writes again.
+            if self?.saved == written { self?.saved = nil }
+        }
     }
 
     @discardableResult
