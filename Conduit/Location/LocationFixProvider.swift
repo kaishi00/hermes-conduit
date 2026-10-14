@@ -139,15 +139,21 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
         return await waitForAnswer(from: .authorizedWhenInUse, promptCertain: firstAsk)
     }
 
-    /// Waits for the user's answer. If no prompt shows (iOS asked for
-    /// Always before), Conduit stays active and the status doesn't change:
+    /// Waits for the user's answer. A prompt makes Conduit inactive, and
+    /// it's answered once Conduit is active again (an answer that keeps the
+    /// status, like "Keep Only While Using", changes nothing else). If no
+    /// prompt shows (iOS asked for Always before), Conduit stays active:
     /// give up soon, unless a prompt is certain.
     private func waitForAnswer(from initial: CLAuthorizationStatus, promptCertain: Bool = false) async -> CLAuthorizationStatus {
         let started = Date()
+        var prompted = false
         while Date().timeIntervalSince(started) < 120 {
             try? await Task.sleep(for: .milliseconds(250))
             if manager.authorizationStatus != initial { return manager.authorizationStatus }
-            if !promptCertain, Date().timeIntervalSince(started) > 1.5, UIApplication.shared.applicationState == .active {
+            let active = UIApplication.shared.applicationState == .active
+            if !active { prompted = true }
+            if prompted, active { return manager.authorizationStatus }
+            if !promptCertain, !prompted, Date().timeIntervalSince(started) > 1.5, active {
                 return manager.authorizationStatus
             }
         }

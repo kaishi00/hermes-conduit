@@ -323,7 +323,7 @@ struct LocationSettingsPage: View {
                     Haptics.selection()
                     consentFor = layer
                 } else {
-                    Task { await controller.turnOff(layer == .talking ? .talking : .background) }
+                    Task { await controller.turnOff(layer == .talking ? .talking : .background); await loadFromHost() }
                 }
             }
         )
@@ -379,7 +379,7 @@ struct LocationSettingsPage: View {
         ConduitSettingsSection(title: AppLocalization.string("Pause"), symbol: "pause.circle", tint: .orange) {
             if settings.isPaused(at: Date()) {
                 Button {
-                    Task { await controller.pause(until: nil) }
+                    Task { await controller.pause(until: nil); await loadFromHost() }
                 } label: {
                     Label("Resume sharing", systemImage: "play.fill")
                 }
@@ -414,7 +414,7 @@ struct LocationSettingsPage: View {
         case .indefinitely:
             until = .distantFuture
         }
-        Task { await controller.pause(until: until) }
+        Task { await controller.pause(until: until); await loadFromHost() }
     }
 
     private var retentionSection: some View {

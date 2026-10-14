@@ -96,12 +96,13 @@ enum LocationHostClient {
             let detail = (object?["detail"] ?? object?["error"] ?? object?["message"]) as? String
             throw LocationHostError.http(status: http.statusCode, detail: detail ?? "HTTP \(http.statusCode)")
         }
-        // A 2xx that isn't the plugin's JSON (a proxy's or portal's page)
-        // stored nothing: counting it as sent would drop the location.
-        if !data.isEmpty, object == nil {
+        // Every plugin route answers a JSON object. A 2xx without one (a
+        // proxy's or portal's page, or nothing) stored nothing: counting it
+        // as sent would drop the location.
+        guard let object else {
             throw LocationHostError.http(status: http.statusCode, detail: "The answer wasn't from the Conduit plugin.")
         }
-        return object ?? [:]
+        return object
     }
 
     /// No cookie jar, and redirects come back as the response.
