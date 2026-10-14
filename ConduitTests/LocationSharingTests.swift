@@ -172,6 +172,8 @@ extension NotificationE2ETests {
         let listed = LocationPrecisionRules.placesJSON([home, LocationFixtures.work])
         XCTAssertEqual(listed.first?["name"] as? String, LocationPrecisionRules.privatePlaceName)
         XCTAssertEqual(listed.first?["private"] as? Bool, true)
+        XCTAssertEqual(listed.first?["kind"] as? String, "other")
+        XCTAssertEqual(listed.last?["kind"] as? String, "work")
         XCTAssertEqual(listed.last?["name"] as? String, "Work")
     }
 

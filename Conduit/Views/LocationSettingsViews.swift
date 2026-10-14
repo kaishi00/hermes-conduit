@@ -436,7 +436,7 @@ struct LocationSettingsPage: View {
 
     private var readsSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("When Hermes read your location"), symbol: "eye", tint: .conduitAccent) {
-            if let hostStatus {
+            if let hostStatus, !hostUnreachable {
                 Text(AppLocalization.string("Reads in the last 24 hours: \(String(hostStatus.readsToday))"))
                     .font(.subheadline)
             }
@@ -782,6 +782,8 @@ struct LocationPlaceEditor: View {
                         }
                         .frame(height: 180)
                         .listRowInsets(EdgeInsets())
+                        // The caption below says the radius; the map adds nothing for VoiceOver.
+                        .accessibilityHidden(true)
                     }
                     if canLocate {
                         Button {

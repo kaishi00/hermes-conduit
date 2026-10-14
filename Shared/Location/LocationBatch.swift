@@ -130,13 +130,14 @@ enum LocationPrecisionRules {
     }
 
     /// The `places` list: names and kinds only. A private place is listed
-    /// without its name, so rules can name it but nobody reads where it is.
+    /// without its name or kind, so rules can name it but nobody reads what
+    /// or where it is.
     static func placesJSON(_ places: [LocationSavedPlace]) -> [[String: Any]] {
         places.prefix(LocationSavedPlace.maxCount).map { place -> [String: Any] in
             [
                 "id": place.id,
                 "name": place.isPrivate ? privatePlaceName : String(place.name.prefix(LocationSavedPlace.maxNameLength)),
-                "kind": place.kind.rawValue,
+                "kind": place.isPrivate ? LocationPlaceKind.other.rawValue : place.kind.rawValue,
                 "private": place.isPrivate,
             ]
         }

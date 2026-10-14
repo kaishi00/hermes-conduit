@@ -515,7 +515,6 @@ final class LocationSharingController: ObservableObject {
         await flush(settingsOnly: true)
     }
 
-    /// Resumes a pause whose time has passed, so it doesn't linger.
     /// Resumes a pause whose time has passed, so it doesn't linger, and
     /// tells the host (pending until it's reachable). `send: false` leaves
     /// the sending to the caller.
