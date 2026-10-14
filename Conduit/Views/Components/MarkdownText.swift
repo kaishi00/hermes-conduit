@@ -2638,7 +2638,7 @@ enum MarkdownParser {
         guard let range = value.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) else { return nil }
         return String(value[range.upperBound...])
     }
-    private static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
+    static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
         guard index + 1 < lines.count, lines[index].contains("|") else { return false }
         return lines[index + 1].trimmingCharacters(in: .whitespaces).range(of: #"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$"#, options: .regularExpression) != nil
     }

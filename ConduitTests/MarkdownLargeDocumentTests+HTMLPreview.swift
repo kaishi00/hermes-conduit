@@ -50,6 +50,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(TranscriptDirectives.removingPreviews(from: text), "Chart below.\nDone.")
         let quoted = "> Example: ::preview{file=\"/tmp/a.html\"}"
         XCTAssertEqual(TranscriptDirectives.removingPreviews(from: quoted), quoted)
+        let table = "::preview{file=\"/tmp/a.html\"} | x\n--- | ---\n1 | 2"
+        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: table), table)
     }
 
     // MARK: - Parsing
@@ -130,6 +132,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: "not a data url"))
         let tooLarge = "data:text/html;base64," + Data(count: HTMLPreviewPage.maximumDocumentBytes + 3).base64EncodedString()
         XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: tooLarge))
+        let notUTF8 = "data:text/html;base64," + Data([0x3C, 0x70, 0x3E, 0xFF, 0xFE, 0xC3]).base64EncodedString()
+        XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: notUTF8))
     }
 
     func testHTMLPreview_InlineHeightIsBounded() {
