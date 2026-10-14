@@ -84,7 +84,7 @@ struct PhoneSyncStateStore {
     @discardableResult
     func save(_ state: PhoneSyncState) -> Bool {
         do {
-            let folder = url.deletingLastPathComponent()
+            var folder = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
