@@ -219,7 +219,7 @@ struct ShortcutSender {
                 continue
             }
             let row = rows.first {
-                $0.runtimeSessionId == runtimeID || chat.owns(sessionID: $0.runtimeSessionId) || chat.owns(sessionID: $0.storedSessionId)
+                chat.owns(sessionID: $0.runtimeSessionId) || chat.owns(sessionID: $0.storedSessionId)
             }
             if let row {
                 missed = 0
@@ -237,7 +237,13 @@ struct ShortcutSender {
                     continue
                 }
             } else {
-                // Absence counts only when it repeats.
+                // Absence proves nothing until the turn was seen running (a
+                // new chat can be slow to list): only a reply ends the wait.
+                if !sawRunning {
+                    if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+                    continue
+                }
+                // After it ran, absence counts only when it repeats.
                 missed += 1
                 if missed < 2 { continue }
             }
