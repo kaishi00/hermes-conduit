@@ -392,7 +392,11 @@ struct NotifierPluginUpdateBanner: View {
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if update == .idle {
-                Button(AppLocalization.string("Update")) { confirming = true }
+                Button { confirming = true } label: {
+                    Text(AppLocalization.string("Update"))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
                     .font(.subheadline.weight(.semibold))
                     .disabled(!appState.canUpdateNotifierPlugin)
                     .accessibilityIdentifier("pluginUpdate.update")

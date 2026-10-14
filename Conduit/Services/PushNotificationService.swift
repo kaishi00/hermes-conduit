@@ -1156,8 +1156,8 @@ final class PushNotificationService: ObservableObject {
     /// Conduit just never creates new ones.)
     func createPairingCode(dashboardID: UUID) async {
         // Not mid-move: a code created against the old relay would be
-        // cleared (and useless) once the move lands.
-        guard !isWorking else { return }
+        // cleared (and useless) once the move lands. Not mid-pairing either.
+        guard !isWorking, !isPairing else { return }
         pairingCode = nil
         pairingExpiry = nil
         lastError = nil

@@ -96,7 +96,9 @@ extension AppState {
     /// newer Conduit offers a newer plugin.
     var showsNotifierPluginUpdateNotice: Bool {
         if activeNotifierPluginUpdate != .idle { return true }
-        guard notifierPlugin.updateAvailable else { return false }
+        // A plugin already on the host that waits for a restart is offered
+        // too: Update finishes it.
+        guard notifierPlugin.updateAvailable || notifierPlugin.restartPending else { return false }
         return !dismissedPluginUpdates.contains(pluginUpdateDismissalToken)
     }
 
