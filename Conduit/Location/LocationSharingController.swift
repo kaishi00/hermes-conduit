@@ -462,6 +462,8 @@ final class LocationSharingController: ObservableObject {
         if config.binding == nil || (!settings.isOn && config.binding != destination) {
             if config.binding != destination { engine.forgetHost() }
             save { $0.binding = destination }
+            // Precise Location off is kept only once there's a binding.
+            refreshAuthorization()
         }
         save { config in
             switch layer {

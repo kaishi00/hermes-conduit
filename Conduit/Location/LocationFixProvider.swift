@@ -124,13 +124,19 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
         return await waitForAnswer(from: .notDetermined, promptCertain: true)
     }
 
+    private static let askedAlwaysKey = "conduit.location.askedAlways"
+
     /// Asks for Always (after When In Use). iOS shows its prompt only once;
     /// after that the user changes it in the Settings app.
     func requestAlways() async -> CLAuthorizationStatus {
         let first = await requestWhenInUse()
         guard first == .authorizedWhenInUse else { return first }
+        // The first ask shows iOS's prompt, so wait for the answer; later
+        // asks may show nothing.
+        let firstAsk = !UserDefaults.standard.bool(forKey: Self.askedAlwaysKey)
+        UserDefaults.standard.set(true, forKey: Self.askedAlwaysKey)
         manager.requestAlwaysAuthorization()
-        return await waitForAnswer(from: .authorizedWhenInUse)
+        return await waitForAnswer(from: .authorizedWhenInUse, promptCertain: firstAsk)
     }
 
     /// Waits for the user's answer. If no prompt shows (iOS asked for

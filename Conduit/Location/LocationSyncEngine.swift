@@ -172,7 +172,12 @@ struct LocationSyncStateStore {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
-            try? (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
+            do {
+                try (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
+            } catch {
+                Logger(subsystem: "com.milim.relay", category: "location")
+                    .error("Location state folder backup exclusion failed: \(error.localizedDescription, privacy: .public)")
+            }
             try JSONEncoder().encode(state).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             // A locked phone: the next send writes it again.

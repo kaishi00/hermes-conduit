@@ -108,6 +108,7 @@ enum LocationSharedStore {
             try JSONEncoder().encode(value).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
         } catch {
+            log.error("Location \(url.lastPathComponent, privacy: .public) write failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }

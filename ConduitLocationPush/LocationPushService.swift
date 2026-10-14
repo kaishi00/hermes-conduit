@@ -99,6 +99,8 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // after the post, and released if the answer doesn't reach the
         // host; a claim left by a killed extension ages out after
         // `claimLifetime`. Either way a redelivery can try again.
+        // Stopped already (iOS's time ran out): leave it to a redelivery.
+        guard !Task.isCancelled else { return }
         guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else { return }
         lock.withLock { pendingReplayKey = request.replayKey }
 
