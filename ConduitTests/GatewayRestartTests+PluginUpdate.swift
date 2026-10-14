@@ -170,6 +170,24 @@ extension GatewayRestartTests {
         XCTAssertNil(slot.startedAt)
     }
 
+    func testAFailedUpdateOnAnOldPluginAsksForTheOneTimeManualUpdate() {
+        var old = NotifierPluginStatus()
+        old.state = .reported(version: "0.23.0", capabilities: ["session-takeover"])
+        XCTAssertTrue(old.predatesOneTapUpdate)
+        let failed = NotifierPluginUpdateStatusView.row(for: .failed(detail: "not a git repository"), plugin: old)
+        XCTAssertEqual(failed?.title, "Update the plugin on the host this once")
+        XCTAssertTrue(failed?.detail?.contains("0.23.0") == true)
+        XCTAssertTrue(failed?.detail?.contains("not a git repository") == true)
+        XCTAssertEqual(NotifierPluginUpdateStatusView.row(for: .unsupported, plugin: old)?.title, "Update the plugin on the host this once")
+
+        // A plugin with one-tap updates keeps the plain error.
+        var current = old
+        current.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.24.0", restartNeeded: false, bootID: "b")
+        XCTAssertFalse(current.predatesOneTapUpdate)
+        XCTAssertEqual(NotifierPluginUpdateStatusView.row(for: .failed(detail: nil), plugin: current)?.title, "Couldn't update the Conduit plugin")
+        XCTAssertFalse(NotifierPluginStatus().predatesOneTapUpdate)
+    }
+
     private static func capabilities(loaded: String, disk: String, boot: String) -> [String: Any] {
         [
             "ok": true, "version": disk, "loaded_version": loaded, "restart_needed": loaded != disk, "boot_id": boot,
