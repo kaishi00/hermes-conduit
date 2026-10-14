@@ -10,10 +10,11 @@
 //  notification's Talk button does, and the CallKit call lasts as long as
 //  that voice conversation: ending either ends both.
 //
-//  A push that can't ring is still reported, then ended at once: one that
-//  arrives late (the phone was offline) or can't be answered becomes a
-//  missed-call notification, one that arrives while voice is in use the
-//  usual "Hermes wants to talk" notification, and a replay nothing. A call
+//  A push that can't ring is still reported, then ended at once (on iOS
+//  26.4+ only when iOS says it must be): one that arrives late (the phone
+//  was offline) or can't be answered becomes a missed-call notification,
+//  one that arrives while voice is in use the usual "Hermes wants to talk"
+//  notification, and a replay nothing. A call
 //  Do Not Disturb silences stays silent. A call the user declines or
 //  doesn't get to answer is reported to the host too, so Hermes hears it in
 //  that chat's next turn. With relay 0.10+ the call rings on the Apple
@@ -110,7 +111,12 @@ final class HermesNativeCalls: NSObject {
     /// How long an answered call waits for Conduit to come on screen.
     static let phoneScreenWait: Duration = .milliseconds(1500)
 
+    /// Made once and kept: PushKit misbehaves when its registry is
+    /// replaced, so "Ring like a phone call" turns its push types on and
+    /// off instead.
     private var registry: PKPushRegistry?
+    /// Whether calls ring through PushKit right now.
+    private var isRinging = false
     private var provider: CXProvider?
     private var storefrontTask: Task<Void, Never>?
     private var isActivated = false
@@ -193,7 +199,7 @@ final class HermesNativeCalls: NSObject {
         } else {
             // Where CallKit isn't allowed, calls on end too. Once the
             // setting has turned ringing off, a call still on carries on.
-            stopRinging(endingCalls: registry != nil)
+            stopRinging(endingCalls: isRinging)
         }
     }
 
@@ -211,7 +217,8 @@ final class HermesNativeCalls: NSObject {
     }
 
     private func startRinging() {
-        guard registry == nil else { return }
+        guard !isRinging else { return }
+        isRinging = true
         if provider == nil {
             let configuration = CXProviderConfiguration()
             configuration.supportsVideo = false
@@ -226,19 +233,25 @@ final class HermesNativeCalls: NSObject {
             provider.setDelegate(self, queue: .main)
             self.provider = provider
         }
-        let registry = PKPushRegistry(queue: .main)
-        registry.delegate = self
-        registry.desiredPushTypes = [.voIP]
-        self.registry = registry
+        if let registry {
+            registry.desiredPushTypes = [.voIP]
+            // Ringing again: the token PushKit already gave goes back to
+            // the relay.
+            if let token = registry.pushToken(for: .voIP) { PushNotificationService.shared.updateVoIPToken(Self.hex(token)) }
+        } else {
+            let registry = PKPushRegistry(queue: .main)
+            registry.delegate = self
+            registry.desiredPushTypes = [.voIP]
+            self.registry = registry
+        }
         nativeCallsLogger.info("Hermes calls ring natively")
     }
 
     /// Calls go back to notifications: the relay forgets the token.
     private func stopRinging(endingCalls: Bool) {
-        if let registry {
-            registry.desiredPushTypes = []
-            registry.delegate = nil
-            self.registry = nil
+        if isRinging {
+            isRinging = false
+            registry?.desiredPushTypes = []
             nativeCallsLogger.info("Hermes calls come as notifications")
         }
         PushNotificationService.shared.updateVoIPToken(nil)
@@ -270,9 +283,13 @@ final class HermesNativeCalls: NSObject {
         return ProfileAppearanceStore().loadDefaultName(dashboardID: dashboardID)
     }
 
-    private func receive(_ userInfo: [AnyHashable: Any], completion: @escaping () -> Void) {
+    /// `mustReport`: whether iOS needs a CallKit call for this push (iOS
+    /// 26.4+ says; earlier, always). It doesn't while Conduit is in the
+    /// foreground or already has a call, or when the push came too late
+    /// to ring: then a push that wouldn't ring here shows no call at all.
+    private func receive(_ userInfo: [AnyHashable: Any], mustReport: Bool = true, completion: @escaping () -> Void) {
         if let settled = HermesRingSettled.from(userInfo) {
-            ringSettled(settled, completion: completion)
+            ringSettled(settled, mustReport: mustReport, completion: completion)
             return
         }
         let call = PushNotificationService.shared.receiveVoIPCall(userInfo)
@@ -312,6 +329,14 @@ final class HermesNativeCalls: NSObject {
             completion()
             return
         }
+        guard Self.showsCall(plan, mustReport: mustReport) else {
+            // Nothing to ring, and iOS doesn't need a call reported: none
+            // is shown and ended, which only gives CallKit more to do.
+            if traced { HermesCallTrace.shared.note("Not shown: iOS needs no call for it") }
+            endedAtOnce(plan, target: call.target, sentAt: call.sentAt)
+            completion()
+            return
+        }
         if plan == .ring, let target = call.target { calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring) }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
@@ -347,10 +372,7 @@ final class HermesNativeCalls: NSObject {
         case .endAtOnce(let notice):
             if traced { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
-            post(notice, for: target)
-            // A call that arrived too late never rang, so no one could have
-            // answered it: Hermes hears it was missed.
-            if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
+            endedAtOnce(plan, target: target, sentAt: sentAt)
         case .ring:
             guard calls[id] != nil else { return }
             HermesCallTrace.shared.note("Ringing")
@@ -362,6 +384,21 @@ final class HermesNativeCalls: NSObject {
             // Hermes' connection starts coming up while it rings.
             AppStateRuntimeRegistry.shared.appState.setNativeHermesCallActive(true)
         }
+    }
+
+    /// Whether a push is reported to CallKit: every one that rings, and
+    /// every one iOS needs a call for.
+    static func showsCall(_ plan: HermesNativeCallPlan, mustReport: Bool) -> Bool {
+        mustReport || plan == .ring
+    }
+
+    /// A push that doesn't ring: its notice instead.
+    private func endedAtOnce(_ plan: HermesNativeCallPlan, target: ConduitNotificationTarget?, sentAt: Date?) {
+        guard case .endAtOnce(let notice) = plan else { return }
+        post(notice, for: target)
+        // A call that arrived too late never rang, so no one could have
+        // answered it: Hermes hears it was missed.
+        if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
     }
 
     // MARK: Answering
@@ -569,18 +606,32 @@ final class HermesNativeCalls: NSObject {
     /// one stops ringing. Every VoIP push is reported to CallKit, this one
     /// too: a call still on the phone is reported again under its own id,
     /// which CallKit already has; any other is reported and ended at once.
-    private func ringSettled(_ settled: HermesRingSettled, completion: @escaping () -> Void) {
+    /// Where iOS needs no call for the push (`mustReport` false: a call is
+    /// still on here, or Conduit is in the foreground), none is reported.
+    private func ringSettled(_ settled: HermesRingSettled, mustReport: Bool = true, completion: @escaping () -> Void) {
         guard let provider else {
             completion()
             return
         }
         let match = calls.first { $0.value.ring?.id == settled.id }
+        let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
+        guard mustReport else {
+            if let match, !match.value.answered {
+                HermesCallTrace.shared.note(settled.outcome == .answered ? "Answered on the Watch" : "Declined on the Watch")
+                finish(match.key, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
+            }
+            if let start = settled.start {
+                pruneRingTargets()
+                startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? ringTargets[settled.id]?.ring)
+            }
+            completion()
+            return
+        }
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
         update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
-        let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         provider.reportNewIncomingCall(with: id, update: update) { _ in
             Task { @MainActor in
                 if let match {
@@ -748,10 +799,14 @@ final class HermesNativeCalls: NSObject {
 // MARK: - PushKit
 
 extension HermesNativeCalls: PKPushRegistryDelegate {
+    nonisolated static func hex(_ token: Data) -> String {
+        token.map { String(format: "%02x", $0) }.joined()
+    }
+
     nonisolated func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
-        let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
+        let token = Self.hex(pushCredentials.token)
         MainActor.assumeIsolated {
-            guard registry === self.registry else { return }
+            guard registry === self.registry, self.isRinging else { return }
             PushNotificationService.shared.updateVoIPToken(token)
         }
     }
@@ -760,6 +815,19 @@ extension HermesNativeCalls: PKPushRegistryDelegate {
         MainActor.assumeIsolated {
             guard registry === self.registry else { return }
             PushNotificationService.shared.updateVoIPToken(nil)
+        }
+    }
+
+    /// iOS 26.4+ calls this one instead, saying whether the push needs a
+    /// CallKit call: one that can't ring here and needn't be reported
+    /// shows none.
+    @available(iOS 26.4, *)
+    @objc(pushRegistry:didReceiveIncomingVoIPPushWithPayload:metadata:withCompletionHandler:)
+    nonisolated func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, completion: @escaping () -> Void) {
+        let userInfo = payload.dictionaryPayload
+        let mustReport = metadata.mustReport
+        MainActor.assumeIsolated {
+            self.receive(userInfo, mustReport: mustReport, completion: completion)
         }
     }
 
