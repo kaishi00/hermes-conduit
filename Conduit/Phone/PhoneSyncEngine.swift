@@ -185,7 +185,8 @@ final class PhoneSyncEngine: ObservableObject {
     private var saved: PhoneSyncState?
     private let writer = PhoneSyncStateWriter()
     /// Changes being applied right now, so an exchange that lands meanwhile
-    /// doesn't hand the same one out again.
+    /// doesn't hand the same one out again. In memory: it covers races in
+    /// one run of the app.
     private var applying: Set<String> = []
 
     init(
@@ -519,7 +520,7 @@ final class PhoneSyncEngine: ObservableObject {
         switch (preferences.calendar, access) {
         case (.full, .full): calendar = .full
         case (.off, _), (_, .off): calendar = .off
-        default: calendar = .writeOnly
+        case (.full, .writeOnly), (.writeOnly, .full), (.writeOnly, .writeOnly): calendar = .writeOnly
         }
         sharing["calendar"] = calendar.rawValue
         sharing["reminders"] = preferences.reminders && remindersAuthorized

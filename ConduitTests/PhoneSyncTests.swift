@@ -164,7 +164,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let cut = PhoneSyncEngine.diff([["id": "a", "title": "A"]], against: sent, full: false, truncated: true)
         XCTAssertTrue(cut.delete.isEmpty, "An item past the limit isn't reported deleted")
 
-        // Access taken away in the Settings app narrows what the host is told.
+        // Access taken away in the Settings app narrows what the host is told,
+        // and access granted never widens what the user chose.
         let chosen = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
         let narrowed = PhoneSyncEngine.effectiveSharing(chosen, access: .writeOnly, remindersAuthorized: false)
         XCTAssertEqual(narrowed["calendar"] as? String, "write_only")
@@ -173,6 +174,9 @@ extension HermesVoiceGatewayTimeoutTests {
         let kept = PhoneSyncEngine.effectiveSharing(chosen, access: .full, remindersAuthorized: true)
         XCTAssertEqual(kept["calendar"] as? String, "full")
         XCTAssertEqual(kept["reminders"] as? Bool, true)
+        let addOnly = PhoneSyncPreferences(calendar: .writeOnly, reminders: false, status: false, focus: false)
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["calendar"] as? String, "write_only")
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["reminders"] as? Bool, false)
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {
@@ -185,6 +189,29 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(AppState.isPhoneChangesPush(["conduit": ["type": "phone.changes", "e2e": 1] as [String: Any]]))
         XCTAssertTrue(AppState.isPhoneChangesPush(["body": ["conduit": ["type": "phone.changes"]]]))
         XCTAssertFalse(AppState.isPhoneChangesPush(["conduit": ["type": "response.ready"]]))
+    }
+
+    func testPhoneChangeIsNeverAppliedTwice() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        host.changes = [["id": "ch_once", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let prompt = try XCTUnwrap(engine.prompts.first)
+
+        // The first approval is still saving when a second one and an
+        // exchange land: neither hands the change out again.
+        source.holdApply = true
+        let first = Task { await engine.answer(prompt, approve: true) }
+        for _ in 0..<500 where !source.isHolding { try await Task.sleep(for: .milliseconds(2)) }
+        XCTAssertTrue(source.isHolding)
+        await engine.answer(prompt, approve: true)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+        source.releaseApply()
+        await first.value
+        XCTAssertEqual(source.applied, ["ch_once"])
     }
 
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
@@ -289,7 +316,21 @@ private final class FakePhoneCalendarSource: PhoneCalendarSource {
     }
     func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]] { events }
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]] { reminderItems }
+    /// Holds each apply until releaseApply, to land something in between.
+    var holdApply = false
+    private let holdLock = NSLock()
+    private var held: CheckedContinuation<Void, Never>?
+    var isHolding: Bool { holdLock.withLock { held != nil } }
+    func releaseApply() {
+        holdApply = false
+        holdLock.withLock { held }?.resume()
+        holdLock.withLock { held = nil }
+    }
+
     func apply(_ change: PhoneChange, window: (from: Date, to: Date)) async throws -> String? {
+        if holdApply {
+            await withCheckedContinuation { continuation in holdLock.withLock { held = continuation } }
+        }
         applied.append(change.id)
         return "item_\(change.id)"
     }
