@@ -83,6 +83,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let long = VoiceHostTool.modelResult(["text": String(repeating: "x", count: VoiceHostTool.maximumResultCharacters)])
         XCTAssertNil(long["result"])
         XCTAssertNotNil(long["error"])
+        XCTAssertEqual(VoiceHostTool.modelResult("fine")["result"], #"{"value":"fine"}"#)
 
         // GPT-Live delegates "Health: {json}" with real JSON types.
         let marked = try XCTUnwrap(VoiceHostTool.marked(in: #"health: {"action": "daily", "metrics": ["steps"]} please"#, tools: [tool]))

@@ -24,7 +24,8 @@ struct HealthSettingsPage: View {
     @State private var errorMessage: String?
     /// The voice mode waiting for the user's yes before it may read health data.
     @State private var askingVoiceMode: LiveVoiceModeName?
-    @State private var voiceReads = HealthVoiceReadLog.load()
+    /// Loaded on appear (loading prunes and saves).
+    @State private var voiceReads = HealthVoiceReadLog()
 
     private var preferences: HealthSyncPreferences { appState.healthSyncPreferences }
     private var pluginServesHealth: Bool { appState.notifierPlugin.reports(AppState.healthSyncCapability) }

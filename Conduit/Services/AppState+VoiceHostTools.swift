@@ -21,8 +21,9 @@ extension AppState {
 
     /// The host tools a call on `mode` may use: health, when the user lets
     /// `mode` read it and its dashboard and profile are the ones in use.
-    /// Starts a health sync too, so the call reads fresh numbers.
-    func voiceHostTools(for mode: LiveVoiceModeName) async -> [VoiceHostTool] {
+    /// Starts a health sync too, so the call reads fresh numbers. Nil when
+    /// the host couldn't be asked (a reconnect then keeps what it had).
+    func voiceHostTools(for mode: LiveVoiceModeName) async -> [VoiceHostTool]? {
         let preferences = healthSyncPreferences
         guard preferences.letsVoiceRead(mode), let destination = preferences.destination,
               activeDashboardID == destination.dashboardID, activeProfile == destination.profile,
@@ -37,7 +38,7 @@ extension AppState {
             return VoiceHostTool.tools(from: response).filter { $0.key == "health" }
         } catch {
             Self.voiceToolsLog.info("Voice tools unavailable: \(HealthSyncEngine.describe(error), privacy: .public)")
-            return []
+            return nil
         }
     }
 
@@ -94,9 +95,12 @@ extension AppState {
             supervisor.runHostTool = nil
             supervisor.hostToolsMode = nil
         }
-        let tools = await voiceHostTools(for: mode)
+        let fetched = await voiceHostTools(for: mode)
         // A cancelled probe (the call isn't starting) publishes nothing.
         guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
+        // The host couldn't be asked: the same mode keeps its tools (each
+        // read still checks consent); another mode's were cleared above.
+        guard let tools = fetched else { return }
         supervisor.hostToolsMode = mode
         supervisor.hostTools = tools
         supervisor.runHostTool = { [weak self] tool, arguments in

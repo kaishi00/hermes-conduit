@@ -199,6 +199,8 @@ struct VoiceHostTool {
 
     /// What the model gets back. Not UI copy, so not localized.
     static func modelResult(_ result: Any) -> [String: String] {
+        // A bare string or number is valid JSON too; serialization wants a container.
+        let result: Any = result is [Any] || result is [String: Any] ? result : ["value": result]
         guard JSONSerialization.isValidJSONObject(result),
               let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]),
               let text = String(data: data, encoding: .utf8) else {
