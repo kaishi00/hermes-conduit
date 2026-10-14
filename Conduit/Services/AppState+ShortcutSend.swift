@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Binds the "Send to Hermes" Shortcuts action (SendToHermesIntent) to the
-//  client in use. A run never touches the chat on screen: it makes or
-//  resumes its own chat and talks to it over the connection directly.
+//  client in use. A run makes or resumes its own chat and talks to it over
+//  the connection directly; when that chat is the one on screen, the text
+//  goes through the composer so it shows and streams like a typed message.
 //
 
 import Foundation
@@ -49,8 +50,15 @@ extension AppState {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.liveVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
-            submit: { [weak self] _, runtimeID, text in
-                guard let client = self?.client else { throw HermesError.notConnected }
+            submit: { [weak self] chat, runtimeID, text in
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy {
+                    var foundBusy = false
+                    if await self.submitComposer(text: text, onBusy: { foundBusy = true }) { return .accepted }
+                    // Not sent and not busy: the composer couldn't take it.
+                    if !foundBusy { throw HermesError.invalidResponse }
+                }
+                // Off screen, or a turn running there: Hermes queues or joins it.
                 return try await client.sendPrompt(runtimeID, text: text)
             },
             liveSessions: { [weak self] profile in

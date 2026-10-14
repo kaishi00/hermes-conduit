@@ -24,6 +24,8 @@ private final class FakeHermes {
     var polls: [[LiveSessionStatus]] = []
     var replies: [String?] = []
     var replyReads = 0
+    /// iOS ends the run while it waits.
+    var cancelsSleep = false
 
     func backend() -> ShortcutSendBackend {
         ShortcutSendBackend(
@@ -54,7 +56,10 @@ private final class FakeHermes {
                 guard !self.replies.isEmpty else { return nil }
                 return self.replies.count > 1 ? self.replies.removeFirst() : self.replies[0]
             },
-            sleep: { seconds in self.now = self.now.addingTimeInterval(seconds) },
+            sleep: { seconds in
+                if self.cancelsSleep { throw CancellationError() }
+                self.now = self.now.addingTimeInterval(seconds)
+            },
             now: { self.now }
         )
     }
@@ -240,6 +245,36 @@ extension ScreenQuestionTests {
         }
         XCTAssertTrue(hermes.submitted.isEmpty)
         XCTAssertTrue(hermes.created.isEmpty)
+    }
+
+    @MainActor
+    func testACancelledRunEndsAsCancelledNotAsSent() async {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        hermes.cancelsSleep = true
+        do {
+            _ = try await sender(hermes, chats).send(shortcutRequest("Wait", wait: true), deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("a cancelled run reported an outcome")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
+    @MainActor
+    func testATurnThatEndsBetweenPollsStillAnswers() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        // Never seen running: idle, idle, then the reply is there.
+        hermes.polls = [[liveRow("run-1", "idle")]]
+        hermes.replies = [nil, nil, "Quick answer."]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("Hi", wait: true), deadline: hermes.now.addingTimeInterval(25))
+        XCTAssertEqual(outcome, .answered("Quick answer."))
+    }
+
+    @MainActor
+    func testSiriSpeaksAShortenedLongAnswer() {
+        XCTAssertEqual(SendToHermesIntent.spoken("Short."), "Short.")
+        XCTAssertEqual(SendToHermesIntent.spoken(String(repeating: "a", count: 700)).count, 600)
     }
 
     @MainActor

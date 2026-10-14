@@ -159,8 +159,8 @@ struct ShortcutSender {
         var chat: VoiceThreadTarget
         var runtimeID: String
         var reused = false
-        if let name, let saved = chats.chat(named: name, profile: profile),
-           let resumed = try? await backend.resumeChat(saved) {
+        if let name, var saved = chats.chat(named: name, profile: profile), let resumed = try await resume(saved) {
+            if !resumed.isEmpty { saved.runtimeSessionID = resumed }
             chat = saved
             runtimeID = resumed
             reused = true
@@ -168,8 +168,10 @@ struct ShortcutSender {
             chat = try await backend.createChat(profile, name ?? Self.title(for: text))
             runtimeID = chat.runtimeSessionID
         }
-        if !runtimeID.isEmpty { chat.runtimeSessionID = runtimeID }
         if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
+        // A slow connection used up the run: nothing was sent.
+        try Task.checkCancellation()
+        guard backend.now() < deadline else { throw ShortcutSendError.notConnected }
 
         // A reused chat already has replies: only a new one answers this run.
         var earlier: String?
@@ -180,16 +182,27 @@ struct ShortcutSender {
         case .steered, .redirected: return .joinedRunningReply
         }
         guard request.waitsForAnswer else { return .sent }
-        return await waitForReply(in: chat, runtimeID: runtimeID, earlier: earlier, deadline: deadline)
+        return try await waitForReply(in: chat, runtimeID: runtimeID, earlier: earlier, deadline: deadline)
     }
 
-    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: String?, deadline: Date) async -> ShortcutSendOutcome {
+    /// The saved chat's runtime, or nil when Hermes no longer has it (a new
+    /// chat then takes the name). Cancellation still ends the run.
+    private func resume(_ chat: VoiceThreadTarget) async throws -> String? {
+        do {
+            return try await backend.resumeChat(chat)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
+    }
+
+    /// Throws only when the run is cancelled.
+    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: String?, deadline: Date) async throws -> ShortcutSendOutcome {
         var sawRunning = false
-        var polls = 0
         var missed = 0
         while backend.now().addingTimeInterval(Self.pollInterval) < deadline {
-            do { try await backend.sleep(Self.pollInterval) } catch { return .stillWorking }
-            polls += 1
+            try await backend.sleep(Self.pollInterval)
             guard let rows = try? await backend.liveSessions(chat.profile ?? backend.activeProfile()) else { continue }
             let row = rows.first {
                 $0.runtimeSessionId == runtimeID || chat.owns(sessionID: $0.runtimeSessionId) || chat.owns(sessionID: $0.storedSessionId)
@@ -201,9 +214,14 @@ struct ShortcutSender {
                     sawRunning = true
                     continue
                 }
-                // An idle row before the turn was ever seen running may be
-                // the moment between the send and the turn starting.
-                if !sawRunning && polls < 3 { continue }
+                // Idle before the turn was ever seen running: either it
+                // hasn't started yet (a resumed chat sits idle until it
+                // does) or it finished between two polls. Only a reply says
+                // which, so keep waiting until one comes.
+                if !sawRunning {
+                    if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+                    continue
+                }
             } else {
                 // Absence counts only when it repeats.
                 missed += 1
@@ -211,7 +229,8 @@ struct ShortcutSender {
             }
             if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
             // The reply can land a moment after the turn ends.
-            guard backend.now().addingTimeInterval(1) < deadline, (try? await backend.sleep(1)) != nil else { break }
+            guard backend.now().addingTimeInterval(1) < deadline else { break }
+            try await backend.sleep(1)
             if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
             break
         }
@@ -289,7 +308,12 @@ struct SendToHermesIntent: AppIntent {
         let request = ShortcutSendRequest(text: message, chatName: chatName, profile: profile?.id, waitsForAnswer: waitForAnswer)
         let deadline = Date().addingTimeInterval(Self.runTime)
         let text = try await Self.run(request, deadline: deadline).text
-        return .result(value: text, dialog: "\(text)")
+        return .result(value: text, dialog: "\(Self.spoken(text))")
+    }
+
+    /// What Siri says: a long answer is cut, the shortcut still gets it whole.
+    static func spoken(_ text: String) -> String {
+        text.count > 600 ? String(text.prefix(599)) + "…" : text
     }
 
     @MainActor
