@@ -589,6 +589,9 @@ struct LocationSettingsPage: View {
         Task {
             do {
                 try await controller.turnOn(layer, destination: destination)
+                // A first turn-on was just bound: store the host pass now, so
+                // a locate or background send doesn't wait for a reconnect.
+                await appState.locationHostConnected()
                 Haptics.success()
                 await loadFromHost()
             } catch {
