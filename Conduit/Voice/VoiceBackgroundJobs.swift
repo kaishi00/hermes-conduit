@@ -1773,6 +1773,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// boundaries, where the ledger no longer belongs to the active gateway.
     func reset() {
         generation &+= 1
+        // A call's host tools carry its mode's consent: never the next call's.
+        hostTools = []
+        runHostTool = nil
         pollTask?.cancel()
         pollTask = nil
         threadTask?.cancel()

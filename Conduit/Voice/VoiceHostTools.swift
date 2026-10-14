@@ -10,8 +10,9 @@
 //  capability on the host needs no app change.
 //
 //  Gemini and Grok get them as function tools. Conduit's live sessions pass
-//  string arguments only, so a list or number parameter is declared as a
-//  string here and turned back into its JSON type from the host's schema.
+//  string arguments only: numbers and booleans keep their declared type (the
+//  model still sends text), lists and objects are declared as strings, and
+//  each value is turned back into its JSON type from the host's schema.
 //  GPT-Live has no function tools: it delegates "Health: {json}".
 //
 
@@ -100,9 +101,22 @@ struct VoiceHostTool {
     static func convert(_ value: Any, to property: [String: Any]) -> Any? {
         let type = (property["type"] as? String)?.lowercased() ?? "string"
         guard let text = value as? String else {
-            // GPT-Live's JSON already carries real lists and numbers.
-            if value is NSNull { return nil }
-            return value
+            // GPT-Live's JSON already carries real lists and numbers; they
+            // meet the same rules as text.
+            switch (type, value) {
+            case (_, is NSNull): return nil
+            case ("integer", let number as NSNumber) where CFGetTypeID(number) != CFBooleanGetTypeID():
+                return Int(exactly: number.doubleValue)
+            case ("number", let number as NSNumber) where CFGetTypeID(number) != CFBooleanGetTypeID():
+                return number.doubleValue
+            case ("boolean", let number as NSNumber) where CFGetTypeID(number) == CFBooleanGetTypeID():
+                return number.boolValue
+            case ("array", let list as [Any]): return list
+            case ("object", let object as [String: Any]): return object
+            case ("string", let number as NSNumber) where CFGetTypeID(number) != CFBooleanGetTypeID():
+                return number.stringValue
+            default: return nil
+            }
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch type {

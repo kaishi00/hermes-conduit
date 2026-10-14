@@ -29,7 +29,7 @@ extension AppState {
               notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return [] }
         // Not waited on: the call starts now and reads what has arrived by
         // the time it asks. A key from before voice reads is replaced here.
-        Task { await runHealthSync(reason: .voiceCall) }
+        if !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
         do {
             let response = try await bridge.requestJSON(
                 path: DashboardPath.withProfile(Self.voiceToolsPath, profile: destination.profile),
