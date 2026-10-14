@@ -54,6 +54,19 @@ enum LocationPrecisionRules {
             .place
     }
 
+    /// The private place the fix's raw coordinate falls in, whatever its
+    /// accuracy, including an approximate-only fix: where a private place is
+    /// must never follow from a fix sent near it.
+    static func containingPrivatePlace(_ raw: LocationRawFix, places: [LocationSavedPlace]) -> LocationSavedPlace? {
+        let location = raw.location
+        return places
+            .filter(\.isPrivate)
+            .map { (place: $0, ratio: $0.distance(to: location) / $0.radius) }
+            .filter { $0.ratio <= 1 }
+            .min { $0.ratio < $1.ratio }?
+            .place
+    }
+
     static func rounded(_ value: Double, decimals: Int) -> Double {
         let scale = pow(10, Double(decimals))
         return (value * scale).rounded() / scale
@@ -79,11 +92,14 @@ enum LocationPrecisionRules {
             "source": fix.source.rawValue,
             "precision": precision.rawValue,
         ]
-        let place = approximateOnly ? nil : containingPlace(fix.raw, places: places)
-        if let place {
+        // Inside a private place only its id goes, even for a fix too rough
+        // to name an ordinary place: where it is would follow from more.
+        if let privatePlace = containingPrivatePlace(fix.raw, places: places) {
+            object["place_id"] = privatePlace.id
+            return object
+        }
+        if !approximateOnly, let place = containingPlace(fix.raw, places: places) {
             object["place_id"] = place.id
-            // Where a private place is would follow from anything more.
-            if place.isPrivate { return object }
         }
         guard precision != .places else { return object }
 

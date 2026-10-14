@@ -419,6 +419,16 @@ final class E2ESeenStore {
         withFileLock { insertLocked(key, namespace: namespace, now: now) }
     }
 
+    /// Forgets `key` in `namespace`, so a delivery whose work failed can be
+    /// tried again when it's redelivered.
+    func remove(_ key: String, namespace: String) {
+        withFileLock {
+            var entries = load()
+            guard entries.removeValue(forKey: "\(namespace):\(key)") != nil else { return }
+            store(entries)
+        }
+    }
+
     /// Waits up to about a second for the lock: a process suspended while
     /// holding it must not stall the extension past its time budget. If it
     /// can't be had, the insert runs unlocked (best effort, as before).

@@ -14,7 +14,8 @@ import Foundation
 /// phone is. Anything that doesn't check out posts nothing.
 final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLocationManagerDelegate {
     // didReceive and serviceExtensionWillTerminate may run on different
-    // threads; the lock makes sure completion runs exactly once.
+    // threads; the lock guards `completion` and `work`, so completion runs
+    // exactly once and the task is cancelled whichever comes first.
     private let lock = NSLock()
     private var completion: (() -> Void)?
     private var manager: CLLocationManager?
@@ -26,20 +27,28 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         lock.withLock { self.completion = completion }
         var userInfo: [AnyHashable: Any] = [:]
         for (key, value) in payload { userInfo[AnyHashable(key)] = value }
-        work = Task { [weak self] in
+        let task = Task { [weak self] in
             await self?.answer(userInfo)
             self?.finish()
         }
+        lock.withLock { work = task }
     }
 
     func serviceExtensionWillTerminate() {
-        work?.cancel()
+        let task: Task<Void, Never>? = lock.withLock {
+            defer { work = nil }
+            return work
+        }
+        task?.cancel()
         finish()
     }
 
     private func finish() {
         let handler: (() -> Void)? = lock.withLock {
-            defer { completion = nil }
+            defer {
+                completion = nil
+                work = nil
+            }
             return completion
         }
         DispatchQueue.main.async {
@@ -63,8 +72,13 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
               let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID,
               let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date())
         else { return }
-        // A second delivery of the same request is answered once.
-        guard E2ESeenStore.shared.insert(request.replayKey, namespace: "locate") else { return }
+        // A second delivery of the same request is answered once. The key
+        // is claimed now (a concurrent delivery stops here) and released if
+        // the answer doesn't reach the host, so a redelivery can try again.
+        let seen = E2ESeenStore.shared
+        guard seen.insert(request.replayKey, namespace: "locate") else { return }
+        var answered = false
+        defer { if !answered { seen.remove(request.replayKey, namespace: "locate") } }
 
         let precision = config.settings.backgroundPrecision
         let (location, approximate) = await fix(precision: precision)
@@ -78,13 +92,18 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         batch.fix = LocationFixRecord(source: .locate, raw: LocationRawFix(location), area: area)
         batch.locateID = request.id
         guard let body = try? LocationIngest.body(batch, key: key), !Task.isCancelled else { return }
-        _ = try? await LocationHostClient.requestJSON(
-            pass: pass,
-            path: LocationHostClient.withProfile("\(LocationHostClient.base)/ingest", profile: binding.profile),
-            method: "POST",
-            body: body,
-            timeout: 10
-        )
+        do {
+            _ = try await LocationHostClient.requestJSON(
+                pass: pass,
+                path: LocationHostClient.withProfile("\(LocationHostClient.base)/ingest", profile: binding.profile),
+                method: "POST",
+                body: body,
+                timeout: 10
+            )
+            answered = true
+        } catch {
+            // Nothing else to do from here: the app sends when it next runs.
+        }
     }
 
     // MARK: One fix

@@ -214428,88 +214428,6 @@
         }
       }
     },
-    "A position is sent when you send a message or start a voice call in Conduit, and as you move during a call. Needs location access While Using the App." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Standort wird gesendet, wenn du in Conduit eine Nachricht sendest oder einen Sprachanruf startest, und während eines Anrufs, wenn du dich bewegst. Erfordert Standortzugriff „Beim Verwenden der App“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se envía una posición cuando envías un mensaje o empiezas una llamada de voz en Conduit, y mientras te mueves durante una llamada. Requiere acceso a la ubicación «Al usar la app»."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une position est envoyée quand vous envoyez un message ou lancez un appel vocal dans Conduit, et quand vous vous déplacez pendant un appel. Nécessite l'accès à la position « Lorsque l'app est active »."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Posisi dikirim saat kamu mengirim pesan atau memulai panggilan suara di Conduit, dan saat kamu bergerak selama panggilan. Memerlukan akses lokasi Saat Menggunakan App."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Una posizione viene inviata quando invii un messaggio o avvii una chiamata vocale in Conduit, e mentre ti sposti durante una chiamata. Richiede l'accesso alla posizione «Mentre usi l'app»."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduitでメッセージを送信したり音声通話を開始したりしたとき、また通話中に移動したときに位置が送信されます。位置情報へのアクセスを「Appの使用中」にする必要があります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit에서 메시지를 보내거나 음성 통화를 시작할 때, 그리고 통화 중 이동할 때 위치가 전송됩니다. 위치 접근 권한이 ‘앱을 사용하는 동안’이어야 합니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pozycja jest wysyłana, gdy wysyłasz wiadomość lub zaczynasz rozmowę głosową w Conduit, oraz gdy przemieszczasz się w trakcie rozmowy. Wymaga dostępu do lokalizacji Podczas używania aplikacji."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uma posição é enviada quando você envia uma mensagem ou inicia uma chamada de voz no Conduit, e enquanto você se move durante uma chamada. Requer acesso à localização “Durante o Uso do App”."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Позиция отправляется, когда вы отправляете сообщение или начинаете голосовой звонок в Conduit, а также при перемещении во время звонка. Нужен доступ к геопозиции «При использовании приложения»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit'te mesaj gönderdiğinde veya sesli arama başlattığında ve arama sırasında hareket ettiğinde konum gönderilir. Uygulamayı Kullanırken konum erişimi gerekir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Conduit 中发送消息或开始语音通话时，以及通话期间移动时，会发送位置。需要“使用 App 期间”的位置访问权限。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Conduit 中傳送訊息或開始語音通話時，以及通話期間移動時，會傳送位置。需要「使用 App 期間」的位置存取權限。"
-          }
-        }
-      }
-    },
     "Add a place" : {
       "localizations" : {
         "de" : {
@@ -216966,88 +216884,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 尚未讀取你的位置。"
-          }
-        }
-      }
-    },
-    "Hermes hears only which of your saved places you're at." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes erfährt nur, an welchem deiner gespeicherten Orte du bist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes solo sabe en cuál de tus lugares guardados estás."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes sait seulement dans lequel de vos lieux enregistrés vous êtes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes hanya tahu di tempat tersimpan mana kamu berada."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes sa solo in quale dei tuoi luoghi salvati ti trovi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesに伝わるのは、保存した場所のどこにいるかだけです。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes는 저장된 장소 중 어디에 있는지만 알 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes wie tylko, w którym z zapisanych miejsc jesteś."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Hermes sabe apenas em qual dos seus lugares salvos você está."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes узнаёт только, в каком из сохранённых мест вы находитесь."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes yalnızca kayıtlı yerlerinden hangisinde olduğunu öğrenir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 只知道你在哪个已保存的地点。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 只會知道你在哪個已儲存的地點。"
           }
         }
       }
@@ -222870,6 +222706,416 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "也就是位置分享已關閉或暫停，或最近沒有傳送位置時。電話會改以一般通知送達。"
+          }
+        }
+      }
+    },
+    "A position is sent when you send a message or start a voice call in Conduit, and as you move during a call while Conduit is open. Needs location access While Using the App." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Standort wird gesendet, wenn du in Conduit eine Nachricht sendest oder einen Sprachanruf startest, und wenn du dich während eines Anrufs bewegst, solange Conduit geöffnet ist. Erfordert Standortzugriff „Beim Verwenden der App“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se envía una posición cuando envías un mensaje o inicias una llamada de voz en Conduit, y cuando te mueves durante una llamada mientras Conduit está abierta. Requiere acceso a la ubicación «Al usar la app»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une position est envoyée quand vous envoyez un message ou lancez un appel vocal dans Conduit, et quand vous vous déplacez pendant un appel tant que Conduit est ouverte. Nécessite l'accès à la position « Lorsque l'app est active »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posisi dikirim saat kamu mengirim pesan atau memulai panggilan suara di Conduit, dan saat kamu bergerak selama panggilan selagi Conduit terbuka. Memerlukan akses lokasi Saat Menggunakan App."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una posizione viene inviata quando invii un messaggio o avvii una chiamata vocale in Conduit, e quando ti sposti durante una chiamata mentre Conduit è aperta. Richiede l'accesso alla posizione «Mentre usi l'app»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitでメッセージを送信したり音声通話を開始したりしたとき、またConduitを開いている間に通話中に移動したときに位置が送信されます。位置情報へのアクセスを「Appの使用中」にする必要があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에서 메시지를 보내거나 음성 통화를 시작할 때, 그리고 Conduit가 열려 있는 동안 통화 중 이동할 때 위치가 전송됩니다. 위치 접근 권한이 ‘앱을 사용하는 동안’이어야 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozycja jest wysyłana, gdy wysyłasz wiadomość lub zaczynasz rozmowę głosową w Conduit, oraz gdy przemieszczasz się w trakcie rozmowy, dopóki Conduit jest otwarty. Wymaga dostępu do lokalizacji Podczas używania aplikacji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma posição é enviada quando você envia uma mensagem ou inicia uma chamada de voz no Conduit, e quando você se move durante uma chamada enquanto o Conduit está aberto. Requer acesso à localização “Durante o Uso do App”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позиция отправляется, когда вы отправляете сообщение или начинаете голосовой звонок в Conduit, а также при перемещении во время звонка, пока Conduit открыт. Нужен доступ к геопозиции «При использовании приложения»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'te mesaj gönderdiğinde veya sesli arama başlattığında ve Conduit açıkken arama sırasında hareket ettiğinde konum gönderilir. Uygulamayı Kullanırken konum erişimi gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Conduit 中发送消息或开始语音通话时，以及 Conduit 处于打开状态时你在通话期间移动，会发送位置。需要“使用 App 期间”的位置访问权限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Conduit 中傳送訊息或開始語音通話時，以及 Conduit 開啟期間你在通話中移動時，會傳送位置。需要「使用 App 期間」的位置存取權限。"
+          }
+        }
+      }
+    },
+    "Conduit can't read its location settings right now. Unlock your iPhone and open this page again. If this keeps happening, start over: your saved places and choices are reset." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit kann seine Standorteinstellungen gerade nicht lesen. Entsperre dein iPhone und öffne diese Seite erneut. Wenn das so bleibt, fang neu an: Deine gespeicherten Orte und Einstellungen werden zurückgesetzt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no puede leer ahora sus ajustes de ubicación. Desbloquea el iPhone y vuelve a abrir esta página. Si sigue pasando, empieza de nuevo: se restablecerán tus lugares guardados y tus opciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ne peut pas lire ses réglages de position pour le moment. Déverrouillez votre iPhone et rouvrez cette page. Si cela persiste, recommencez à zéro : vos lieux enregistrés et vos choix seront réinitialisés."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat membaca pengaturan lokasinya saat ini. Buka kunci iPhone-mu dan buka halaman ini lagi. Jika terus terjadi, mulai ulang: tempat tersimpan dan pilihanmu akan disetel ulang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non riesce a leggere le sue impostazioni di posizione in questo momento. Sblocca l'iPhone e riapri questa pagina. Se continua a succedere, ricomincia da capo: i luoghi salvati e le tue scelte verranno reimpostati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは現在、位置情報の設定を読み取れません。iPhoneのロックを解除して、このページをもう一度開いてください。解決しない場合は最初からやり直してください。保存した場所と設定はリセットされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 지금 위치 설정을 읽을 수 없습니다. iPhone 잠금을 해제하고 이 페이지를 다시 여세요. 계속 이러면 처음부터 다시 시작하세요. 저장된 장소와 선택이 초기화됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie może teraz odczytać swoich ustawień lokalizacji. Odblokuj iPhone’a i otwórz tę stronę ponownie. Jeśli to się powtarza, zacznij od nowa: zapisane miejsca i wybory zostaną zresetowane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não consegue ler os ajustes de localização agora. Desbloqueie o iPhone e abra esta página de novo. Se continuar acontecendo, recomece: seus locais salvos e suas escolhas serão redefinidos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit сейчас не может прочитать свои настройки геопозиции. Разблокируйте iPhone и откройте эту страницу снова. Если это повторяется, начните заново: сохранённые места и настройки будут сброшены."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit şu anda konum ayarlarını okuyamıyor. iPhone'unun kilidini aç ve bu sayfayı yeniden aç. Bu sürerse baştan başla: kayıtlı yerlerin ve seçimlerin sıfırlanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 目前无法读取其位置设置。请解锁 iPhone 后重新打开此页面。如果问题持续，请重新开始：你保存的地点和选择将被重置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 目前無法讀取其位置設定。請解鎖 iPhone 後重新開啟此頁面。如果問題持續，請重新開始：你儲存的地點和選擇將被重置。"
+          }
+        }
+      }
+    },
+    "Hermes hears only which of your saved places you're at, and your iPhone's time zone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes erfährt nur, an welchem deiner gespeicherten Orte du bist, und die Zeitzone deines iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes solo sabe en cuál de tus lugares guardados estás, y la zona horaria de tu iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sait seulement dans lequel de vos lieux enregistrés vous êtes, ainsi que le fuseau horaire de votre iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hanya tahu di tempat tersimpan mana kamu berada, serta zona waktu iPhone-mu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sa solo in quale dei tuoi luoghi salvati ti trovi, e il fuso orario del tuo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに伝わるのは、保存した場所のどこにいるかと、iPhoneのタイムゾーンだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 저장된 장소 중 어디에 있는지와 iPhone의 시간대만 알 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes wie tylko, w którym z zapisanych miejsc jesteś, oraz jaka jest strefa czasowa twojego iPhone’a."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes sabe apenas em qual dos seus locais salvos você está, e o fuso horário do seu iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes узнаёт только, в каком из сохранённых мест вы находитесь, и часовой пояс вашего iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yalnızca kayıtlı yerlerinden hangisinde olduğunu ve iPhone'unun saat dilimini öğrenir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只知道你在哪个已保存的地点，以及你 iPhone 的时区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只會知道你在哪個已儲存的地點，以及你 iPhone 的時區。"
+          }
+        }
+      }
+    },
+    "Start over" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu anfangen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezar de nuevo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recommencer à zéro"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai ulang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ricomincia da capo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最初からやり直す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음부터 다시 시작"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zacznij od nowa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recomeçar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Начать заново"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baştan başla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新开始"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新開始"
+          }
+        }
+      }
+    },
+    "Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zeitzone deines iPhone wird immer mitgesendet, bei jeder Genauigkeit, damit Hermes deine Ortszeit kennt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La zona horaria de tu iPhone siempre se envía también, con cualquier nivel de detalle, para que Hermes sepa tu hora local."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le fuseau horaire de votre iPhone est toujours envoyé aussi, quel que soit le niveau de détail, pour que Hermes connaisse votre heure locale."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zona waktu iPhone-mu juga selalu dikirim, di setiap tingkat detail, agar Hermes tahu waktu setempatmu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il fuso orario del tuo iPhone viene sempre inviato, a qualsiasi livello di dettaglio, così Hermes conosce la tua ora locale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どの詳細度でも、iPhoneのタイムゾーンは常に送信されます。Hermesが現地時刻を把握できるようにするためです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 시간대는 어떤 상세도에서든 항상 함께 전송되어 Hermes가 현지 시간을 알 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strefa czasowa twojego iPhone’a jest zawsze wysyłana, przy każdej dokładności, aby Hermes znał twój czas lokalny."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O fuso horário do seu iPhone também é sempre enviado, em qualquer nível de detalhe, para o Hermes saber sua hora local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часовой пояс вашего iPhone всегда отправляется тоже, при любой точности, чтобы Hermes знал ваше местное время."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unun saat dilimi her ayrıntı düzeyinde her zaman gönderilir; böylece Hermes yerel saatini bilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论选择哪种详细程度，你 iPhone 的时区都会一并发送，以便 Hermes 知道你的当地时间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論選擇哪種詳細程度，你 iPhone 的時區都會一併傳送，讓 Hermes 知道你的當地時間。"
           }
         }
       }

@@ -182,6 +182,55 @@ extension NotificationE2ETests {
         XCTAssertEqual(json["lat"] as? Double, 51.53)
     }
 
+    func testAPrivatePlaceIsHiddenEvenInARoughFix() {
+        var home = LocationFixtures.home
+        home.isPrivate = true
+        // An approximate-only fix, and one too rough to name an ordinary place.
+        for (accuracy, approximate) in [(12.0, true), (3_000.0, false), (3_000.0, true)] {
+            let json = LocationFixtures.json(LocationFixtures.fix(latitude: 51.5322, longitude: -0.0754, accuracy: accuracy), .area,
+                                             places: [home, LocationFixtures.work], approximate: approximate)
+            XCTAssertEqual(json["place_id"] as? String, "p_home")
+            XCTAssertEqual(Set(json.keys), ["id", "at", "source", "precision", "place_id"])
+        }
+    }
+
+    // MARK: Stored configuration
+
+    func testAStoredConfigurationToleratesMissingKeysAndBadPlaces() throws {
+        let json = """
+        {"deviceID": "0123456789abcdef0123456789abcdef", "settings": {"talking": true},
+         "places": [{"id": "p_home", "latitude": 51.5, "longitude": -0.07}, {"id": "p_broken", "name": "No coordinate"}]}
+        """
+        let config = try JSONDecoder().decode(LocationSharedConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(config.deviceID, "0123456789abcdef0123456789abcdef")
+        XCTAssertTrue(config.settings.talking)
+        XCTAssertEqual(config.settings.backgroundPrecision, .area)
+        XCTAssertEqual(config.settings.retentionDays, LocationSharingSettings.defaultRetention)
+        XCTAssertEqual(config.places.map(\.id), ["p_home"])
+        XCTAssertEqual(config.places.first?.kind, .other)
+        XCTAssertEqual(config.places.first?.radius, LocationSavedPlace.defaultRadius)
+        XCTAssertNil(config.binding)
+
+        // A round trip keeps everything.
+        var full = LocationFixtures.config()
+        full.places = [LocationFixtures.home]
+        XCTAssertEqual(try JSONDecoder().decode(LocationSharedConfig.self, from: JSONEncoder().encode(full)), full)
+    }
+
+    func testADamagedConfigurationFileIsUnreadableNotMissing() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("config.json")
+        guard case .missing = LocationSharedStore.readConfig(at: url) else { return XCTFail("expected missing") }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("{not json".utf8).write(to: url)
+        guard case .unreadable = LocationSharedStore.readConfig(at: url) else { return XCTFail("expected unreadable") }
+        let config = LocationFixtures.config()
+        XCTAssertTrue(LocationSharedStore.saveConfig(config, at: url))
+        guard case .value(let stored) = LocationSharedStore.readConfig(at: url) else { return XCTFail("expected value") }
+        XCTAssertEqual(stored, config)
+    }
+
     // MARK: Batch
 
     func testLocationBatchShape() throws {
@@ -310,6 +359,54 @@ extension NotificationE2ETests {
         XCTAssertTrue(LocationSyncEngine.needsNewKey("unknown_key"))
         XCTAssertTrue(LocationSyncEngine.needsNewKey("bad_seal"))
         XCTAssertFalse(LocationSyncEngine.needsNewKey("layer_off"))
+    }
+
+    func testAnIngest404IsThePluginMissingOnlyWhenTheKeyRouteIsGoneToo() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
+        var keyRouteExists = true
+        var calls: [String] = []
+        let request: LocationSyncEngine.Request = { path, _, body in
+            calls.append(path)
+            if path.hasSuffix("/key") {
+                guard keyRouteExists else { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
+                let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+                return [
+                    "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
+                    "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
+                ]
+            }
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: .memory())
+        let config = LocationFixtures.config()
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
+
+        // Ingest 404s but the key route answers: a passing failure.
+        let passing = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(passing, .failed)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(calls.filter { $0.hasSuffix("/key") }.count, 2)
+
+        // Both gone: the plugin has no location sync.
+        keyRouteExists = false
+        let missing = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(missing, .failed)
+        XCTAssertEqual(engine.state.pause, .pluginMissing)
+    }
+
+    func testACachedFixAnswersPreciseOnlyWhenCloseToTheAskedAccuracy() {
+        XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyNearestTenMeters), 20)
+        XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyHundredMeters), 100)
+    }
+
+    func testReadsWithTheSameTimeAndActionKeepDistinctIDs() {
+        let reads = LocationRead.parse(["reads": [
+            ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"],
+            ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"],
+        ]])
+        XCTAssertEqual(Set(reads.map(\.id)).count, 2)
     }
 
     // MARK: On-demand locate

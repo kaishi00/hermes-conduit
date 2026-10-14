@@ -82,8 +82,13 @@ extension AppState {
         let controller = LocationSharingController.shared
         guard let binding = controller.binding, controller.settings.isOn,
               activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
-        if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID) {
-            LocationKeychain.saveHostPass(pass)
+        if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
+           !LocationKeychain.saveHostPass(pass) {
+            // Logged by LocationKeychain. The previous pass (if any) stays;
+            // the app still sends through the dashboard connection, but the
+            // extension and background sends may be signed out until the
+            // next connect saves it.
+            LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
         }
         controller.hostConnected()
     }

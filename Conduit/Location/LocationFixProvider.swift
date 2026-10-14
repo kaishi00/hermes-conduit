@@ -17,6 +17,9 @@ import UIKit
 final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var waiting: [UUID: CheckedContinuation<CLLocation?, Never>] = [:]
+    /// What each waiting request asked for: the manager is set to the
+    /// finest of them, so a coarse request can't weaken a precise one.
+    private var wanted: [UUID: CLLocationAccuracy] = [:]
     private var requestInFlight = false
     private var cachedArea: (location: CLLocation, area: LocationArea)?
 
@@ -41,13 +44,14 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
     func currentFix(accuracy: CLLocationAccuracy, maxAge: TimeInterval = 60, timeout: Duration = .seconds(10)) async -> CLLocation? {
         guard canLocate else { return nil }
         if let known = manager.location, -known.timestamp.timeIntervalSinceNow <= maxAge,
-           known.horizontalAccuracy >= 0, known.horizontalAccuracy <= max(accuracy, 65) {
+           known.horizontalAccuracy >= 0, known.horizontalAccuracy <= Self.acceptableCachedAccuracy(for: accuracy) {
             return known
         }
-        manager.desiredAccuracy = accuracy
         let id = UUID()
         return await withCheckedContinuation { continuation in
             waiting[id] = continuation
+            wanted[id] = accuracy
+            applyFinestWanted()
             if !requestInFlight {
                 requestInFlight = true
                 manager.requestLocation()
@@ -57,6 +61,18 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
                 self?.resume(id, with: nil)
             }
         }
+    }
+
+    /// How rough a fix iOS already has may be and still answer a request
+    /// for `accuracy`: twice that for Precise (10 m asks get 20 m), and the
+    /// usual Wi-Fi 65 m otherwise.
+    nonisolated static func acceptableCachedAccuracy(for accuracy: CLLocationAccuracy) -> CLLocationAccuracy {
+        min(max(accuracy, 65), 2 * accuracy)
+    }
+
+    private func applyFinestWanted() {
+        guard let finest = wanted.values.min(), finest != manager.desiredAccuracy else { return }
+        manager.desiredAccuracy = finest
     }
 
     static func desiredAccuracy(for precision: LocationPrecision) -> CLLocationAccuracy {
@@ -69,6 +85,7 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
     }
 
     private func resume(_ id: UUID, with location: CLLocation?) {
+        wanted.removeValue(forKey: id)
         waiting.removeValue(forKey: id)?.resume(returning: location)
     }
 
@@ -76,6 +93,7 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
         requestInFlight = false
         let all = waiting
         waiting = [:]
+        wanted = [:]
         for continuation in all.values { continuation.resume(returning: location) }
     }
 

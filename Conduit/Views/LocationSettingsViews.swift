@@ -25,7 +25,7 @@ enum LocationSettingsText {
 
     static func precisionSummary(_ precision: LocationPrecision) -> String {
         switch precision {
-        case .places: return AppLocalization.string("Hermes hears only which of your saved places you're at.")
+        case .places: return AppLocalization.string("Hermes hears only which of your saved places you're at, and your iPhone's time zone.")
         case .area: return AppLocalization.string("Your neighbourhood and city, and a position to about 1 km.")
         case .precise: return AppLocalization.string("Your position as your iPhone measures it.")
         }
@@ -118,12 +118,14 @@ struct LocationSettingsPage: View {
             }
         }
         .navigationTitle("Location")
-        .onAppear {
+        .task {
+            // Once per appearance, not on every body re-evaluation.
+            controller.readConfigIfNeeded()
             appState.activateLocationSharing()
             controller.refreshAuthorization()
             controller.clearExpiredPause()
+            await loadFromHost()
         }
-        .task { await loadFromHost() }
         .sheet(item: $consentFor) { layer in
             LocationSharingConsentSheet(
                 profile: appState.activeProfile,
@@ -177,7 +179,15 @@ struct LocationSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            if settings.isOn {
+            if controller.configUnreadable {
+                Text("Conduit can't read its location settings right now. Unlock your iPhone and open this page again. If this keeps happening, start over: your saved places and choices are reset.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Button(AppLocalization.string("Start over"), role: .destructive) {
+                    controller.startOver()
+                }
+                .font(.subheadline)
+            } else if settings.isOn {
                 statusRows
             }
         }
@@ -254,7 +264,10 @@ struct LocationSettingsPage: View {
             Toggle("Share while I'm talking to Hermes", isOn: layerBinding(.talking))
                 .disabled(isWorking || (!settings.talking && !canTurnOn))
                 .accessibilityIdentifier("settings.location.talking")
-            Text("A position is sent when you send a message or start a voice call in Conduit, and as you move during a call. Needs location access While Using the App.")
+            // Movement during a call is followed only while Conduit is open:
+            // Conduit doesn't declare the `location` background mode (see
+            // LocationSharingController.voiceCallStarted), so say so.
+            Text("A position is sent when you send a message or start a voice call in Conduit, and as you move during a call while Conduit is open. Needs location access While Using the App.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             precisionPicker(.talking, value: settings.talkingPrecision)
@@ -613,6 +626,7 @@ struct LocationSharingConsentSheet: View {
                     Text("Share your location with Hermes?")
                         .font(.title2.weight(.semibold))
                     Label(AppLocalization.string("Conduit sends your location, at the detail you choose, to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
+                    Label("Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time.", systemImage: "clock")
                     Label("Your agent reads it when you ask, or when a task or place rule needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms.", systemImage: "sparkles")
                     if isHermesCloud {
                         Label("This Hermes runs on Hermes Cloud, so Nous Research hosts what Conduit sends.", systemImage: "cloud")
@@ -776,6 +790,7 @@ struct LocationPlaceEditor: View {
                 Section {
                     Slider(value: $draft.radius, in: LocationSavedPlace.minRadius...LocationSavedPlace.maxRadius, step: 25)
                         .accessibilityLabel(Text("Radius"))
+                        .accessibilityValue(Text(verbatim: LocationSettingsText.radius(draft.radius)))
                     Text(AppLocalization.string("Radius: \(LocationSettingsText.radius(draft.radius))"))
                         .font(.caption)
                         .foregroundStyle(.secondary)

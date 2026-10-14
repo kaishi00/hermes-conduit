@@ -65,7 +65,10 @@ struct LocationHostStatus: Equatable {
 
 /// One time the agent read the location (never the location itself).
 struct LocationRead: Identifiable, Equatable {
-    var id: String { "\(at)|\(action)|\(sessionTitle ?? "")" }
+    /// The position in the host's list keeps two reads in the same second
+    /// apart.
+    var id: String { "\(index)|\(at)|\(action)|\(sessionTitle ?? "")|\(platform ?? "")" }
+    var index: Int = 0
     var at: String
     var action: String
     var sessionTitle: String?
@@ -74,9 +77,9 @@ struct LocationRead: Identifiable, Equatable {
     var date: Date? { LocationHostDates.parse(at) }
 
     static func parse(_ response: [String: Any]) -> [LocationRead] {
-        (response["reads"] as? [[String: Any]] ?? []).compactMap { entry in
+        (response["reads"] as? [[String: Any]] ?? []).enumerated().compactMap { index, entry in
             guard let at = entry["at"] as? String else { return nil }
-            return LocationRead(at: at, action: entry["action"] as? String ?? "",
+            return LocationRead(index: index, at: at, action: entry["action"] as? String ?? "",
                                 sessionTitle: entry["session_title"] as? String, platform: entry["platform"] as? String)
         }
     }
@@ -154,13 +157,11 @@ struct LocationSyncStateStore {
 
     func save(_ state: LocationSyncState) {
         do {
-            var folder = url.deletingLastPathComponent()
+            let folder = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? folder.setResourceValues(values)
+            try? (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
             try JSONEncoder().encode(state).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             // A locked phone: the next send writes it again.
@@ -171,7 +172,8 @@ struct LocationSyncStateStore {
 /// The agreed key, in the App Group Keychain so the extension can use it.
 struct LocationKeyStore {
     var load: () -> LocationCrypto.SessionKey?
-    var save: (LocationCrypto.SessionKey) -> Void
+    /// False when the key couldn't be stored (a Keychain error).
+    var save: (LocationCrypto.SessionKey) -> Bool
     var clear: () -> Void
 
     static let keychain = LocationKeyStore(
@@ -183,8 +185,13 @@ struct LocationKeyStore {
     static func memory() -> LocationKeyStore {
         final class Box { var key: LocationCrypto.SessionKey? }
         let box = Box()
-        return LocationKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
+        return LocationKeyStore(load: { box.key }, save: { box.key = $0; return true }, clear: { box.key = nil })
     }
+}
+
+enum LocationSyncEngineError: Error {
+    /// POST /location/key answered 404: the plugin has no location sync.
+    case keyRouteMissing
 }
 
 @MainActor
@@ -199,6 +206,10 @@ final class LocationSyncEngine: ObservableObject {
 
     private let store: LocationSyncStateStore
     let keys: LocationKeyStore
+    /// A key agreed this run that the Keychain wouldn't store: used until
+    /// Conduit quits, so a failing Keychain doesn't make every send agree a
+    /// new key with the host. (The extension can't answer a locate then.)
+    private var unsavedKey: LocationCrypto.SessionKey?
     private let now: () -> Date
     private let deviceName: () -> String
 
@@ -239,10 +250,14 @@ final class LocationSyncEngine: ObservableObject {
             var answer: [String: Any]
             do {
                 answer = try await post(batch, key: key, request: request)
-            } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && Self.needsNewKey(detail) {
-                // unknown_key or bad_seal: the host forgot or replaced this
-                // phone's key (a wipe, a new store). Agree a new one, once.
-                keys.clear()
+            } catch DashboardTicketBridgeError.http(let status, let detail) where (status == 409 && Self.needsNewKey(detail)) || status == 404 {
+                // 409 unknown_key or bad_seal: the host forgot or replaced
+                // this phone's key (a wipe, a new store). Agree a new one,
+                // once. A 404 from ingest alone could be a proxy or a
+                // restarting host; asking the key route tells: if that's
+                // missing too the plugin is (ensureKey throws keyRouteMissing).
+                Self.log.info("Location ingest answered \(status, privacy: .public); agreeing the key again")
+                clearKey()
                 key = try await ensureKey(deviceID: config.deviceID, request: request)
                 batch.places = config.places
                 answer = try await post(batch, key: key, request: request)
@@ -254,8 +269,9 @@ final class LocationSyncEngine: ObservableObject {
             switch error {
             case .signInRequired:
                 state.pause = .signInRequired
-            case .http(let status, _) where status == 404:
-                state.pause = .pluginMissing
+            case .http(let status, let detail) where status == 404:
+                // Ingest answered 404 even with a fresh key: try later.
+                lastError = detail
             case .http(let status, let detail) where status == 400 || status == 413:
                 state.pause = .refused(detail)
                 return .refused
@@ -267,6 +283,11 @@ final class LocationSyncEngine: ObservableObject {
             default:
                 lastError = Self.describe(error)
             }
+            return .failed
+        } catch LocationSyncEngineError.keyRouteMissing {
+            // The key route is gone too: the plugin has no location sync.
+            Self.log.info("Location key route answered 404: plugin missing")
+            state.pause = .pluginMissing
             return .failed
         } catch {
             lastError = Self.describe(error)
@@ -310,22 +331,38 @@ final class LocationSyncEngine: ObservableObject {
     /// The agreed key, set up when the phone has none for this device.
     private func ensureKey(deviceID: String, request: Request) async throws -> LocationCrypto.SessionKey {
         if let key = keys.load(), key.deviceID == deviceID { return key }
+        if let key = unsavedKey, key.deviceID == deviceID { return key }
         let devicePrivate = Curve25519.KeyAgreement.PrivateKey()
-        let answer = try await request("\(Self.base)/key", "POST", [
-            "device_id": deviceID,
-            "device_name": deviceName(),
-            "public_key": NotificationE2E.base64URL(devicePrivate.publicKey.rawRepresentation),
-        ])
+        let answer: [String: Any]
+        do {
+            answer = try await request("\(Self.base)/key", "POST", [
+                "device_id": deviceID,
+                "device_name": deviceName(),
+                "public_key": NotificationE2E.base64URL(devicePrivate.publicKey.rawRepresentation),
+            ])
+        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            throw LocationSyncEngineError.keyRouteMissing
+        }
         guard let hostPublic = answer["host_public_key"] as? String, let kid = answer["kid"] as? String else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a location key."))
         }
         let key = try LocationCrypto.agree(devicePrivate: devicePrivate, deviceID: deviceID, hostPublicKey: hostPublic, kid: kid)
         try Task.checkCancellation()
-        keys.save(key)
+        if keys.save(key) {
+            unsavedKey = nil
+        } else {
+            Self.log.error("Couldn't store the location key in the Keychain; keeping it in memory for this run")
+            unsavedKey = key
+        }
         // The host has nothing from this key yet.
         state.placesDigest = nil
         if let generation = answer["generation"] as? String { state.generation = generation }
         return key
+    }
+
+    private func clearKey() {
+        keys.clear()
+        unsavedKey = nil
     }
 
     // MARK: Reading and deleting
@@ -361,7 +398,7 @@ final class LocationSyncEngine: ObservableObject {
 
     /// Sharing moved to another destination, or the host's copy was deleted.
     func forgetHost() {
-        keys.clear()
+        clearKey()
         state = LocationSyncState()
         store.save(state)
     }

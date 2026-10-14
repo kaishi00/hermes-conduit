@@ -53,7 +53,9 @@ final class LocationSharingController: ObservableObject {
     static let maxPlaces = LocationSavedPlace.maxCount
 
     @Published private(set) var config: LocationSharedConfig
-    /// The config file couldn't be read yet (before first unlock).
+    /// The config file couldn't be read: before first unlock, or damaged.
+    /// Nothing is taken, sent or saved over it until it reads again or the
+    /// user starts over in Settings > Location.
     @Published private(set) var configUnreadable = false
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
     @Published private(set) var approximate = false
@@ -128,9 +130,33 @@ final class LocationSharingController: ObservableObject {
         }
     }
 
+    /// Changes and stores the config, never over one that couldn't be
+    /// read (that would replace the device id and saved places).
     private func save(_ change: (inout LocationSharedConfig) -> Void) {
+        guard readConfigIfNeeded() else {
+            LocationSyncEngine.log.error("Location config unreadable; not saving a change over it")
+            return
+        }
         change(&config)
-        LocationSharedStore.saveConfig(config)
+        if !LocationSharedStore.saveConfig(config) {
+            LocationSyncEngine.log.error("Couldn't write the location config")
+        }
+    }
+
+    /// Settings > Location's way out of a config file that stays unreadable
+    /// while the phone is unlocked: a fresh config, keeping the device id if
+    /// it can still be found in the file, so the host's copy can be deleted.
+    func startOver() {
+        let deviceID = LocationSharedStore.salvageDeviceID()
+        config = deviceID.map { LocationSharedConfig(deviceID: $0) } ?? LocationSharedConfig()
+        configUnreadable = false
+        if !LocationSharedStore.saveConfig(config) {
+            LocationSyncEngine.log.error("Couldn't write the location config")
+        }
+        unsent = LocationUnsent()
+        saveUnsent()
+        voiceCallEnded()
+        reconfigureMonitors()
     }
 
     private func saveUnsent() {
@@ -199,6 +225,14 @@ final class LocationSharingController: ObservableObject {
     /// A voice call started (Live Voice, Classic, CarPlay): one fix now,
     /// and another whenever the phone has moved 200 m, until `stillActive`
     /// says the call is over.
+    ///
+    /// Movement is followed only while Conduit is running (open, or kept
+    /// alive by the call's `audio` background mode). Conduit deliberately
+    /// doesn't declare the `location` UIBackgroundMode
+    /// (designs/location-awareness.md, Layer 1 and the Info.plist notes): it
+    /// draws extra App Review scrutiny, isn't needed for visits, regions or
+    /// significant change, and Layer 1 is "while I'm talking", not
+    /// tracking. Settings says so in its copy.
     func voiceCallStarted(stillActive: @escaping @MainActor () -> Bool) {
         guard callWatch == nil, !configUnreadable, config.binding != nil, settings.shares(.call, at: now()),
               fixes.canLocate else { return }
@@ -295,12 +329,16 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func flush(settingsOnly: Bool = false) async -> Bool {
         let previous = sendChain
-        let task = Task { @MainActor () -> Bool in
+        let task = Task { @MainActor [weak self] () -> Bool in
             _ = await previous?.value
+            guard let self else { return false }
             return await self.sendNow(settingsOnly: settingsOnly)
         }
         sendChain = task
-        return await task.value
+        let sent = await task.value
+        // The last send in the chain lets go of it.
+        if sendChain == task { sendChain = nil }
+        return sent
     }
 
     private func sendNow(settingsOnly: Bool) async -> Bool {

@@ -18,6 +18,7 @@
 //
 
 import Foundation
+import OSLog
 import Security
 
 enum LocationSharedStore {
@@ -32,7 +33,9 @@ enum LocationSharedStore {
         case value(Value)
         /// Nothing saved yet.
         case missing
-        /// Saved but unreadable now (before first unlock).
+        /// Saved but unreadable: before first unlock, or not valid JSON.
+        /// Never treated as "nothing saved", so a damaged file isn't
+        /// replaced with a fresh device id.
         case unreadable
     }
 
@@ -43,6 +46,17 @@ enum LocationSharedStore {
     @discardableResult
     static func saveConfig(_ config: LocationSharedConfig, at url: URL? = folder?.appendingPathComponent("config.json")) -> Bool {
         write(config, to: url)
+    }
+
+    /// The device id in a config file that no longer decodes, so starting
+    /// over keeps this phone's identity on the host.
+    static func salvageDeviceID(at url: URL? = folder?.appendingPathComponent("config.json")) -> String? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
+        guard let expression = try? NSRegularExpression(pattern: #""deviceID"\s*:\s*"([A-Za-z0-9_-]{8,64})""#),
+              let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[range])
     }
 
     // MARK: Unsent
@@ -63,20 +77,19 @@ enum LocationSharedStore {
         guard let url else { return .missing }
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
         guard let data = try? Data(contentsOf: url) else { return .unreadable }
-        guard let value = try? JSONDecoder().decode(Value.self, from: data) else { return .missing }
+        guard let value = try? JSONDecoder().decode(Value.self, from: data) else { return .unreadable }
         return .value(value)
     }
 
     private static func write<Value: Encodable>(_ value: Value, to url: URL?) -> Bool {
         guard let url else { return false }
         do {
-            var folder = url.deletingLastPathComponent()
+            let folder = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? folder.setResourceValues(values)
+            // NSURL's setter doesn't need a mutable URL.
+            try? (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
             try JSONEncoder().encode(value).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
         } catch {
@@ -132,6 +145,7 @@ struct LocationUnsent: Codable, Equatable {
 /// Generic items in the App Group Keychain: readable after first unlock,
 /// never synced or restored to another device.
 enum LocationKeychain {
+    private static let log = Logger(subsystem: "com.milim.relay", category: "location")
     static let service = "com.milim.relay.location"
     static let keyAccount = "location-key.v1"
     static let hostPassAccount = "location-host-pass.v1"
@@ -140,8 +154,11 @@ enum LocationKeychain {
         load(account: keyAccount).flatMap { try? JSONDecoder().decode(LocationCrypto.SessionKey.self, from: $0) }
     }
 
-    static func saveKey(_ key: LocationCrypto.SessionKey) {
-        if let data = try? JSONEncoder().encode(key) { save(data, account: keyAccount) }
+    /// False when the Keychain refused it (logged).
+    @discardableResult
+    static func saveKey(_ key: LocationCrypto.SessionKey) -> Bool {
+        guard let data = try? JSONEncoder().encode(key) else { return false }
+        return save(data, account: keyAccount)
     }
 
     static func clearKey() { delete(account: keyAccount) }
@@ -150,8 +167,11 @@ enum LocationKeychain {
         load(account: hostPassAccount).flatMap { try? JSONDecoder().decode(LocationHostPass.self, from: $0) }
     }
 
-    static func saveHostPass(_ pass: LocationHostPass) {
-        if let data = try? JSONEncoder().encode(pass) { save(data, account: hostPassAccount) }
+    /// False when the Keychain refused it (logged).
+    @discardableResult
+    static func saveHostPass(_ pass: LocationHostPass) -> Bool {
+        guard let data = try? JSONEncoder().encode(pass) else { return false }
+        return save(data, account: hostPassAccount)
     }
 
     static func clearHostPass() { delete(account: hostPassAccount) }
@@ -174,14 +194,20 @@ enum LocationKeychain {
         return result as? Data
     }
 
-    private static func save(_ data: Data, account: String) {
+    private static func save(_ data: Data, account: String) -> Bool {
         let query = query(account: account)
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        guard status == errSecItemNotFound else { return }
-        var insert = query
-        insert[kSecValueData as String] = data
-        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(insert as CFDictionary, nil)
+        var status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            var insert = query
+            insert[kSecValueData as String] = data
+            insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            status = SecItemAdd(insert as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else {
+            log.error("Location Keychain save for \(account, privacy: .public) failed: \(status, privacy: .public)")
+            return false
+        }
+        return true
     }
 
     private static func delete(account: String) {

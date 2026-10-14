@@ -97,6 +97,25 @@ struct LocationSavedPlace: Codable, Equatable, Identifiable {
     static func newID() -> String {
         "p_" + LocationIDs.hex(bytes: 6)
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, kind, isPrivate, latitude, longitude, radius
+    }
+
+    /// Tolerates keys an older or newer Conduit didn't write. Only the
+    /// coordinate is required: a place without one can't be monitored.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: (try? container.decodeIfPresent(String.self, forKey: .id)) ?? Self.newID(),
+            name: (try? container.decodeIfPresent(String.self, forKey: .name)) ?? "",
+            kind: (try? container.decodeIfPresent(LocationPlaceKind.self, forKey: .kind)) ?? .other,
+            isPrivate: (try? container.decodeIfPresent(Bool.self, forKey: .isPrivate)) ?? false,
+            latitude: try container.decode(Double.self, forKey: .latitude),
+            longitude: try container.decode(Double.self, forKey: .longitude),
+            radius: (try? container.decodeIfPresent(Double.self, forKey: .radius)) ?? Self.defaultRadius
+        )
+    }
 }
 
 /// What the user chose to share. Sent with every batch (`sharing`), so the
@@ -129,6 +148,24 @@ struct LocationSharingSettings: Codable, Equatable {
 
     func precision(for source: LocationFixSource) -> LocationPrecision {
         source.isTalking ? talkingPrecision : backgroundPrecision
+    }
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case talking, talkingPrecision, background, backgroundPrecision, retentionDays, pausedUntil
+    }
+
+    /// Missing or unknown values fall back to the defaults.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = LocationSharingSettings()
+        talking = (try? container.decodeIfPresent(Bool.self, forKey: .talking)) ?? defaults.talking
+        talkingPrecision = (try? container.decodeIfPresent(LocationPrecision.self, forKey: .talkingPrecision)) ?? defaults.talkingPrecision
+        background = (try? container.decodeIfPresent(Bool.self, forKey: .background)) ?? defaults.background
+        backgroundPrecision = (try? container.decodeIfPresent(LocationPrecision.self, forKey: .backgroundPrecision)) ?? defaults.backgroundPrecision
+        retentionDays = (try? container.decodeIfPresent(Int.self, forKey: .retentionDays)) ?? defaults.retentionDays
+        pausedUntil = try? container.decodeIfPresent(Date.self, forKey: .pausedUntil)
     }
 
     /// The `sharing` object of a batch.
@@ -181,6 +218,35 @@ struct LocationSharedConfig: Codable, Equatable {
     var deviceID: String = LocationIDs.hex(bytes: 16)
     /// Whether iOS gave only approximate location.
     var approximateOnly = false
+
+    init(binding: LocationBinding? = nil, settings: LocationSharingSettings = LocationSharingSettings(),
+         places: [LocationSavedPlace] = [], deviceID: String = LocationIDs.hex(bytes: 16), approximateOnly: Bool = false) {
+        self.binding = binding
+        self.settings = settings
+        self.places = places
+        self.deviceID = deviceID
+        self.approximateOnly = approximateOnly
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case binding, settings, places, deviceID, approximateOnly
+    }
+
+    /// Tolerates missing keys, and a saved place that can't be read is
+    /// skipped instead of losing the whole configuration.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        binding = try? container.decodeIfPresent(LocationBinding.self, forKey: .binding)
+        settings = (try? container.decodeIfPresent(LocationSharingSettings.self, forKey: .settings)) ?? LocationSharingSettings()
+        places = (try? container.decodeIfPresent([LossyPlace].self, forKey: .places))?.compactMap(\.place) ?? []
+        deviceID = (try? container.decodeIfPresent(String.self, forKey: .deviceID)) ?? LocationIDs.hex(bytes: 16)
+        approximateOnly = (try? container.decodeIfPresent(Bool.self, forKey: .approximateOnly)) ?? false
+    }
+
+    private struct LossyPlace: Decodable {
+        var place: LocationSavedPlace?
+        init(from decoder: Decoder) throws { place = try? LocationSavedPlace(from: decoder) }
+    }
 }
 
 /// A saved place's arrive or leave (`events`).
