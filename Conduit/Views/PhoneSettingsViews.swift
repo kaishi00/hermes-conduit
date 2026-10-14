@@ -31,8 +31,10 @@ struct PhoneSettingsPage: View {
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
     /// An older plugin takes no alarms or people: their switches wait for it.
+    /// A switch left on stays visible so it can be turned off.
     private var showsAlarms: Bool {
-        engine.alarmSource.isSupported && (appState.notifierPlugin.reports(AppState.phoneAlarmsCapability) || choices.alarms)
+        (engine.alarmSource.isSupported || choices.alarms)
+            && (appState.notifierPlugin.reports(AppState.phoneAlarmsCapability) || choices.alarms)
     }
     private var showsPeople: Bool {
         appState.notifierPlugin.reports(AppState.phoneContactsCapability) || choices.contacts
@@ -487,6 +489,7 @@ struct PhonePersonRow: View {
                     .font(.caption)
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
+                    .accessibilityLabel(Text(AppLocalization.string("Relation to \(person.name)")))
                     .onSubmit { save(relation.trimmingCharacters(in: .whitespacesAndNewlines)) }
             }
             Spacer(minLength: 4)
@@ -498,6 +501,7 @@ struct PhonePersonRow: View {
             .accessibilityLabel(Text(AppLocalization.string("Remove \(person.name)")))
         }
         .onAppear { relation = person.relation ?? "" }
+        .onChange(of: person.relation) { _, value in relation = value ?? "" }
         .onChange(of: relation) { _, value in
             // No longer than the host keeps.
             if value.count > PhonePerson.relationLength { relation = String(value.prefix(PhonePerson.relationLength)) }

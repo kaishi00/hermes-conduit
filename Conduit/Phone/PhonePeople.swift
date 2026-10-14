@@ -177,7 +177,8 @@ final class PhoneContactPicker: NSObject, CNContactPickerDelegate {
     }
 
     static func present(_ picked: @escaping ([CNContact]) -> Void) {
-        guard let top = topViewController() else { return }
+        // One picker at a time: a second tap while one is up does nothing.
+        guard current == nil, let top = topViewController() else { return }
         let delegate = PhoneContactPicker(picked: picked)
         current = delegate
         let picker = CNContactPickerViewController()

@@ -186,10 +186,12 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
         let fields = change.fields
         switch change.kind {
         case .cancelAlarm:
-            try cancel(id: change.alarmID ?? "")
-            return change.alarmID ?? ""
+            let id = change.alarmID?.lowercased() ?? ""
+            try cancel(id: id)
+            return id
         case .setTimer:
-            let seconds = max(5, min(86_400, fields.seconds ?? 0))
+            // PhoneChange already refuses a timer outside this range.
+            guard let seconds = fields.seconds, (5...86_400).contains(seconds) else { throw PhoneAlarmError.notFound }
             let label = fields.label ?? AppLocalization.string("Timer")
             return try await schedule(.fixed(now.addingTimeInterval(TimeInterval(seconds))), label: label,
                                       record: PhoneAlarmRecord(kind: "timer", label: fields.label))
