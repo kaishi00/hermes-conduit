@@ -105,6 +105,8 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         lock.withLock { pendingReplayKey = request.replayKey }
 
         let precision = config.settings.backgroundPrecision
+        // Stopped between the claim and here: don't arm location hardware.
+        guard !Task.isCancelled else { return }
         let (location, approximate) = await fix(precision: precision)
         guard let location, !Task.isCancelled else { return }
         // The area is a nicety: sent only if the geocoder answers quickly.

@@ -332,8 +332,8 @@ final class LocationSharingController: ObservableObject {
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
-        let background = beginBackgroundWork(for: source)
-        defer { endBackgroundWork(background) }
+        let endBackground = beginBackgroundWork(for: source)
+        defer { endBackground() }
         if !events.isEmpty {
             unsent.keep(fix: nil, events: events)
             saveUnsent()
@@ -350,8 +350,8 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func share(_ location: CLLocation?, source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
         guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
-        let background = beginBackgroundWork(for: source)
-        defer { endBackgroundWork(background) }
+        let endBackground = beginBackgroundWork(for: source)
+        defer { endBackground() }
         var record: LocationFixRecord?
         if let location {
             let precision = settings.precision(for: source)
@@ -364,12 +364,22 @@ final class LocationSharingController: ObservableObject {
         return await flush()
     }
 
-    private func beginBackgroundWork(for source: LocationFixSource) -> UIBackgroundTaskIdentifier {
-        source.isTalking ? .invalid : UIApplication.shared.beginBackgroundTask(withName: "conduit.location.fix")
+    private func beginBackgroundWork(for source: LocationFixSource) -> () -> Void {
+        source.isTalking ? {} : Self.beginBackgroundTask("conduit.location.fix")
     }
 
-    private func endBackgroundWork(_ identifier: UIBackgroundTaskIdentifier) {
-        if identifier != .invalid { UIApplication.shared.endBackgroundTask(identifier) }
+    /// Ends itself when iOS's time runs out, so expiry stops the work
+    /// instead of killing the app. Nothing is lost: unsent fixes and events
+    /// are only dropped once the host has them.
+    private static func beginBackgroundTask(_ name: String) -> () -> Void {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: end)
+        return end
     }
 
     /// Sends the unsent fix and events (or just the sharing choices and
@@ -408,8 +418,8 @@ final class LocationSharingController: ObservableObject {
         batch.knownPlaces = places
         batch.fix = pending.fix?.record
         batch.events = pending.events
-        let identifier = UIApplication.shared.beginBackgroundTask(withName: "conduit.location.send")
-        defer { if identifier != .invalid { UIApplication.shared.endBackgroundTask(identifier) } }
+        let endBackground = Self.beginBackgroundTask("conduit.location.send")
+        defer { endBackground() }
         isSending = true
         defer { isSending = false }
         let sentSettings = config.settings
