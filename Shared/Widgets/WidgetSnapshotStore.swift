@@ -1,7 +1,7 @@
 import Foundation
 
 struct WidgetSnapshotStore {
-    static let appGroup = "group.com.milim.relay.widgets"
+    static let appGroup = "group.com.milim.relay.launcher"
     static let filename = "launcher-v1.json"
     private let directory: URL
     private let fileManager: FileManager

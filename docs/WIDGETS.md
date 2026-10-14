@@ -27,7 +27,7 @@ Conversation titles can be hidden in the widget configuration. Visible titles ar
 
 ## App Group and signing prerequisites
 
-The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.widgets`. It stores the widget-only snapshot. The widget extension entitlement must contain only this group; the app keeps its existing entitlements and adds the widget group. The notification App Group is not used by the widget extension.
+The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.launcher`. It stores the widget-only snapshot. The widget extension entitlement must contain only this group; the app keeps its existing entitlements and adds the widget group. The notification App Group is not used by the widget extension.
 
 Device installation or archive signing requires the `com.milim.relay.widgets` extension App ID, a provisioning profile matching the configured **Conduit Widgets App Store** profile name, and the launcher App Group enabled for both the app and extension identifiers. Simulator builds can use the established unsigned simulator configuration. Do not copy signing credentials into project files or this document.
 
