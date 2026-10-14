@@ -43,7 +43,9 @@ enum PhoneVoiceTools {
     /// quietly sending every calendar question to Hermes. Empty otherwise.
     /// Not UI copy, so not localized.
     static func settingHint(for preferences: PhoneSyncPreferences, mode: LiveVoiceModeName) -> String {
-        guard preferences.isOn, !preferences.letsVoiceUse(mode) else { return "" }
+        guard preferences.isOn, !preferences.letsVoiceUse(mode),
+              preferences.calendar != .off || preferences.reminders || preferences.alarms || preferences.contacts
+        else { return "" }
         return "\n\nThe user shares their calendar and phone with Hermes, but hasn't let this call use them directly. "
             + "When they ask about their calendar, reminders, alarms or the people they shared, you can still ask "
             + "Hermes. The first time, also tell them in a sentence that they can let \(mode.displayName) use these "

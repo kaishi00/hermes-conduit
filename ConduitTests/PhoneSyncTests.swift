@@ -296,7 +296,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
     }
 
-    // MARK: Alarms, timers and people (plugin 0.30.0)
+    // MARK: Voice mode setting hint
 
     func testVoiceModeNotAllowedIsToldWhereToAllowIt() {
         var preferences = phonePreferences()
@@ -306,9 +306,14 @@ extension HermesVoiceGatewayTimeoutTests {
         preferences.setVoiceUse(.gptLive, allowed: true)
         XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive), "", "An allowed mode has the tools instead")
         XCTAssertFalse(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive).isEmpty, "Each mode is its own consent")
+        var statusOnly = PhoneSyncPreferences(status: true, focus: true)
+        statusOnly.destination = preferences.destination
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: statusOnly, mode: .geminiLive), "", "Only phone status: no calendar to point at")
         preferences.destination = nil
         XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive), "", "Nothing shared, nothing to point at")
     }
+
+    // MARK: Alarms, timers and people (plugin 0.30.0)
 
     func testPhoneAlarmChangesNeedWhatTheyAct() throws {
         let weekly = try XCTUnwrap(PhoneChange(json: ["id": "ch_a", "kind": "set_alarm", "auto": true,
