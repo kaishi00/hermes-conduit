@@ -139,7 +139,13 @@ extension AppState {
         }
         guard bridge === dashboardTicketBridge,
               PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
-        try? await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
+        do {
+            try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
+        } catch DashboardTicketBridgeError.notReady {
+            // Another notification change was running: a later refresh tries
+            // again. Other failures wait for the next launch (or the button).
+            automaticPairingAttempts.remove(attempt)
+        } catch {}
     }
 
     /// Pairs `profile` on the active dashboard with this iPhone (Settings >

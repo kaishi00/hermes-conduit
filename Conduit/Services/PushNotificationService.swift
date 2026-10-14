@@ -426,6 +426,7 @@ final class PushNotificationService: ObservableObject {
 
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published private(set) var isWorking = false
+    private var isPairing = false
     @Published private(set) var lastError: String?
     @Published private(set) var pairingCode: String?
     @Published private(set) var pairingExpiry: String?
@@ -1222,10 +1223,12 @@ final class PushNotificationService: ObservableObject {
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
     ) async throws {
         // Not mid-move: a code from the old relay is useless once the move lands.
-        guard !isWorking, let registration else { throw DashboardTicketBridgeError.notReady }
-        // One pairing at a time: the button and the automatic one can't overlap.
-        isWorking = true
-        defer { isWorking = false }
+        guard !isWorking, !isPairing, let registration else { throw DashboardTicketBridgeError.notReady }
+        // One pairing at a time: the button and the automatic one can't
+        // overlap. Its own flag, so the notifications switch doesn't read
+        // "Updating" meanwhile.
+        isPairing = true
+        defer { isPairing = false }
         let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
         let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relayURL.absoluteString]
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
