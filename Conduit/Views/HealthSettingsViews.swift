@@ -22,6 +22,10 @@ struct HealthSettingsPage: View {
     @State private var showsTurnOff = false
     @State private var isWorking = false
     @State private var errorMessage: String?
+    /// The voice mode waiting for the user's yes before it may read health data.
+    @State private var askingVoiceMode: LiveVoiceModeName?
+    /// Loaded on appear (loading prunes and saves).
+    @State private var voiceReads = HealthVoiceReadLog()
 
     private var preferences: HealthSyncPreferences { appState.healthSyncPreferences }
     private var pluginServesHealth: Bool { appState.notifierPlugin.reports(AppState.healthSyncCapability) }
@@ -48,13 +52,30 @@ struct HealthSettingsPage: View {
                 categorySection
                 historySection
             }
+            if preferences.isOn, appState.notifierPlugin.reports(AppState.voiceToolsCapability) {
+                voiceSection
+            }
             // Turning off stays reachable even if Health becomes unavailable.
             if preferences.isOn || (engine.source.isAvailable && pluginServesHealth) {
                 actionSection
             }
         }
         .navigationTitle("Health")
-        .onAppear(perform: loadPreferences)
+        .onAppear {
+            loadPreferences()
+            voiceReads = HealthVoiceReadLog.load()
+        }
+        .confirmationDialog(
+            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") read your health data?")),
+            isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
+            titleVisibility: .visible,
+            presenting: askingVoiceMode
+        ) { mode in
+            Button("Allow") { setVoiceRead(mode, allowed: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: { mode in
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
+        }
         .sheet(isPresented: $showsConsent) {
             HealthSharingConsentSheet(profile: appState.activeProfile, host: hostLabel) {
                 showsConsent = false
@@ -112,6 +133,56 @@ struct HealthSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.red)
         }
+    }
+
+    // MARK: Voice
+
+    /// Which live voice modes may read the shared data on a call. Each is
+    /// its own yes: what it reads goes to that mode's company.
+    private var voiceSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+            ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
+                Toggle(isOn: voiceReadBinding(mode)) {
+                    Text(verbatim: "\(mode.displayName) (\(mode.company))")
+                }
+                .accessibilityIdentifier("settings.health.voice.\(mode.storageID)")
+            }
+            Text("Let a live voice call read your health data when you ask about it, straight from your Hermes host. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if !voiceReads.entries.isEmpty {
+                Text("Read by voice in the last 7 days")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.top, 4)
+                ForEach(voiceReads.entries.suffix(20).reversed()) { entry in
+                    HStack {
+                        Text(verbatim: "\(entry.mode): \(entry.action)")
+                        Spacer()
+                        Text(entry.at.formatted(.relative(presentation: .named)))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+    }
+
+    private func voiceReadBinding(_ mode: LiveVoiceModeName) -> Binding<Bool> {
+        Binding(
+            get: { preferences.letsVoiceRead(mode) },
+            set: { on in
+                if on {
+                    askingVoiceMode = mode
+                } else {
+                    setVoiceRead(mode, allowed: false)
+                }
+            }
+        )
+    }
+
+    private func setVoiceRead(_ mode: LiveVoiceModeName, allowed: Bool) {
+        Haptics.selection()
+        appState.setHealthVoiceRead(mode, allowed: allowed)
     }
 
     // MARK: Choices

@@ -98,6 +98,11 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome
     /// Reads one of the last search's chats into the call.
     func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome
+    /// Hermes tools this call may call directly (the user's shared health
+    /// data), with the user's say-so for this call's voice mode.
+    var hostTools: [VoiceHostTool] { get }
+    /// Runs one of `hostTools`; the model's answer.
+    func callHostTool(_ tool: VoiceHostTool, arguments: [String: Any]) async -> [String: String]
 }
 
 /// Without follow-up support a request never takes one: the words go out
@@ -117,6 +122,10 @@ extension GeminiLiveJobSupervising {
     func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome { .failed("Searching chats isn't available on this call.") }
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
     func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome { .failed("Reading chats isn't available on this call.") }
+    var hostTools: [VoiceHostTool] { [] }
+    func callHostTool(_ tool: VoiceHostTool, arguments: [String: Any]) async -> [String: String] {
+        ["error": "That isn't available on this call."]
+    }
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -627,6 +636,13 @@ final class GeminiLiveToolBridge {
     }
 
     func handle(_ call: GeminiLiveProtocol.FunctionCall) async -> [Outgoing] {
+        // A Hermes tool the host offers for voice (the user's health data).
+        if Tool(rawValue: call.name) == nil, let tool = supervisor.hostTools.first(where: { $0.name == call.name }) {
+            guard !isEnding else { return [] }
+            let result = await supervisor.callHostTool(tool, arguments: tool.arguments(from: call.arguments))
+            guard !isEnding else { return [] }
+            return [.toolResponse(id: call.id, name: call.name, result: result, scheduling: .whenIdle)]
+        }
         switch Tool(rawValue: call.name) {
         case .startJob:
             let instructions = call.arguments["instructions"]?

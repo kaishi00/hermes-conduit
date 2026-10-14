@@ -22,6 +22,8 @@ enum HealthSyncReason: String {
     case backgroundRefresh
     case manual
     case turnedOn
+    /// A live voice call that may read health data is starting.
+    case voiceCall
 }
 
 extension AppState {
@@ -167,6 +169,7 @@ extension AppState {
         // Off before anything waits, so a pass queued meanwhile finds it off
         // and can't send data after the deletion.
         saveHealthSyncPreferences(HealthSyncPreferences())
+        HealthVoiceReadLog.clear()
         let deleted = await healthSync.turnOff(deleteFromHost: request)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.healthSyncTaskIdentifier)
         if deleteFromHost, !deleted, let destination, let deviceID {
@@ -196,6 +199,14 @@ extension AppState {
             return error
         }
         return nil
+    }
+
+    /// Lets a live voice mode read the shared data on a call, or stops it.
+    func setHealthVoiceRead(_ mode: LiveVoiceModeName, allowed: Bool) {
+        var preferences = healthSyncPreferences
+        guard preferences.isOn else { return }
+        preferences.setVoiceRead(mode, allowed: allowed)
+        saveHealthSyncPreferences(preferences)
     }
 
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {

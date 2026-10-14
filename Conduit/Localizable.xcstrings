@@ -223148,6 +223148,416 @@
         }
       }
     },
+    "Let %@ read your health data?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deine Gesundheitsdaten lesen lassen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Permitir que %@ lea tus datos de salud?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser %@ à lire tes données de santé ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan %@ membaca data kesehatanmu?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consentire a %@ di leggere i tuoi dati sulla salute?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に健康データの読み取りを許可しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 건강 데이터를 읽도록 허용할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwolić %@ odczytywać Twoje dane o zdrowiu?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que o %@ leia seus dados de saúde?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ читать ваши данные о здоровье?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sağlık verilerini okuyabilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 %@ 读取你的健康数据？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 %@ 讀取你的健康資料？"
+          }
+        }
+      }
+    },
+    "Let a live voice call read your health data when you ask about it, straight from your Hermes host. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass einen Live-Sprachanruf deine Gesundheitsdaten direkt von deinem Hermes-Host lesen, wenn du danach fragst. Was er liest, geht an das Unternehmen hinter diesem Sprachmodus und unterliegt dessen Bedingungen. Klassische Sprache ist Hermes selbst und braucht hier nichts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que una llamada de voz en vivo lea tus datos de salud cuando preguntes por ellos, directamente desde tu host de Hermes. Lo que lee va a la empresa que gestiona ese modo de voz, bajo sus condiciones. La voz clásica es el propio Hermes y no necesita nada aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permet à un appel vocal en direct de lire tes données de santé quand tu poses la question, directement depuis ton hôte Hermes. Ce qu’il lit est envoyé à l’entreprise qui gère ce mode vocal, selon ses conditions. La voix classique, c’est Hermes lui-même : rien à régler ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan panggilan suara langsung membaca data kesehatanmu saat kamu menanyakannya, langsung dari host Hermes-mu. Apa yang dibacanya dikirim ke perusahaan yang menjalankan mode suara itu, sesuai ketentuannya. Suara klasik adalah Hermes sendiri dan tidak perlu apa pun di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a una chiamata vocale dal vivo di leggere i tuoi dati sulla salute quando li chiedi, direttamente dal tuo host Hermes. Ciò che legge va all’azienda che gestisce quella modalità vocale, secondo i suoi termini. La voce classica è Hermes stesso e qui non serve nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブ音声通話で尋ねたときに、Hermes ホストから直接健康データを読み取れるようにします。読み取った内容は、その音声モードを運営する会社に送られ、その会社の規約が適用されます。クラシック音声は Hermes 自身なので、ここでの設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이브 음성 통화에서 물어볼 때 Hermes 호스트에서 바로 건강 데이터를 읽도록 허용합니다. 읽은 내용은 해당 음성 모드를 운영하는 회사로 전송되며 그 회사의 약관이 적용됩니다. 클래식 음성은 Hermes 자체이므로 여기서 설정할 필요가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól, by rozmowa głosowa na żywo odczytywała Twoje dane o zdrowiu, gdy o nie pytasz, prosto z hosta Hermes. To, co odczyta, trafia do firmy obsługującej ten tryb głosowy, na jej warunkach. Głos klasyczny to sam Hermes i nie wymaga tu niczego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permita que uma chamada de voz ao vivo leia seus dados de saúde quando você perguntar, direto do seu host Hermes. O que ela lê vai para a empresa que opera esse modo de voz, sob os termos dela. A voz clássica é o próprio Hermes e não precisa de nada aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите живому голосовому звонку читать ваши данные о здоровье, когда вы о них спрашиваете, прямо с вашего хоста Hermes. То, что он прочитает, уходит компании, которая обслуживает этот голосовой режим, на её условиях. Классический голос — это сам Hermes, здесь ему ничего не нужно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorduğunda canlı sesli aramanın sağlık verilerini doğrudan Hermes sunucundan okumasına izin ver. Okuduğu bilgiler, o ses modunu çalıştıran şirkete onun koşullarıyla gider. Klasik ses Hermes’in kendisidir ve burada bir şey gerektirmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在实时语音通话中询问时，允许它直接从你的 Hermes 主机读取健康数据。它读取的内容会发送给运营该语音模式的公司，并受其条款约束。经典语音就是 Hermes 本身，这里无需设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在即時語音通話中詢問時，允許它直接從你的 Hermes 主機讀取健康資料。它讀取的內容會傳送給營運該語音模式的公司，並受其條款約束。經典語音就是 Hermes 本身，這裡無需設定。"
+          }
+        }
+      }
+    },
+    "Live voice calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Sprachanrufe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas de voz en vivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appels vocaux en direct"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan suara langsung"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate vocali dal vivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブ音声通話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이브 음성 통화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy głosowe na żywo"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas de voz ao vivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Живые голосовые звонки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canlı sesli aramalar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时语音通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即時語音通話"
+          }
+        }
+      }
+    },
+    "On a call, what it reads goes to %@ under its terms. You can turn this off at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei einem Anruf geht, was er liest, an %@ und unterliegt deren Bedingungen. Du kannst das jederzeit ausschalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En una llamada, lo que lee va a %@ bajo sus condiciones. Puedes desactivarlo en cualquier momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pendant un appel, ce qu’il lit est envoyé à %@ selon ses conditions. Tu peux désactiver cela à tout moment."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat panggilan, apa yang dibacanya dikirim ke %@ sesuai ketentuannya. Kamu bisa menonaktifkannya kapan saja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durante una chiamata, ciò che legge va a %@ secondo i suoi termini. Puoi disattivarlo in qualsiasi momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話中に読み取った内容は %@ に送られ、その規約が適用されます。いつでもオフにできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 중에 읽은 내용은 %@(으)로 전송되며 해당 약관이 적용됩니다. 언제든지 끌 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podczas rozmowy to, co odczyta, trafia do %@ na jej warunkach. Możesz to wyłączyć w dowolnej chwili."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Em uma chamada, o que ela lê vai para a %@ sob os termos dela. Você pode desativar isso a qualquer momento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Во время звонка прочитанное уходит %@ на её условиях. Это можно выключить в любой момент."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama sırasında okuduğu bilgiler %@ şirketine onun koşullarıyla gider. Bunu istediğin zaman kapatabilirsin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话中读取的内容会发送给 %@，并受其条款约束。你可以随时关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話中讀取的內容會傳送給 %@，並受其條款約束。你可以隨時關閉。"
+          }
+        }
+      }
+    },
+    "Read by voice in the last 7 days" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den letzten 7 Tagen per Sprache gelesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leído por voz en los últimos 7 días"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lu par la voix ces 7 derniers jours"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dibaca lewat suara dalam 7 hari terakhir"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letto dalla voce negli ultimi 7 giorni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "過去 7 日間に音声で読み取られた内容"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지난 7일 동안 음성으로 읽은 기록"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odczytane głosowo w ciągu ostatnich 7 dni"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lido por voz nos últimos 7 dias"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прочитано голосом за последние 7 дней"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son 7 günde sesle okunanlar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "过去 7 天内语音读取的记录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "過去 7 天內語音讀取的紀錄"
+          }
+        }
+      }
+    },
     "24 hours" : {
       "localizations" : {
         "de" : {
