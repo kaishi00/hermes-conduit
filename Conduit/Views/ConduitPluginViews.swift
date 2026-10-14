@@ -378,7 +378,13 @@ struct NotifierPluginUpdateBanner: View {
     private var banner: some View {
         let update = appState.activeNotifierPluginUpdate
         let row = NotifierPluginUpdateStatusView.row(for: update)
-        let text = row?.title ?? AppLocalization.string("Conduit plugin \(appState.notifierPlugin.offeredVersion) is available")
+        let status = appState.notifierPlugin
+        // Updated on the host already: only the restart is left.
+        let restartOnly = status.restartPending && !status.updateAvailable
+        let offer = restartOnly
+            ? AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Restart to finish updating")
+            : AppLocalization.string("Conduit plugin \(status.offeredVersion) is available")
+        let text = row?.title ?? offer
         return HStack(spacing: 10) {
             if row != nil, row?.symbol == nil {
                 ProgressView().controlSize(.small)
@@ -393,7 +399,7 @@ struct NotifierPluginUpdateBanner: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             if update == .idle {
                 Button { confirming = true } label: {
-                    Text(AppLocalization.string("Update"))
+                    Text(restartOnly ? AppLocalization.string("Finish Update") : AppLocalization.string("Update"))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }

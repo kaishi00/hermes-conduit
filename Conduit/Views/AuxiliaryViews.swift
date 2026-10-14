@@ -2163,7 +2163,7 @@ private struct NotificationsSettingsDetail: View {
                     .padding(.vertical, 6).frame(minHeight: 48)
                     .foregroundStyle(notifications.isEnabled ? Color.primary : Color.white)
                 }
-                .disabled(notifications.isWorking)
+                .disabled(notifications.isWorking || notifications.isPairing)
                 .conduitGlassControl(
                     cornerRadius: 17,
                     tint: notifications.isEnabled ? .red.opacity(0.18) : .conduitAccent,

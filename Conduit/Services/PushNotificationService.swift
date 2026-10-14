@@ -1026,7 +1026,7 @@ final class PushNotificationService: ObservableObject {
     func enable() async {
         // The Enable button is disabled while working, but a second tap can
         // land before that state reaches the view.
-        guard !isWorking else { return }
+        guard !isWorking, !isPairing else { return }
         lastError = nil
         relayNotice = nil
         preferences.enabled = true
@@ -1049,8 +1049,10 @@ final class PushNotificationService: ObservableObject {
         // Same one-operation-at-a-time rule as enable(), so a revoke never
         // interleaves with an in-flight registration. A tap that lands
         // mid-operation is dropped rather than queued; the button is
-        // disabled while working, so this only catches the race window.
-        guard !isWorking else { return }
+        // disabled while working or pairing, so this only catches the race
+        // window. Not mid-pairing: the plugin would claim for a revoked
+        // installation.
+        guard !isWorking, !isPairing else { return }
         lastError = nil
         relayNotice = nil
         isWorking = true
@@ -1075,6 +1077,13 @@ final class PushNotificationService: ObservableObject {
     func applyRelayChange() async {
         // One move at a time: overlapping moves would each register, and
         // all but the last installation would be orphaned on the new relay.
+        guard !isWorking else { return }
+        // A pairing in flight claims for the current installation; the move
+        // waits for it rather than being dropped.
+        while isPairing {
+            try? await Task.sleep(for: .milliseconds(200))
+            if Task.isCancelled { return }
+        }
         guard !isWorking else { return }
         // A failure against the previous relay no longer describes the
         // current setup, whether or not there is a registration to move.
