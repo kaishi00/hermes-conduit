@@ -91,10 +91,6 @@ struct HealthSyncStateStore {
             return false
         }
     }
-
-    func remove() {
-        try? FileManager.default.removeItem(at: url)
-    }
 }
 
 /// The agreed key in the Keychain (readable after first unlock).
