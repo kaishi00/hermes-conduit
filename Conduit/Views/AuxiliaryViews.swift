@@ -2150,6 +2150,9 @@ private struct NotificationsSettingsDetail: View {
                         }
                         if notifications.lastError == nil && notifications.isEnabled != wasEnabled {
                             Haptics.success()
+                            // Just turned on: pair this dashboard's profile
+                            // now rather than on the next connect.
+                            if notifications.isEnabled { await appState.refreshNotifierPluginStatus() }
                         } else {
                             Haptics.error()
                         }
