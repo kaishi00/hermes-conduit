@@ -166,7 +166,7 @@ struct ConduitPluginSettingsDetail: View {
         .navigationTitle(Text(AppLocalization.string("Conduit plugin")))
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall(status))
         // The one-time manual update: its steps open by themselves.
-        .onChange(of: needsManualUpdate(update, status), initial: true) { _, needed in
+        .onChange(of: status.needsManualUpdate(after: update), initial: true) { _, needed in
             if needed { showsCommands = true }
         }
         // Asked again on every visit and dashboard switch.
@@ -174,13 +174,6 @@ struct ConduitPluginSettingsDetail: View {
             checking = true
             await appState.refreshNotifierPluginStatus()
             if !Task.isCancelled { checking = false }
-        }
-    }
-
-    private func needsManualUpdate(_ update: NotifierPluginUpdateState, _ status: NotifierPluginStatus) -> Bool {
-        switch update {
-        case .failed, .unsupported: return status.predatesOneTapUpdate
-        default: return false
         }
     }
 
@@ -473,6 +466,15 @@ struct NotifierPluginUpdateBanner: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if status.needsManualUpdate(after: update) {
+                Button { appState.settingsLinkRequest = .plugin } label: {
+                    Text(AppLocalization.string("Show Steps"))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("pluginUpdate.showSteps")
+            }
             if update == .idle {
                 Button { confirming = true } label: {
                     Text(restartOnly ? AppLocalization.string("Finish Update") : AppLocalization.string("Update"))
@@ -513,6 +515,17 @@ struct NotifierPluginUpdateBanner: View {
             guard case .updated = update, !UIAccessibility.isVoiceOverRunning else { return }
             try? await Task.sleep(for: .seconds(8))
             if !Task.isCancelled, appState.activeNotifierPluginUpdate == update { appState.dismissNotifierPluginUpdateOutcome() }
+        }
+    }
+}
+
+extension NotifierPluginStatus {
+    /// The update ended in the one-time manual update: it failed or couldn't
+    /// run on a plugin older than one-tap updates.
+    func needsManualUpdate(after update: NotifierPluginUpdateState) -> Bool {
+        switch update {
+        case .failed, .unsupported: return predatesOneTapUpdate
+        default: return false
         }
     }
 }
