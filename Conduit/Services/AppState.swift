@@ -5522,7 +5522,7 @@ final class AppState: ObservableObject {
 
     /// The runtime id the chat's next turn runs on: the open chat's own, or
     /// the chat's live runtime off screen, resuming it when it isn't live.
-    private func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
+    func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
         guard let client else { throw HermesError.notConnected }
         if isOpenChat(thread), let sessionID = activeSessionId { return sessionID }
         let rows = (try? await client.activeSessions(inProfile: thread.profile)) ?? []
@@ -5618,7 +5618,7 @@ final class AppState: ObservableObject {
 
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
-    private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
+    func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
         // Read once, without suspending: the chat on screen can change at
         // any await.
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
@@ -21171,7 +21171,7 @@ final class AppState: ObservableObject {
         return profilesMatch(owner, profile)
     }
 
-    private func profilesMatch(_ lhs: String, _ rhs: String) -> Bool {
+    func profilesMatch(_ lhs: String, _ rhs: String) -> Bool {
         lhs.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
