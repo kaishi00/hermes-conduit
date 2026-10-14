@@ -295,7 +295,16 @@ final class HermesNativeCalls: NSObject {
         // Busy in voice or another call here, or in the car: the Apple Watch
         // stops ringing it.
         let watchStops = ring != nil && Self.stopsWatchRing(plan: plan, inCar: inCar)
-        if watchStops, let ring { settleRing(ring, outcome: .declined) }
+        // In the car the call rings here, so its settle is kept on the call:
+        // `connect` still hears a Watch that answered first.
+        var carSettling: Task<HermesRingSettleResult, Never>?
+        if watchStops, let ring {
+            if plan == .ring, call.target != nil {
+                carSettling = Task { await HermesRingSettler.settle(ring, by: .phone, outcome: .declined) }
+            } else {
+                settleRing(ring, outcome: .declined)
+            }
+        }
         // A push while a call is live ends at once: the live call keeps
         // its trace.
         let traced = plan.startsTrace && calls.isEmpty
@@ -321,7 +330,7 @@ final class HermesNativeCalls: NSObject {
             return
         }
         if plan == .ring, let target = call.target {
-            calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring, watchStopped: watchStops)
+            calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring, watchStopped: watchStops, settling: carSettling)
         }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
