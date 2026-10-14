@@ -118,14 +118,14 @@ extension PhonePerson {
         if has(CNContactNicknameKey), !contact.nickname.isEmpty { nickname = String(contact.nickname.prefix(60)) }
         if !organization.isEmpty, organization != name { self.organization = String(organization.prefix(120)) }
         if has(CNContactPhoneNumbersKey) {
-            phones = contact.phoneNumbers.prefix(10).map { value in
+            phones = Array(contact.phoneNumbers.map { value in
                 Phone(number: Self.plainNumber(value.value.stringValue), label: value.label.map { CNLabeledValue<CNPhoneNumber>.localizedString(forLabel: $0) })
-            }.filter { Self.isDialable($0.number) }
+            }.filter { Self.isDialable($0.number) }.prefix(10))
         }
         if has(CNContactEmailAddressesKey) {
-            emails = contact.emailAddresses.prefix(10).map { value in
+            emails = Array(contact.emailAddresses.map { value in
                 Email(address: value.value as String, label: value.label.map { CNLabeledValue<NSString>.localizedString(forLabel: $0) })
-            }.filter { $0.address.contains("@") && !$0.address.contains(" ") && $0.address.count <= 254 }
+            }.filter { $0.address.contains("@") && !$0.address.contains(" ") && $0.address.count <= 254 }.prefix(10))
         }
         if has(CNContactBirthdayKey), let parts = contact.birthday { birthday = Self.birthday(parts) }
     }

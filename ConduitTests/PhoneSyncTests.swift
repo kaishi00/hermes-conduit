@@ -502,6 +502,12 @@ private final class FakePhoneAlarmSource: PhoneAlarmSource {
     func requestAccess() async throws {}
     func alarms(now: Date, calendar: Calendar) -> [[String: Any]]? { unreadable ? nil : list }
     func apply(_ change: PhoneChange, now: Date) async throws -> String {
+        // Like AlarmKitPhoneSource: a cancellation takes the alarm back.
+        if change.kind == .cancelAlarm {
+            let id = change.alarmID ?? ""
+            try cancel(id: id)
+            return id
+        }
         applied.append(change)
         let id = "alarm_\(applied.count)"
         list.append(["id": id, "kind": change.kind == .setTimer ? "timer" : "alarm"])

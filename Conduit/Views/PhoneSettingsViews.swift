@@ -450,6 +450,8 @@ struct PhoneSettingsPage: View {
         Task {
             do {
                 try await appState.turnOnPhoneSync(choices)
+                // What was saved: a no to alarms leaves that switch off.
+                self.choices = preferences
                 Haptics.success()
                 loadCalendars()
             } catch {
