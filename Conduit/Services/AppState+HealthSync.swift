@@ -119,7 +119,9 @@ extension AppState {
         preferences.detailed = detailed.intersection(categories)
         preferences.history = history
         saveHealthSyncPreferences(preferences)
-        await startHealthObservers()
+        // Not waited on: turning on is done once the choice is saved, and
+        // background delivery can take its time.
+        Task { await startHealthObservers() }
         Self.scheduleHealthSyncRefresh()
         Task { await runHealthSync(reason: .turnedOn) }
     }

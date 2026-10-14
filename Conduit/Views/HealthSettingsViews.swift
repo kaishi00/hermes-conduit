@@ -19,6 +19,9 @@ struct HealthSettingsPage: View {
     @State private var history: HealthHistoryDepth = .default
     @State private var loadedPreferences = false
     @State private var showsConsent = false
+    /// Agreed in the consent sheet: turning on waits for the sheet to go,
+    /// since Apple Health's own permission sheet can't show over it.
+    @State private var turnsOnAfterConsent = false
     @State private var showsTurnOff = false
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -76,10 +79,14 @@ struct HealthSettingsPage: View {
         } message: { mode in
             Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
         }
-        .sheet(isPresented: $showsConsent) {
+        .sheet(isPresented: $showsConsent, onDismiss: {
+            guard turnsOnAfterConsent else { return }
+            turnsOnAfterConsent = false
+            turnOn()
+        }) {
             HealthSharingConsentSheet(profile: appState.activeProfile, host: hostLabel) {
+                turnsOnAfterConsent = true
                 showsConsent = false
-                turnOn()
             } cancel: {
                 showsConsent = false
             }
