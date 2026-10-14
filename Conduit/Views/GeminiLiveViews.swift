@@ -219,6 +219,8 @@ struct GeminiLiveVoiceSheet: View {
 
     @ObservedObject var controller: GeminiLiveConversationController
     let jobs: VoiceBackgroundJobSupervisor
+    /// Passed to the call screen for its own sheets; not observed.
+    let appState: AppState
     var engine: Engine = .gemini
     let onClose: () -> Void
     let onRetry: () -> Void
@@ -231,6 +233,7 @@ struct GeminiLiveVoiceSheet: View {
             transcript: controller.transcript,
             assistantLabel: speakerLabel,
             jobs: jobs,
+            appState: appState,
             isMicrophoneMuted: controller.isMicrophoneMuted,
             isSpeakerMuted: controller.isSpeakerMuted,
             canMute: controller.isActive && !controller.isEnding,

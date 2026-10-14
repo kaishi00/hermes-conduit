@@ -28,6 +28,7 @@ struct WatchCallView: View {
         .sheet(isPresented: approvalShown) {
             if let approval = call.pendingApproval {
                 WatchApprovalCard(approval: approval)
+                    .environmentObject(call)
             }
         }
     }

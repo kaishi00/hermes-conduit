@@ -46,6 +46,7 @@ struct BotRosterView: View {
                 appState.dismissSidebarDrawer()
                 Task { await appState.openBotChat(for: bot) }
             }
+            .environmentObject(appState)
         }
         .confirmationDialog(
             deleteDialogTitle,
@@ -196,6 +197,7 @@ struct BotRosterView: View {
         }
         .sheet(isPresented: $showingGroupCreateSheet) {
             GroupCreateSheet()
+                .environmentObject(appState)
         }
     }
 
