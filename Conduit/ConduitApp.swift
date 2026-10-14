@@ -31,6 +31,13 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if HealthSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumeHealthSyncAtLaunch()
             }
+            // Saved places, visits and significant moves relaunch Conduit
+            // in the background: their monitors are set up again before
+            // launch returns so the event that woke it arrives.
+            let location = LocationSharingController.shared
+            if location.settings.isOn || location.configUnreadable {
+                AppStateRuntimeRegistry.shared.appState.activateLocationSharing()
+            }
             // Calendar, reminders and phone status: a background refresh, and
             // the calendar changing while Conduit runs.
             AppState.registerPhoneSyncTask()

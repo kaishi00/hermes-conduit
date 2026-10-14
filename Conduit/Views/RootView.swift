@@ -279,6 +279,7 @@ struct MainView: View {
         case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
         case .voice, .plugin: settingsOpensAt = page
         case .health: settingsOpensAt = appState.showsHealthSettings ? page : nil
+        case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
         case .phone: settingsOpensAt = appState.showsPhoneSettings ? page : nil
         }
         if appState.showSidebar, !isPersistentSidebarActive {

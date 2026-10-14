@@ -435,7 +435,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, phone, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, location, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -443,6 +443,7 @@ private enum SettingsDestination: Hashable {
         case .voice: self = .voice
         case .plugin: self = .conduitPlugin
         case .health: self = .health
+        case .location: self = .location
         case .phone: self = .phone
         }
     }
@@ -770,7 +771,8 @@ struct SettingsView: View {
                     current: { appState.activeHermesCallsStatus?.settings },
                     save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
                         await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
-                    }
+                    },
+                    places: appState.locationPlacesForCalls
                 ),
                 hearsMissedCalls: appState.supportsHermesCallOutcomes,
                 startTestCall: {
@@ -785,6 +787,8 @@ struct SettingsView: View {
                 .navigationTitle("Calls from Hermes")
         case .health:
             HealthSettingsPage(engine: appState.healthSync)
+        case .location:
+            LocationSettingsPage(controller: LocationSharingController.shared, engine: LocationSharingController.shared.engine)
         case .phone:
             PhoneSettingsPage(engine: appState.phoneSync)
         case .screenQuestion:
@@ -897,6 +901,9 @@ private struct SettingsHome: View {
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
                         if appState.showsHealthSettings {
                             settingsLink(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health")
+                        }
+                        if appState.showsLocationSettings {
+                            settingsLink(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location")
                         }
                         if appState.showsPhoneSettings {
                             settingsLink(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone")

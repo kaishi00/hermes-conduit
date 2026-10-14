@@ -563,6 +563,13 @@ struct HermesCallSettings: Equatable {
     /// The user's own words on what's worth a call Hermes decides to make
     /// (plugin 0.16+); nil when the host doesn't have the setting.
     var rules: String?
+    /// Saved places (ids from the phone) where Hermes must not ring, and
+    /// whether "no recent location" counts as one (plugin with
+    /// `location-sync`); nil when the host doesn't have the settings.
+    var avoidPlaces: [String]?
+    var avoidUnknownPlace: Bool?
+
+    static let maxAvoidPlaces = 20
 
     init() {}
 
@@ -581,6 +588,8 @@ struct HermesCallSettings: Equatable {
         self.perHour = perHour
         self.perDay = perDay
         self.rules = json["rules"] as? String
+        self.avoidPlaces = json["avoid_places"] as? [String]
+        self.avoidUnknownPlace = json["avoid_unknown_place"] as? Bool
     }
 
     /// Only the settings the host has: an older plugin refuses unknown ones.
@@ -589,6 +598,8 @@ struct HermesCallSettings: Equatable {
         if let decides { payload["decides"] = decides }
         if let alerts { payload["alerts"] = alerts }
         if let rules { payload["rules"] = rules }
+        if let avoidPlaces { payload["avoid_places"] = Array(avoidPlaces.prefix(Self.maxAvoidPlaces)) }
+        if let avoidUnknownPlace { payload["avoid_unknown_place"] = avoidUnknownPlace }
         return payload
     }
 }

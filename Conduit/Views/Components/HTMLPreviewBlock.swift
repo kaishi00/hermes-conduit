@@ -73,10 +73,15 @@ enum TranscriptDirectives {
     /// than render it (Read Aloud).
     static func removingPreviews(from text: String) -> String {
         guard text.contains("::preview{") else { return text }
-        return text.components(separatedBy: "\n").compactMap { line -> String? in
-            // A quoted directive is an example, and the chat shows it as text.
+        // Line endings normalized as the parser does, so its table check sees the same lines.
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        return lines.indices.compactMap { index -> String? in
+            let line = lines[index]
+            // A quoted directive is an example and a table header cell is
+            // table text; the chat shows both as written.
             guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
-                  let segments = segments(in: line) else { return line }
+                  let segments = segments(in: line),
+                  !MarkdownParser.isTableHeader(lines, at: index) else { return line }
             let kept = segments.compactMap { segment -> String? in
                 if case .text(let value) = segment { return value }
                 return nil
@@ -133,6 +138,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     static var drawTimeout: Duration { .seconds(20) }
 
     private var draws: Bool { isComplete && drawsInPlace }
+    private var isMeasuring: Bool {
+        if case .loaded = state { return measuredHeight == nil }
+        return false
+    }
     private var name: String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }
@@ -170,7 +179,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
-        .sheet(isPresented: $showsFullScreen) {
+        .sheet(isPresented: $showsFullScreen, onDismiss: { sheetHTML = nil }) {
             if let sheetHTML {
                 HTMLPreviewSheet(name: name, html: sheetHTML)
             }
@@ -186,6 +195,11 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             }
             .font(.caption2.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
+            // The spinner over a measuring page isn't read out; say it here
+            // (before the page loads, the loading row says it). Once
+            // measured, the page element carries the name and the action.
+            .accessibilityValue(isMeasuring ? Text("Loading preview…") : Text(verbatim: ""))
+            .accessibilityHidden(measuredHeight != nil)
             Spacer()
             if measuredHeight != nil {
                 Button {
@@ -196,6 +210,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 }
                 .tint(.conduitAccent)
                 .accessibilityLabel(Text("Open full screen"))
+                .accessibilityHidden(true)
             }
         }
     }
@@ -357,8 +372,9 @@ enum HTMLPreviewPage {
               dataURL[dataURL.index(after: comma)...].utf8.count <= ((maximumDocumentBytes + 2) / 3) * 4,
               let data = DataURLLimits.decodeBase64DataURL(dataURL),
               data.count <= maximumDocumentBytes else { return nil }
-        let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
-        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        // UTF-8 only: any bytes decode as Latin-1, so invalid or non-UTF-8
+        // bytes would draw as garbage instead of falling back to the card.
+        guard let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return text
     }
 
