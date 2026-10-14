@@ -251,8 +251,8 @@ extension HermesVoiceGatewayTimeoutTests {
         eventsOnly.reminders = false
         let tools = PhoneVoiceTools.tools(for: eventsOnly, access: .full, remindersAuthorized: true)
         XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
-        let addTool = try XCTUnwrap(tools.last)
-        XCTAssertEqual(((addTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        let fullAccessAdd = try XCTUnwrap(tools.last)
+        XCTAssertEqual(((fullAccessAdd.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences(), access: .full, remindersAuthorized: true).isEmpty)
         // Nor what iOS no longer allows.
         let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
@@ -260,7 +260,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(PhoneVoiceTools.tools(for: eventsOnly, access: .off, remindersAuthorized: true).map(\.name), [PhoneVoiceTools.changesTool])
         let addOnly = try XCTUnwrap(PhoneVoiceTools.tools(for: eventsOnly, access: .writeOnly, remindersAuthorized: true).last)
         XCTAssertTrue(addOnly.description.contains("leave the calendar out"))
-        XCTAssertFalse(addTool.description.contains("leave the calendar out"))
+        XCTAssertFalse(fullAccessAdd.description.contains("leave the calendar out"))
 
         // A change Hermes asks for is answered out loud.
         host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",
