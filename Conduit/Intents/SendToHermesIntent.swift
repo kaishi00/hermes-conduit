@@ -65,6 +65,10 @@ struct ShortcutSendError: LocalizedError, Equatable {
         ShortcutSendError(message: AppLocalization.string("There's no text to send. Give Send to Hermes a message."))
     }
 
+    static var outOfTime: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit ran out of time before it could send this. Nothing was sent; try again."))
+    }
+
     static var notConnected: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection."))
     }
@@ -171,7 +175,7 @@ struct ShortcutSender {
         if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
         // A slow connection used up the run: nothing was sent.
         try Task.checkCancellation()
-        guard backend.now() < deadline else { throw ShortcutSendError.notConnected }
+        guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
 
         // A reused chat already has replies: only a new one answers this run.
         var earlier: String?
@@ -203,7 +207,17 @@ struct ShortcutSender {
         var missed = 0
         while backend.now().addingTimeInterval(Self.pollInterval) < deadline {
             try await backend.sleep(Self.pollInterval)
-            guard let rows = try? await backend.liveSessions(chat.profile ?? backend.activeProfile()) else { continue }
+            let rows: [LiveSessionStatus]
+            do {
+                rows = try await backend.liveSessions(chat.profile ?? backend.activeProfile())
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HermesError.notConnected {
+                // The connection went: the reply will be in the chat.
+                return .stillWorking
+            } catch {
+                continue
+            }
             let row = rows.first {
                 $0.runtimeSessionId == runtimeID || chat.owns(sessionID: $0.runtimeSessionId) || chat.owns(sessionID: $0.storedSessionId)
             }
@@ -232,8 +246,10 @@ struct ShortcutSender {
             guard backend.now().addingTimeInterval(1) < deadline else { break }
             try await backend.sleep(1)
             if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
-            break
+            return .stillWorking
         }
+        // Out of time: a reply that landed in the last moments still counts.
+        if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
         return .stillWorking
     }
 

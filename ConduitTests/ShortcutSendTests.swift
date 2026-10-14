@@ -208,7 +208,7 @@ extension ScreenQuestionTests {
 
         XCTAssertEqual(outcome, .stillWorking)
         XCTAssertLessThanOrEqual(hermes.now.timeIntervalSince(start), 25)
-        XCTAssertEqual(hermes.replyReads, 0)
+        XCTAssertEqual(hermes.replyReads, 1, "Only the last look when time is up")
     }
 
     @MainActor
@@ -269,6 +269,17 @@ extension ScreenQuestionTests {
         hermes.replies = [nil, nil, "Quick answer."]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Hi", wait: true), deadline: hermes.now.addingTimeInterval(25))
         XCTAssertEqual(outcome, .answered("Quick answer."))
+    }
+
+    @MainActor
+    func testAReplyThatLandsAsTimeRunsOutStillAnswers() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        hermes.polls = [[liveRow("run-1", "working")]]
+        hermes.replies = ["Made it."]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("Long", wait: true), deadline: hermes.now.addingTimeInterval(25))
+        XCTAssertEqual(outcome, .answered("Made it."))
+        XCTAssertEqual(hermes.replyReads, 1, "Read once, at the end")
     }
 
     @MainActor

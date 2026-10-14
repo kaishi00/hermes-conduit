@@ -239575,6 +239575,88 @@
           }
         }
       }
+    },
+    "Conduit ran out of time before it could send this. Nothing was sent; try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hatte keine Zeit mehr, das zu senden. Es wurde nichts gesendet; versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit se quedó sin tiempo antes de poder enviarlo. No se envió nada; inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a manqué de temps avant de pouvoir l’envoyer. Rien n’a été envoyé ; réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waktu Conduit habis sebelum sempat mengirimnya. Tidak ada yang terkirim; coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha esaurito il tempo prima di poterlo inviare. Non è stato inviato nulla; riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信する前に Conduit の時間切れになりました。何も送信されていません。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 보내기 전에 시간이 다 되었습니다. 아무것도 보내지 않았습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitowi zabrakło czasu, zanim zdążył to wysłać. Nic nie wysłano; spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit ficou sem tempo antes de conseguir enviar. Nada foi enviado; tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У Conduit закончилось время до отправки. Ничего не отправлено; попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bunu göndermeden önce süresi doldu. Hiçbir şey gönderilmedi; tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在发送前已超时。未发送任何内容，请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在傳送前已逾時。未傳送任何內容，請再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

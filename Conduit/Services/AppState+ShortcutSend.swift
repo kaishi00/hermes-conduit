@@ -21,7 +21,7 @@ extension AppState {
             connect: { [weak self] deadline in
                 guard let self else { return false }
                 // Leave time to send once connected.
-                let wait = max(1, min(12, deadline.timeIntervalSinceNow - 8))
+                let wait = max(0, min(12, deadline.timeIntervalSinceNow - 8))
                 guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
                 return self.client != nil
             },
@@ -52,7 +52,8 @@ extension AppState {
             },
             submit: { [weak self] chat, runtimeID, text in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
-                if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy {
+                // Shortcut text is literal: "/…" never runs a composer command.
+                if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy, Self.parseSlashCommand(text) == nil {
                     var foundBusy = false
                     if await self.submitComposer(text: text, onBusy: { foundBusy = true }) { return .accepted }
                     // Not sent and not busy: the composer couldn't take it.
