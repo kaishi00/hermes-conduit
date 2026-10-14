@@ -86,13 +86,19 @@ struct LocationRead: Identifiable, Equatable {
 struct LocationRule: Identifiable, Equatable {
     var id: String
     var what: String
+    /// A saved place's id, or `*` for any saved place.
+    var placeID: String?
     var placeName: String?
-    /// `arrive` or `leave`.
+    /// `arrive`, `leave` or `either`.
     var event: String
     var days: String?
     var hours: String?
     var calls: Bool
+    /// `daily` (once a day) or `every` (each time, at least 30 minutes apart).
+    var repeatMode: String?
     var lastFired: String?
+
+    var isAnySavedPlace: Bool { placeID == "*" }
 
     static func parse(_ response: [String: Any]) -> [LocationRule] {
         (response["rules"] as? [[String: Any]] ?? []).compactMap { entry in
@@ -100,11 +106,13 @@ struct LocationRule: Identifiable, Equatable {
             return LocationRule(
                 id: id,
                 what: entry["what"] as? String ?? entry["task"] as? String ?? "",
+                placeID: entry["place_id"] as? String,
                 placeName: entry["place_name"] as? String,
                 event: entry["event"] as? String ?? "",
                 days: describe(entry["days"]),
                 hours: describe(entry["hours"]),
                 calls: entry["call"] as? Bool ?? false,
+                repeatMode: entry["repeat"] as? String,
                 lastFired: entry["last_fired"] as? String
             )
         }

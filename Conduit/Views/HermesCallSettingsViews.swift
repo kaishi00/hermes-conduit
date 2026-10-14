@@ -267,7 +267,7 @@ struct HermesCallSettingsSection: View {
                     Text("Past a limit, a finished job sends its usual notification instead of calling. These settings are this profile's, kept on your Hermes host.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if draft.avoidPlaces != nil {
+                    if draft.avoidPlaces != nil || draft.avoidUnknownPlace != nil {
                         avoidPlacesRows
                     }
                 }
@@ -313,33 +313,40 @@ struct HermesCallSettingsSection: View {
     }
 
     /// "Don't call me while I'm at": the saved places where a call becomes
-    /// the usual notification instead.
+    /// the usual notification instead; and, on its own, "don't call me when
+    /// Conduit can't say where I am" (no recent location, or sharing paused
+    /// or off). Each shows only when the host has the setting.
     @ViewBuilder
     private var avoidPlacesRows: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Don't call me while I'm at")
-                .font(.subheadline.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-            if model.places.isEmpty {
-                Text("Save places in Settings under Location first.")
+            if draft.avoidPlaces != nil {
+                Text("Don't call me while I'm at")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                if model.places.isEmpty {
+                    Text("Save places in Settings under Location first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(model.places) { place in
+                    Toggle(isOn: avoidBinding(place.id)) {
+                        Label {
+                            Text(verbatim: place.name)
+                        } icon: {
+                            Image(systemName: place.kind.symbol)
+                        }
+                    }
+                }
+                Text("A call Hermes would make while you're at one of these places comes as the usual “Hermes wants to talk” notification instead. Needs location shared in the background.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(model.places) { place in
-                Toggle(isOn: avoidBinding(place.id)) {
-                    Label {
-                        Text(verbatim: place.name)
-                    } icon: {
-                        Image(systemName: place.kind.symbol)
-                    }
-                }
-            }
             if draft.avoidUnknownPlace != nil {
-                Toggle("Also when Conduit doesn't know where you are", isOn: optionalBinding(\.avoidUnknownPlace))
+                Toggle("Don't call me when Conduit can't say where I am", isOn: optionalBinding(\.avoidUnknownPlace))
+                Text("That's when location sharing is off or paused, or no recent location has been sent. The call comes as the usual notification instead.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text("A call Hermes would make while you're at one of these places comes as the usual “Hermes wants to talk” notification instead. Needs location shared in the background.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 

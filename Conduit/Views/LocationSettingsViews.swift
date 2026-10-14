@@ -452,7 +452,7 @@ struct LocationSettingsPage: View {
     private var rulesSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Place rules"), symbol: "list.bullet.rectangle", tint: .conduitAccent) {
             if rules.isEmpty {
-                Text("No place rules. Ask Hermes, for example: “When I leave home on weekdays, call me with my daily brief.”")
+                Text("No place rules. Teach Hermes what to do at your places, for example: “When I get to the gym, remind me to log my workout.”")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -478,11 +478,27 @@ struct LocationSettingsPage: View {
         }
     }
 
+    /// For example "Any saved place · arrive or leave · every time".
     private func ruleDetail(_ rule: LocationRule) -> String {
-        let place = rule.placeName ?? AppLocalization.string("a saved place")
-        var parts = [rule.event == "arrive"
-            ? AppLocalization.string("Arriving at \(place)")
-            : AppLocalization.string("Leaving \(place)")]
+        var parts: [String] = []
+        if rule.isAnySavedPlace {
+            parts.append(AppLocalization.string("Any saved place"))
+        } else if let name = rule.placeName, !name.isEmpty {
+            parts.append(name)
+        } else {
+            parts.append(AppLocalization.string("A saved place"))
+        }
+        switch rule.event {
+        case "arrive": parts.append(AppLocalization.string("arrive"))
+        case "leave": parts.append(AppLocalization.string("leave"))
+        case "either": parts.append(AppLocalization.string("arrive or leave"))
+        default: if !rule.event.isEmpty { parts.append(rule.event) }
+        }
+        switch rule.repeatMode {
+        case "daily": parts.append(AppLocalization.string("once a day"))
+        case "every": parts.append(AppLocalization.string("every time"))
+        default: break
+        }
         if let days = rule.days { parts.append(days) }
         if let hours = rule.hours { parts.append(hours) }
         if rule.calls { parts.append(AppLocalization.string("Calls you")) }

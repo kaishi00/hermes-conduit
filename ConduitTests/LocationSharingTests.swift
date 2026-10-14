@@ -349,6 +349,25 @@ extension NotificationE2ETests {
         XCTAssertNil(LocationLocateRequest.parse(notification, records: [], knownGatewayIDs: [], keysProvisioned: false))
     }
 
+    func testPlaceRulesCarryAnyPlaceEitherEventAndRepeat() {
+        let rules = LocationRule.parse(["ok": true, "rules": [
+            ["id": "r1", "what": "Remind me to log my workout", "place_id": "*", "place_name": "any saved place",
+             "event": "either", "repeat": "every", "call": false],
+            ["id": "r2", "task": "Daily brief", "place_id": "p_0123456789ab", "place_name": "Home",
+             "event": "leave", "repeat": "daily", "days": ["mon", "tue"], "call": true],
+            ["what": "no id"],
+        ] as [[String: Any]]])
+        XCTAssertEqual(rules.map(\.id), ["r1", "r2"])
+        XCTAssertTrue(rules[0].isAnySavedPlace)
+        XCTAssertEqual(rules[0].event, "either")
+        XCTAssertEqual(rules[0].repeatMode, "every")
+        XCTAssertFalse(rules[1].isAnySavedPlace)
+        XCTAssertEqual(rules[1].what, "Daily brief")
+        XCTAssertEqual(rules[1].repeatMode, "daily")
+        XCTAssertEqual(rules[1].days, "mon, tue")
+        XCTAssertTrue(rules[1].calls)
+    }
+
     // MARK: Calls from Hermes
 
     func testCallSettingsCarryPlaceLimitsOnlyWhenTheHostHasThem() throws {
