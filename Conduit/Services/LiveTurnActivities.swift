@@ -67,21 +67,13 @@ enum LiveTurnProgress {
     }
 
     /// The held events that belong to the new turn: those from its
-    /// `messageStart` on. Without one, a terminal event can only be the end
-    /// of the turn before, which would end the new activity at once.
+    /// `messageStart` on. Without one, they're the tail of the turn before.
     static func newTurnEvents(_ events: [StreamEvent]) -> [StreamEvent] {
-        if let start = events.lastIndex(where: { event in
+        guard let start = events.lastIndex(where: { event in
             if case .messageStart = event { return true }
             return false
-        }) {
-            return Array(events[start...])
-        }
-        return events.filter { event in
-            switch event {
-            case .messageComplete, .messageError, .messageInterrupted: return false
-            default: return true
-            }
-        }
+        }) else { return [] }
+        return Array(events[start...])
     }
 
     static func finished(
@@ -134,30 +126,36 @@ final class LiveTurnActivities {
     /// Stream events of chats whose prompt is still being submitted: the
     /// gateway can stream before prompt.submit answers, and those events
     /// belong to the activity that starts once it does.
-    private var early: (sessionIDs: Set<String>, events: [StreamEvent])?
-    /// Past this, the oldest held events go first, so the latest phase and a
-    /// turn's end are never lost.
+    /// One entry per chat, so submissions to two chats don't clobber each
+    /// other.
+    private var early: [(sessionIDs: Set<String>, events: [StreamEvent])] = []
+    /// Past this, the oldest held events go first.
     private static let earlyLimit = 64
+    /// Chats whose submission was never accepted are dropped oldest first.
+    private static let earlyChatLimit = 4
 
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
     }
 
     /// A prompt is about to be submitted: its chat's events are held until
-    /// `turnStarted` (or dropped by the next submission).
+    /// `turnStarted` (or dropped by the chat's next submission).
     func turnSubmitting(sessionIDs: Set<String>) {
-        early = Self.isEnabled && !sessionIDs.isEmpty ? (sessionIDs, []) : nil
+        early.removeAll { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
+        guard Self.isEnabled, !sessionIDs.isEmpty else { return }
+        if early.count >= Self.earlyChatLimit {
+            early.removeFirst()
+        }
+        early.append((sessionIDs, []))
     }
 
     /// A prompt Conduit sent was accepted: the turn gets an activity, and an
     /// older one for the same chat ends.
     func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?) {
         adoptExisting()
-        let held = early.flatMap { pending -> [StreamEvent]? in
-            guard !pending.sessionIDs.isDisjoint(with: sessionIDs) else { return nil }
-            return LiveTurnProgress.newTurnEvents(pending.events)
-        } ?? []
-        early = nil
+        let held = early.first { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
+            .map { LiveTurnProgress.newTurnEvents($0.events) } ?? []
+        early.removeAll { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
         guard Self.isEnabled, !sessionIDs.isEmpty, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         for id in matching(sessionIDs) {
             finish(id, phase: .stopped, dismissal: .immediate)
@@ -190,11 +188,11 @@ final class LiveTurnActivities {
     /// A stream event of the active chat.
     func observe(_ event: StreamEvent, sessionID: String) {
         guard !sessionID.isEmpty else { return }
-        if early?.sessionIDs.contains(sessionID) == true {
-            if (early?.events.count ?? 0) >= Self.earlyLimit {
-                early?.events.removeFirst()
+        if let index = early.firstIndex(where: { $0.sessionIDs.contains(sessionID) }) {
+            if early[index].events.count >= Self.earlyLimit {
+                early[index].events.removeFirst()
             }
-            early?.events.append(event)
+            early[index].events.append(event)
         }
         guard !running.isEmpty else { return }
         for id in matching([sessionID]) {

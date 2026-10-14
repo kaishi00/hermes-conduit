@@ -70,7 +70,7 @@ extension WidgetLaunchLinkTests {
         let tool = StreamEvent.toolStart(sessionId: "s", toolName: "terminal", toolInput: nil)
         let held = LiveTurnProgress.newTurnEvents([oldEnd, .messageStart(sessionId: "s"), tool])
         XCTAssertEqual(held.count, 2, "only what follows the new turn's start")
-        XCTAssertEqual(LiveTurnProgress.newTurnEvents([oldEnd, tool]).count, 1, "without a start, an end belongs to the turn before")
+        XCTAssertTrue(LiveTurnProgress.newTurnEvents([tool, oldEnd]).isEmpty, "without a start, it's all the turn before")
     }
 
     /// The relay's push carries this JSON; ActivityKit decodes it into
