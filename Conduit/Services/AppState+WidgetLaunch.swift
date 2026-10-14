@@ -112,14 +112,17 @@ extension AppState {
     /// The chat a widget opens has to be what's on screen. The Sessions
     /// drawer (left open, or put up as the return surface before the link
     /// arrived) and the chat's own sheets would otherwise cover the new or
-    /// resumed chat, and Talk's call screen would open over a list.
+    /// resumed chat, and Talk's call screen would open over a list. Voice
+    /// and Live sheets stay: one up is a call in progress, which prepare
+    /// already refuses for anything but a plain open.
     private func revealChatForWidgetLaunch() {
         dismissSidebarDrawer()
+        requestSettingsDismissal()
         showModelPicker = false
         showContextSheet = false
         showWorkspaceSheet = false
         showGatewaySheet = false
         showAgentsSheet = false
-        chatCallTranscript = nil
+        dismissChatCallTranscript()
     }
 }

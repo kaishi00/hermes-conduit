@@ -1454,6 +1454,13 @@ final class AppState: ObservableObject {
     /// A Settings page a link asked for (`conduit://settings/calls`):
     /// MainView opens Settings there and clears it.
     @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
+    /// Bumped when something that opens a chat needs Settings out of the
+    /// way (a widget's New Chat or Talk); MainView owns the sheet.
+    @Published private(set) var settingsDismissRequest: UInt64 = 0
+    func requestSettingsDismissal() {
+        guard isSettingsSheetPresented else { return }
+        settingsDismissRequest &+= 1
+    }
     @Published var errorMessage: String?
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
@@ -5259,6 +5266,13 @@ final class AppState: ObservableObject {
     /// at tap time: an outbox retry can move the call to a new row after
     /// the card is drawn. The row can also be gone (deleted on the host),
     /// so a dead tap says so.
+    /// Closes a call transcript and outdates its fetch still in flight, so
+    /// it can't come back over whatever opens next.
+    func dismissChatCallTranscript() {
+        chatCallTranscriptRequest = nil
+        chatCallTranscript = nil
+    }
+
     func openVoiceCallTranscript(markerID: String) {
         // Any later tap outdates a kept call's fetch still in flight.
         chatCallTranscriptRequest = nil

@@ -256,6 +256,9 @@ struct MainView: View {
         .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
             presentPreferredReturnSurfaceIfNeeded()
         }
+        .onChange(of: appState.settingsDismissRequest) { _, _ in
+            settingsPresentation = nil
+        }
         .onChange(of: appState.settingsLinkRequest) { _, page in
             guard let page else { return }
             appState.settingsLinkRequest = nil

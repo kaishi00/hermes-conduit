@@ -766,6 +766,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         // return surface before the widget's link arrived.
         appState.showSidebar = true
         appState.showModelPicker = true
+        appState.isSettingsSheetPresented = true
+        let settingsDismissals = appState.settingsDismissRequest
         let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
 
         appState.widgetLaunchCoordinator.receive(newChat)
@@ -774,6 +776,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, "widget-reveal")
         XCTAssertFalse(appState.showSidebar, "the new chat must not open behind the Sessions drawer")
         XCTAssertFalse(appState.showModelPicker)
+        XCTAssertEqual(appState.settingsDismissRequest, settingsDismissals &+ 1, "Settings is asked to close too")
     }
 
     private func session(_ id: String, profile: String? = "default") -> SessionSummary {
