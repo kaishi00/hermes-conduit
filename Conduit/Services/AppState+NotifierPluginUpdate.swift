@@ -50,8 +50,9 @@ extension AppState {
                 guard let self, !Task.isCancelled else { return }
                 guard self.activeDashboardID == dashboardID else {
                     // Another dashboard is in use now: stop following this one.
-                    self.notifierPluginUpdateTask?.cancel()
-                    self.notifierPluginUpdateTask = nil
+                    // Only this run's own task: the shared one may already
+                    // be the new dashboard's update.
+                    withUnsafeCurrentTask { $0?.cancel() }
                     self.notifierPluginUpdate.finish(.idle, run: runID, activeDashboardID: self.activeDashboardID)
                     return
                 }

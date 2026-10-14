@@ -9708,6 +9708,8 @@ final class AppState: ObservableObject {
     /// disconnect(): no saved auth, cookie mirror, or registry state is
     /// cleared — the outgoing dashboard stays signed in while saved.
     private func retireConnectionRuntimeForDashboardSwitch() {
+        // A plugin update follows one dashboard; Hermes finishes it alone.
+        stopFollowingNotifierPluginUpdate()
         cancelChatResumeTransportRecovery()
         cancelScenePhaseAttempt()
         cancelScheduledReconnect()
