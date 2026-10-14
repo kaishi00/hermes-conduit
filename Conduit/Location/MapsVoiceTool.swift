@@ -27,8 +27,9 @@ enum MapsVoiceTool {
     /// waiting.
     static let lookupDeadline: TimeInterval = 7
     static let fixTimeout: Duration = .seconds(5)
-    /// A fix iOS already has is good enough this long.
-    static let fixMaxAge: TimeInterval = 120
+    /// A fix iOS already has is good enough this long (as the talking
+    /// layer's own reads: a car moves far in two minutes).
+    static let fixMaxAge: TimeInterval = 30
 
     static let tool = VoiceHostTool(
         name: name,
@@ -129,7 +130,7 @@ enum MapsVoiceTool {
     static func makeRequest(action: MapsRequest.Action, arguments: [String: Any], places: [LocationSavedPlace],
                         meByDefault: Bool) -> Result<MapsRequest, MapsFailure> {
         var request = MapsRequest(id: "voice", action: action)
-        // The voice mode's detail applies (the caller's precision).
+        // No extra cap here: the caller's precision is already in `me`.
         request.detail = .precise
         if let query = arguments["query"] as? String {
             request.query = MapsText.cleanOrNil(query, limit: MapsRequest.maxQueryLength)
