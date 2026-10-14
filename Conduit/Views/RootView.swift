@@ -93,7 +93,11 @@ struct MainView: View {
         sidebarLayoutContent
         // Changes Hermes asked for or just made (AgentSettings.swift).
         .overlay(alignment: .top) {
-            AgentSettingsBanner(sync: appState.agentSettings)
+            VStack(spacing: 8) {
+                AgentSettingsBanner(sync: appState.agentSettings)
+                // Calendar changes Hermes asked for (AppState+PhoneSync.swift).
+                PhoneChangeOverlay(engine: appState.phoneSync)
+            }
         }
         .sheet(isPresented: $appState.showModelPicker) {
             ModelPickerView()
@@ -273,6 +277,7 @@ struct MainView: View {
         case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
         case .voice: settingsOpensAt = page
         case .health: settingsOpensAt = appState.showsHealthSettings ? page : nil
+        case .phone: settingsOpensAt = appState.showsPhoneSettings ? page : nil
         }
         if appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()

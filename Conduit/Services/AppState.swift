@@ -13269,6 +13269,7 @@ final class AppState: ObservableObject {
             noteActiveChatSeen(respectingMarks: true)
             // Health data the phone gathered while Conduit was away.
             Task { await runHealthSync(reason: .foreground) }
+            Task { await runPhoneSync(reason: .foreground) }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -18101,6 +18102,10 @@ final class AppState: ObservableObject {
     /// Off until the user turns it on in Settings > Health.
     @Published var healthSyncPreferences = HealthSyncPreferences.load()
     lazy var healthSync = HealthSyncEngine(source: HealthKitDataSource(), deviceName: { UIDevice.current.name })
+    /// Calendar, Reminders, Focus and phone status shared with one Hermes
+    /// profile, and the calendar changes Hermes asks for (AppState+PhoneSync).
+    lazy var phoneSync = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(),
+                                         deviceName: { UIDevice.current.name })
 
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
@@ -18128,6 +18133,7 @@ final class AppState: ObservableObject {
         await provisionNotificationEncryption(bridge: bridge)
         // Health data catches up once this host is known to serve it.
         Task { await runHealthSync(reason: .connected) }
+        Task { await runPhoneSync(reason: .connected) }
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
@@ -18400,6 +18406,9 @@ final class AppState: ObservableObject {
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
+        // The calendar and phone status Hermes may read for this message,
+        // and any change it asked for since: never holding up the send.
+        Task { await runPhoneSync(reason: .messageSent) }
 
         let userMessage = ChatMessage(
             id: "local-\(Date().timeIntervalSince1970)",
@@ -26847,6 +26856,7 @@ enum KeychainHelper {
     private static let pushRegistrationKey = "hermes-conduit.push-registration.v1"
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
+    private static let phoneSyncKeyAccount = "hermes-conduit.phone-sync-key.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -26959,6 +26969,22 @@ enum KeychainHelper {
 
     static func clearHealthSyncKey() {
         delete(account: healthSyncKeyAccount)
+    }
+
+    // MARK: Phone sync key
+
+    /// The keys this phone agreed with the Hermes profile it shares its
+    /// calendar and status with. Readable after first unlock, as above.
+    static func savePhoneSyncKey(_ data: Data) {
+        save(data, account: phoneSyncKeyAccount)
+    }
+
+    static func loadPhoneSyncKey() -> Data? {
+        load(account: phoneSyncKeyAccount)
+    }
+
+    static func clearPhoneSyncKey() {
+        delete(account: phoneSyncKeyAccount)
     }
 
     // MARK: Dashboard registry (multi-server, #148)

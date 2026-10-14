@@ -1,0 +1,553 @@
+//
+//  PhoneSettingsViews.swift
+//  Conduit
+//
+//  Settings > Calendar & phone: opt-in sharing of the calendar, reminders,
+//  Focus and phone status with one Hermes profile, and how Hermes' calendar
+//  changes are handled. Also the card that asks the user about a change
+//  Hermes wants, and the banner after one went in without asking.
+//
+
+import SwiftUI
+
+struct PhoneSettingsPage: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var engine: PhoneSyncEngine
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+
+    @State private var choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
+    @State private var loadedPreferences = false
+    @State private var showsConsent = false
+    @State private var showsTurnOff = false
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+    @State private var calendars: [[String: Any]] = []
+
+    private var preferences: PhoneSyncPreferences { engine.preferences }
+    private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
+
+    var body: some View {
+        SettingsDetailContainer {
+            ConduitSettingsSection(title: AppLocalization.string("Calendar & phone for Hermes"), symbol: "calendar", tint: .red) {
+                Text("Share your calendar, reminders, Focus and phone status with Hermes so your agent can plan around your day, keep your reminders and pick good moments to reach you. It goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if preferences.isOn {
+                    statusRows
+                } else if !pluginServes {
+                    Text("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if preferences.isOn || pluginServes {
+                calendarSection
+                changesSection
+                phoneSection
+                actionSection
+            }
+        }
+        .navigationTitle("Calendar & phone")
+        .onAppear(perform: load)
+        .sheet(isPresented: $showsConsent) {
+            PhoneSharingConsentSheet(profile: appState.activeProfile, host: hostLabel) {
+                showsConsent = false
+                turnOn()
+            } cancel: {
+                showsConsent = false
+            }
+        }
+        .confirmationDialog("Turn off sharing?", isPresented: $showsTurnOff, titleVisibility: .visible) {
+            Button("Turn off and delete from the host", role: .destructive) { turnOff(delete: true) }
+            Button("Turn off, keep data on the host") { turnOff(delete: false) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Conduit stops sending your calendar, reminders, Focus and phone status, and Hermes can't ask for calendar changes. Deleting removes what this iPhone sent from the host.")
+        }
+    }
+
+    private var hostLabel: String {
+        if let host = appState.connection?.baseUrl, let url = URL(string: host), let name = url.host { return name }
+        return appState.connection?.baseUrl ?? ""
+    }
+
+    // MARK: Status
+
+    @ViewBuilder
+    private var statusRows: some View {
+        if let destination = preferences.destination {
+            Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)"), systemImage: "checkmark.shield")
+                .font(.subheadline)
+        }
+        if engine.isSyncing {
+            Label("Syncing…", systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if let pause = engine.state.pause {
+            Text(pause.message)
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else if let last = engine.state.lastSync {
+            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Not synced yet.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        if let error = engine.lastError, engine.state.pause == nil {
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    // MARK: Calendar and reminders
+
+    private var calendarSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Calendar and reminders"), symbol: "calendar", tint: .conduitAccent) {
+            Picker("Calendar", selection: binding(\.calendar)) {
+                ForEach(PhoneCalendarAccess.allCases) { access in
+                    Text(access.title).tag(access)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("settings.phone.calendar")
+            Text(choices.calendar == .writeOnly
+                 ? AppLocalization.string("Hermes can ask to add events but can't read your calendar.")
+                 : AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, and can ask to add or change them."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if choices.calendar == .full {
+                Picker("Share", selection: binding(\.window)) {
+                    ForEach(PhoneCalendarWindow.allCases) { window in
+                        Text(window.title).tag(window)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            Toggle(isOn: binding(\.reminders)) {
+                Label("Reminders", systemImage: "checklist")
+            }
+            .accessibilityIdentifier("settings.phone.reminders")
+            if choices.calendar == .full || choices.reminders {
+                Toggle("Include notes and attendees", isOn: binding(\.details))
+                if choices.details, choices.calendar == .full {
+                    Toggle("Include attendees' email addresses", isOn: binding(\.attendeeEmails))
+                        .font(.subheadline)
+                        .padding(.leading, 28)
+                }
+                Text("Without these, Hermes gets titles, times, places and lists, not what's written in notes or who's invited.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if preferences.isOn, !calendars.isEmpty {
+                DisclosureGroup("Calendars and lists") {
+                    ForEach(calendars.indices, id: \.self) { index in
+                        let entry = calendars[index]
+                        Toggle(isOn: calendarBinding(entry)) {
+                            Text(entry["title"] as? String ?? "")
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+        }
+    }
+
+    private var changesSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Changes from Hermes"), symbol: "calendar.badge.plus", tint: .conduitAccent) {
+            Picker("New events and reminders", selection: binding(\.autoAdd)) {
+                Text("Ask me each time").tag(false)
+                Text("Add without asking").tag(true)
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("settings.phone.auto-add")
+            Text("Hermes always asks before it changes or deletes anything. Without asking, new items go in when Conduit next runs, with Undo. In a voice call, Hermes asks you out loud.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var phoneSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Focus and phone status"), symbol: "iphone", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.focus)) {
+                Label("Focus", systemImage: "moon")
+            }
+            .accessibilityIdentifier("settings.phone.focus")
+            Text("Add Conduit to a Focus in Settings > Focus > Focus Filters, give it a name for Hermes such as Work, and choose whether Hermes holds its calls while it's on.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(isOn: binding(\.status)) {
+                Label("Phone status", systemImage: "battery.75percent")
+            }
+            .accessibilityIdentifier("settings.phone.status")
+            Text("Battery and charging, whether CarPlay or headphones are connected, Wi-Fi or cellular, and whether you're walking, driving or still. Only the latest state is kept.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var actionSection: some View {
+        VStack(spacing: 10) {
+            if preferences.isOn {
+                Button {
+                    Haptics.selection()
+                    Task {
+                        await appState.runPhoneSync(reason: .manual)
+                        errorMessage = appState.dashboardTicketBridge == nil || appState.activeDashboardID == nil
+                            ? DashboardTicketBridgeError.notReady.errorDescription : nil
+                        loadCalendars()
+                    }
+                } label: {
+                    Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6).frame(minHeight: 48)
+                }
+                .disabled(engine.isSyncing || isWorking)
+                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: false)
+                .accessibilityIdentifier("settings.phone.sync-now")
+                Button {
+                    showsTurnOff = true
+                } label: {
+                    Label("Turn off sharing", systemImage: "calendar.badge.minus")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6).frame(minHeight: 48)
+                }
+                .disabled(isWorking)
+                .conduitGlassControl(cornerRadius: 17, tint: .red.opacity(0.18), prominent: false)
+                .accessibilityIdentifier("settings.phone.turn-off")
+            } else {
+                Button {
+                    Haptics.selection()
+                    showsConsent = true
+                } label: {
+                    Label(isWorking ? AppLocalization.string("Turning on…") : AppLocalization.string("Turn on sharing"), systemImage: "calendar")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6).frame(minHeight: 48)
+                        .foregroundStyle(Color.white)
+                }
+                .disabled(!choices.sharesAnything || isWorking || appState.activeDashboardID == nil)
+                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
+                .accessibilityIdentifier("settings.phone.turn-on")
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    // MARK: Bindings
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<PhoneSyncPreferences, Value>) -> Binding<Value> {
+        Binding(
+            get: { choices[keyPath: keyPath] },
+            set: { value in
+                choices[keyPath: keyPath] = value
+                applyIfOn()
+            }
+        )
+    }
+
+    /// A calendar or list is shared unless the user left it out; the list
+    /// has hashed ids, so it's matched the way the engine hashes them.
+    private func calendarBinding(_ entry: [String: Any]) -> Binding<Bool> {
+        let id = entry["id"] as? String ?? ""
+        let eventKitID = engine.calendarSource.eventKitCalendarID(forShared: id)
+        return Binding(
+            get: { eventKitID.map { !choices.hiddenCalendars.contains($0) } ?? true },
+            set: { shown in
+                guard let eventKitID else { return }
+                if shown { choices.hiddenCalendars.remove(eventKitID) } else { choices.hiddenCalendars.insert(eventKitID) }
+                applyIfOn()
+            }
+        )
+    }
+
+    // MARK: Actions
+
+    private func load() {
+        guard !loadedPreferences else { return }
+        loadedPreferences = true
+        if preferences.isOn { choices = preferences }
+        loadCalendars()
+    }
+
+    private func loadCalendars() {
+        guard preferences.isOn else { return }
+        let source = engine.calendarSource
+        calendars = source.calendars(eventsReadable: source.eventAccess == .full, reminders: source.remindersAuthorized)
+    }
+
+    private func applyIfOn() {
+        guard preferences.isOn else { return }
+        let choices = choices
+        Task {
+            do {
+                try await appState.updatePhoneSync(choices)
+                errorMessage = nil
+                loadCalendars()
+            } catch {
+                errorMessage = PhoneSyncEngine.describe(error)
+            }
+        }
+    }
+
+    private func turnOn() {
+        isWorking = true
+        errorMessage = nil
+        let choices = choices
+        Task {
+            do {
+                try await appState.turnOnPhoneSync(choices)
+                Haptics.success()
+                loadCalendars()
+            } catch {
+                errorMessage = PhoneSyncEngine.describe(error)
+                Haptics.error()
+            }
+            isWorking = false
+        }
+    }
+
+    private func turnOff(delete: Bool) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            let done = await appState.turnOffPhoneSync(deleteFromHost: delete)
+            if !done {
+                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+            }
+            choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
+            calendars = []
+            isWorking = false
+        }
+    }
+}
+
+/// What the user agrees to before anything leaves the phone (App Review 5.1.2(i)).
+struct PhoneSharingConsentSheet: View {
+    let profile: String
+    let host: String
+    let accept: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.red)
+                        .accessibilityHidden(true)
+                    Text("Share your calendar and phone with Hermes?")
+                        .font(.title2.weight(.semibold))
+                    Label(AppLocalization.string("Conduit sends what you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
+                    Label("Your agent reads it when you ask, or when a task you set up needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
+                    Label("Events can include other people's names. Notes, attendees and email addresses stay on this iPhone unless you turn them on.", systemImage: "person.2")
+                    Label("Hermes can only ask for calendar changes. You approve each one unless you choose to let new items in without asking, and changes or deletions always ask.", systemImage: "hand.raised")
+                    Label("You can turn sharing off at any time in Settings > Calendar & phone and delete what was sent from the host.", systemImage: "calendar.badge.minus")
+                }
+                .font(.subheadline)
+                .padding(20)
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 10) {
+                    Button(action: accept) {
+                        Text("Continue")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6).frame(minHeight: 48)
+                            .foregroundStyle(Color.white)
+                    }
+                    .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
+                    .accessibilityIdentifier("settings.phone.consent.continue")
+                    Button("Cancel", action: cancel)
+                        .frame(minHeight: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+// MARK: - Changes from Hermes
+
+/// What a change does, in words, for the card and for voice.
+enum PhoneChangeWording {
+    static func headline(_ change: PhoneChange) -> String {
+        switch change.kind {
+        case .addEvent: return AppLocalization.string("Hermes wants to add an event")
+        case .updateEvent: return AppLocalization.string("Hermes wants to change an event")
+        case .deleteEvent: return AppLocalization.string("Hermes wants to delete an event")
+        case .addReminder: return AppLocalization.string("Hermes wants to add a reminder")
+        case .updateReminder: return AppLocalization.string("Hermes wants to change a reminder")
+        case .completeReminder:
+            return change.fields.completed == false
+                ? AppLocalization.string("Hermes wants to reopen a reminder")
+                : AppLocalization.string("Hermes wants to mark a reminder done")
+        }
+    }
+
+    /// The item's title and time, as far as the change says.
+    static func detail(_ change: PhoneChange) -> String {
+        var parts: [String] = []
+        if let title = change.fields.title, !title.isEmpty { parts.append(title) }
+        let allDay = change.fields.allDay ?? false
+        if let start = change.fields.start {
+            if allDay {
+                parts.append(start.formatted(date: .abbreviated, time: .omitted))
+            } else if let end = change.fields.end {
+                parts.append(start.formatted(date: .abbreviated, time: .shortened) + "–" + end.formatted(date: .omitted, time: .shortened))
+            } else {
+                parts.append(start.formatted(date: .abbreviated, time: .shortened))
+            }
+        }
+        if let due = change.fields.due {
+            let dueAllDay = change.fields.dueAllDay ?? (change.fields.dueText?.count == 10)
+            parts.append(dueAllDay ? due.formatted(date: .abbreviated, time: .omitted) : due.formatted(date: .abbreviated, time: .shortened))
+        }
+        if let location = change.fields.location, !location.isEmpty { parts.append(location) }
+        return parts.joined(separator: " · ")
+    }
+
+    static func approveTitle(_ change: PhoneChange) -> String {
+        switch change.kind {
+        case .addEvent, .addReminder: return AppLocalization.string("Add")
+        case .deleteEvent: return AppLocalization.string("Delete")
+        case .completeReminder: return AppLocalization.string("Mark done")
+        case .updateEvent, .updateReminder: return AppLocalization.string("Change")
+        }
+    }
+}
+
+/// The card over the app for the oldest change waiting on the user.
+struct PhoneChangeCard: View {
+    let prompt: PhoneChangePrompt
+    let waiting: Int
+    let answer: (Bool) -> Void
+
+    var body: some View {
+        let change = prompt.change
+        VStack(alignment: .leading, spacing: 10) {
+            Label(PhoneChangeWording.headline(change), systemImage: change.kind.isEvent ? "calendar.badge.plus" : "checklist")
+                .font(.subheadline.weight(.semibold))
+            let detail = PhoneChangeWording.detail(change)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.subheadline)
+            }
+            if let calendar = prompt.calendarTitle, change.kind.isAddition {
+                Text(AppLocalization.string("In \(calendar)"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let reason = change.reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.selection()
+                    answer(false)
+                } label: {
+                    Text("Not now")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 40)
+                }
+                .conduitGlassControl(cornerRadius: 14, tint: .secondary.opacity(0.15), prominent: false)
+                .accessibilityIdentifier("phone.change.dismiss")
+                Button(role: change.kind == .deleteEvent ? .destructive : nil) {
+                    Haptics.success()
+                    answer(true)
+                } label: {
+                    Text(PhoneChangeWording.approveTitle(change))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 40)
+                        .foregroundStyle(Color.white)
+                }
+                .conduitGlassControl(cornerRadius: 14, tint: change.kind == .deleteEvent ? .red : .conduitAccent, prominent: true)
+                .accessibilityIdentifier("phone.change.approve")
+            }
+            if waiting > 1 {
+                Text(AppLocalization.string("\(Int(waiting - 1)) more waiting"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .padding(.horizontal, 12)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Shown after an addition went in without asking, with Undo.
+struct PhoneAutoAddedBanner: View {
+    let added: PhoneAutoAdded
+    let undo: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: added.isEvent ? "calendar.badge.checkmark" : "checklist.checked")
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)") }
+                     ?? AppLocalization.string("Hermes added \(added.title)"))
+                    .font(.subheadline)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Button("Undo", action: undo)
+                .font(.subheadline.weight(.semibold))
+            Button(action: close) {
+                Image(systemName: "xmark")
+            }
+            .accessibilityLabel(Text("Close"))
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+        .padding(.horizontal, 12)
+    }
+}
+
+/// The card and banner over the app, fed by the phone sync engine.
+struct PhoneChangeOverlay: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var engine: PhoneSyncEngine
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let prompt = engine.prompts.first {
+                PhoneChangeCard(prompt: prompt, waiting: engine.prompts.count) { approve in
+                    Task { await appState.answerPhoneChange(prompt, approve: approve) }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let added = engine.autoAdded {
+                PhoneAutoAddedBanner(added: added) {
+                    Task { await engine.undo(added) }
+                } close: {
+                    engine.autoAdded = nil
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .task(id: added.id) {
+                    try? await Task.sleep(for: .seconds(8))
+                    if engine.autoAdded == added { engine.autoAdded = nil }
+                }
+            }
+        }
+        .padding(.top, 6)
+        .animation(.spring(duration: 0.3), value: engine.prompts.first?.id)
+        .animation(.spring(duration: 0.3), value: engine.autoAdded?.id)
+    }
+}

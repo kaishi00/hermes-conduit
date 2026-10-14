@@ -97,16 +97,24 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>When you share your calendar, Conduit sends the events you choose to your own Hermes server so your agent can answer questions about your schedule, and adds or changes events when you approve them. Nothing goes to Conduit's developer.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Conduit adds events your Hermes agent suggests, when you approve them. It doesn't read your calendar with this access.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Conduit uses Face ID to unlock saved Hermes credentials.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>When you turn on Health sharing, Conduit reads the categories you choose and sends them directly to your own Hermes server so your agent can answer questions about your health. Nothing goes to Conduit's developer.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Conduit never writes to Apple Health. It only reads the categories you choose to share with your Hermes server.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>When you share phone status, Conduit tells your own Hermes server whether you're walking, driving or still, so your agent can choose a good moment to reach you. Nothing goes to Conduit's developer.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Conduit uses the microphone for voice conversations and foreground wake phrases.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Conduit saves images and videos from your chats to Photos when you choose Save in the share sheet.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>When you share reminders, Conduit sends the lists you choose to your own Hermes server so your agent can see what's on them, and adds or completes reminders when you approve them. Nothing goes to Conduit's developer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Conduit uses on-device Apple speech recognition to turn your voice into text when you select On this iPhone.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -132,11 +140,13 @@
 	<array>
 		<string>audio</string>
 		<string>fetch</string>
+		<string>remote-notification</string>
 		<string>voip</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.milim.relay.health-sync</string>
+		<string>com.milim.relay.phone-sync</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
