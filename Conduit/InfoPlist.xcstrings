@@ -179,6 +179,184 @@
         }
       }
     },
+    "NSHealthShareUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das Teilen von Health-Daten einschaltest, liest Conduit die von dir gewählten Kategorien und sendet sie direkt an deinen eigenen Hermes-Server, damit dein Agent Fragen zu deiner Gesundheit beantworten kann. Nichts davon geht an den Entwickler von Conduit."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you turn on Health sharing, Conduit reads the categories you choose and sends them directly to your own Hermes server so your agent can answer questions about your health. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando activas la opción de compartir datos de Salud, Conduit lee las categorías que elijas y las envía directamente a tu propio servidor Hermes para que tu agente pueda responder preguntas sobre tu salud. Nada se envía al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lorsque vous activez le partage Santé, Conduit lit les catégories que vous choisissez et les envoie directement à votre propre serveur Hermes pour que votre agent puisse répondre à des questions sur votre santé. Rien n'est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat Anda menyalakan berbagi Kesehatan, Conduit membaca kategori yang Anda pilih dan mengirimkannya langsung ke server Hermes Anda sendiri agar agen Anda dapat menjawab pertanyaan tentang kesehatan Anda. Tidak ada yang dikirim ke developer Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando attivi la condivisione di Salute, Conduit legge le categorie che scegli e le invia direttamente al tuo server Hermes, così il tuo agente può rispondere a domande sulla tua salute. Nulla viene inviato allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ヘルスケアの共有をオンにすると、Conduitは選択したカテゴリを読み取り、エージェントがあなたの健康に関する質問に答えられるよう、あなた自身のHermesサーバに直接送信します。Conduitの開発者に送られることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "건강 공유를 켜면 Conduit은 사용자가 선택한 카테고리를 읽고, 에이전트가 건강에 관한 질문에 답할 수 있도록 사용자의 Hermes 서버로 직접 보내요. Conduit 개발자에게는 아무것도 전송되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy włączysz udostępnianie danych z aplikacji Zdrowie, Conduit odczyta wybrane przez Ciebie kategorie i wyśle je bezpośrednio na Twój własny serwer Hermes, aby Twój agent mógł odpowiadać na pytania o Twoje zdrowie. Nic nie trafia do dewelopera Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando você ativa o compartilhamento do app Saúde, o Conduit lê as categorias que você escolher e as envia diretamente para o seu próprio servidor Hermes para que seu agente possa responder perguntas sobre sua saúde. Nada é enviado ao desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда вы включаете отправку данных «Здоровья», Conduit считывает выбранные вами категории и отправляет их напрямую на ваш собственный сервер Hermes, чтобы ваш агент мог отвечать на вопросы о вашем здоровье. Разработчику Conduit ничего не передаётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sağlık paylaşımını açtığınızda Conduit seçtiğiniz kategorileri okur ve ajanınızın sağlığınızla ilgili soruları yanıtlayabilmesi için bunları doğrudan kendi Hermes sunucunuza gönderir. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启“健康”共享后，Conduit 会读取你选择的类别，并将其直接发送到你自己的 Hermes 服务器，让你的代理能够回答有关你健康状况的问题。任何数据都不会发送给 Conduit 的开发者。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟「健康」分享後，Conduit 會讀取你選擇的類別，並直接傳送到你自己的 Hermes 伺服器，讓你的代理能回答有關你健康狀況的問題。任何資料都不會傳送給 Conduit 的開發者。"
+          }
+        }
+      }
+    },
+    "NSHealthUpdateUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit schreibt nie in Apple Health. Es liest nur die Kategorien, die du mit deinem Hermes-Server teilen möchtest."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit never writes to Apple Health. It only reads the categories you choose to share with your Hermes server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nunca escribe en Salud. Solo lee las categorías que elijas compartir con tu servidor Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'écrit jamais dans Santé. Il lit uniquement les catégories que vous choisissez de partager avec votre serveur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak pernah menulis ke Kesehatan. Conduit hanya membaca kategori yang Anda pilih untuk dibagikan dengan server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non scrive mai in Salute. Legge solo le categorie che scegli di condividere con il tuo server Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitがヘルスケアにデータを書き込むことはありません。Hermesサーバと共有するために選択したカテゴリを読み取るだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 Apple 건강에 데이터를 기록하지 않아요. Hermes 서버와 공유하도록 선택한 카테고리만 읽어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nigdy nie zapisuje danych w aplikacji Zdrowie. Odczytuje tylko kategorie, które zdecydujesz się udostępnić swojemu serwerowi Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit nunca grava dados no app Saúde. Ele apenas lê as categorias que você escolher compartilhar com o seu servidor Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit никогда не записывает данные в «Здоровье». Он только считывает категории, которыми вы решили поделиться со своим сервером Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, Apple Sağlık'a hiçbir zaman veri yazmaz. Yalnızca Hermes sunucunuzla paylaşmayı seçtiğiniz kategorileri okur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 绝不会向“健康”写入数据。它只会读取你选择与 Hermes 服务器共享的类别。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 絕不會寫入「健康」。它只會讀取你選擇與 Hermes 伺服器分享的類別。"
+          }
+        }
+      }
+    },
     "NSMicrophoneUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {

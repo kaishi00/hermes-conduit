@@ -44,6 +44,8 @@ enum ConduitAppLink: Equatable {
         case voice
         /// The Conduit plugin on the dashboard's host.
         case plugin
+        /// Health, where sharing Apple Health data is turned on.
+        case health
     }
 
     static let scheme = "conduit"

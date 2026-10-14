@@ -99,6 +99,10 @@
 	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Conduit uses Face ID to unlock saved Hermes credentials.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>When you turn on Health sharing, Conduit reads the categories you choose and sends them directly to your own Hermes server so your agent can answer questions about your health. Nothing goes to Conduit's developer.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Conduit never writes to Apple Health. It only reads the categories you choose to share with your Hermes server.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Conduit uses the microphone for voice conversations and foreground wake phrases.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -127,7 +131,12 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
 		<string>voip</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.milim.relay.health-sync</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

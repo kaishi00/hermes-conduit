@@ -51,7 +51,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "Apple Distribution"
         CODE_SIGN_ENTITLEMENTS: Conduit/Conduit.entitlements
-        PROVISIONING_PROFILE_SPECIFIER: "Conduit App Store"
+        PROVISIONING_PROFILE_SPECIFIER: "Hermes Conduit App Store"
         # The draft-stripping phase below deletes lprojs it can't declare
         # up front, which the user-script sandbox would refuse.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
