@@ -164,6 +164,8 @@ final class GeminiLiveConversationController: ObservableObject {
             // told only "first say 'Let me check.'", the model opened that
             // turn with the same words again.
             lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search. Just before you call it, say a few words out loud so the user knows you're looking it up, in your own words and different each time (for example \"One sec.\", \"Let me look that up.\" or \"Checking now.\"). Say that only once per lookup: the result arrives a few seconds later as its own turn, and that turn opens straight with the answer, never with another \"let me check\". Never guess the answer before the result arrives; if it returns an error, say in a few words that the lookup failed."
+        case .grok:
+            lookups = "For weather, news, sports, stock prices, and other public facts, look them up yourself with web_search (the web) or x_search (posts on X) and answer on this call; never start a Hermes job for them."
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }

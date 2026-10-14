@@ -76,7 +76,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((input["format"] as? [String: Any])?["rate"] as? Int, 24_000)
 
         let tools = try XCTUnwrap(session["tools"] as? [[String: Any]])
-        XCTAssertEqual(tools.count, GeminiLiveToolBridge.functionDeclarations.count)
+        XCTAssertEqual(tools.count, GeminiLiveToolBridge.functionDeclarations.count + 2)
         let startJob = try XCTUnwrap(tools.first { $0["name"] as? String == "start_job" })
         XCTAssertEqual(startJob["type"] as? String, "function")
         let parameters = try XCTUnwrap(startJob["parameters"] as? [String: Any])
@@ -86,6 +86,41 @@ extension HermesVoiceGatewayTimeoutTests {
 
         let noVoice = GrokLiveProtocol.sessionUpdate(instructions: "x", functions: [], voice: "")
         XCTAssertNil((noVoice["session"] as? [String: Any])?["voice"], "the host's default voice applies")
+    }
+
+    /// #598: public lookups use xAI's own search, never Hermes' web_search
+    /// function under the name xAI keeps for its native tool.
+    func testGrokLiveSessionUsesXAIsOwnSearchToolsAndNoClashingFunction() throws {
+        let update = GrokLiveProtocol.sessionUpdate(
+            instructions: "x",
+            functions: GeminiLiveToolBridge.declarations(webSearch: true, memoryRecall: true),
+            voice: nil
+        )
+        let tools = try XCTUnwrap((update["session"] as? [String: Any])?["tools"] as? [[String: Any]])
+        let native = tools.filter { $0["type"] as? String != "function" }.compactMap { $0["type"] as? String }
+        XCTAssertEqual(native, ["web_search", "x_search"])
+        let names = tools.compactMap { $0["name"] as? String }
+        XCTAssertFalse(names.contains("web_search"), "a client function can't share the native tool's name")
+        XCTAssertTrue(names.contains("start_job"))
+        XCTAssertTrue(names.contains("recall_memory"))
+
+        let instructions = GeminiLiveConversationController.instructions(search: .grok) + GrokLiveProtocol.delegationInstructions
+        XCTAssertTrue(instructions.contains("x_search"))
+        XCTAssertTrue(instructions.contains("never with start_job"))
+        XCTAssertFalse(instructions.contains("call web_search. Just before"), "no Hermes lookup turn to wait for")
+    }
+
+    /// xAI runs its own search: a call by its name is never answered here.
+    func testGrokLiveIgnoresCallsToXAIsOwnTools() {
+        for name in ["web_search", "x_search", "browse_page"] {
+            let frame = GrokLiveProtocol.decode(try! JSONSerialization.data(withJSONObject: [
+                "type": "response.function_call_arguments.done",
+                "call_id": "c1",
+                "name": name,
+                "arguments": #"{"query":"weather in San Diego"}"#,
+            ]))
+            XCTAssertEqual(frame, [], name)
+        }
     }
 
     func testGrokLiveClientMessagesMapToRealtimeEvents() throws {
@@ -685,10 +720,12 @@ extension AppStateVoiceCapabilityTests {
             PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
         )
         XCTAssertTrue(appState.showGrokLiveSheet)
+        XCTAssertTrue(appState.voiceBackgroundJobSupervisor.liveCallReadsReplies, "the call hears its jobs' replies (#599)")
 
         appState.disconnect()
 
         XCTAssertFalse(appState.showGrokLiveSheet)
         XCTAssertFalse(appState.grokLiveController.isActive)
+        XCTAssertFalse(appState.voiceBackgroundJobSupervisor.liveCallReadsReplies)
     }
 }

@@ -395,6 +395,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// through its jobs' completion events, so the poll settles nearly all
     /// of them.
     var readsRepliesWhenSettling = false
+    /// The same for a phone Grok Live call (#599): its start_job is
+    /// answered at once, so a job the poll settles would otherwise be
+    /// heard as a pointer to its chat. Kept apart from the Watch's flag so
+    /// neither call's end turns the other's off.
+    var liveCallReadsReplies = false
 
     /// Called whenever a notice becomes pending, so the host can let an
     /// idle voice conversation deliver it.
@@ -2302,7 +2307,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 settledThreadTurns.append(job.id)
                 continue
             }
-            if readsRepliesWhenSettling, !job.isThreadTurn, job.result == nil {
+            if readsRepliesWhenSettling || liveCallReadsReplies, !job.isThreadTurn, job.result == nil {
                 settledJobs.append(job.id)
                 continue
             }
