@@ -270,6 +270,9 @@ enum HTMLPreviewDocuments {
     private static var documents: [String: (html: String, readAt: Date)] = [:]
     static let lifetime: TimeInterval = 120
     private static let limit = 12
+    /// What the kept files may hold together, so a few large ones that are
+    /// never revisited don't stay resident.
+    static let byteBudget = 8 * 1024 * 1024
 
     static func document(for path: String, now: Date = Date()) -> String? {
         guard let entry = documents[path] else { return nil }
@@ -282,8 +285,12 @@ enum HTMLPreviewDocuments {
 
     static func store(_ html: String, for path: String, now: Date = Date()) {
         documents = documents.filter { now.timeIntervalSince($0.value.readAt) < lifetime }
-        if documents[path] == nil, documents.count >= limit,
-           let oldest = documents.min(by: { $0.value.readAt < $1.value.readAt })?.key {
+        documents[path] = nil
+        let size = html.utf8.count
+        guard size <= byteBudget else { return }
+        while documents.count >= limit
+                || documents.values.reduce(0, { $0 + $1.html.utf8.count }) + size > byteBudget,
+              let oldest = documents.min(by: { $0.value.readAt < $1.value.readAt })?.key {
             documents[oldest] = nil
         }
         documents[path] = (html, now)
@@ -300,7 +307,13 @@ enum HTMLPreviewHeights {
     static func height(for path: String) -> CGFloat? { heights[path] }
 
     static func store(_ height: CGFloat, for path: String) {
-        if heights[path] == nil, heights.count >= limit { heights.removeAll() }
+        if heights[path] == nil, heights.count >= limit {
+            // Drop half rather than all, as MarkupHeights does, so a long
+            // chat doesn't lose every reserved height at once.
+            for stale in Array(heights.keys.prefix(limit / 2)) {
+                heights[stale] = nil
+            }
+        }
         heights[path] = height
     }
 }
@@ -360,7 +373,10 @@ enum HTMLPreviewPage {
     /// The file's text from the dashboard's data URL, or nil when it isn't
     /// a readable text file of a sensible size.
     static func decodedDocument(fromDataURL dataURL: String) -> String? {
-        guard let data = DataURLLimits.decodeBase64DataURL(dataURL),
+        // Too large is told from the encoded length, before decoding.
+        guard let comma = dataURL.firstIndex(of: ","),
+              dataURL[dataURL.index(after: comma)...].utf8.count <= ((maximumDocumentBytes + 2) / 3) * 4,
+              let data = DataURLLimits.decodeBase64DataURL(dataURL),
               data.count <= maximumDocumentBytes else { return nil }
         let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -420,7 +436,7 @@ enum HTMLPreviewPage {
     /// is cancelled, and one the user tapped opens in the browser.
     static func navigationDecision(url: URL?, isMainFrame: Bool, userTapped: Bool) -> (allow: Bool, openExternally: URL?) {
         let scheme = url?.scheme?.lowercased()
-        if url == nil || url?.absoluteString == "about:blank" || scheme == "about" && !isMainFrame {
+        if url == nil || url?.absoluteString == "about:blank" || (scheme == "about" && !isMainFrame) {
             return (true, nil)
         }
         if !isMainFrame, scheme == "https" || scheme == "http" || scheme == "data" || scheme == "blob" {

@@ -120,6 +120,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(HTMLPreviewPage.decodedDocument(fromDataURL: dataURL), html)
         XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: "data:text/html;base64,"))
         XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: "not a data url"))
+        let tooLarge = "data:text/html;base64," + Data(count: HTMLPreviewPage.maximumDocumentBytes + 3).base64EncodedString()
+        XCTAssertNil(HTMLPreviewPage.decodedDocument(fromDataURL: tooLarge))
     }
 
     func testHTMLPreview_InlineHeightIsBounded() {
@@ -156,5 +158,9 @@ extension MarkdownLargeDocumentTests {
         HTMLPreviewDocuments.store("<p>v1</p>", for: path, now: start)
         XCTAssertEqual(HTMLPreviewDocuments.document(for: path, now: start.addingTimeInterval(30)), "<p>v1</p>")
         XCTAssertNil(HTMLPreviewDocuments.document(for: path, now: start.addingTimeInterval(HTMLPreviewDocuments.lifetime + 1)))
+        // A file past the byte budget isn't kept at all.
+        let huge = String(repeating: "x", count: HTMLPreviewDocuments.byteBudget + 1)
+        HTMLPreviewDocuments.store(huge, for: path, now: start)
+        XCTAssertNil(HTMLPreviewDocuments.document(for: path, now: start))
     }
 }
