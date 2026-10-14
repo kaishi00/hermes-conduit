@@ -15,6 +15,12 @@ struct ProfilePickerSheet: View {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
     }
 
+    private var photosFootnote: String {
+        appState.profilePhotosLiveOnHermes
+            ? AppLocalization.string("Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too.")
+            : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device.")
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -24,7 +30,7 @@ struct ProfilePickerSheet: View {
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
                                  ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
-                                 : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device."))
+                                 : photosFootnote)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
@@ -63,6 +69,9 @@ struct ProfilePickerSheet: View {
                     .padding(16)
                 }
             }
+            // Photos are Hermes pictures: re-read them, since Desktop or
+            // another device may have changed one.
+            .task { await appState.reloadBotRoster() }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
@@ -93,6 +102,7 @@ private struct ProfilePickerRow: View {
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
     @State private var saveError: String?
+    @State private var isSavingPhoto = false
     private var isCurrent: Bool { profile == appState.activeProfile }
     /// One rule for both selection paths: the text column's button and the
     /// card-sized selection surface behind the row must agree on when a
@@ -113,13 +123,20 @@ private struct ProfilePickerRow: View {
                     } label: {
                 ZStack(alignment: .bottomTrailing) {
                     ProfileAvatarView(profile: profile, displayName: appState.profileDisplayName(profile), url: appState.profileAvatarURL(for: profile), size: 48)
+                        .overlay {
+                            if isSavingPhoto {
+                                ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
+                            }
+                        }
                     Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
                         .frame(width: 20, height: 20).background(Color.conduitAccent, in: Circle())
                         .overlay { Circle().strokeBorder(.background, lineWidth: 1) }
                 }
                     }
                     .buttonStyle(.plain)
+                    .disabled(isSavingPhoto)
                     .accessibilityLabel("Choose photo for \(appState.profileDisplayName(profile))")
+                    .accessibilityValue(isSavingPhoto ? AppLocalization.string("Saving…") : "")
                 }
             }
 
@@ -147,11 +164,12 @@ private struct ProfilePickerRow: View {
             if !isReordering, appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {
                     Haptics.warning()
-                    appState.removeProfileAvatar(for: profile)
+                    savePhoto(nil)
                 } label: {
                     Image(systemName: "trash").font(.caption.weight(.semibold)).frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
+                .disabled(isSavingPhoto)
                 .accessibilityLabel("Remove photo for \(appState.profileDisplayName(profile))")
             }
         }
@@ -191,13 +209,21 @@ private struct ProfilePickerRow: View {
         }
         .onChange(of: pickedImage) { _, newImage in
             guard let newImage else { return }
-            if let data = newImage.pngData() {
-                do {
-                    try appState.saveProfileAvatar(data, for: profile)
-                    saveError = nil
-                } catch { saveError = UserFacingError.message(for: error) }
-            }
             pickedImage = nil
+            savePhoto(newImage)
+        }
+    }
+
+    /// Nil removes the photo.
+    private func savePhoto(_ image: UIImage?) {
+        isSavingPhoto = true
+        saveError = nil
+        Task {
+            saveError = await appState.setProfilePhoto(image, for: profile)
+            isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
         }
     }
 

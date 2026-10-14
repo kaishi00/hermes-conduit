@@ -2,9 +2,11 @@
 //  ProfileAppearanceStore.swift
 //  Conduit
 //
-//  Profile presentation is deliberately device-local. Hermes owns the
-//  profile identifiers and configuration; a person's chosen label/photo must
-//  travel neither to the gateway nor between accounts.
+//  The profile label is device-local. A profile's photo lives on Hermes,
+//  in the profile's asset store (`profiles.get_asset` / `set_asset`, the
+//  same picture bots and Hermes Desktop use); this store keeps a mirror of
+//  it on disk so avatars draw at launch and offline. Only a gateway without
+//  that asset store keeps a photo on the device alone.
 //
 //  It is also scoped to one saved dashboard (#148). Every Hermes server has
 //  a profile called "default", so a label or photo keyed by profile name
@@ -27,6 +29,10 @@ final class ProfileAppearanceStore {
     static let legacyDefaultNameKey = "conduit.defaultProfileName.v1"
     static let legacyAvatarsKey = "conduit.profileAvatars.v1"
     static let defaultNamesKey = "conduit.defaultProfileNameByDashboard.v1"
+    /// Per dashboard, the profiles whose photo file is a copy of the Hermes
+    /// asset. A photo NOT listed was picked on this device before photos
+    /// moved to Hermes (or on a gateway without the asset store).
+    static let mirroredAvatarsKey = "conduit.profileAvatarsMirroredFromHermes.v1"
     /// The bucket for writes made while no dashboard is selected.
     private static let unscopedBucket = "unscoped"
 
@@ -100,14 +106,69 @@ final class ProfileAppearanceStore {
         let url = directory.appendingPathComponent(Self.fileName(for: profile), isDirectory: false)
         try jpeg.write(to: url, options: .atomic)
         ProfileAvatarImageCache.forget(url)
+        setMirrored(false, profile: profile, dashboardID: dashboardID)
         return url
     }
 
+    /// Stores the Hermes asset's bytes as the profile's photo. The bytes are
+    /// kept as they are (PNG, JPEG or WebP; ImageIO reads the content, not
+    /// the file extension), so a transparent picture stays transparent.
+    /// Unchanged bytes are not rewritten; `changed` says whether they were.
+    func saveMirroredAvatar(_ data: Data, for profile: String, dashboardID: UUID?) throws -> (url: URL, changed: Bool) {
+        guard UIImage(data: data) != nil else { throw ProfileAppearanceError.invalidImage }
+        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: true) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let url = directory.appendingPathComponent(Self.fileName(for: profile), isDirectory: false)
+        let changed = (try? Data(contentsOf: url)) != data
+        if changed {
+            try data.write(to: url, options: .atomic)
+            ProfileAvatarImageCache.forget(url)
+        }
+        setMirrored(true, profile: profile, dashboardID: dashboardID)
+        return (url, changed)
+    }
+
+    func isMirrored(_ profile: String, dashboardID: UUID?) -> Bool {
+        mirroredProfiles()[Self.bucket(dashboardID)]?.contains(profile) == true
+    }
+
+    /// The photo file's bytes, for moving a device-only photo to Hermes.
+    func avatarData(for profile: String, dashboardID: UUID?) -> Data? {
+        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else { return nil }
+        return try? Data(contentsOf: directory.appendingPathComponent(Self.fileName(for: profile)))
+    }
+
     func removeAvatar(for profile: String, dashboardID: UUID?) {
-        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else { return }
+        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else {
+            setMirrored(false, profile: profile, dashboardID: dashboardID)
+            return
+        }
         let url = directory.appendingPathComponent(Self.fileName(for: profile))
-        try? FileManager.default.removeItem(at: url)
+        // A copy that could not be deleted keeps its mark, so it is never
+        // mistaken for a device photo and uploaded back to Hermes.
+        if (try? FileManager.default.removeItem(at: url)) == nil,
+           FileManager.default.fileExists(atPath: url.path) { return }
+        setMirrored(false, profile: profile, dashboardID: dashboardID)
         ProfileAvatarImageCache.forget(url)
+    }
+
+    private func mirroredProfiles() -> [String: [String]] {
+        defaults.dictionary(forKey: Self.mirroredAvatarsKey) as? [String: [String]] ?? [:]
+    }
+
+    private func setMirrored(_ mirrored: Bool, profile: String, dashboardID: UUID?) {
+        var all = mirroredProfiles()
+        let bucket = Self.bucket(dashboardID)
+        var names = all[bucket] ?? []
+        guard names.contains(profile) != mirrored else { return }
+        if mirrored {
+            names.append(profile)
+        } else {
+            names.removeAll { $0 == profile }
+        }
+        all[bucket] = names.isEmpty ? nil : names
+        defaults.set(all, forKey: Self.mirroredAvatarsKey)
     }
 
     /// Remove Dashboard: its label and photos go with it.
@@ -115,6 +176,10 @@ final class ProfileAppearanceStore {
         var names = defaultNames()
         if names.removeValue(forKey: Self.bucket(dashboardID)) != nil {
             defaults.set(names, forKey: Self.defaultNamesKey)
+        }
+        var mirrored = mirroredProfiles()
+        if mirrored.removeValue(forKey: Self.bucket(dashboardID)) != nil {
+            defaults.set(mirrored, forKey: Self.mirroredAvatarsKey)
         }
         if let directory = avatarsDirectory(dashboardID: dashboardID, create: false) {
             try? FileManager.default.removeItem(at: directory)
@@ -242,6 +307,24 @@ final class ProfileAppearanceStore {
         while encoded.count % 4 != 0 { encoded.append("=") }
         guard let data = Data(base64Encoded: encoded), let name = String(data: data, encoding: .utf8), !name.isEmpty else { return nil }
         return name
+    }
+}
+
+/// What a roster refresh does about one profile's photo.
+enum ProfileAvatarSyncAction: Equatable {
+    /// Hermes has a picture: fetch it and keep the copy on disk.
+    case fetch
+    /// The photo on disk was picked on this device before photos moved to
+    /// Hermes: upload it, so the picture the person chose carries over.
+    case upload
+    /// The copy of a Hermes picture that was removed elsewhere: delete it.
+    case dropMirror
+    case keep
+
+    static func action(hermesHasAvatar: Bool, hasPhotoOnDevice: Bool, photoIsMirror: Bool) -> ProfileAvatarSyncAction {
+        if hermesHasAvatar { return .fetch }
+        guard hasPhotoOnDevice else { return .keep }
+        return photoIsMirror ? .dropMirror : .upload
     }
 }
 

@@ -15,6 +15,16 @@ it references that it doesn't inject itself (a view that owns a store and
 injects it, like KanbanView, satisfies its children; a view that reads an
 object and passes it on still needs it from above).
 
+Known limits, none of which occur in the app today:
+- Injections count for the whole content closure, not the branch they are
+  attached to: in `Group { Foo().environmentObject(x); Child() }` the
+  injection on Foo satisfies Child too.
+- Only structs declaring `View` are followed, so a UIViewControllerRepresentable
+  (or a type-erased AnyView) with environment needs is invisible.
+- An injection resolves through its head only: `.environmentObject(appState)`
+  or `.environmentObject(Store.shared)` count, `.environmentObject(model.appState)`
+  or one through a closure parameter doesn't (a false failure, never a miss).
+
 Usage: check-sheet-environment.py [--repo-root DIR]
 """
 
@@ -38,7 +48,7 @@ TYPE_REF = re.compile(r"\b([A-Z]\w*)\s*[.({<]")
 # (`.font(.body)`) and not an argument label (`rootPath:`).
 HELPER_REF = re.compile(r"(?<![.\w])([a-z]\w*)\b(?!\s*:)")
 VIEW_MEMBER = re.compile(
-    r"\b(?:var\s+(\w+)\s*:\s*some\s+View|func\s+(\w+)\s*(?:<[^>]*>)?\([^)]*\)\s*->\s*some\s+View)\s*\{")
+    r"\b(?:var\s+(\w+)\s*:\s*some\s+View|func\s+(\w+)\s*(?:<[^>]*>)?\([^{]*?\)\s*->\s*some\s+View)\s*\{")
 
 
 def strip_comments(text):
@@ -254,7 +264,8 @@ def find_problems(sources):
                 seen = set()
                 frontier = [content]
                 while frontier:
-                    names = set(HELPER_REF.findall(frontier.pop())) - seen - {"body"}
+                    chunk = re.sub(r"\bself\.", "", frontier.pop())
+                    names = set(HELPER_REF.findall(chunk)) - seen - {"body"}
                     seen |= names
                     for member in index.member_bodies(owner, names):
                         texts.append(member)

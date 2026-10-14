@@ -175,6 +175,34 @@ class SheetEnvironmentTests(unittest.TestCase):
         """)
         self.assertEqual(len(found), 1)
 
+    def test_self_qualified_helper_is_followed(self):
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) { self.helperSheet }
+            }
+            private var helperSheet: some View { Child() }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+
+    def test_helper_func_with_closure_typed_parameter_is_followed(self):
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) { makeSheet(action: {}) }
+            }
+            private func makeSheet(action: @escaping () -> Void) -> some View {
+                Child()
+            }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+
     def test_a_sibling_sheets_injection_does_not_satisfy_this_one(self):
         # `.font(.body)` names `body`; the parent's body (and the other
         # sheet's injection in it) must not be pulled in as a helper.
