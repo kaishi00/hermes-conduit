@@ -23,6 +23,9 @@ enum DashboardFileDownloadLimits {
     /// The largest gateway file the phone downloads. It streams to disk, so
     /// this bounds storage and waiting, not memory.
     static let maxBytes = 512 * 1024 * 1024
+    /// Inline audio plays from memory (`AVAudioPlayer(data:)`), so a clip
+    /// past this opens full screen instead.
+    static let maxInlineAudioBytes = 32 * 1024 * 1024
 }
 
 extension DashboardTicketBridge {

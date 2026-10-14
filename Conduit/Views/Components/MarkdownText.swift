@@ -1894,16 +1894,15 @@ private struct GatewayMediaFileCard: View {
     }
 
     /// The clip's bytes for inline playback, read or decoded off the main
-    /// actor.
+    /// actor. The player holds them in memory, so a clip over
+    /// `maxInlineAudioBytes` only opens full screen.
     private func loadAudio() async -> Data? {
         if let gatewayMediaFiles {
-            switch await gatewayMediaFiles.file(for: path) {
+            switch await gatewayMediaFiles.file(for: path, maxBytes: DashboardFileDownloadLimits.maxInlineAudioBytes) {
             case .downloaded(let download):
                 return await Task.detached(priority: .userInitiated) {
                     defer { MediaPreviewPresenter.removeDirectory(download.directory) }
-                    // Mapped, so a long recording isn't read into memory
-                    // whole; the mapping outlives the file's removal.
-                    return try? Data(contentsOf: download.file, options: .mappedIfSafe)
+                    return try? Data(contentsOf: download.file)
                 }.value
             case .tooLarge:
                 return nil

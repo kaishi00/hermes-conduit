@@ -25150,7 +25150,11 @@ final class AppState: ObservableObject {
     /// for opening (#569). `/api/fs/read-data-url` caps files at 16 MB on
     /// both ends, so larger ones stream from `/api/fs/download`, which
     /// resolves `path` and `profile` the same way.
-    func gatewayMediaFile(for path: String, profile: String) async -> GatewayMediaFileResult {
+    func gatewayMediaFile(
+        for path: String,
+        profile: String,
+        maxBytes: Int = DashboardFileDownloadLimits.maxBytes
+    ) async -> GatewayMediaFileResult {
         guard let dashboardTicketBridge,
               let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .unavailable }
         let endpoint = DashboardPath.withProfile("/api/fs/download?path=\(encodedPath)", profile: profile)
@@ -25158,7 +25162,7 @@ final class AppState: ObservableObject {
         // folders runs before this download lands there, not after.
         let root = MediaPreviewPresenter.shared.stagingDirectory
         do {
-            return .downloaded(try await dashboardTicketBridge.downloadFile(path: endpoint, filename: path, into: root))
+            return .downloaded(try await dashboardTicketBridge.downloadFile(path: endpoint, filename: path, into: root, maxBytes: maxBytes))
         } catch DashboardTicketBridgeError.oversizedResponse {
             return .tooLarge
         } catch {

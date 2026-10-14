@@ -40,9 +40,9 @@ final class GatewayMediaDataURLResolver {
     }
 
     /// The file itself on disk, for media too large for a data URL (#569).
-    func file(for path: String) async -> GatewayMediaFileResult {
+    func file(for path: String, maxBytes: Int = DashboardFileDownloadLimits.maxBytes) async -> GatewayMediaFileResult {
         guard let appState else { return .unavailable }
-        return await appState.gatewayMediaFile(for: path, profile: profile)
+        return await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
     }
 }
 
