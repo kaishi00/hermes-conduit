@@ -166,10 +166,17 @@ struct NotifierPluginUpdater {
         }
 
         // 3. The dashboard, for the plugin's routes.
-        guard let before = try? await request(NotifierPluginStatus.path, "GET", nil) else {
+        // Right after the gateway restart a read can fail once; ask again.
+        var fetched: [String: Any]?
+        for attempt in 0..<3 {
+            if let json = try? await request(NotifierPluginStatus.path, "GET", nil) {
+                fetched = json
+                break
+            }
             if Task.isCancelled { return .idle }
-            return .needsDashboardRestart(detail: nil)
+            if attempt < 2 { do { try await sleep(pollInterval) } catch { return .idle } }
         }
+        guard let before = fetched else { return .needsDashboardRestart(detail: nil) }
         let runtime = NotifierPluginStatus.runtime(from: before)
         // A plugin that predates the running-version report also predates
         // the restart route: the old code is still serving.

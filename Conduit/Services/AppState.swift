@@ -1362,6 +1362,9 @@ final class AppState: ObservableObject {
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.
     var automaticPairingAttempts: Set<String> = []
+    /// Bumped per plugin status request, so an older answer never lands
+    /// over a newer one.
+    var notifierPluginStatusGeneration = 0
     @Published private(set) var modelVisibility = ModelVisibility()
 
     // MARK: - UI state
@@ -17883,6 +17886,8 @@ final class AppState: ObservableObject {
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
+        notifierPluginStatusGeneration += 1
+        let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
         do {
@@ -17894,7 +17899,8 @@ final class AppState: ObservableObject {
         }
         // A bridge swapped mid-request belongs to another host, and a failed
         // request says nothing new: keep the last real answer.
-        guard bridge === dashboardTicketBridge, state != .unknown else { return }
+        guard bridge === dashboardTicketBridge, generation == notifierPluginStatusGeneration,
+              state != .unknown else { return }
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
         clearSettledNotifierPluginUpdateOutcome()

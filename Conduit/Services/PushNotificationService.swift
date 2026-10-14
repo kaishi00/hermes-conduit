@@ -1229,8 +1229,14 @@ final class PushNotificationService: ObservableObject {
         // "Updating" meanwhile.
         isPairing = true
         defer { isPairing = false }
+        // The relay the code is minted at is the one the host claims it at,
+        // even if a relay move lands meanwhile.
+        let relay = relayURL
         let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
-        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relayURL.absoluteString]
+        guard self.registration?.installationID == registration.installationID else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
         guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
