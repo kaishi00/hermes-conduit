@@ -391,6 +391,7 @@ extension MarkdownBlock {
         case .columns(let columns): return columns.joined(separator: "\n")
         case .math(let source): return source
         case .image(let url, let alt): return "\(alt) \(url)"
+        case .htmlPreview(let path): return path
         case .divider: return ""
         }
     }
