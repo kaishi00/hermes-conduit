@@ -144,8 +144,12 @@ extension AppState {
             automaticPairingAttempts.remove(attempt)
             return
         }
-        guard bridge === dashboardTicketBridge,
-              PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
+        // Reconnected or switched meanwhile: the next refresh checks again.
+        guard bridge === dashboardTicketBridge, activeProfile == profile else {
+            automaticPairingAttempts.remove(attempt)
+            return
+        }
+        guard PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
         do {
             try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
         } catch DashboardTicketBridgeError.notReady {
