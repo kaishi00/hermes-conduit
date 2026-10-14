@@ -22,6 +22,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
             HermesNativeCalls.shared.activate()
+            // Apple Health wakes Conduit when shared data changes, and a
+            // background refresh catches up.
+            AppState.registerHealthSyncTask()
+            if HealthSyncPreferences.load().isOn {
+                AppStateRuntimeRegistry.shared.appState.resumeHealthSyncAtLaunch()
+            }
             // Saved places, visits and significant moves relaunch Conduit
             // in the background: their monitors are set up again before
             // launch returns so the event that woke it arrives.

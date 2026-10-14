@@ -179,180 +179,180 @@
         }
       }
     },
-    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+    "NSHealthShareUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn du die Freigabe im Hintergrund einschaltest, teilt Conduit deinem eigenen Hermes-Server mit, wann du deine gespeicherten Orte erreichst oder verlässt und wo du bist, wenn dein Agent fragt, in der gewählten Genauigkeit. Nichts geht an Conduits Entwickler."
+            "value" : "Wenn du das Teilen von Health-Daten einschaltest, liest Conduit die von dir gewählten Kategorien und sendet sie direkt an deinen eigenen Hermes-Server, damit dein Agent Fragen zu deiner Gesundheit beantworten kann. Nichts davon geht an den Entwickler von Conduit."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "When you turn on background sharing, Conduit tells your own Hermes server when you arrive at or leave your saved places, and where you are when your agent asks, at the detail you choose. Nothing goes to Conduit's developer."
+            "value" : "When you turn on Health sharing, Conduit reads the categories you choose and sends them directly to your own Hermes server so your agent can answer questions about your health. Nothing goes to Conduit's developer."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cuando activas compartir en segundo plano, Conduit avisa a tu propio servidor de Hermes cuando llegas a tus lugares guardados o sales de ellos, y de dónde estás cuando tu agente lo pregunta, con el detalle que elijas. Nada va al desarrollador de Conduit."
+            "value" : "Cuando activas la opción de compartir datos de Salud, Conduit lee las categorías que elijas y las envía directamente a tu propio servidor Hermes para que tu agente pueda responder preguntas sobre tu salud. Nada se envía al desarrollador de Conduit."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand vous activez le partage en arrière-plan, Conduit indique à votre propre serveur Hermes quand vous arrivez à vos lieux enregistrés ou les quittez, et où vous êtes quand votre agent le demande, au niveau de détail choisi. Rien n'est envoyé au développeur de Conduit."
+            "value" : "Lorsque vous activez le partage Santé, Conduit lit les catégories que vous choisissez et les envoie directement à votre propre serveur Hermes pour que votre agent puisse répondre à des questions sur votre santé. Rien n'est envoyé au développeur de Conduit."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saat kamu menyalakan berbagi di latar belakang, Conduit memberi tahu server Hermes milikmu sendiri saat kamu tiba di atau pergi dari tempat tersimpanmu, dan di mana kamu berada saat agenmu bertanya, dengan tingkat detail pilihanmu. Tidak ada yang dikirim ke pengembang Conduit."
+            "value" : "Saat Anda menyalakan berbagi Kesehatan, Conduit membaca kategori yang Anda pilih dan mengirimkannya langsung ke server Hermes Anda sendiri agar agen Anda dapat menjawab pertanyaan tentang kesehatan Anda. Tidak ada yang dikirim ke developer Conduit."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando attivi la condivisione in background, Conduit comunica al tuo server Hermes quando arrivi ai tuoi luoghi salvati o li lasci, e dove ti trovi quando il tuo agente lo chiede, con il dettaglio che scegli. Nulla va allo sviluppatore di Conduit."
+            "value" : "Quando attivi la condivisione di Salute, Conduit legge le categorie che scegli e le invia direttamente al tuo server Hermes, così il tuo agente può rispondere a domande sulla tua salute. Nulla viene inviato allo sviluppatore di Conduit."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "バックグラウンドでの共有をオンにすると、保存した場所への到着や出発、そしてエージェントが尋ねたときの現在地を、選んだ詳細度でConduitがあなた自身のHermesサーバに伝えます。Conduitの開発者には何も送信されません。"
+            "value" : "ヘルスケアの共有をオンにすると、Conduitは選択したカテゴリを読み取り、エージェントがあなたの健康に関する質問に答えられるよう、あなた自身のHermesサーバに直接送信します。Conduitの開発者に送られることはありません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "백그라운드 공유를 켜면 Conduit가 저장된 장소에 도착하거나 떠날 때, 그리고 에이전트가 물을 때 현재 위치를 선택한 상세도로 사용자의 Hermes 서버에 알립니다. Conduit 개발자에게는 아무것도 전송되지 않습니다."
+            "value" : "건강 공유를 켜면 Conduit은 사용자가 선택한 카테고리를 읽고, 에이전트가 건강에 관한 질문에 답할 수 있도록 사용자의 Hermes 서버로 직접 보내요. Conduit 개발자에게는 아무것도 전송되지 않아요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gdy włączysz udostępnianie w tle, Conduit informuje twój własny serwer Hermes, kiedy przyjeżdżasz do zapisanych miejsc lub je opuszczasz oraz gdzie jesteś, gdy agent pyta, z wybraną dokładnością. Nic nie trafia do twórcy Conduit."
+            "value" : "Gdy włączysz udostępnianie danych z aplikacji Zdrowie, Conduit odczyta wybrane przez Ciebie kategorie i wyśle je bezpośrednio na Twój własny serwer Hermes, aby Twój agent mógł odpowiadać na pytania o Twoje zdrowie. Nic nie trafia do dewelopera Conduit."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando você ativa o compartilhamento em segundo plano, o Conduit informa ao seu próprio servidor Hermes quando você chega aos seus lugares salvos ou sai deles, e onde você está quando seu agente pergunta, no detalhe que você escolher. Nada vai para o desenvolvedor do Conduit."
+            "value" : "Quando você ativa o compartilhamento do app Saúde, o Conduit lê as categorias que você escolher e as envia diretamente para o seu próprio servidor Hermes para que seu agente possa responder perguntas sobre sua saúde. Nada é enviado ao desenvolvedor do Conduit."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Когда вы включаете передачу в фоне, Conduit сообщает вашему собственному серверу Hermes, когда вы прибываете в сохранённые места или покидаете их, а также где вы, когда агент спрашивает, с выбранной точностью. Разработчику Conduit ничего не передаётся."
+            "value" : "Когда вы включаете отправку данных «Здоровья», Conduit считывает выбранные вами категории и отправляет их напрямую на ваш собственный сервер Hermes, чтобы ваш агент мог отвечать на вопросы о вашем здоровье. Разработчику Conduit ничего не передаётся."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Arka planda paylaşımı açtığında Conduit, kayıtlı yerlerine vardığında veya oradan ayrıldığında ve ajanın sorduğunda nerede olduğunu, seçtiğin ayrıntı düzeyinde kendi Hermes sunucuna bildirir. Conduit'in geliştiricisine hiçbir şey gitmez."
+            "value" : "Sağlık paylaşımını açtığınızda Conduit seçtiğiniz kategorileri okur ve ajanınızın sağlığınızla ilgili soruları yanıtlayabilmesi için bunları doğrudan kendi Hermes sunucunuza gönderir. Conduit'in geliştiricisine hiçbir şey gitmez."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开启后台共享后，Conduit 会按你选择的详细程度，告诉你自己的 Hermes 服务器你何时到达或离开已保存的地点，以及智能体询问时你在哪里。不会向 Conduit 的开发者发送任何内容。"
+            "value" : "开启“健康”共享后，Conduit 会读取你选择的类别，并将其直接发送到你自己的 Hermes 服务器，让你的代理能够回答有关你健康状况的问题。任何数据都不会发送给 Conduit 的开发者。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開啟背景分享後，Conduit 會依你選擇的詳細程度，告訴你自己的 Hermes 伺服器你何時抵達或離開已儲存的地點，以及代理詢問時你在哪裡。不會傳送任何內容給 Conduit 的開發者。"
+            "value" : "開啟「健康」分享後，Conduit 會讀取你選擇的類別，並直接傳送到你自己的 Hermes 伺服器，讓你的代理能回答有關你健康狀況的問題。任何資料都不會傳送給 Conduit 的開發者。"
           }
         }
       }
     },
-    "NSLocationWhenInUseUsageDescription" : {
+    "NSHealthUpdateUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn du die Standortfreigabe einschaltest, sendet Conduit deinen Standort an deinen eigenen Hermes-Server, wenn du eine Nachricht sendest oder mit Hermes sprichst, damit dein Agent Fragen dazu beantworten kann, wo du bist. Nichts geht an Conduits Entwickler."
+            "value" : "Conduit schreibt nie in Apple Health. Es liest nur die Kategorien, die du mit deinem Hermes-Server teilen möchtest."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "When you turn on location sharing, Conduit sends your location to your own Hermes server as you send a message or talk to Hermes, so your agent can answer questions about where you are. Nothing goes to Conduit's developer."
+            "value" : "Conduit never writes to Apple Health. It only reads the categories you choose to share with your Hermes server."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cuando activas compartir la ubicación, Conduit envía tu ubicación a tu propio servidor de Hermes al enviar un mensaje o hablar con Hermes, para que tu agente pueda responder preguntas sobre dónde estás. Nada va al desarrollador de Conduit."
+            "value" : "Conduit nunca escribe en Salud. Solo lee las categorías que elijas compartir con tu servidor Hermes."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand vous activez le partage de la position, Conduit envoie votre position à votre propre serveur Hermes lorsque vous envoyez un message ou parlez à Hermes, pour que votre agent puisse répondre aux questions sur l'endroit où vous êtes. Rien n'est envoyé au développeur de Conduit."
+            "value" : "Conduit n'écrit jamais dans Santé. Il lit uniquement les catégories que vous choisissez de partager avec votre serveur Hermes."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saat kamu menyalakan berbagi lokasi, Conduit mengirim lokasimu ke server Hermes milikmu sendiri saat kamu mengirim pesan atau berbicara dengan Hermes, agar agenmu dapat menjawab pertanyaan tentang di mana kamu berada. Tidak ada yang dikirim ke pengembang Conduit."
+            "value" : "Conduit tidak pernah menulis ke Kesehatan. Conduit hanya membaca kategori yang Anda pilih untuk dibagikan dengan server Hermes Anda."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando attivi la condivisione della posizione, Conduit invia la tua posizione al tuo server Hermes quando invii un messaggio o parli con Hermes, così il tuo agente può rispondere a domande su dove ti trovi. Nulla va allo sviluppatore di Conduit."
+            "value" : "Conduit non scrive mai in Salute. Legge solo le categorie che scegli di condividere con il tuo server Hermes."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "位置情報の共有をオンにすると、メッセージを送信したりHermesと話したりするときに、Conduitがあなた自身のHermesサーバへ位置情報を送信し、エージェントが現在地に関する質問に答えられるようになります。Conduitの開発者には何も送信されません。"
+            "value" : "Conduitがヘルスケアにデータを書き込むことはありません。Hermesサーバと共有するために選択したカテゴリを読み取るだけです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "위치 공유를 켜면 메시지를 보내거나 Hermes와 대화할 때 Conduit가 사용자의 Hermes 서버로 위치를 보내, 에이전트가 사용자의 위치에 관한 질문에 답할 수 있게 합니다. Conduit 개발자에게는 아무것도 전송되지 않습니다."
+            "value" : "Conduit은 Apple 건강에 데이터를 기록하지 않아요. Hermes 서버와 공유하도록 선택한 카테고리만 읽어요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gdy włączysz udostępnianie lokalizacji, Conduit wysyła twoją lokalizację na twój własny serwer Hermes, gdy wysyłasz wiadomość lub rozmawiasz z Hermesem, aby agent mógł odpowiadać na pytania o to, gdzie jesteś. Nic nie trafia do twórcy Conduit."
+            "value" : "Conduit nigdy nie zapisuje danych w aplikacji Zdrowie. Odczytuje tylko kategorie, które zdecydujesz się udostępnić swojemu serwerowi Hermes."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando você ativa o compartilhamento de localização, o Conduit envia sua localização ao seu próprio servidor Hermes ao enviar uma mensagem ou falar com o Hermes, para que seu agente possa responder perguntas sobre onde você está. Nada vai para o desenvolvedor do Conduit."
+            "value" : "O Conduit nunca grava dados no app Saúde. Ele apenas lê as categorias que você escolher compartilhar com o seu servidor Hermes."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Когда вы включаете передачу геопозиции, Conduit отправляет её на ваш собственный сервер Hermes, когда вы отправляете сообщение или говорите с Hermes, чтобы агент мог отвечать на вопросы о том, где вы. Разработчику Conduit ничего не передаётся."
+            "value" : "Conduit никогда не записывает данные в «Здоровье». Он только считывает категории, которыми вы решили поделиться со своим сервером Hermes."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Konum paylaşımını açtığında Conduit, mesaj gönderdiğinde veya Hermes ile konuştuğunda konumunu kendi Hermes sunucuna gönderir; böylece ajanın nerede olduğunla ilgili soruları yanıtlayabilir. Conduit'in geliştiricisine hiçbir şey gitmez."
+            "value" : "Conduit, Apple Sağlık'a hiçbir zaman veri yazmaz. Yalnızca Hermes sunucunuzla paylaşmayı seçtiğiniz kategorileri okur."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开启位置共享后，当你发送消息或与 Hermes 交谈时，Conduit 会将你的位置发送到你自己的 Hermes 服务器，让你的智能体能回答与你所在位置有关的问题。不会向 Conduit 的开发者发送任何内容。"
+            "value" : "Conduit 绝不会向“健康”写入数据。它只会读取你选择与 Hermes 服务器共享的类别。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開啟位置分享後，當你傳送訊息或與 Hermes 交談時，Conduit 會將你的位置傳送到你自己的 Hermes 伺服器，讓你的代理能回答與你所在位置有關的問題。不會傳送任何內容給 Conduit 的開發者。"
+            "value" : "Conduit 絕不會寫入「健康」。它只會讀取你選擇與 Hermes 伺服器分享的類別。"
           }
         }
       }
@@ -620,6 +620,184 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "當你選擇「在這部 iPhone 上」時，Conduit 會使用裝置上的 Apple 語音辨識，將你的語音轉換為文字。"
+          }
+        }
+      }
+    },
+    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du die Freigabe im Hintergrund einschaltest, teilt Conduit deinem eigenen Hermes-Server mit, wann du deine gespeicherten Orte erreichst oder verlässt und wo du bist, wenn dein Agent fragt, in der gewählten Genauigkeit. Nichts geht an Conduits Entwickler."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you turn on background sharing, Conduit tells your own Hermes server when you arrive at or leave your saved places, and where you are when your agent asks, at the detail you choose. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando activas compartir en segundo plano, Conduit avisa a tu propio servidor de Hermes cuando llegas a tus lugares guardados o sales de ellos, y de dónde estás cuando tu agente lo pregunta, con el detalle que elijas. Nada va al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand vous activez le partage en arrière-plan, Conduit indique à votre propre serveur Hermes quand vous arrivez à vos lieux enregistrés ou les quittez, et où vous êtes quand votre agent le demande, au niveau de détail choisi. Rien n'est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat kamu menyalakan berbagi di latar belakang, Conduit memberi tahu server Hermes milikmu sendiri saat kamu tiba di atau pergi dari tempat tersimpanmu, dan di mana kamu berada saat agenmu bertanya, dengan tingkat detail pilihanmu. Tidak ada yang dikirim ke pengembang Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando attivi la condivisione in background, Conduit comunica al tuo server Hermes quando arrivi ai tuoi luoghi salvati o li lasci, e dove ti trovi quando il tuo agente lo chiede, con il dettaglio che scegli. Nulla va allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドでの共有をオンにすると、保存した場所への到着や出発、そしてエージェントが尋ねたときの現在地を、選んだ詳細度でConduitがあなた自身のHermesサーバに伝えます。Conduitの開発者には何も送信されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "백그라운드 공유를 켜면 Conduit가 저장된 장소에 도착하거나 떠날 때, 그리고 에이전트가 물을 때 현재 위치를 선택한 상세도로 사용자의 Hermes 서버에 알립니다. Conduit 개발자에게는 아무것도 전송되지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy włączysz udostępnianie w tle, Conduit informuje twój własny serwer Hermes, kiedy przyjeżdżasz do zapisanych miejsc lub je opuszczasz oraz gdzie jesteś, gdy agent pyta, z wybraną dokładnością. Nic nie trafia do twórcy Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando você ativa o compartilhamento em segundo plano, o Conduit informa ao seu próprio servidor Hermes quando você chega aos seus lugares salvos ou sai deles, e onde você está quando seu agente pergunta, no detalhe que você escolher. Nada vai para o desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда вы включаете передачу в фоне, Conduit сообщает вашему собственному серверу Hermes, когда вы прибываете в сохранённые места или покидаете их, а также где вы, когда агент спрашивает, с выбранной точностью. Разработчику Conduit ничего не передаётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arka planda paylaşımı açtığında Conduit, kayıtlı yerlerine vardığında veya oradan ayrıldığında ve ajanın sorduğunda nerede olduğunu, seçtiğin ayrıntı düzeyinde kendi Hermes sunucuna bildirir. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启后台共享后，Conduit 会按你选择的详细程度，告诉你自己的 Hermes 服务器你何时到达或离开已保存的地点，以及智能体询问时你在哪里。不会向 Conduit 的开发者发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟背景分享後，Conduit 會依你選擇的詳細程度，告訴你自己的 Hermes 伺服器你何時抵達或離開已儲存的地點，以及代理詢問時你在哪裡。不會傳送任何內容給 Conduit 的開發者。"
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du die Standortfreigabe einschaltest, sendet Conduit deinen Standort an deinen eigenen Hermes-Server, wenn du eine Nachricht sendest oder mit Hermes sprichst, damit dein Agent Fragen dazu beantworten kann, wo du bist. Nichts geht an Conduits Entwickler."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you turn on location sharing, Conduit sends your location to your own Hermes server as you send a message or talk to Hermes, so your agent can answer questions about where you are. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando activas compartir la ubicación, Conduit envía tu ubicación a tu propio servidor de Hermes al enviar un mensaje o hablar con Hermes, para que tu agente pueda responder preguntas sobre dónde estás. Nada va al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand vous activez le partage de la position, Conduit envoie votre position à votre propre serveur Hermes lorsque vous envoyez un message ou parlez à Hermes, pour que votre agent puisse répondre aux questions sur l'endroit où vous êtes. Rien n'est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat kamu menyalakan berbagi lokasi, Conduit mengirim lokasimu ke server Hermes milikmu sendiri saat kamu mengirim pesan atau berbicara dengan Hermes, agar agenmu dapat menjawab pertanyaan tentang di mana kamu berada. Tidak ada yang dikirim ke pengembang Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando attivi la condivisione della posizione, Conduit invia la tua posizione al tuo server Hermes quando invii un messaggio o parli con Hermes, così il tuo agente può rispondere a domande su dove ti trovi. Nulla va allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報の共有をオンにすると、メッセージを送信したりHermesと話したりするときに、Conduitがあなた自身のHermesサーバへ位置情報を送信し、エージェントが現在地に関する質問に答えられるようになります。Conduitの開発者には何も送信されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "위치 공유를 켜면 메시지를 보내거나 Hermes와 대화할 때 Conduit가 사용자의 Hermes 서버로 위치를 보내, 에이전트가 사용자의 위치에 관한 질문에 답할 수 있게 합니다. Conduit 개발자에게는 아무것도 전송되지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy włączysz udostępnianie lokalizacji, Conduit wysyła twoją lokalizację na twój własny serwer Hermes, gdy wysyłasz wiadomość lub rozmawiasz z Hermesem, aby agent mógł odpowiadać na pytania o to, gdzie jesteś. Nic nie trafia do twórcy Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando você ativa o compartilhamento de localização, o Conduit envia sua localização ao seu próprio servidor Hermes ao enviar uma mensagem ou falar com o Hermes, para que seu agente possa responder perguntas sobre onde você está. Nada vai para o desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда вы включаете передачу геопозиции, Conduit отправляет её на ваш собственный сервер Hermes, когда вы отправляете сообщение или говорите с Hermes, чтобы агент мог отвечать на вопросы о том, где вы. Разработчику Conduit ничего не передаётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konum paylaşımını açtığında Conduit, mesaj gönderdiğinde veya Hermes ile konuştuğunda konumunu kendi Hermes sunucuna gönderir; böylece ajanın nerede olduğunla ilgili soruları yanıtlayabilir. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启位置共享后，当你发送消息或与 Hermes 交谈时，Conduit 会将你的位置发送到你自己的 Hermes 服务器，让你的智能体能回答与你所在位置有关的问题。不会向 Conduit 的开发者发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟位置分享後，當你傳送訊息或與 Hermes 交談時，Conduit 會將你的位置傳送到你自己的 Hermes 伺服器，讓你的代理能回答與你所在位置有關的問題。不會傳送任何內容給 Conduit 的開發者。"
           }
         }
       }

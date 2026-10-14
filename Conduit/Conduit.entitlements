@@ -4,6 +4,12 @@
 <dict>
     <key>com.apple.developer.carplay-voice-based-conversation</key>
     <true/>
+    <key>com.apple.developer.healthkit</key>
+    <true/>
+    <key>com.apple.developer.healthkit.access</key>
+    <array/>
+    <key>com.apple.developer.healthkit.background-delivery</key>
+    <true/>
     <key>com.apple.developer.location.push</key>
     <true/>
     <key>aps-environment</key>

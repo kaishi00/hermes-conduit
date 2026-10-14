@@ -435,12 +435,13 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, location, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, health, location, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
         case .calls: self = .hermesCalls
         case .voice: self = .voice
+        case .health: self = .health
         case .location: self = .location
         }
     }
@@ -780,6 +781,8 @@ struct SettingsView: View {
                 }
             )
                 .navigationTitle("Calls from Hermes")
+        case .health:
+            HealthSettingsPage(engine: appState.healthSync)
         case .location:
             LocationSettingsPage(controller: LocationSharingController.shared, engine: LocationSharingController.shared.engine)
         case .screenQuestion:
@@ -886,6 +889,9 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("On this device"), tint: .conduitAccent) {
                         settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+                        if appState.showsHealthSettings {
+                            settingsLink(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health")
+                        }
                         if appState.showsLocationSettings {
                             settingsLink(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location")
                         }
