@@ -1239,6 +1239,11 @@ final class PushNotificationService: ObservableObject {
         }
         let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
+        // Notifications turned off or moved meanwhile: that installation is
+        // gone, so its pairing is nothing to confirm or refresh.
+        guard self.registration?.installationID == registration.installationID else {
+            throw DashboardTicketBridgeError.notReady
+        }
         guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
         }

@@ -1362,9 +1362,11 @@ final class AppState: ObservableObject {
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.
     var automaticPairingAttempts: Set<String> = []
-    /// Bumped per plugin status request, so an older answer never lands
-    /// over a newer one.
+    /// Bumped per plugin status request; the accepted one is the newest
+    /// request whose answer landed, so an older answer never lands over a
+    /// newer one, but still lands when a newer request failed.
     var notifierPluginStatusGeneration = 0
+    var notifierPluginStatusAcceptedGeneration = 0
     @Published private(set) var modelVisibility = ModelVisibility()
 
     // MARK: - UI state
@@ -17899,8 +17901,9 @@ final class AppState: ObservableObject {
         }
         // A bridge swapped mid-request belongs to another host, and a failed
         // request says nothing new: keep the last real answer.
-        guard bridge === dashboardTicketBridge, generation == notifierPluginStatusGeneration,
+        guard bridge === dashboardTicketBridge, generation > notifierPluginStatusAcceptedGeneration,
               state != .unknown else { return }
+        notifierPluginStatusAcceptedGeneration = generation
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
         clearSettledNotifierPluginUpdateOutcome()
