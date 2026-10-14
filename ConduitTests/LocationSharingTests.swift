@@ -520,7 +520,9 @@ extension NotificationE2ETests {
         }
         var config = LocationFixtures.config()
         let keys = LocationKeyStore.memory()
-        let old = LocationCrypto.SessionKey(kid: "old", key: Data(count: 32), deviceID: config.deviceID)
+        // Agreed after maps, before voice reads: only voice needs a new key here.
+        let old = LocationCrypto.SessionKey(kid: "old", key: Data(count: 32), deviceID: config.deviceID,
+                                            mapsRequestKey: Data(count: 32), mapsAnswerKey: Data(count: 32))
         XCTAssertTrue(keys.save(old))
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
         let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
@@ -673,5 +675,241 @@ extension NotificationE2ETests {
         settings.avoidUnknownPlace = true
         XCTAssertEqual(settings.payload["avoid_places"] as? [String], ["p_home", "p_work"])
         XCTAssertEqual(settings.payload["avoid_unknown_place"] as? Bool, true)
+    }
+
+    // MARK: Maps (designs/maps-v1-contract.md)
+
+    func testLocationMapsSealingMatchesTheVector() throws {
+        // The "maps" vector, shared with the notifier's location store.
+        let devicePrivate = try Curve25519.KeyAgreement.PrivateKey(
+            rawRepresentation: XCTUnwrap(NotificationE2E.base64URLDecoded(LocationVector.devicePrivate))
+        )
+        let key = try LocationCrypto.agree(devicePrivate: devicePrivate, deviceID: LocationVector.deviceID,
+                                           hostPublicKey: LocationVector.hostPublic, kid: LocationVector.kid)
+        XCTAssertTrue(key.answersMaps)
+        XCTAssertEqual(key.mapsRequestKey?.map { String(format: "%02x", $0) }.joined(),
+                       "b56fa57113c019f2b8d9350fb751e9df8202ecc297577700df829f70dcb51c02")
+        XCTAssertEqual(key.mapsAnswerKey?.map { String(format: "%02x", $0) }.joined(),
+                       "ae7dd388abc512517a706da57dc4908c316adbdcde58e78de7b4447901f7b71c")
+        let id = "m_vector0123456789abcd"
+        XCTAssertEqual(
+            String(decoding: LocationCrypto.mapsAAD(direction: "maps-request", kid: key.kid, deviceID: key.deviceID, id: id), as: UTF8.self),
+            "conduit-location/1\nmaps-request\nkid=\(LocationVector.kid)\ndev=device-vector-1\nid=\(id)"
+        )
+
+        let sealed: [String: Any] = [
+            "ok": true, "v": 1, "nonce": "AAAAAAAAAAAAAAAA",
+            "ct": "3KzdgIkgGzXth_u6OLG69KJdOHs-ZpQ1zZiDXxDHK9uZ0AtkxMhgmNkhL41iwDnHpQXzGDbN22lEZecj-9nl0soF3qC-4eEsiWmQZe-P4WbV9--vJ3krWoZX9yXm9RYEbvtTeAwlewwfp9yGDQleQaQJVr149SEGWfbr-P0j7qze",
+        ]
+        let body = try LocationCrypto.openMapsRequest(sealed, key: key, id: id)
+        XCTAssertEqual(body["id"] as? String, id)
+        XCTAssertThrowsError(try LocationCrypto.openMapsRequest(sealed, key: key, id: "m_another0123456789abc"),
+                             "A request is bound to its id")
+        guard case .success(let request) = MapsRequest.parse(body) else { return XCTFail("The vector's request parses") }
+        XCTAssertEqual(request.action, .search)
+        XCTAssertEqual(request.query, "pharmacy")
+        XCTAssertEqual(request.near, .me)
+        XCTAssertEqual(request.limit, 3)
+        XCTAssertEqual(request.detail, .area)
+        XCTAssertTrue(request.usesMe)
+
+        let plaintext = MapsAnswer.failure(MapsFailure(code: "paused", note: "x")).plaintext(id: id)
+        XCTAssertEqual(String(decoding: plaintext, as: UTF8.self), #"{"error":"paused","id":"m_vector0123456789abcd","note":"x","ok":false}"#)
+        let answer = try LocationCrypto.mapsAnswer(plaintext: plaintext, key: key, id: id, nonce: ChaChaPoly.Nonce(data: Data(count: 12)))
+        XCTAssertEqual(answer["ct"] as? String,
+                       "yzg2DSNRs2O4KP-JqCiLxMOu8K8CJxxAedJ7XQZOXPKq6QkWnaDPHRwIucRhLCk52UiCzk_wayZV9utToCcaOzy2na1WTgGCDfBCPTvIe-HYvYTYfhY")
+        XCTAssertEqual(answer["device_id"] as? String, LocationVector.deviceID)
+        XCTAssertEqual(answer["kid"] as? String, LocationVector.kid)
+        XCTAssertEqual(answer["v"] as? Int, 1)
+
+        // A key from before maps opens and seals nothing.
+        let old = LocationCrypto.SessionKey(kid: "k", key: Data(count: 32), deviceID: LocationVector.deviceID)
+        XCTAssertFalse(old.answersMaps)
+        XCTAssertThrowsError(try LocationCrypto.openMapsRequest(sealed, key: old, id: id)) { error in
+            XCTAssertEqual(error as? LocationCrypto.MapsFailure, .noMapsKey)
+        }
+    }
+
+    func testAMapsPushIsTakenOnlyWithAValidIDAndAPlainOneIsRefused() throws {
+        XCTAssertTrue(LocationLocateRequest.isMapsID("m_0123456789abcdefgh"))
+        XCTAssertFalse(LocationLocateRequest.isMapsID("m_short"))
+        XCTAssertFalse(LocationLocateRequest.isMapsID("l_0123456789abcdefgh"))
+        XCTAssertFalse(LocationLocateRequest.isMapsID("m_0123456789abcdef/../x"))
+        // The request id rides only inside a sealed envelope.
+        let payload: [AnyHashable: Any] = [
+            "aps": [String: Any](),
+            "conduit": [
+                "type": "location.requested", "profile": "coder", "gateway_id": "gw-1",
+                "dashboard_id": LocationFixtures.dashboardID.uuidString,
+                "maps": ["id": "m_0123456789abcdefgh"],
+            ] as [String: Any],
+        ]
+        XCTAssertNil(LocationLocateRequest.parse(payload, records: [], knownGatewayIDs: [], keysProvisioned: false))
+
+        let request = LocationLocateRequest(id: "m_0123456789abcdefgh", profile: "coder", gatewayID: "gw-1",
+                                            dashboardID: LocationFixtures.dashboardID, replayKey: "k", kind: .maps)
+        let now = LocationFixtures.at
+        XCTAssertTrue(request.isForBinding(of: LocationFixtures.config()))
+        // Paused or off still reaches the binding check: the host hears "paused".
+        XCTAssertTrue(request.isForBinding(of: LocationFixtures.config(background: false, pausedUntil: now.addingTimeInterval(60))))
+        var otherProfile = LocationFixtures.config()
+        otherProfile.binding?.profile = "default"
+        XCTAssertFalse(request.isForBinding(of: otherProfile))
+    }
+
+    func testMapsRequestsTakeTheContractDefaultsAndRefuseWhatTheyCantRun() throws {
+        func parse(_ json: [String: Any]) -> MapsRequest? {
+            if case .success(let request) = MapsRequest.parse(json) { return request }
+            return nil
+        }
+        let directions = try XCTUnwrap(parse(["id": "m_1", "action": "directions", "to": ["text": "Heathrow T5"],
+                                              "mode": "transit", "arrive_by": "2026-10-15T07:40:00+01:00", "depart_at": NSNull()]))
+        XCTAssertEqual(directions.from, .me, "from defaults to me")
+        XCTAssertEqual(directions.to, [.text("Heathrow T5")])
+        XCTAssertEqual(directions.mode, .transit)
+        XCTAssertEqual(directions.arriveBy, Date(timeIntervalSince1970: 1_792_046_400))
+        XCTAssertNil(directions.near)
+
+        let lookup = try XCTUnwrap(parse(["id": "m_2", "action": "lookup", "query": "Boots\u{0007} Oxford St\n"]))
+        XCTAssertNil(lookup.near, "a lookup doesn't use me unless asked")
+        XCTAssertFalse(lookup.usesMe)
+        XCTAssertEqual(lookup.query, "Boots  Oxford St", "control characters are dropped")
+
+        let times = try XCTUnwrap(parse(["id": "m_3", "action": "travel_times", "from": ["saved": "p_home"],
+                                         "to": [["lat": 51.5, "lon": -0.12], ["place_id": "I1234"], ["me": true]] as [[String: Any]]]))
+        XCTAssertEqual(times.from, .saved("p_home"))
+        XCTAssertEqual(times.to, [.coordinate(latitude: 51.5, longitude: -0.12), .placeID("I1234"), .me])
+        XCTAssertTrue(times.usesMe)
+
+        let search = try XCTUnwrap(parse(["id": "m_4", "action": "search", "query": "pharmacy", "limit": 99]))
+        XCTAssertEqual(search.near, .me)
+        XCTAssertEqual(search.limit, 25)
+
+        XCTAssertNil(parse(["id": "m_5", "action": "search"]), "search needs a query")
+        XCTAssertNil(parse(["id": "m_6", "action": "directions", "to": [["text": "A"], ["text": "B"]]]), "one destination")
+        XCTAssertNil(parse(["id": "m_7", "action": "travel_times", "to": Array(repeating: ["text": "A"], count: 11)]))
+        XCTAssertNil(parse(["id": "m_8", "action": "navigate"]))
+        XCTAssertNil(parse(["id": "m_9", "action": "directions", "to": ["lat": 91, "lon": 0]]))
+        XCTAssertNil(parse(["id": "m_10", "action": "directions", "to": ["text": "A"], "mode": "flying"]))
+    }
+
+    func testAMapsAnswerStaysUnderSixtyFourKilobytes() throws {
+        let step: [String: Any] = ["text": String(repeating: "Turn left onto High Street ", count: 7), "distance_m": 400]
+        let route: [String: Any] = ["name": "A40", "duration_s": 1520, "distance_m": 18400,
+                                    "steps": Array(repeating: step, count: 60)]
+        let routes = MapsAnswer.result(["routes": Array(repeating: route, count: 10)]).plaintext(id: "m_1")
+        XCTAssertLessThanOrEqual(routes.count, MapsAnswer.maximumBytes)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: routes) as? [String: Any])
+        XCTAssertEqual(object["ok"] as? Bool, true)
+
+        let place: [String: Any] = ["name": String(repeating: "Boots ", count: 20), "address": String(repeating: "x", count: 300)]
+        let places = MapsAnswer.result(["places": Array(repeating: place, count: 400)]).plaintext(id: "m_1")
+        XCTAssertLessThanOrEqual(places.count, MapsAnswer.maximumBytes)
+        let listed = try XCTUnwrap((JSONSerialization.jsonObject(with: places) as? [String: Any])?["result"] as? [String: Any])
+        XCTAssertFalse((listed["places"] as? [Any] ?? []).isEmpty)
+    }
+
+    func testTheVoiceMapsToolReadsPlacesAsTheModelSaysThem() throws {
+        let places = [LocationFixtures.home, LocationFixtures.work]
+        XCTAssertEqual(MapsVoiceTool.ref("me", places: places), .me)
+        XCTAssertEqual(MapsVoiceTool.ref(" home ", places: places), .saved("p_home"))
+        XCTAssertEqual(MapsVoiceTool.ref("51.5, -0.12", places: places), .coordinate(latitude: 51.5, longitude: -0.12))
+        XCTAssertEqual(MapsVoiceTool.ref("place_id:I1234", places: places), .placeID("I1234"))
+        XCTAssertEqual(MapsVoiceTool.ref("12 High St, London", places: places), .text("12 High St, London"))
+        XCTAssertEqual(MapsVoiceTool.destinations(#"["Home", "12 High St, London"]"#), ["Home", "12 High St, London"])
+        XCTAssertEqual(MapsVoiceTool.destinations("12 High St, London"), ["12 High St, London"], "an address's commas don't split it")
+        XCTAssertEqual(MapsVoiceTool.destinations(["Home", "Work"]), ["Home", "Work"])
+
+        // GPT-Live sends `to` as a real list; Gemini and Grok as text.
+        let to = try XCTUnwrap(MapsVoiceTool.tool.arguments(from: ["action": "travel_times", "to": ["Home", "Work"]])["to"] as? [String])
+        XCTAssertEqual(to, ["Home", "Work"])
+        XCTAssertEqual(MapsVoiceTool.tool.arguments(from: ["to": "Home"])["to"] as? String, "Home")
+
+        // Without location consent nothing defaults to me, and me or a saved place is refused.
+        guard case .success(let anywhere) = MapsVoiceTool.makeRequest(
+            action: .search, arguments: ["query": "pharmacy"], places: places, meByDefault: false) else { return XCTFail() }
+        XCTAssertNil(anywhere.near)
+        XCTAssertFalse(MapsVoiceTool.usesLocation(anywhere))
+        guard case .success(let home) = MapsVoiceTool.makeRequest(
+            action: .directions, arguments: ["from": "Heathrow", "to": "Home"], places: places, meByDefault: false) else { return XCTFail() }
+        XCTAssertTrue(MapsVoiceTool.usesLocation(home))
+        guard case .success(let between) = MapsVoiceTool.makeRequest(
+            action: .directions, arguments: ["from": "Heathrow", "to": "Paddington"], places: places, meByDefault: false) else { return XCTFail() }
+        XCTAssertFalse(MapsVoiceTool.usesLocation(between))
+        if case .success = MapsVoiceTool.makeRequest(action: .reverseGeocode, arguments: [:], places: places, meByDefault: false) {
+            XCTFail("Reverse geocoding needs a place or the user's position")
+        }
+    }
+
+    func testEveryIngestSaysThePhoneAnswersMapsAndWhetherTheHostMayToo() throws {
+        var settings = LocationSharingSettings()
+        settings.background = true
+        XCTAssertTrue(settings.mapsHost, "the host may look up maps unless the user keeps them on the iPhone")
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: settings)
+        var sharing = try XCTUnwrap(batch.json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["features"] as? [String], ["maps"])
+        XCTAssertEqual(sharing["maps_host"] as? Bool, true)
+        settings.mapsHost = false
+        sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["maps_host"] as? Bool, false)
+        // Saved before the switch existed: the host may.
+        let old = try JSONDecoder().decode(LocationSharingSettings.self, from: Data(#"{"talking": true}"#.utf8))
+        XCTAssertTrue(old.mapsHost)
+        XCTAssertFalse(try JSONDecoder().decode(LocationSharingSettings.self, from: JSONEncoder().encode(settings)).mapsHost)
+
+        // A key from before maps can't open a request: the host isn't told.
+        func sealedSharing(_ key: LocationCrypto.SessionKey) throws -> [String: Any] {
+            let body = try LocationIngest.body(batch, key: key)
+            let nonce = try XCTUnwrap((body["nonce"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+            let sealed = try XCTUnwrap((body["ct"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+            let plaintext = try ChaChaPoly.open(ChaChaPoly.SealedBox(combined: nonce + sealed), using: SymmetricKey(data: key.key),
+                                                authenticating: LocationCrypto.aad(kid: key.kid, deviceID: key.deviceID, batchID: batch.batchID))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+            return try XCTUnwrap(json["sharing"] as? [String: Any])
+        }
+        let old32 = LocationCrypto.SessionKey(kid: "k", key: Data(count: 32), deviceID: "device-vector-1")
+        XCTAssertNil(try sealedSharing(old32)["features"])
+        var current = old32
+        current.mapsRequestKey = Data(count: 32)
+        current.mapsAnswerKey = Data(count: 32)
+        XCTAssertEqual(try sealedSharing(current)["features"] as? [String], ["maps"])
+    }
+
+    func testAKeyFromBeforeMapsIsSetUpAgainOnceWhileSharingInTheBackground() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
+        var keyRequests = 0
+        let request: LocationSyncEngine.Request = { path, _, body in
+            if path.hasSuffix("/key") {
+                keyRequests += 1
+                let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+                return [
+                    "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
+                    "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
+                ]
+            }
+            return ["ok": true]
+        }
+        let keys = LocationKeyStore.memory()
+        let talkingOnly = LocationFixtures.config(background: false, talking: true)
+        let old = LocationCrypto.SessionKey(kid: "old", key: Data(count: 32), deviceID: talkingOnly.deviceID)
+        XCTAssertTrue(keys.save(old))
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
+
+        // Only the talking layer: the host never asks this iPhone, the key stays.
+        _ = await engine.send(LocationBatch(sentAt: LocationFixtures.at, settings: talkingOnly.settings), config: talkingOnly, request: request)
+        XCTAssertEqual(keyRequests, 0)
+        XCTAssertEqual(keys.load(), old)
+
+        var background = talkingOnly
+        background.settings.background = true
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: background.settings)
+        let sent = await engine.send(batch, config: background, request: request)
+        XCTAssertEqual(sent, .sent)
+        XCTAssertEqual(keyRequests, 1)
+        XCTAssertEqual(keys.load()?.answersMaps, true)
+        _ = await engine.send(batch, config: background, request: request)
+        XCTAssertEqual(keyRequests, 1)
     }
 }
