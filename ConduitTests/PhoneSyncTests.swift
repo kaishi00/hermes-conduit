@@ -134,6 +134,11 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(source.applied, ["ch_add", "ch_add2"])
         XCTAssertEqual(engine.state.unreported.map(\.id), ["ch_add2"], "Reported again next time")
+
+        // An added item counts as sent, so once it's gone from the phone
+        // (Undo, or deleted in Calendar) the next upload deletes it on the host.
+        let deletions = host.batches.compactMap { ($0["events"] as? [String: Any])?["delete"] as? [String] }.flatMap { $0 }
+        XCTAssertTrue(deletions.contains("item_ch_add2"))
     }
 
     func testPhoneChangeNeedsWhatItActsOn() {

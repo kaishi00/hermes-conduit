@@ -28,22 +28,26 @@ final class DevicePhoneStatusSource: PhoneStatusSource {
     private let motion = CMMotionActivityManager()
     private let pathMonitor = NWPathMonitor()
     private var network = "none"
+    private var monitoring = false
 
-    init() {
+    /// The network monitor starts with the first snapshot, so it runs only
+    /// for people who share phone status.
+    private func startMonitoring() {
+        guard !monitoring else { return }
+        monitoring = true
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            let kind: String
-            if path.status != .satisfied {
-                kind = "none"
-            } else if path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet) {
-                kind = "wifi"
-            } else if path.usesInterfaceType(.cellular) {
-                kind = "cellular"
-            } else {
-                kind = "wifi"
-            }
+            let kind = Self.kind(of: path)
             Task { @MainActor in self?.network = kind }
         }
         pathMonitor.start(queue: DispatchQueue(label: "conduit.phone-status.network"))
+        network = Self.kind(of: pathMonitor.currentPath)
+    }
+
+    nonisolated private static func kind(of path: NWPath) -> String {
+        if path.status != .satisfied { return "none" }
+        if path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet) { return "wifi" }
+        if path.usesInterfaceType(.cellular) { return "cellular" }
+        return "wifi"
     }
 
     deinit {
@@ -51,6 +55,7 @@ final class DevicePhoneStatusSource: PhoneStatusSource {
     }
 
     func snapshot() async -> [String: Any] {
+        startMonitoring()
         let device = UIDevice.current
         // On only for this read, then back to how it was.
         let wasMonitoring = device.isBatteryMonitoringEnabled

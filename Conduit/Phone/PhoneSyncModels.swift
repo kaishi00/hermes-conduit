@@ -310,11 +310,24 @@ struct PhoneFocusSnapshot: Codable, Equatable {
 /// ISO 8601 with the phone's local offset, as the host expects.
 enum PhoneDates {
     static func format(_ date: Date, timeZone: TimeZone = .current) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        formatter.timeZone = timeZone
-        return formatter.string(from: date)
+        formatter(for: timeZone).string(from: date)
     }
+
+    /// One formatter per time zone: a full sync formats thousands of dates.
+    /// ISO8601DateFormatter is thread-safe once configured.
+    private static func formatter(for timeZone: TimeZone) -> ISO8601DateFormatter {
+        formattersLock.withLock {
+            if let known = formatters[timeZone.identifier] { return known }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            formatter.timeZone = timeZone
+            formatters[timeZone.identifier] = formatter
+            return formatter
+        }
+    }
+
+    private static let formattersLock = NSLock()
+    nonisolated(unsafe) private static var formatters: [String: ISO8601DateFormatter] = [:]
 
     static func day(_ date: Date, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)

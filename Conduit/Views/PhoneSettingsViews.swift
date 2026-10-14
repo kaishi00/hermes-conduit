@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct PhoneSettingsPage: View {
     @EnvironmentObject private var appState: AppState
@@ -560,5 +561,10 @@ struct PhoneChangeOverlay: View {
         .padding(.top, 6)
         .animation(.spring(duration: 0.3), value: engine.prompts.first?.id)
         .animation(.spring(duration: 0.3), value: engine.autoAdded?.id)
+        .onChange(of: engine.prompts.first?.id) { _, id in
+            // The card isn't modal: tell VoiceOver users Hermes is waiting.
+            guard id != nil, let change = engine.prompts.first?.change else { return }
+            UIAccessibility.post(notification: .announcement, argument: PhoneChangeWording.headline(change))
+        }
     }
 }

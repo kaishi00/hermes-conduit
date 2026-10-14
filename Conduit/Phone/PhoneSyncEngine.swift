@@ -84,7 +84,7 @@ struct PhoneSyncStateStore {
     @discardableResult
     func save(_ state: PhoneSyncState) -> Bool {
         do {
-            var folder = url.deletingLastPathComponent()
+            let folder = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
@@ -564,6 +564,16 @@ final class PhoneSyncEngine: ObservableObject {
         do {
             let itemID = try await calendarSource.apply(change, window: window)
             record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: itemID))
+            // Counted as sent, so the next upload sends the new item, or its
+            // deletion if the user takes it back (Undo, or in Calendar).
+            if change.kind.isAddition, let itemID {
+                if change.kind.isEvent {
+                    if state.eventHashes[itemID] == nil { state.eventHashes[itemID] = "" }
+                } else if state.reminderHashes[itemID] == nil {
+                    state.reminderHashes[itemID] = ""
+                }
+                store.save(state)
+            }
             if auto, let itemID {
                 autoAdded = PhoneAutoAdded(changeID: change.id, itemID: itemID, title: change.fields.title ?? "",
                                            calendarTitle: calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID,

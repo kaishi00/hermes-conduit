@@ -222,9 +222,12 @@ extension AppState {
             Task { @MainActor in
                 schedulePhoneSyncRefresh()
                 let app = AppStateRuntimeRegistry.shared.appState
-                let run = Task { await app.runPhoneSync(reason: .backgroundRefresh) }
-                task.expirationHandler = { run.cancel() }
-                let outcome = await run.value
+                // The expiration handler is in place before the work starts.
+                let running = PhoneRefreshRun()
+                task.expirationHandler = { running.expire() }
+                let work = Task { await app.runPhoneSync(reason: .backgroundRefresh) }
+                running.start(work)
+                let outcome = await work.value
                 if case .failed = outcome {
                     task.setTaskCompleted(success: false)
                 } else {
@@ -245,5 +248,29 @@ extension AppState {
         guard phoneSync.preferences.isOn else { return }
         startPhoneObservers()
         Self.schedulePhoneSyncRefresh()
+    }
+}
+
+/// The background refresh's pass, cancelled when iOS says time is up, even
+/// if that happens before the pass started.
+private final class PhoneRefreshRun: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<PhoneSyncEngine.Outcome, Never>?
+    private var expired = false
+
+    func start(_ task: Task<PhoneSyncEngine.Outcome, Never>) {
+        let cancel = lock.withLock { () -> Bool in
+            self.task = task
+            return expired
+        }
+        if cancel { task.cancel() }
+    }
+
+    func expire() {
+        let task = lock.withLock { () -> Task<PhoneSyncEngine.Outcome, Never>? in
+            expired = true
+            return self.task
+        }
+        task?.cancel()
     }
 }
