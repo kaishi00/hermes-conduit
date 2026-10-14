@@ -836,8 +836,7 @@ extension HermesNativeCalls: PKPushRegistryDelegate {
     /// CallKit call: one that can't ring here and needn't be reported
     /// shows none.
     @available(iOS 26.4, *)
-    @objc(pushRegistry:didReceiveIncomingVoIPPushWithPayload:metadata:withCompletionHandler:)
-    nonisolated func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, completion: @escaping () -> Void) {
+    nonisolated func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, withCompletionHandler completion: @escaping @Sendable () -> Void) {
         let userInfo = payload.dictionaryPayload
         let mustReport = metadata.mustReport
         MainActor.assumeIsolated {
