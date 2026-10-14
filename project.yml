@@ -160,6 +160,10 @@ targets:
           - "GeminiLive/**"
           - "GrokLive/**"
           - "Widgets/**"
+    # Maps lookups the host asks this iPhone for run on MapKit
+    # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
+    dependencies:
+      - sdk: MapKit.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.LocationPush

@@ -173,13 +173,21 @@ struct LocationBatch {
     var fix: LocationFixRecord?
     var events: [LocationPlaceEvent] = []
     var locateID: String?
+    /// What this iPhone can answer for the host (`sharing.features`):
+    /// "maps" is MapKit lookups (designs/maps-v1-contract.md section 1).
+    /// Emptied when the key can't open a maps request (LocationIngest).
+    var features: [String] = LocationBatch.phoneFeatures
+
+    static let phoneFeatures = ["maps"]
 
     func json() -> [String: Any] {
         let formatter = LocationTime.formatter(timeZone: timeZone)
+        var sharing = settings.json(at: sentAt, timeZone: timeZone, formatter: formatter)
+        if !features.isEmpty { sharing["features"] = features }
         var object: [String: Any] = [
             "batch_id": batchID,
             "sent_at": formatter.string(from: sentAt),
-            "sharing": settings.json(at: sentAt, timeZone: timeZone, formatter: formatter),
+            "sharing": sharing,
         ]
         if let places { object["places"] = LocationPrecisionRules.placesJSON(places) }
         if let fix {

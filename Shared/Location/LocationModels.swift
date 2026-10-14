@@ -132,6 +132,11 @@ struct LocationSharingSettings: Codable, Equatable {
     /// Nothing is sent while this is in the future; `.distantFuture` is
     /// "until I turn it back on".
     var pausedUntil: Date?
+    /// Whether the host may answer maps lookups itself (its own Apple Maps
+    /// access) when this iPhone can't. Off is "Keep maps lookups on this
+    /// iPhone" (`sharing.maps_host: false`, designs/maps-v1-contract.md
+    /// section 1).
+    var mapsHost = true
 
     var isOn: Bool { talking || background }
 
@@ -153,7 +158,7 @@ struct LocationSharingSettings: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case talking, talkingPrecision, background, backgroundPrecision, retentionDays, pausedUntil
+        case talking, talkingPrecision, background, backgroundPrecision, retentionDays, pausedUntil, mapsHost
     }
 
     /// Missing or unknown values fall back to the defaults.
@@ -166,6 +171,7 @@ struct LocationSharingSettings: Codable, Equatable {
         backgroundPrecision = (try? container.decodeIfPresent(LocationPrecision.self, forKey: .backgroundPrecision)) ?? defaults.backgroundPrecision
         retentionDays = (try? container.decodeIfPresent(Int.self, forKey: .retentionDays)) ?? defaults.retentionDays
         pausedUntil = try? container.decodeIfPresent(Date.self, forKey: .pausedUntil)
+        mapsHost = (try? container.decodeIfPresent(Bool.self, forKey: .mapsHost)) ?? defaults.mapsHost
     }
 
     /// The `sharing` object of a batch.
@@ -180,6 +186,7 @@ struct LocationSharingSettings: Codable, Equatable {
             "retention_days": Self.retentionChoices.contains(retentionDays) ? retentionDays : Self.defaultRetention,
             "paused_until": paused,
             "time_zone": timeZone.identifier,
+            "maps_host": mapsHost,
         ]
     }
 }
