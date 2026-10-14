@@ -114,7 +114,9 @@ extension AppState {
     /// arrived) and the chat's own sheets would otherwise cover the new or
     /// resumed chat, and Talk's call screen would open over a list. Voice
     /// and Live sheets stay: one up is a call in progress, which prepare
-    /// already refuses for anything but a plain open.
+    /// already refuses for anything but a plain open. This runs before the
+    /// outcome is known on purpose: Talk's call screen can't present over
+    /// them, and a launch that fails reports it over the chat.
     private func revealChatForWidgetLaunch() {
         dismissSidebarDrawer()
         requestSettingsDismissal()

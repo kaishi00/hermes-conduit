@@ -257,6 +257,9 @@ struct MainView: View {
             presentPreferredReturnSurfaceIfNeeded()
         }
         .onChange(of: appState.settingsDismissRequest) { _, _ in
+            // A drawer closing on its way to Settings doesn't open it either.
+            shouldPresentSettingsAfterSidebarDismissal = false
+            settingsOpensAt = nil
             settingsPresentation = nil
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in

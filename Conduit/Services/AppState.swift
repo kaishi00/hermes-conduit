@@ -1457,8 +1457,8 @@ final class AppState: ObservableObject {
     /// Bumped when something that opens a chat needs Settings out of the
     /// way (a widget's New Chat or Talk); MainView owns the sheet.
     @Published private(set) var settingsDismissRequest: UInt64 = 0
+    /// Also asked while Settings is only queued behind a closing drawer.
     func requestSettingsDismissal() {
-        guard isSettingsSheetPresented else { return }
         settingsDismissRequest &+= 1
     }
     @Published var errorMessage: String?
@@ -13757,7 +13757,7 @@ final class AppState: ObservableObject {
         guard scenePhaseAttemptID == id else { return }
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
-        widgetLaunchCoordinator.readinessChanged()
+        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private var turnStateLogValue: String {

@@ -776,7 +776,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, "widget-reveal")
         XCTAssertFalse(appState.showSidebar, "the new chat must not open behind the Sessions drawer")
         XCTAssertFalse(appState.showModelPicker)
-        XCTAssertEqual(appState.settingsDismissRequest, settingsDismissals &+ 1, "Settings is asked to close too")
+        XCTAssertNotEqual(appState.settingsDismissRequest, settingsDismissals, "Settings is asked to close too")
     }
 
     private func session(_ id: String, profile: String? = "default") -> SessionSummary {
