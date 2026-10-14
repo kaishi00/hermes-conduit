@@ -44,7 +44,7 @@ extension GatewayRestartTests {
         XCTAssertNil(status.runningVersion)
 
         let response: [String: Any] = [
-            "ok": true, "version": "0.25.0", "loaded_version": "0.24.0", "restart_needed": true, "boot_id": "a1",
+            "ok": true, "version": NotifierPluginStatus.recommendedVersion, "loaded_version": "0.24.0", "restart_needed": true, "boot_id": "a1",
             "capabilities": NotifierPluginStatus.usedCapabilities,
         ]
         status.state = NotifierPluginStatus.state(from: response)
