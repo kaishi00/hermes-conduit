@@ -5262,10 +5262,6 @@ final class AppState: ObservableObject {
         return stored
     }
 
-    /// Opens the saved transcript behind a chat's voice call card. Looked up
-    /// at tap time: an outbox retry can move the call to a new row after
-    /// the card is drawn. The row can also be gone (deleted on the host),
-    /// so a dead tap says so.
     /// Closes a call transcript and outdates its fetch still in flight, so
     /// it can't come back over whatever opens next.
     func dismissChatCallTranscript() {
@@ -5273,6 +5269,10 @@ final class AppState: ObservableObject {
         chatCallTranscript = nil
     }
 
+    /// Opens the saved transcript behind a chat's voice call card. Looked up
+    /// at tap time: an outbox retry can move the call to a new row after
+    /// the card is drawn. The row can also be gone (deleted on the host),
+    /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
         // Any later tap outdates a kept call's fetch still in flight.
         chatCallTranscriptRequest = nil
@@ -13744,13 +13744,14 @@ final class AppState: ObservableObject {
     }
 
     private func cancelScenePhaseAttempt() {
+        let hadAttempt = scenePhaseAttemptID != nil
         scenePhaseAttemptID = nil
         scenePhaseTask?.cancel()
         scenePhaseTask = nil
         cancelOwnedAutomaticOperations()
         // The cancelled attempt's finish no longer matches and says
         // nothing, so a waiting widget hears it here.
-        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
+        if hadAttempt, widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private func finishScenePhaseAttempt(id: UUID) {

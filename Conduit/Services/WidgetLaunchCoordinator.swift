@@ -232,6 +232,8 @@ final class WidgetLaunchCoordinator {
                 switch outcome {
                 case .handled:
                     request.stage = .perform
+                    // Perform reads the state fresh.
+                    request.readinessChangedInFlight = false
                 case .deferred:
                     self.settleDeferred(request)
                     return
