@@ -256,7 +256,7 @@ struct HealthSettingsPage: View {
                         .padding(.vertical, 6).frame(minHeight: 48)
                 }
                 .disabled(engine.isSyncing || isWorking)
-                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: false)
+                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
                 .accessibilityIdentifier("settings.health.sync-now")
                 Button {
                     showsTurnOff = true

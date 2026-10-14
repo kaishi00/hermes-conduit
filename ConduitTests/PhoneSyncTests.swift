@@ -298,6 +298,18 @@ extension HermesVoiceGatewayTimeoutTests {
 
     // MARK: Alarms, timers and people (plugin 0.30.0)
 
+    func testVoiceModeNotAllowedIsToldWhereToAllowIt() {
+        var preferences = phonePreferences()
+        let hint = PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive)
+        XCTAssertTrue(hint.contains("GPT-Live"), "Names the mode the user would allow")
+        XCTAssertTrue(hint.contains("Calendar & phone"), "Names where it's turned on")
+        preferences.setVoiceUse(.gptLive, allowed: true)
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive), "", "An allowed mode has the tools instead")
+        XCTAssertFalse(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive).isEmpty, "Each mode is its own consent")
+        preferences.destination = nil
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive), "", "Nothing shared, nothing to point at")
+    }
+
     func testPhoneAlarmChangesNeedWhatTheyAct() throws {
         let weekly = try XCTUnwrap(PhoneChange(json: ["id": "ch_a", "kind": "set_alarm", "auto": true,
                                                       "fields": ["label": "Wake up", "time": "06:30",

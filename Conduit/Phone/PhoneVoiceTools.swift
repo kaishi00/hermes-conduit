@@ -38,6 +38,18 @@ enum PhoneVoiceTools {
         return tools
     }
 
+    /// For a call whose mode the user hasn't let use what they share with
+    /// Hermes: where that's turned on, so the model says so instead of
+    /// quietly sending every calendar question to Hermes. Empty otherwise.
+    /// Not UI copy, so not localized.
+    static func settingHint(for preferences: PhoneSyncPreferences, mode: LiveVoiceModeName) -> String {
+        guard preferences.isOn, !preferences.letsVoiceUse(mode) else { return "" }
+        return "\n\nThe user shares their calendar and phone with Hermes, but hasn't let this call use them directly. "
+            + "When they ask about their calendar, reminders, alarms or the people they shared, you can still ask "
+            + "Hermes. The first time, also tell them in a sentence that they can let \(mode.displayName) use these "
+            + "directly, which is faster, under Live voice calls in Conduit's Settings, Calendar & phone."
+    }
+
     private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                 remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
         (preferences.calendar != .off && access != .off, preferences.reminders && remindersAuthorized)

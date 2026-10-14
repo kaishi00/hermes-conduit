@@ -1754,7 +1754,7 @@ final class AppState: ObservableObject {
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: .geminiLive) } ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
@@ -2130,7 +2130,7 @@ final class AppState: ObservableObject {
                     )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                        + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2158,7 +2158,7 @@ final class AppState: ObservableObject {
                 )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
-                    + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                    + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
                     + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2408,6 +2408,7 @@ final class AppState: ObservableObject {
                 instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
                 instructions += self?.liveHermesCall?.instructionBlock(delegation: false) ?? ""
                 instructions += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
+                instructions += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 instructions += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                 instructions += self?.liveVoiceStyle.instructions ?? ""
                 return GrokLiveSession(

@@ -77,6 +77,14 @@ extension AppState {
         }
     }
 
+    /// The briefing line for a call on `mode` that the user hasn't let use
+    /// the calendar and phone they share on this dashboard.
+    func phoneVoiceSettingHint(for mode: LiveVoiceModeName) -> String {
+        let phone = phoneSync.preferences
+        guard phone.destination.map(isActiveDestination) == true else { return "" }
+        return PhoneVoiceTools.settingHint(for: phone, mode: mode)
+    }
+
     private func isActiveDestination(_ destination: HealthSyncDestination) -> Bool {
         activeDashboardID == destination.dashboardID && activeProfile == destination.profile
     }
