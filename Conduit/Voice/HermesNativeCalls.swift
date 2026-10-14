@@ -146,6 +146,10 @@ final class HermesNativeCalls: NSObject {
         var sentAt: Date?
         /// The ring it shares with the Apple Watch, when it rings there too.
         var ring: HermesRing? = nil
+        /// This phone already told the relay to stop the Watch ringing (in
+        /// the car): answering or ending here settles nothing more, while a
+        /// Watch that answered first still finds this call by its ring.
+        var watchStopped = false
         /// Telling the relay this phone answered it.
         var settling: Task<HermesRingSettleResult, Never>? = nil
         var answered = false
@@ -285,6 +289,8 @@ final class HermesNativeCalls: NSObject {
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
         let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        // Read once, as the call arrives: CarPlay coming up while it rings
+        // leaves the Watch ringing too.
         let inCar = CarPlayVoiceCoordinator.shared.isConnected || WakeRoutePolicy.currentRouteIsCarPlay()
         // Busy in voice or another call here, or in the car: the Apple Watch
         // stops ringing it.
@@ -297,7 +303,6 @@ final class HermesNativeCalls: NSObject {
             HermesCallTrace.shared.begin(
                 "Push received: \(plan.traceLabel) (app \(appState == nil ? "starting" : "running"), voice busy: \(busy), in the car: \(inCar))"
             )
-            if watchStops, plan == .ring { HermesCallTrace.shared.note("In the car: rings here and on CarPlay, not on the Watch") }
         }
         let id = UUID()
         let update = CXCallUpdate()
@@ -315,12 +320,13 @@ final class HermesNativeCalls: NSObject {
             completion()
             return
         }
-        // A ring already settled here is the Watch's no more.
-        let sharedRing = watchStops ? nil : ring
-        if plan == .ring, let target = call.target { calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: sharedRing) }
+        if plan == .ring, let target = call.target {
+            calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring, watchStopped: watchStops)
+        }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
-                self.reported(id, plan: plan, traced: traced, target: call.target, sentAt: call.sentAt, ring: sharedRing, error: error)
+                // A ring already settled here needs no settling again.
+                self.reported(id, plan: plan, traced: traced, target: call.target, sentAt: call.sentAt, ring: watchStops ? nil : ring, error: error)
                 completion()
             }
         }
@@ -330,7 +336,7 @@ final class HermesNativeCalls: NSObject {
     /// iPhone, stops ringing as soon as the call reaches here. In the car
     /// the call is the car's: CallKit shows it on CarPlay and talks through
     /// the car, while a call answered on the wrist talks through the Watch.
-    static func stopsWatchRing(plan: HermesNativeCallPlan, inCar: Bool) -> Bool {
+    nonisolated static func stopsWatchRing(plan: HermesNativeCallPlan, inCar: Bool) -> Bool {
         switch plan {
         case .endAtOnce(.talk): return true
         case .ring: return inCar
@@ -342,7 +348,7 @@ final class HermesNativeCalls: NSObject {
     /// here: a Focus (Driving too) or a blocked caller silences it on the
     /// iPhone, and the Watch keeps that quiet. Hermes has already heard it
     /// went unanswered.
-    static func stopsWatchRing(after code: CXErrorCodeIncomingCallError.Code?) -> Bool {
+    nonisolated static func stopsWatchRing(after code: CXErrorCodeIncomingCallError.Code?) -> Bool {
         code == .filteredByDoNotDisturb || code == .filteredByBlockList
     }
 
@@ -382,7 +388,7 @@ final class HermesNativeCalls: NSObject {
             if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
         case .ring:
             guard calls[id] != nil else { return }
-            HermesCallTrace.shared.note("Ringing")
+            HermesCallTrace.shared.note(calls[id]?.watchStopped == true ? "Ringing (in the car: not on the Watch)" : "Ringing")
             calls[id]?.unanswered = Task {
                 do { try await Task.sleep(for: Self.unansweredAfter) } catch { return }
                 guard self.calls[id]?.answered == false else { return }
@@ -413,7 +419,7 @@ final class HermesNativeCalls: NSObject {
         let id = action.callUUID
         // The Apple Watch stops ringing (Conduit is running the call, so no
         // background time is needed).
-        if let ring = calls[id]?.ring {
+        if let ring = calls[id]?.ring, calls[id]?.watchStopped == false {
             calls[id]?.settling = Task { await HermesRingSettler.settle(ring, by: .phone, outcome: .answered) }
         }
         calls[id]?.work = Task { await self.connect(id) }
@@ -723,7 +729,7 @@ final class HermesNativeCalls: NSObject {
         call.work?.cancel()
         action.fulfill()
         // Declined here: the Apple Watch stops ringing too.
-        if !call.answered, let ring = call.ring { settleRing(ring, outcome: .declined) }
+        if !call.answered, !call.watchStopped, let ring = call.ring { settleRing(ring, outcome: .declined) }
         if call.answered {
             endVoice(of: call.target)
         } else {
