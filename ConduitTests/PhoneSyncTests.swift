@@ -163,6 +163,16 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(whole.delete.isEmpty, "A full upload replaces; nothing to delete by id")
         let cut = PhoneSyncEngine.diff([["id": "a", "title": "A"]], against: sent, full: false, truncated: true)
         XCTAssertTrue(cut.delete.isEmpty, "An item past the limit isn't reported deleted")
+
+        // Access taken away in the Settings app narrows what the host is told.
+        let chosen = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
+        let narrowed = PhoneSyncEngine.effectiveSharing(chosen, access: .writeOnly, remindersAuthorized: false)
+        XCTAssertEqual(narrowed["calendar"] as? String, "write_only")
+        XCTAssertEqual(narrowed["reminders"] as? Bool, false)
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(chosen, access: .off, remindersAuthorized: true)["calendar"] as? String, "off")
+        let kept = PhoneSyncEngine.effectiveSharing(chosen, access: .full, remindersAuthorized: true)
+        XCTAssertEqual(kept["calendar"] as? String, "full")
+        XCTAssertEqual(kept["reminders"] as? Bool, true)
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {

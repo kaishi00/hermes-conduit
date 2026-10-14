@@ -184,6 +184,9 @@ final class PhoneSyncEngine: ObservableObject {
     /// nothing writes nothing.
     private var saved: PhoneSyncState?
     private let writer = PhoneSyncStateWriter()
+    /// Changes being applied right now, so an exchange that lands meanwhile
+    /// doesn't hand the same one out again.
+    private var applying: Set<String> = []
 
     init(
         calendarSource: PhoneCalendarSource,
@@ -405,7 +408,8 @@ final class PhoneSyncEngine: ObservableObject {
         var batch: [String: Any] = [
             "sent_at": PhoneDates.format(currentNow),
             "time_zone": TimeZone.current.identifier,
-            "sharing": preferences.sharingJSON,
+            "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
+                                             remindersAuthorized: calendarSource.remindersAuthorized),
         ]
         var newEventHashes = state.eventHashes
         var newReminderHashes = state.reminderHashes
@@ -506,6 +510,22 @@ final class PhoneSyncEngine: ObservableObject {
         return (answer["pending"] as? NSNumber)?.intValue ?? 0
     }
 
+    /// The sharing as it really is: access taken away in the Settings app
+    /// narrows it, so the host drops what it can no longer have.
+    nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
+                                             remindersAuthorized: Bool) -> [String: Any] {
+        var sharing = preferences.sharingJSON
+        let calendar: PhoneCalendarAccess
+        switch (preferences.calendar, access) {
+        case (.full, .full): calendar = .full
+        case (.off, _), (_, .off): calendar = .off
+        default: calendar = .writeOnly
+        }
+        sharing["calendar"] = calendar.rawValue
+        sharing["reminders"] = preferences.reminders && remindersAuthorized
+        return sharing
+    }
+
     struct Section {
         var upsert: [[String: Any]]
         var delete: [String]
@@ -578,6 +598,7 @@ final class PhoneSyncEngine: ObservableObject {
         state.answered = state.answered.filter { waiting.contains($0.key) || state.unreported.contains($0.value) }
         var fresh: [PhoneChangePrompt] = []
         for change in changes {
+            if applying.contains(change.id) { continue }
             if let known = state.answered[change.id] {
                 // Answered, but the report was lost: say it again.
                 if !state.unreported.contains(known) { state.unreported.append(known) }
@@ -606,6 +627,8 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func applyNow(_ change: PhoneChange, auto: Bool) async {
+        guard state.answered[change.id] == nil, applying.insert(change.id).inserted else { return }
+        defer { applying.remove(change.id) }
         do {
             let itemID = try await calendarSource.apply(change, window: window)
             record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: itemID))
