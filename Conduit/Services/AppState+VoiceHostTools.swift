@@ -81,8 +81,6 @@ extension AppState {
     /// Bumped by each call's prepare, so an older one still fetching can't
     /// hand its mode's tools (and that mode's consent) to a newer call.
     @MainActor private static var voiceToolsGeneration = 0
-    /// The mode the published tools were prepared for.
-    @MainActor private static var voiceToolsMode: LiveVoiceModeName?
 
     /// Sets the running call's host tools for `mode`.
     func prepareVoiceHostTools(for mode: LiveVoiceModeName) async {
@@ -91,14 +89,15 @@ extension AppState {
         let mine = Self.voiceToolsGeneration
         // A reconnect on the same mode keeps its tools while this fetches
         // (each read still checks consent); another mode's go now.
-        if Self.voiceToolsMode != mode {
+        if supervisor.hostToolsMode != mode {
             supervisor.hostTools = []
             supervisor.runHostTool = nil
-            Self.voiceToolsMode = nil
+            supervisor.hostToolsMode = nil
         }
         let tools = await voiceHostTools(for: mode)
-        guard mine == Self.voiceToolsGeneration else { return }
-        Self.voiceToolsMode = mode
+        // A cancelled probe (the call isn't starting) publishes nothing.
+        guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
+        supervisor.hostToolsMode = mode
         supervisor.hostTools = tools
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)

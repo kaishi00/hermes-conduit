@@ -421,6 +421,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Hermes tools the running live call may call directly (the user's
     /// shared health data), set by AppState as each call starts.
     var hostTools: [VoiceHostTool] = []
+    /// The mode `hostTools` were prepared for.
+    var hostToolsMode: LiveVoiceModeName?
     /// Runs one of `hostTools` (AppState: a sealed /voice-tools/call).
     var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
     /// The running call's last chat search, numbered from 1 as the model
@@ -1775,6 +1777,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         generation &+= 1
         // A call's host tools carry its mode's consent: never the next call's.
         hostTools = []
+        hostToolsMode = nil
         runHostTool = nil
         pollTask?.cancel()
         pollTask = nil

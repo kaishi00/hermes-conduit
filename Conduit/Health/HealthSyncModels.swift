@@ -344,7 +344,11 @@ struct HealthVoiceReadLog: Codable, Equatable {
               var log = try? JSONDecoder().decode(HealthVoiceReadLog.self, from: data) else {
             return HealthVoiceReadLog()
         }
+        let count = log.entries.count
         log.entries.removeAll { now.timeIntervalSince($0.at) > keptFor }
+        if log.entries.count != count, let data = try? JSONEncoder().encode(log) {
+            defaults.set(data, forKey: storageKey)
+        }
         return log
     }
 
