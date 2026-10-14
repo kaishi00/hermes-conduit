@@ -145,6 +145,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(refused["error"])
         XCTAssertEqual(calls.count, 2)
         XCTAssertTrue(location.gptLiveRule.contains(#"Location: {"action": "now"}"#), "The example is the tool's own action")
+        let odd: [String: Any] = ["tools": [["name": "conduit_location\nkid=x", "key": "location", "description": "", "parameters": [:]]]]
+        XCTAssertTrue(VoiceHostTool.tools(from: odd).isEmpty, "A tool name is a plain identifier")
     }
 
     func testVoiceReadConsentIsPerModeAndOnlyWhileSharing() {

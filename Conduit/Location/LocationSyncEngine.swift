@@ -261,7 +261,7 @@ final class LocationSyncEngine: ObservableObject {
         state.lastAttempt = now()
         defer { store.save(state) }
         do {
-            let voice = !(config.voiceReaders ?? []).isEmpty
+            let voice = config.readsByVoice(at: now())
             var key = try await ensureKey(deviceID: config.deviceID, voice: voice, request: request)
             if state.placesDigest != LocationPrecisionRules.placesDigest(config.places) { batch.places = config.places }
             var answer: [String: Any]

@@ -32,11 +32,19 @@ struct VoiceHostTool {
     /// The tools in a `GET /voice-tools` answer.
     static func tools(from response: [String: Any]) -> [VoiceHostTool] {
         (response["tools"] as? [[String: Any]] ?? []).compactMap { entry in
-            guard let name = entry["name"] as? String, !name.isEmpty,
+            // The name goes into each read's associated data: plain
+            // identifiers only.
+            guard let name = entry["name"] as? String, isToolName(name),
                   let description = entry["description"] as? String,
                   let parameters = entry["parameters"] as? [String: Any],
                   let key = entry["key"] as? String else { return nil }
             return VoiceHostTool(name: name, description: description, parameters: parameters, key: key)
+        }
+    }
+
+    static func isToolName(_ name: String) -> Bool {
+        !name.isEmpty && name.count <= 64 && name.unicodeScalars.allSatisfy {
+            ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_"
         }
     }
 

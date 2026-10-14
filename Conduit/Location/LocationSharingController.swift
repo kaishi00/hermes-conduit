@@ -545,9 +545,14 @@ final class LocationSharingController: ObservableObject {
 
     /// Whether a live call on `mode` may read the shared location
     /// (Settings > Location, off by default: what it reads goes to the
-    /// mode's company).
+    /// mode's company). Never while sharing is paused.
     func letsVoiceRead(_ mode: LiveVoiceModeName) -> Bool {
-        !configUnreadable && config.letsVoiceRead(mode.storageID)
+        !configUnreadable && config.letsVoiceRead(mode.storageID, at: now())
+    }
+
+    /// Whether the switch for `mode` is on (a pause keeps it, but stops reads).
+    func allowsVoiceRead(_ mode: LiveVoiceModeName) -> Bool {
+        (config.voiceReaders ?? []).contains(mode.storageID)
     }
 
     /// Lets `mode` read the shared location on a call, or stops it.
@@ -568,8 +573,7 @@ final class LocationSharingController: ObservableObject {
     /// does it), with a fresh position when background sharing allows one:
     /// the host drops the one it had with the old key.
     func prepareVoiceReads() async {
-        guard voiceReadKey() == nil, config.binding != nil, settings.isOn,
-              !(config.voiceReaders ?? []).isEmpty else { return }
+        guard voiceReadKey() == nil, config.readsByVoice(at: now()) else { return }
         if fixes.canLocate, await shareFix(source: .app) { return }
         await flush(settingsOnly: true)
     }

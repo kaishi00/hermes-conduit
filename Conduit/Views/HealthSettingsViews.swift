@@ -66,7 +66,7 @@ struct HealthSettingsPage: View {
             voiceReads = HealthVoiceReadLog.load()
         }
         .confirmationDialog(
-            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") read your health data?")),
+            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your health data?")) } ?? Text(verbatim: ""),
             isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
             titleVisibility: .visible,
             presenting: askingVoiceMode

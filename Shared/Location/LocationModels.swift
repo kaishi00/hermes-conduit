@@ -282,9 +282,15 @@ struct LocationSharedConfig: Codable, Equatable {
     }
 
     /// Whether a live call on the mode with this storage id may read the
-    /// shared location: only while a layer is on.
-    func letsVoiceRead(_ storageID: String) -> Bool {
-        binding != nil && settings.isOn && (voiceReaders ?? []).contains(storageID)
+    /// shared location: only while a layer is on and sharing isn't paused.
+    func letsVoiceRead(_ storageID: String, at now: Date) -> Bool {
+        readsByVoice(at: now) && (voiceReaders ?? []).contains(storageID)
+    }
+
+    /// Whether any live voice mode may read the shared location now (the
+    /// key then needs its voice keys).
+    func readsByVoice(at now: Date) -> Bool {
+        binding != nil && settings.isOn && !settings.isPaused(at: now) && !(voiceReaders ?? []).isEmpty
     }
 
     mutating func setVoiceRead(_ storageID: String, allowed: Bool) {

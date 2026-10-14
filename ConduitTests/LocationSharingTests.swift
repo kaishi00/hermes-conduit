@@ -479,14 +479,21 @@ extension NotificationE2ETests {
     func testLocationVoiceReadConsentIsPerModeAndOnlyWhileSharing() throws {
         var config = LocationFixtures.config(background: false, talking: false)
         config.setVoiceRead(LiveVoiceModeName.geminiLive.storageID, allowed: true)
-        XCTAssertFalse(config.letsVoiceRead("gemini-live"), "Nothing reads while sharing is off")
+        let now = LocationFixtures.at
+        XCTAssertFalse(config.letsVoiceRead("gemini-live", at: now), "Nothing reads while sharing is off")
         config.settings.talking = true
-        XCTAssertTrue(config.letsVoiceRead("gemini-live"))
-        XCTAssertFalse(config.letsVoiceRead("gpt-live"), "Each company is its own yes")
+        XCTAssertTrue(config.letsVoiceRead("gemini-live", at: now))
+        XCTAssertTrue(config.readsByVoice(at: now))
+        XCTAssertFalse(config.letsVoiceRead("gpt-live", at: now), "Each company is its own yes")
+        config.settings.pausedUntil = now.addingTimeInterval(3_600)
+        XCTAssertFalse(config.letsVoiceRead("gemini-live", at: now), "Nor while paused")
+        XCTAssertFalse(config.readsByVoice(at: now), "and the key isn't set up again then")
+        XCTAssertTrue(config.letsVoiceRead("gemini-live", at: now.addingTimeInterval(7_200)), "The pause's end lets it read again")
+        config.settings.pausedUntil = nil
         let reread = try JSONDecoder().decode(LocationSharedConfig.self, from: JSONEncoder().encode(config))
         XCTAssertEqual(reread.voiceReaders, ["gemini-live"])
         config.binding = nil
-        XCTAssertFalse(config.letsVoiceRead("gemini-live"), "Nor while unbound")
+        XCTAssertFalse(config.letsVoiceRead("gemini-live", at: now), "Nor while unbound")
         config.setVoiceRead("gemini-live", allowed: false)
         XCTAssertNil(config.voiceReaders)
 

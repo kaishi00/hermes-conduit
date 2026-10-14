@@ -160,7 +160,7 @@ struct LocationSettingsPage: View {
             }
         }
         .confirmationDialog(
-            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") read your location?")),
+            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your location?")) } ?? Text(verbatim: ""),
             isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
             titleVisibility: .visible,
             presenting: askingVoiceMode
@@ -468,7 +468,7 @@ struct LocationSettingsPage: View {
 
     private func voiceReadBinding(_ mode: LiveVoiceModeName) -> Binding<Bool> {
         Binding(
-            get: { controller.letsVoiceRead(mode) },
+            get: { controller.allowsVoiceRead(mode) },
             set: { on in
                 if on {
                     askingVoiceMode = mode
