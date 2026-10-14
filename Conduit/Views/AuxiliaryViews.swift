@@ -2492,6 +2492,11 @@ private struct NotificationsSettingsDetail: View {
                   || !notifications.isEnabled)
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
         .accessibilityIdentifier("notifications.pair")
+        if !notifications.isEnabled {
+            Text("Turn on notifications above to pair this profile.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
         if let pairingError {
             Label(pairingError, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)

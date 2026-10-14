@@ -158,6 +158,8 @@ struct NotifierPluginUpdater {
         case .idle:
             return .idle
         case .restarted, .unsupported:
+            // Unsupported isn't reached today: every Hermes that serves the
+            // agent-plugins update route also serves /api/gateway/restart.
             break
         case .failed(let detail):
             return .failed(detail: detail)
