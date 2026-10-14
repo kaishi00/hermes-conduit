@@ -37,7 +37,15 @@ extension DashboardTicketBridge {
         maxBytes: Int = DashboardFileDownloadLimits.maxBytes
     ) async throws -> DashboardDownloadedFile {
         let request = try await fileDownloadRequest(path: path)
-        return try await Self.download(request, filename: filename, into: root, maxBytes: maxBytes)
+        do {
+            return try await Self.download(request, filename: filename, into: root, maxBytes: maxBytes)
+        } catch DashboardTicketBridgeError.signInRequired {
+            // A token the server revoked before its stored expiry: refresh
+            // past it and try once more, as `requestJSON` does.
+            guard let nativeOAuthSession, !isInvalidated else { throw DashboardTicketBridgeError.signInRequired }
+            let retry = try await nativeOAuthSession.authorizedRequest(path: path, replacing: request)
+            return try await Self.download(retry, filename: filename, into: root, maxBytes: maxBytes)
+        }
     }
 
     private func fileDownloadRequest(path: String) async throws -> URLRequest {

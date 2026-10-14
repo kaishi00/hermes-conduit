@@ -417,10 +417,15 @@ final class NativeOAuthSession {
 
     /// A GET for `path` carrying the current access token, refreshed first
     /// when it is about to expire, for a response that is not JSON (a file
-    /// download, #569).
-    func authorizedRequest(path: String) async throws -> URLRequest {
+    /// download, #569). Pass the request the server just rejected to
+    /// refresh past that token, as `requestJSON` does on a 401.
+    func authorizedRequest(path: String, replacing rejected: URLRequest? = nil) async throws -> URLRequest {
         guard !isInvalidated else { throw CancellationError() }
-        if tokens.needsRefresh() { try await refresh() }
+        if let header = rejected?.value(forHTTPHeaderField: "Authorization"), header.hasPrefix("Bearer ") {
+            try await refresh(rejectedAccessToken: String(header.dropFirst("Bearer ".count)))
+        } else if tokens.needsRefresh() {
+            try await refresh()
+        }
         guard !isInvalidated else { throw CancellationError() }
         var request = try client.endpointRequest(path: path)
         request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")

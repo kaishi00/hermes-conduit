@@ -1901,7 +1901,9 @@ private struct GatewayMediaFileCard: View {
             case .downloaded(let download):
                 return await Task.detached(priority: .userInitiated) {
                     defer { MediaPreviewPresenter.removeDirectory(download.directory) }
-                    return try? Data(contentsOf: download.file)
+                    // Mapped, so a long recording isn't read into memory
+                    // whole; the mapping outlives the file's removal.
+                    return try? Data(contentsOf: download.file, options: .mappedIfSafe)
                 }.value
             case .tooLarge:
                 return nil
