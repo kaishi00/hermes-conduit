@@ -134,7 +134,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
 
     var body: some View {
         Group {
-            if state == .unavailable {
+            // A settled reply that still shows sources (a very large one
+            // while it streams) shows the file card rather than waiting.
+            if state == .unavailable || (isComplete && !drawsInPlace) {
                 fallback()
             } else {
                 card

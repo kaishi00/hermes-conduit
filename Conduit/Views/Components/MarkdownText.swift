@@ -2427,8 +2427,9 @@ enum MarkdownParser {
             }
 
             // `::preview{file="…"}` asks for a host HTML file drawn in
-            // place; any other file gets its card, as a MEDIA: tag would.
-            if recognizesGatewayMedia, let segments = TranscriptDirectives.segments(in: trimmed) {
+            // place; any other file gets its card, as a MEDIA: tag would. A
+            // quoted one is an example, as with MEDIA: tags.
+            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) {
                 for segment in segments {
                     switch segment {
                     case .preview(let file):
@@ -2502,7 +2503,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || TranscriptDirectives.segments(in: next) != nil)) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))

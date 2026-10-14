@@ -72,6 +72,11 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(blocks, [.paragraph("::preview{file=\"/tmp/a.html\"}")])
     }
 
+    func testHTMLPreview_QuotedDirectiveIsAnExample() {
+        let blocks = MarkdownParser.parse("> Example: ::preview{file=\"/tmp/a.html\"}", recognizesGatewayMedia: true)
+        XCTAssertFalse(blocks.contains { if case .htmlPreview = $0 { return true } else { return false } }, "\(blocks)")
+    }
+
     func testHTMLPreview_CountsAsAWebPage() {
         XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(.htmlPreview(path: "/tmp/a.html")), MarkdownRichContentPolicy.diagramUnits)
         XCTAssertEqual(MarkdownRichContentPolicy.richUnits(.htmlPreview(path: "/tmp/a.html")), MarkdownRichContentPolicy.diagramUnits)
