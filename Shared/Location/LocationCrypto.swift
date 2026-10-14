@@ -11,6 +11,10 @@
 //  wiped without the other. Must match the notifier's location store; both
 //  check the vector in its tests/location_vector.json.
 //
+//  A live voice call reads the location back with the same agreement
+//  (POST /voice-tools/call): one more key per direction, so the host
+//  answers only the phone that holds them (LocationVoiceCrypto.swift).
+//
 
 import CryptoKit
 import Foundation
@@ -18,6 +22,8 @@ import Foundation
 enum LocationCrypto {
     static let salt = Data("conduit-location-v1".utf8)
     static let ingestInfo = Data("conduit-location-v1 ingest device-to-host".utf8)
+    static let voiceRequestInfo = Data("conduit-location-v1 voice device-to-host".utf8)
+    static let voiceAnswerInfo = Data("conduit-location-v1 voice host-to-device".utf8)
     static let kidLabel = Data("conduit-location-kid\n".utf8)
     static let aadTag = "conduit-location/1"
 
@@ -33,6 +39,12 @@ enum LocationCrypto {
         var key: Data
         /// The device id the key was agreed for.
         var deviceID: String
+        /// Voice reads, one key per direction. Nil in a key agreed before
+        /// voice reads existed.
+        var voiceRequestKey: Data?
+        var voiceAnswerKey: Data?
+
+        var readsByVoice: Bool { voiceRequestKey != nil && voiceAnswerKey != nil }
     }
 
     static func keyID(devicePublic: Data, hostPublic: Data) -> String {
@@ -56,9 +68,13 @@ enum LocationCrypto {
         // isn't for this key.
         guard keyID(devicePublic: devicePublic, hostPublic: hostPublic) == kid else { throw Failure.keyIDMismatch }
         let shared = try devicePrivate.sharedSecretFromKeyAgreement(with: host)
-        let info = ingestInfo + Data("\n\(deviceID)\n".utf8) + devicePublic + hostPublic
-        let symmetric = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: info, outputByteCount: 32)
-        return SessionKey(kid: kid, key: symmetric.withUnsafeBytes { Data($0) }, deviceID: deviceID)
+        func derived(_ purpose: Data) -> Data {
+            let info = purpose + Data("\n\(deviceID)\n".utf8) + devicePublic + hostPublic
+            let symmetric = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: info, outputByteCount: 32)
+            return symmetric.withUnsafeBytes { Data($0) }
+        }
+        return SessionKey(kid: kid, key: derived(ingestInfo), deviceID: deviceID,
+                          voiceRequestKey: derived(voiceRequestInfo), voiceAnswerKey: derived(voiceAnswerInfo))
     }
 
     static func aad(kid: String, deviceID: String, batchID: String) -> Data {

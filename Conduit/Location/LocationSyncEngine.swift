@@ -261,7 +261,8 @@ final class LocationSyncEngine: ObservableObject {
         state.lastAttempt = now()
         defer { store.save(state) }
         do {
-            var key = try await ensureKey(deviceID: config.deviceID, request: request)
+            let voice = !(config.voiceReaders ?? []).isEmpty
+            var key = try await ensureKey(deviceID: config.deviceID, voice: voice, request: request)
             if state.placesDigest != LocationPrecisionRules.placesDigest(config.places) { batch.places = config.places }
             var answer: [String: Any]
             do {
@@ -271,7 +272,7 @@ final class LocationSyncEngine: ObservableObject {
                 // phone's key (a wipe, a new store). Agree a new one, once.
                 Self.log.info("Location ingest answered 409 \(detail, privacy: .public); agreeing the key again")
                 clearKey()
-                key = try await ensureKey(deviceID: config.deviceID, request: request)
+                key = try await ensureKey(deviceID: config.deviceID, voice: voice, request: request)
                 batch.places = config.places
                 answer = try await post(batch, key: key, request: request)
             }
@@ -368,10 +369,15 @@ final class LocationSyncEngine: ObservableObject {
         }
     }
 
-    /// The agreed key, set up when the phone has none for this device.
-    private func ensureKey(deviceID: String, request: Request) async throws -> LocationCrypto.SessionKey {
-        if let key = keys.load(), key.deviceID == deviceID { return key }
-        if let key = unsavedKey, key.deviceID == deviceID { return key }
+    /// The agreed key, set up when the phone has none for this device. With
+    /// `voice` (a live voice mode may read the location), a key agreed
+    /// before voice reads existed is set up again, once: the host then drops
+    /// the latest position it had from this phone, and the next fix
+    /// replaces it.
+    private func ensureKey(deviceID: String, voice: Bool, request: Request) async throws -> LocationCrypto.SessionKey {
+        for key in [keys.load(), unsavedKey].compactMap({ $0 }) where key.deviceID == deviceID {
+            if !voice || key.readsByVoice { return key }
+        }
         let devicePrivate = Curve25519.KeyAgreement.PrivateKey()
         let answer: [String: Any]
         do {
@@ -398,6 +404,12 @@ final class LocationSyncEngine: ObservableObject {
         state.placesDigest = nil
         if let generation = answer["generation"] as? String { state.generation = generation }
         return key
+    }
+
+    /// This phone's agreed key, for a live voice call's read of its own
+    /// location. Nil until a send has agreed a key that reads.
+    func voiceReadKey(deviceID: String) -> LocationCrypto.SessionKey? {
+        [keys.load(), unsavedKey].compactMap { $0 }.first { $0.deviceID == deviceID && $0.readsByVoice }
     }
 
     private func clearKey() {

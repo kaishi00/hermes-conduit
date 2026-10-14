@@ -242,6 +242,10 @@ struct LocationSharedConfig: Codable, Equatable {
     /// reachable, even with sharing off, since "off" and "paused" matter
     /// most.
     var settingsPending = false
+    /// Live voice modes the user lets read the shared location on a call
+    /// (`LiveVoiceModeName.storageID`); nil is none. Kept on this iPhone:
+    /// the phone makes every voice read, so the host never needs it.
+    var voiceReaders: [String]?
 
     init(binding: LocationBinding? = nil, settings: LocationSharingSettings = LocationSharingSettings(),
          places: [LocationSavedPlace] = [], deviceID: String = LocationIDs.hex(bytes: 16), approximateOnly: Bool = false,
@@ -255,7 +259,7 @@ struct LocationSharedConfig: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case binding, settings, places, deviceID, approximateOnly, settingsPending
+        case binding, settings, places, deviceID, approximateOnly, settingsPending, voiceReaders
     }
 
     /// Tolerates missing keys, and a saved place that can't be read is
@@ -274,6 +278,19 @@ struct LocationSharedConfig: Codable, Equatable {
         deviceID = (try? container.decodeIfPresent(String.self, forKey: .deviceID)) ?? LocationIDs.hex(bytes: 16)
         approximateOnly = (try? container.decodeIfPresent(Bool.self, forKey: .approximateOnly)) ?? false
         settingsPending = (try? container.decodeIfPresent(Bool.self, forKey: .settingsPending)) ?? false
+        voiceReaders = try? container.decodeIfPresent([String].self, forKey: .voiceReaders)
+    }
+
+    /// Whether a live call on the mode with this storage id may read the
+    /// shared location: only while a layer is on.
+    func letsVoiceRead(_ storageID: String) -> Bool {
+        binding != nil && settings.isOn && (voiceReaders ?? []).contains(storageID)
+    }
+
+    mutating func setVoiceRead(_ storageID: String, allowed: Bool) {
+        var readers = Set(voiceReaders ?? [])
+        if allowed { readers.insert(storageID) } else { readers.remove(storageID) }
+        voiceReaders = readers.isEmpty ? nil : readers.sorted()
     }
 
     private struct LossyPlace: Decodable {

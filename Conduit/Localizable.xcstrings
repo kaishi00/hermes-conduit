@@ -237935,6 +237935,170 @@
           }
         }
       }
+    },
+    "Let %@ read your location?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deinen Standort lesen lassen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Permitir que %@ lea tu ubicación?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser %@ à lire ta position ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan %@ membaca lokasimu?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consentire a %@ di leggere la tua posizione?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に位置情報の読み取りを許可しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 위치를 읽도록 허용할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwolić %@ odczytywać Twoją lokalizację?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que o %@ leia sua localização?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ читать ваше местоположение?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konumunu okuyabilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 %@ 读取你的位置？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 %@ 讀取你的位置？"
+          }
+        }
+      }
+    },
+    "Let a live voice call read your location when you ask about it, straight from your Hermes host: the saved place you're at, your area and distances to your saved places, never coordinates. What it reads goes to the company that runs that voice mode, under its terms. Each read is listed under When Hermes read your location. Classic voice is Hermes itself and needs nothing here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass einen Live-Sprachanruf deinen Standort lesen, wenn du danach fragst, direkt von deinem Hermes-Host: den gespeicherten Ort, an dem du bist, deine Gegend und die Entfernungen zu deinen gespeicherten Orten, nie Koordinaten. Was er liest, geht an das Unternehmen, das diesen Sprachmodus betreibt, und unterliegt dessen Bedingungen. Jeder Zugriff erscheint unter „Wann Hermes deinen Standort gelesen hat“. Klassische Sprache ist Hermes selbst und braucht hier nichts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deja que una llamada de voz en vivo lea tu ubicación cuando preguntes por ella, directamente desde tu host de Hermes: el lugar guardado en el que estás, tu zona y las distancias a tus lugares guardados, nunca coordenadas. Lo que lee va a la empresa que gestiona ese modo de voz, bajo sus condiciones. Cada lectura aparece en «Cuándo leyó Hermes tu ubicación». La voz clásica es el propio Hermes y no necesita nada aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laisse un appel vocal en direct lire ta position quand tu la demandes, directement depuis ton hôte Hermes : le lieu enregistré où tu te trouves, ton secteur et les distances jusqu’à tes lieux enregistrés, jamais de coordonnées. Ce qu’il lit est envoyé à l’entreprise qui gère ce mode vocal, selon ses conditions. Chaque lecture figure sous « Quand Hermes a lu ta position ». La voix classique, c’est Hermes lui-même : rien à régler ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan panggilan suara langsung membaca lokasimu saat kamu menanyakannya, langsung dari host Hermes-mu: tempat tersimpan tempatmu berada, areamu, dan jarak ke tempat tersimpanmu, tidak pernah koordinat. Apa yang dibacanya dikirim ke perusahaan yang menjalankan mode suara itu, sesuai ketentuannya. Setiap pembacaan tercantum di Kapan Hermes membaca lokasimu. Suara klasik adalah Hermes sendiri dan tidak perlu apa pun di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a una chiamata vocale dal vivo di leggere la tua posizione quando lo chiedi, direttamente dal tuo host Hermes: il luogo salvato in cui ti trovi, la tua zona e le distanze dai tuoi luoghi salvati, mai coordinate. Ciò che legge va all’azienda che gestisce quella modalità vocale, secondo i suoi termini. Ogni lettura è elencata in Quando Hermes ha letto la tua posizione. La voce classica è Hermes stesso e qui non richiede nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋ねたときに、ライブ音声通話が Hermes ホストから直接あなたの位置情報を読み取れるようにします。読み取るのは今いる保存済みの場所、エリア、保存済みの場所までの距離で、座標は含みません。読み取った内容はその音声モードを運営する会社に送られ、その規約が適用されます。読み取りはすべて「Hermes が位置情報を読み取った時」に表示されます。クラシック音声は Hermes そのものなので、ここでの設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물어볼 때 실시간 음성 통화가 Hermes 호스트에서 바로 위치를 읽도록 허용합니다. 현재 있는 저장된 장소, 지역, 저장된 장소까지의 거리만 읽고 좌표는 읽지 않습니다. 읽은 내용은 해당 음성 모드를 운영하는 회사로 전송되며 그 약관이 적용됩니다. 각 읽기는 'Hermes가 위치를 읽은 시간'에 표시됩니다. 클래식 음성은 Hermes 자체이므로 여기서 설정할 필요가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól rozmowie głosowej na żywo odczytać Twoją lokalizację, gdy o nią zapytasz, prosto z Twojego hosta Hermes: zapisane miejsce, w którym jesteś, Twoją okolicę i odległości do zapisanych miejsc, nigdy współrzędne. To, co odczyta, trafia do firmy obsługującej ten tryb głosowy, na jej warunkach. Każdy odczyt jest widoczny w sekcji Kiedy Hermes odczytał Twoją lokalizację. Klasyczny głos to sam Hermes i nie wymaga tu niczego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixe uma chamada de voz ao vivo ler sua localização quando você perguntar, direto do seu host Hermes: o lugar salvo em que você está, sua região e as distâncias até seus lugares salvos, nunca coordenadas. O que ela lê vai para a empresa que opera esse modo de voz, sob os termos dela. Cada leitura aparece em Quando o Hermes leu sua localização. A voz clássica é o próprio Hermes e não precisa de nada aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите живому голосовому звонку читать ваше местоположение, когда вы о нём спрашиваете, прямо с вашего хоста Hermes: сохранённое место, где вы находитесь, ваш район и расстояния до сохранённых мест, но никогда не координаты. Прочитанное уходит компании, которая обслуживает этот голосовой режим, на её условиях. Каждое чтение отображается в разделе «Когда Hermes читал ваше местоположение». Классический голос — это сам Hermes, здесь ему ничего не нужно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorduğunda canlı sesli aramanın konumunu doğrudan Hermes sunucundan okumasına izin ver: bulunduğun kayıtlı yer, bölgen ve kayıtlı yerlerine olan mesafeler, asla koordinatlar değil. Okuduğu bilgiler o ses modunu çalıştıran şirkete, onun koşullarıyla gider. Her okuma, Hermes konumunu ne zaman okudu bölümünde listelenir. Klasik ses Hermes'in kendisidir ve burada hiçbir şeye ihtiyaç duymaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你问起时，让实时语音通话直接从你的 Hermes 主机读取你的位置：你所在的已保存地点、你所在的区域以及到已保存地点的距离，绝不包括坐标。读取的内容会发送给运营该语音模式的公司，并受其条款约束。每次读取都会列在“Hermes 读取你位置的时间”下。经典语音就是 Hermes 本身，此处无需设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你問起時，讓即時語音通話直接從你的 Hermes 主機讀取你的位置：你所在的已儲存地點、你所在的區域以及到已儲存地點的距離，絕不包括座標。讀取的內容會傳送給營運該語音模式的公司，並受其條款約束。每次讀取都會列在「Hermes 讀取你位置的時間」下。經典語音就是 Hermes 本身，這裡無需設定。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

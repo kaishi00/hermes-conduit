@@ -428,6 +428,115 @@ extension NotificationE2ETests {
         XCTAssertFalse(LocationSyncEngine.statusPath(deviceID: "bad id!").contains("device_id"))
     }
 
+    // MARK: Live voice calls
+
+    func testLocationVoiceSealingMatchesTheNotifierVector() throws {
+        // tests/location_vector.json "voice" in hermes-conduit-notifier.
+        let devicePrivate = try Curve25519.KeyAgreement.PrivateKey(
+            rawRepresentation: XCTUnwrap(NotificationE2E.base64URLDecoded(LocationVector.devicePrivate))
+        )
+        let key = try LocationCrypto.agree(devicePrivate: devicePrivate, deviceID: LocationVector.deviceID,
+                                           hostPublicKey: LocationVector.hostPublic, kid: LocationVector.kid)
+        XCTAssertTrue(key.readsByVoice)
+        XCTAssertEqual(key.voiceRequestKey?.map { String(format: "%02x", $0) }.joined(),
+                       "55cf19b6e1118491dc136b9c94af8af83891b19673744e64c44200411ea93424")
+        XCTAssertEqual(key.voiceAnswerKey?.map { String(format: "%02x", $0) }.joined(),
+                       "d0c6c9aa90c735b1bcf78368794430d41599835b930730a7ad288fc4a010d53d")
+        XCTAssertEqual(
+            String(decoding: LocationCrypto.voiceAAD(direction: "request", tool: "conduit_location", kid: key.kid,
+                                                     deviceID: key.deviceID, callID: "call-vector-1"), as: UTF8.self),
+            "conduit-location/1\nvoice-request\ntool=conduit_location\nkid=\(LocationVector.kid)\ndev=device-vector-1\ncall=call-vector-1"
+        )
+
+        let request = #"{"call_id":"call-vector-1","args":{"action":"now"},"provider":"gemini-live"}"#
+        let envelope = try LocationCrypto.voiceRequest(tool: "conduit_location", plaintext: Data(request.utf8), key: key,
+                                                       callID: "call-vector-1", nonce: ChaChaPoly.Nonce(data: Data(count: 12)))
+        XCTAssertEqual(envelope["ct"] as? String,
+                       "Pz9gGtPpraVru4dOPXv0TcJEUmj6vNdCFECj8qkccvaUZOZDCGdFpfh-OY-1QHSBAVebQ0JZuQjZ0WpA5M5eiv7WJvwXkjdfpT0FJQHgX7j13RSFFKcJR1KMReU")
+        XCTAssertEqual(envelope["tool"] as? String, "conduit_location")
+        XCTAssertEqual(envelope["device_id"] as? String, LocationVector.deviceID)
+        XCTAssertEqual(envelope["kid"] as? String, LocationVector.kid)
+        XCTAssertEqual(envelope["call_id"] as? String, "call-vector-1")
+
+        let answer = ["nonce": "AAAAAAAAAAAAAAAA",
+                      "ct": "4L3Edq2Pqul5L7IkSFV1mcpEe62ksOCr_58lP-hpj0EifhOgs7WlfcyZHScBjna8zBbtma66vY4xJQ6FNc_YzA"]
+        let result = try LocationCrypto.openVoiceAnswer(answer, tool: "conduit_location", key: key, callID: "call-vector-1")
+        XCTAssertEqual((result as? [String: Any])?["ok"] as? Bool, true)
+        XCTAssertThrowsError(try LocationCrypto.openVoiceAnswer(answer, tool: "conduit_location", key: key, callID: "call-other"),
+                             "An answer is bound to its call")
+        XCTAssertThrowsError(try LocationCrypto.openVoiceAnswer(answer, tool: "conduit_health", key: key, callID: "call-vector-1"),
+                             "and to its tool")
+
+        // A key saved before voice reads decodes, still seals batches, and reads nothing.
+        let old = try JSONDecoder().decode(LocationCrypto.SessionKey.self,
+                                           from: Data(#"{"kid":"k","key":"AAAA","deviceID":"device-vector-1"}"#.utf8))
+        XCTAssertFalse(old.readsByVoice)
+        XCTAssertThrowsError(try LocationCrypto.voiceRequest(tool: "conduit_location", plaintext: Data(), key: old, callID: "c")) { error in
+            XCTAssertEqual(error as? LocationCrypto.VoiceFailure, .noVoiceKey)
+        }
+    }
+
+    func testLocationVoiceReadConsentIsPerModeAndOnlyWhileSharing() throws {
+        var config = LocationFixtures.config(background: false, talking: false)
+        config.setVoiceRead(LiveVoiceModeName.geminiLive.storageID, allowed: true)
+        XCTAssertFalse(config.letsVoiceRead("gemini-live"), "Nothing reads while sharing is off")
+        config.settings.talking = true
+        XCTAssertTrue(config.letsVoiceRead("gemini-live"))
+        XCTAssertFalse(config.letsVoiceRead("gpt-live"), "Each company is its own yes")
+        let reread = try JSONDecoder().decode(LocationSharedConfig.self, from: JSONEncoder().encode(config))
+        XCTAssertEqual(reread.voiceReaders, ["gemini-live"])
+        config.binding = nil
+        XCTAssertFalse(config.letsVoiceRead("gemini-live"), "Nor while unbound")
+        config.setVoiceRead("gemini-live", allowed: false)
+        XCTAssertNil(config.voiceReaders)
+
+        // A config written before voice reads lets no mode read.
+        let old = try JSONDecoder().decode(LocationSharedConfig.self, from: Data(#"{"deviceID": "0123456789abcdef"}"#.utf8))
+        XCTAssertNil(old.voiceReaders)
+    }
+
+    func testAKeyFromBeforeVoiceReadsIsSetUpAgainOnlyOnceAVoiceModeMayRead() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
+        var keyRequests = 0
+        let request: LocationSyncEngine.Request = { path, _, body in
+            if path.hasSuffix("/key") {
+                keyRequests += 1
+                let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+                return [
+                    "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
+                    "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
+                ]
+            }
+            return ["ok": true]
+        }
+        var config = LocationFixtures.config()
+        let keys = LocationKeyStore.memory()
+        let old = LocationCrypto.SessionKey(kid: "old", key: Data(count: 32), deviceID: config.deviceID)
+        XCTAssertTrue(keys.save(old))
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
+
+        // No voice mode may read: the old key keeps sealing batches.
+        let plain = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(plain, .sent)
+        XCTAssertEqual(keyRequests, 0)
+        XCTAssertEqual(keys.load(), old)
+        XCTAssertNil(engine.voiceReadKey(deviceID: config.deviceID))
+
+        // One may: the next send agrees a key that reads, once.
+        config.setVoiceRead("grok-live", allowed: true)
+        let voice = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(voice, .sent)
+        XCTAssertEqual(keyRequests, 1)
+        let key = try XCTUnwrap(engine.voiceReadKey(deviceID: config.deviceID))
+        XCTAssertTrue(key.readsByVoice)
+        XCTAssertNil(engine.voiceReadKey(deviceID: "another-device"))
+        _ = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(keyRequests, 1)
+    }
+
     func testACachedFixAnswersPreciseOnlyWhenCloseToTheAskedAccuracy() {
         XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyNearestTenMeters), 20)
         XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyHundredMeters), 100)

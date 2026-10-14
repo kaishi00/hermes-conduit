@@ -2,10 +2,11 @@
 //  VoiceHostToolsTests.swift
 //  ConduitTests
 //
-//  Live voice calls read the user's shared health data from the host: the
-//  voice sealing matches the notifier's vector, the host's tool schema is
-//  passed as strings and turned back into JSON types, and Gemini, Grok and
-//  GPT-Live calls reach the tool. Written as an extension of an existing
+//  Live voice calls read the user's shared health data from the host (the
+//  location side is in LocationSharingTests): the voice sealing matches the
+//  notifier's vector, the host's tool schema is passed as strings and
+//  turned back into JSON types, and Gemini, Grok and GPT-Live calls reach
+//  only the tools the call was given. Written as an extension of an existing
 //  suite: the CI test planner is at capacity for new XCTestCase classes.
 //
 
@@ -135,6 +136,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(text.contains("431"))
         XCTAssertEqual(calls.last?.1["action"] as? String, "overview")
         XCTAssertEqual(calls.count, 2, "Read by Conduit, not started as a Hermes job")
+
+        // A tool this call wasn't given never reaches the reader.
+        let location = VoiceHostTool(name: "conduit_location", description: "Where the user is.",
+                                     parameters: ["type": "object", "properties": ["action": ["type": "string", "enum": ["now", "places"]]]],
+                                     key: "location")
+        let refused = await supervisor.callHostTool(location, arguments: ["action": "now"])
+        XCTAssertNotNil(refused["error"])
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertTrue(location.gptLiveRule.contains(#"Location: {"action": "now"}"#), "The example is the tool's own action")
     }
 
     func testVoiceReadConsentIsPerModeAndOnlyWhileSharing() {
