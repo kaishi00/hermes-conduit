@@ -603,11 +603,12 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// The Apple Watch answered or declined a call that rang on both: this
-    /// one stops ringing. Every VoIP push is reported to CallKit, this one
-    /// too: a call still on the phone is reported again under its own id,
-    /// which CallKit already has; any other is reported and ended at once.
-    /// Where iOS needs no call for the push (`mustReport` false: a call is
-    /// still on here, or Conduit is in the foreground), none is reported.
+    /// one stops ringing. Reported to CallKit when iOS needs it (always
+    /// before iOS 26.4): a call still on the phone is reported again under
+    /// its own id, which CallKit already has; any other is reported and
+    /// ended at once. Where iOS needs no call for the push (`mustReport`
+    /// false: a call is still on here, or Conduit is in the foreground),
+    /// none is reported.
     private func ringSettled(_ settled: HermesRingSettled, mustReport: Bool = true, completion: @escaping () -> Void) {
         guard let provider else {
             completion()
@@ -799,7 +800,7 @@ final class HermesNativeCalls: NSObject {
 // MARK: - PushKit
 
 extension HermesNativeCalls: PKPushRegistryDelegate {
-    nonisolated static func hex(_ token: Data) -> String {
+    private nonisolated static func hex(_ token: Data) -> String {
         token.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -813,7 +814,7 @@ extension HermesNativeCalls: PKPushRegistryDelegate {
 
     nonisolated func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
         MainActor.assumeIsolated {
-            guard registry === self.registry else { return }
+            guard registry === self.registry, self.isRinging else { return }
             PushNotificationService.shared.updateVoIPToken(nil)
         }
     }
