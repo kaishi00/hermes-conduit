@@ -667,6 +667,8 @@ final class PhoneSyncEngine: ObservableObject {
     // MARK: Live voice calls
 
     struct VoiceNotReady: Error {}
+    /// Voice adds only: updates and deletions stay with Hermes' cards.
+    struct NotAnAddition: Error {}
 
     /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
     /// host's result, for this iPhone's data only. Checks only that sharing
@@ -696,6 +698,7 @@ final class PhoneSyncEngine: ObservableObject {
     /// away (no card: they said so out loud). The next upload sends it. Like
     /// `voiceRead`, the caller checks the voice mode may use it.
     func addFromVoice(_ change: PhoneChange) async throws -> String? {
+        guard change.kind.isAddition else { throw NotAnAddition() }
         guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
         let itemID = try await calendarSource.apply(change, window: window)
         if let itemID {

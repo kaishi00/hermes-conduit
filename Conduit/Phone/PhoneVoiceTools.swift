@@ -24,8 +24,8 @@ enum PhoneVoiceTools {
     /// The tools for what's shared: changes whenever sharing is on (Hermes
     /// can ask for one), adding when events or reminders can be written,
     /// both by the user's choice and by what iOS still allows.
-    static func tools(for preferences: PhoneSyncPreferences, access: PhoneCalendarAccess = .full,
-                      remindersAuthorized: Bool = true) -> [VoiceHostTool] {
+    static func tools(for preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
+                      remindersAuthorized: Bool) -> [VoiceHostTool] {
         guard preferences.isOn else { return [] }
         var tools = [changes]
         let allowed = addable(preferences, access: access, remindersAuthorized: remindersAuthorized)

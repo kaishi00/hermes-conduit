@@ -236,11 +236,11 @@ extension HermesVoiceGatewayTimeoutTests {
         // Only what's shared: no reminders shared, no reminder adds.
         var eventsOnly = phonePreferences()
         eventsOnly.reminders = false
-        let tools = PhoneVoiceTools.tools(for: eventsOnly)
+        let tools = PhoneVoiceTools.tools(for: eventsOnly, access: .full, remindersAuthorized: true)
         XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
         let addTool = try XCTUnwrap(tools.last)
         XCTAssertEqual(((addTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
-        XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences()).isEmpty)
+        XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences(), access: .full, remindersAuthorized: true).isEmpty)
         // Nor what iOS no longer allows.
         let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
         XCTAssertEqual(((noReminders.last?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
@@ -250,7 +250,7 @@ extension HermesVoiceGatewayTimeoutTests {
         host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",
                          "fields": ["title": "Call the plumber"]]]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
-        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences()).first)
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: true).first)
         let answer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
         let listed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "list"], engine: engine, answer: answer)
         XCTAssertTrue(listed["result"]?.contains("Call the plumber") == true)
