@@ -12,6 +12,7 @@
 //  at capacity for new classes when this file landed.
 //
 
+import CallKit
 import CryptoKit
 import XCTest
 @testable import Conduit
@@ -655,6 +656,19 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCallStorefront.allowsCalls("CHN"))
         XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: nil, title: nil), "Hermes")
         XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: "Ada", title: "Check \"it\""), "Hermes · Check 'it'")
+    }
+
+    func testInTheCarOrSilencedTheWatchStopsRinging() {
+        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(plan: .ring, inCar: true), "Driving: the call rings on CarPlay, not the wrist")
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .ring, inCar: false))
+        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.talk), inCar: false), "Busy in voice here")
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.missed), inCar: true), "A late push: the Watch judges its own")
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.none), inCar: true))
+        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(after: .filteredByDoNotDisturb), "A Focus silenced it here")
+        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(after: .filteredByBlockList))
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: .callUUIDAlreadyExists))
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: .unknown))
+        XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: nil))
     }
 
     func testACallSaysWhichProfileIsCalling() throws {
