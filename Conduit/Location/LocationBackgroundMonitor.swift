@@ -48,9 +48,9 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
     /// launch while background sharing is on.
     func configure(settings: LocationSharingSettings, places: [LocationSavedPlace], bound: Bool) {
         let previous = configuring
-        configuring = Task { @MainActor in
+        configuring = Task { @MainActor [weak self] in
             await previous?.value
-            await apply(settings: settings, places: places, bound: bound)
+            await self?.apply(settings: settings, places: places, bound: bound)
         }
     }
 

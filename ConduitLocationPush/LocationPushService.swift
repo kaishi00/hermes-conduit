@@ -22,6 +22,14 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     private var serviceSession: AnyObject?
     private var fixContinuation: CheckedContinuation<CLLocation?, Never>?
     private var work: Task<Void, Never>?
+    /// The locate claimed in the replay store and not answered yet:
+    /// released if the extension finishes or is stopped without posting.
+    private var pendingReplayKey: String?
+
+    // The whole answer has to fit iOS's budget for this extension.
+    private static let fixTimeout: TimeInterval = 6
+    private static let geocodeTimeout: TimeInterval = 1.5
+    private static let postTimeout: TimeInterval = 8
 
     func didReceiveLocationPushPayload(_ payload: [String: Any], completion: @escaping () -> Void) {
         lock.withLock { self.completion = completion }
@@ -43,15 +51,20 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         finish()
     }
 
+    /// Ends the push: releases an unanswered replay key, stops a fix still
+    /// waiting, and calls the completion once.
     private func finish() {
-        let handler: (() -> Void)? = lock.withLock {
+        let (handler, unanswered): ((() -> Void)?, String?) = lock.withLock {
             defer {
                 completion = nil
                 work = nil
+                pendingReplayKey = nil
             }
-            return completion
+            return (completion, pendingReplayKey)
         }
+        if let unanswered { E2ESeenStore.shared.remove(unanswered, namespace: "locate") }
         DispatchQueue.main.async {
+            self.resumeFix(nil)
             self.manager?.delegate = nil
             self.manager = nil
             self.serviceSession = nil
@@ -75,16 +88,15 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // A second delivery of the same request is answered once. The key
         // is claimed now (a concurrent delivery stops here) and released if
         // the answer doesn't reach the host, so a redelivery can try again.
-        let seen = E2ESeenStore.shared
-        guard seen.insert(request.replayKey, namespace: "locate") else { return }
-        var answered = false
-        defer { if !answered { seen.remove(request.replayKey, namespace: "locate") } }
+        guard E2ESeenStore.shared.insert(request.replayKey, namespace: "locate") else { return }
+        lock.withLock { pendingReplayKey = request.replayKey }
 
         let precision = config.settings.backgroundPrecision
         let (location, approximate) = await fix(precision: precision)
         guard let location, !Task.isCancelled else { return }
+        // The area is a nicety: sent only if the geocoder answers quickly.
         var area: LocationArea?
-        if precision != .places, !Task.isCancelled { area = await Self.area(for: location) }
+        if precision != .places, !Task.isCancelled { area = await Self.area(for: location, timeout: Self.geocodeTimeout) }
 
         var batch = LocationBatch(sentAt: Date(), settings: config.settings)
         batch.approximateOnly = approximate || config.approximateOnly
@@ -98,9 +110,10 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
                 path: LocationHostClient.withProfile("\(LocationHostClient.base)/ingest", profile: binding.profile),
                 method: "POST",
                 body: body,
-                timeout: 10
+                timeout: Self.postTimeout
             )
-            answered = true
+            // Answered: a redelivery of this locate stays a replay.
+            lock.withLock { pendingReplayKey = nil }
         } catch {
             // Nothing else to do from here: the app sends when it next runs.
         }
@@ -127,7 +140,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
                             self.fixContinuation = inner
                             manager.requestLocation()
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { self.resumeFix(nil) }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.fixTimeout) { self.resumeFix(nil) }
                     }
                     continuation.resume(returning: (location, approximate))
                 }
@@ -154,8 +167,8 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     // MARK: Area
 
     /// Neighbourhood, city and country from Apple's geocoder, or nil when it
-    /// doesn't answer within a few seconds.
-    private static func area(for location: CLLocation) async -> LocationArea? {
+    /// doesn't answer within `timeout`.
+    private static func area(for location: CLLocation, timeout: TimeInterval) async -> LocationArea? {
         let geocoder = CLGeocoder()
         let lock = NSLock()
         var done = false
@@ -178,7 +191,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
                     )
                 })
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 geocoder.cancelGeocode()
                 resume(nil)
             }

@@ -250,13 +250,10 @@ final class LocationSyncEngine: ObservableObject {
             var answer: [String: Any]
             do {
                 answer = try await post(batch, key: key, request: request)
-            } catch DashboardTicketBridgeError.http(let status, let detail) where (status == 409 && Self.needsNewKey(detail)) || status == 404 {
-                // 409 unknown_key or bad_seal: the host forgot or replaced
-                // this phone's key (a wipe, a new store). Agree a new one,
-                // once. A 404 from ingest alone could be a proxy or a
-                // restarting host; asking the key route tells: if that's
-                // missing too the plugin is (ensureKey throws keyRouteMissing).
-                Self.log.info("Location ingest answered \(status, privacy: .public); agreeing the key again")
+            } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && Self.needsNewKey(detail) {
+                // unknown_key or bad_seal: the host forgot or replaced this
+                // phone's key (a wipe, a new store). Agree a new one, once.
+                Self.log.info("Location ingest answered 409 \(detail, privacy: .public); agreeing the key again")
                 clearKey()
                 key = try await ensureKey(deviceID: config.deviceID, request: request)
                 batch.places = config.places
@@ -270,8 +267,14 @@ final class LocationSyncEngine: ObservableObject {
             case .signInRequired:
                 state.pause = .signInRequired
             case .http(let status, let detail) where status == 404:
-                // Ingest answered 404 even with a fresh key: try later.
-                lastError = detail
+                // A bare 404 could be a proxy or a restarting host. The key
+                // is kept; the status route tells whether the plugin is gone.
+                if await pluginIsMissing(deviceID: config.deviceID, request: request) {
+                    Self.log.info("Location status answered 404 too: plugin missing")
+                    state.pause = .pluginMissing
+                } else {
+                    lastError = detail
+                }
             case .http(let status, let detail) where status == 400 || status == 413:
                 state.pause = .refused(detail)
                 return .refused
@@ -285,7 +288,7 @@ final class LocationSyncEngine: ObservableObject {
             }
             return .failed
         } catch LocationSyncEngineError.keyRouteMissing {
-            // The key route is gone too: the plugin has no location sync.
+            // POST /location/key answered 404: the plugin has no location sync.
             Self.log.info("Location key route answered 404: plugin missing")
             state.pause = .pluginMissing
             return .failed
@@ -294,6 +297,27 @@ final class LocationSyncEngine: ObservableObject {
             Self.log.info("Location send failed: \(Self.describe(error), privacy: .public)")
             return .failed
         }
+    }
+
+    /// Whether GET /location/status answers 404 as well: then the plugin
+    /// has no location sync. Any other answer (or none) is passing.
+    private func pluginIsMissing(deviceID: String, request: Request) async -> Bool {
+        do {
+            _ = try await request(Self.statusPath(deviceID: deviceID), "GET", nil)
+            return false
+        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// `/status`, with the device id when the host would take it.
+    nonisolated static func statusPath(deviceID: String) -> String {
+        guard LocationIDs.isValidWireID(deviceID),
+              let encoded = deviceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#")))
+        else { return "\(LocationHostClient.base)/status" }
+        return "\(LocationHostClient.base)/status?device_id=\(encoded)"
     }
 
     /// The host's 409s that mean it has no usable key for this phone.
@@ -368,7 +392,7 @@ final class LocationSyncEngine: ObservableObject {
     // MARK: Reading and deleting
 
     func status(deviceID: String, request: Request) async throws -> LocationHostStatus {
-        LocationHostStatus(try await request("\(Self.base)/status?device_id=\(deviceID)", "GET", nil))
+        LocationHostStatus(try await request(Self.statusPath(deviceID: deviceID), "GET", nil))
     }
 
     func reads(request: Request) async throws -> [LocationRead] {

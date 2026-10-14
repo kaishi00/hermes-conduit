@@ -22,6 +22,7 @@ import OSLog
 import Security
 
 enum LocationSharedStore {
+    private static let log = Logger(subsystem: "com.milim.relay", category: "location")
     static var folder: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NotificationE2E.appGroup)?
             .appendingPathComponent("Location", isDirectory: true)
@@ -61,9 +62,18 @@ enum LocationSharedStore {
 
     // MARK: Unsent
 
+    /// What's waiting, or nothing. A file that can't be read is logged and
+    /// treated as empty: losing a pending fix or a few events is acceptable.
     static func readUnsent(at url: URL? = folder?.appendingPathComponent("unsent.json")) -> LocationUnsent {
-        if case .value(let unsent) = read(LocationUnsent.self, at: url) { return unsent }
-        return LocationUnsent()
+        switch read(LocationUnsent.self, at: url) {
+        case .value(let unsent):
+            return unsent
+        case .missing:
+            return LocationUnsent()
+        case .unreadable:
+            log.error("Location unsent.json is unreadable (locked or damaged); starting empty")
+            return LocationUnsent()
+        }
     }
 
     @discardableResult

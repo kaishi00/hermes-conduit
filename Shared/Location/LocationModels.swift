@@ -204,6 +204,25 @@ struct LocationBinding: Codable, Equatable {
     var profile: String
     /// The dashboard's address, for display.
     var host: String
+
+    init(dashboardID: UUID, profile: String, host: String) {
+        self.dashboardID = dashboardID
+        self.profile = profile
+        self.host = host
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dashboardID, profile, host
+    }
+
+    /// Only the dashboard is required; the profile falls back to the
+    /// default one and the host label to nothing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dashboardID = try container.decode(UUID.self, forKey: .dashboardID)
+        profile = (try? container.decodeIfPresent(String.self, forKey: .profile)) ?? "default"
+        host = (try? container.decodeIfPresent(String.self, forKey: .host)) ?? ""
+    }
 }
 
 /// Everything the app and the Location Push extension both read: in the App
@@ -218,18 +237,25 @@ struct LocationSharedConfig: Codable, Equatable {
     var deviceID: String = LocationIDs.hex(bytes: 16)
     /// Whether iOS gave only approximate location.
     var approximateOnly = false
+    /// A change of the sharing choices or places the host hasn't had yet
+    /// (made offline, or the send failed): sent when the host is next
+    /// reachable, even with sharing off, since "off" and "paused" matter
+    /// most.
+    var settingsPending = false
 
     init(binding: LocationBinding? = nil, settings: LocationSharingSettings = LocationSharingSettings(),
-         places: [LocationSavedPlace] = [], deviceID: String = LocationIDs.hex(bytes: 16), approximateOnly: Bool = false) {
+         places: [LocationSavedPlace] = [], deviceID: String = LocationIDs.hex(bytes: 16), approximateOnly: Bool = false,
+         settingsPending: Bool = false) {
         self.binding = binding
         self.settings = settings
         self.places = places
         self.deviceID = deviceID
         self.approximateOnly = approximateOnly
+        self.settingsPending = settingsPending
     }
 
     private enum CodingKeys: String, CodingKey {
-        case binding, settings, places, deviceID, approximateOnly
+        case binding, settings, places, deviceID, approximateOnly, settingsPending
     }
 
     /// Tolerates missing keys, and a saved place that can't be read is
@@ -241,6 +267,7 @@ struct LocationSharedConfig: Codable, Equatable {
         places = (try? container.decodeIfPresent([LossyPlace].self, forKey: .places))?.compactMap(\.place) ?? []
         deviceID = (try? container.decodeIfPresent(String.self, forKey: .deviceID)) ?? LocationIDs.hex(bytes: 16)
         approximateOnly = (try? container.decodeIfPresent(Bool.self, forKey: .approximateOnly)) ?? false
+        settingsPending = (try? container.decodeIfPresent(Bool.self, forKey: .settingsPending)) ?? false
     }
 
     private struct LossyPlace: Decodable {

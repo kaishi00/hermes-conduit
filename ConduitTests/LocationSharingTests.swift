@@ -361,39 +361,58 @@ extension NotificationE2ETests {
         XCTAssertFalse(LocationSyncEngine.needsNewKey("layer_off"))
     }
 
-    func testAnIngest404IsThePluginMissingOnlyWhenTheKeyRouteIsGoneToo() async throws {
+    func testAnIngest404KeepsTheKeyAndIsThePluginMissingOnlyWhenStatusIsGoneToo() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
-        var keyRouteExists = true
+        var statusExists = true
         var calls: [String] = []
         let request: LocationSyncEngine.Request = { path, _, body in
             calls.append(path)
             if path.hasSuffix("/key") {
-                guard keyRouteExists else { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
                 let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
                 return [
                     "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
                     "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
                 ]
             }
+            if path.contains("/status"), statusExists { return ["ok": true] }
             throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
         }
-        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: .memory())
+        let keys = LocationKeyStore.memory()
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
         let config = LocationFixtures.config()
         let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
 
-        // Ingest 404s but the key route answers: a passing failure.
+        // Ingest 404s but status answers: a passing failure, and the key stays.
         let passing = await engine.send(batch, config: config, request: request)
         XCTAssertEqual(passing, .failed)
         XCTAssertNil(engine.state.pause)
-        XCTAssertEqual(calls.filter { $0.hasSuffix("/key") }.count, 2)
+        let key = try XCTUnwrap(keys.load())
+        XCTAssertEqual(calls.filter { $0.hasSuffix("/key") }.count, 1)
+        XCTAssertEqual(calls.last, "\(LocationHostClient.base)/status?device_id=\(config.deviceID)")
 
-        // Both gone: the plugin has no location sync.
-        keyRouteExists = false
+        // Status gone too: the plugin has no location sync. Still no new key.
+        statusExists = false
         let missing = await engine.send(batch, config: config, request: request)
         XCTAssertEqual(missing, .failed)
         XCTAssertEqual(engine.state.pause, .pluginMissing)
+        XCTAssertEqual(keys.load(), key)
+        XCTAssertEqual(calls.filter { $0.hasSuffix("/key") }.count, 1)
+    }
+
+    func testAnUnsentSettingsChangeIsRememberedInTheSharedConfig() throws {
+        var config = LocationFixtures.config()
+        XCTAssertFalse(config.settingsPending)
+        config.settingsPending = true
+        XCTAssertTrue(try JSONDecoder().decode(LocationSharedConfig.self, from: JSONEncoder().encode(config)).settingsPending)
+        // A config written before the flag existed has nothing pending.
+        let old = try JSONDecoder().decode(LocationSharedConfig.self, from: Data(#"{"deviceID": "0123456789abcdef"}"#.utf8))
+        XCTAssertFalse(old.settingsPending)
+        // A binding missing its labels still binds to its dashboard.
+        let binding = try JSONDecoder().decode(LocationBinding.self, from: Data(#"{"dashboardID": "0F5C8A34-1B2D-4E5F-8A9B-0C1D2E3F4A5B"}"#.utf8))
+        XCTAssertEqual(binding, LocationBinding(dashboardID: LocationFixtures.dashboardID, profile: "default", host: ""))
+        XCTAssertFalse(LocationSyncEngine.statusPath(deviceID: "bad id!").contains("device_id"))
     }
 
     func testACachedFixAnswersPreciseOnlyWhenCloseToTheAskedAccuracy() {

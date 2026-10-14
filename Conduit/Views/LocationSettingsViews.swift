@@ -95,6 +95,8 @@ struct LocationSettingsPage: View {
     @State private var hostStatus: LocationHostStatus?
     @State private var reads: [LocationRead] = []
     @State private var rules: [LocationRule] = []
+    /// Rules whose delete is on its way: their trash button is disabled.
+    @State private var deletingRules: Set<String> = []
     @State private var hostUnreachable = false
 
     private var settings: LocationSharingSettings { controller.settings }
@@ -485,6 +487,7 @@ struct LocationSettingsPage: View {
                             Image(systemName: "trash")
                         }
                         .accessibilityLabel(Text(AppLocalization.string("Delete rule")))
+                        .disabled(deletingRules.contains(rule.id))
                     }
                 }
             }
@@ -547,7 +550,13 @@ struct LocationSettingsPage: View {
             return
         }
         do {
-            hostStatus = try await controller.engine.status(deviceID: controller.config.deviceID, request: request)
+            // A device id the host would refuse isn't asked about.
+            let deviceID = controller.config.deviceID
+            if LocationIDs.isValidWireID(deviceID) {
+                hostStatus = try await controller.engine.status(deviceID: deviceID, request: request)
+            } else {
+                hostStatus = nil
+            }
             reads = try await controller.engine.reads(request: request)
             rules = try await controller.engine.rules(request: request)
             hostUnreachable = false
@@ -577,7 +586,10 @@ struct LocationSettingsPage: View {
     }
 
     private func deleteRule(_ rule: LocationRule) {
+        guard !deletingRules.contains(rule.id) else { return }
+        deletingRules.insert(rule.id)
         Task {
+            defer { deletingRules.remove(rule.id) }
             guard let request = await controller.hostRequest() else { return }
             do {
                 try await controller.engine.deleteRule(rule.id, request: request)

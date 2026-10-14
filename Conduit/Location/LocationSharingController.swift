@@ -180,20 +180,30 @@ final class LocationSharingController: ObservableObject {
     func appBecameActive() {
         guard readConfigIfNeeded() else { return }
         refreshAuthorization()
-        guard config.binding != nil, settings.isOn else { return }
+        // Not only while sharing is on: a change to off or paused that
+        // didn't reach the host is the one that matters most.
+        guard config.binding != nil else { return }
         reconfigureMonitors()
         if settings.shares(.app, at: now()), fixes.authorizationStatus == .authorizedAlways,
            (engine.state.lastFixSent.map { now().timeIntervalSince($0) > LocationTiming.appFixInterval } ?? true) {
+            // Every batch carries the sharing choices too.
             Task { await shareFix(source: .app) }
-        } else if !unsent.isEmpty {
-            Task { await flush() }
+        } else {
+            sendWaiting()
         }
     }
 
     /// Connected to a dashboard: send what's waiting if it's the bound one.
     func hostConnected() {
-        guard readConfigIfNeeded(), config.binding != nil, !unsent.isEmpty else { return }
-        Task { await flush() }
+        guard readConfigIfNeeded(), config.binding != nil else { return }
+        sendWaiting()
+    }
+
+    /// Sends what's unsent and any choices the host hasn't had yet.
+    private func sendWaiting() {
+        guard !unsent.isEmpty || config.settingsPending else { return }
+        let settingsOnly = config.settingsPending
+        Task { await flush(settingsOnly: settingsOnly) }
     }
 
     func refreshAuthorization() {
@@ -328,6 +338,9 @@ final class LocationSharingController: ObservableObject {
     /// places), one batch at a time.
     @discardableResult
     func flush(settingsOnly: Bool = false) async -> Bool {
+        // Remembered until a batch with these choices reaches the host, so a
+        // change made offline goes when the host is next reachable.
+        if settingsOnly, config.binding != nil, !config.settingsPending { save { $0.settingsPending = true } }
         let previous = sendChain
         let task = Task { @MainActor [weak self] () -> Bool in
             _ = await previous?.value
@@ -360,8 +373,15 @@ final class LocationSharingController: ObservableObject {
         defer { if identifier != .invalid { UIApplication.shared.endBackgroundTask(identifier) } }
         isSending = true
         defer { isSending = false }
+        let sentSettings = config.settings
+        let sentPlaces = config.places
         let outcome = await engine.send(batch, config: config, request: request)
         guard outcome != .failed else { return false }
+        // The host has these choices (or won't take them: retrying the same
+        // batch wouldn't help). A change made meanwhile stays pending.
+        if config.settingsPending, config.settings == sentSettings, config.places == sentPlaces {
+            save { $0.settingsPending = false }
+        }
         unsent.remove(fixID: pending.fix?.id, eventIDs: Set(pending.events.map(\.id)))
         saveUnsent()
         return outcome == .sent

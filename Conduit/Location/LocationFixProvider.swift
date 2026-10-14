@@ -84,9 +84,13 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// One request gave up (its timeout). The rest keep the finest accuracy
+    /// they need; with none left, the next request starts a new one.
     private func resume(_ id: UUID, with location: CLLocation?) {
         wanted.removeValue(forKey: id)
         waiting.removeValue(forKey: id)?.resume(returning: location)
+        if waiting.isEmpty { requestInFlight = false }
+        applyFinestWanted()
     }
 
     private func deliver(_ location: CLLocation?) {

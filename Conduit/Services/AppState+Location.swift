@@ -80,7 +80,9 @@ extension AppState {
     /// the host pass current and send what's waiting.
     func locationHostConnected() async {
         let controller = LocationSharingController.shared
-        guard let binding = controller.binding, controller.settings.isOn,
+        // Bound, on or not: turning sharing off or pausing it must still
+        // reach the host, and that may need the pass.
+        guard let binding = controller.binding,
               activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
         if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
            !LocationKeychain.saveHostPass(pass) {
