@@ -115,9 +115,10 @@ final class LiveTurnActivities {
     /// Stream events of chats whose prompt is still being submitted: the
     /// gateway can stream before prompt.submit answers, and those events
     /// belong to the activity that starts once it does.
-    private var early: (sessionIDs: Set<String>, since: Date, events: [StreamEvent])?
+    private var early: (sessionIDs: Set<String>, events: [StreamEvent])?
+    /// Past this, the oldest held events go first, so the latest phase and a
+    /// turn's end are never lost.
     private static let earlyLimit = 64
-    private static let earlyMaxAge: TimeInterval = 60
 
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
@@ -126,7 +127,7 @@ final class LiveTurnActivities {
     /// A prompt is about to be submitted: its chat's events are held until
     /// `turnStarted` (or dropped by the next submission).
     func turnSubmitting(sessionIDs: Set<String>) {
-        early = Self.isEnabled && !sessionIDs.isEmpty ? (sessionIDs, Date(), []) : nil
+        early = Self.isEnabled && !sessionIDs.isEmpty ? (sessionIDs, []) : nil
     }
 
     /// A prompt Conduit sent was accepted: the turn gets an activity, and an
@@ -134,8 +135,7 @@ final class LiveTurnActivities {
     func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?) {
         adoptExisting()
         let held = early.flatMap { pending -> [StreamEvent]? in
-            guard !pending.sessionIDs.isDisjoint(with: sessionIDs),
-                  Date().timeIntervalSince(pending.since) < Self.earlyMaxAge else { return nil }
+            guard !pending.sessionIDs.isDisjoint(with: sessionIDs) else { return nil }
             return pending.events
         } ?? []
         early = nil
@@ -171,7 +171,10 @@ final class LiveTurnActivities {
     /// A stream event of the active chat.
     func observe(_ event: StreamEvent, sessionID: String) {
         guard !sessionID.isEmpty else { return }
-        if early?.sessionIDs.contains(sessionID) == true, (early?.events.count ?? 0) < Self.earlyLimit {
+        if early?.sessionIDs.contains(sessionID) == true {
+            if (early?.events.count ?? 0) >= Self.earlyLimit {
+                early?.events.removeFirst()
+            }
             early?.events.append(event)
         }
         guard !running.isEmpty else { return }
