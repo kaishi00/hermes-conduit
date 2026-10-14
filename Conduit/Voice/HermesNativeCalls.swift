@@ -102,6 +102,9 @@ final class HermesNativeCalls: NSObject {
 
     /// How long a call rings before it counts as missed.
     static let unansweredAfter: Duration = .seconds(45)
+    /// How long a call the Apple Watch answered keeps ringing here for the
+    /// relay's stop.
+    static let watchStopWait: Duration = .seconds(4)
     /// How long an answered call waits for Hermes' connection.
     static let connectionTimeout: Duration = .seconds(20)
     /// How long an answered call waits for CallKit's audio.
@@ -704,13 +707,23 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// The call a Watch call answers (designs/hermes-calls-watch.md), kept
-    /// from its push. A phone call still ringing for it stops now, in case
-    /// the relay's word hasn't come.
+    /// from its push. A phone call still ringing for it is left for the
+    /// relay's stop, which comes as a VoIP push: ended here first, that push
+    /// would have to show a call of its own and end it at once, and iOS has
+    /// killed Conduit in the background for that. It stops here after
+    /// `watchStopWait`, in case the relay's word never comes.
     func answeredOnWatch(ringID: String) -> ConduitNotificationTarget? {
         pruneRingTargets()
         if let match = calls.first(where: { $0.value.ring?.id == ringID }), !match.value.answered {
-            HermesCallTrace.shared.note("Answered on the Watch")
-            finish(match.key, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
+            let id = match.key
+            HermesCallTrace.shared.note("Answered on the Watch, waiting for the relay's stop")
+            match.value.unanswered?.cancel()
+            calls[id]?.unanswered = Task {
+                do { try await Task.sleep(for: Self.watchStopWait) } catch { return }
+                guard self.calls[id]?.answered == false else { return }
+                HermesCallTrace.shared.note("Answered on the Watch, no stop from the relay")
+                self.finish(id, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
+            }
         }
         return ringTargets[ringID]?.target
     }
