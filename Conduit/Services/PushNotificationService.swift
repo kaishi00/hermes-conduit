@@ -970,7 +970,8 @@ final class PushNotificationService: ObservableObject {
                 credential: registration.credential
             )
             let (_, response) = try await URLSession.shared.data(for: request)
-            if (response as? HTTPURLResponse)?.statusCode == 404 { liveActivitiesUnsupported = true }
+            // Only a registration's 404 means the relay has no route.
+            if method == "PUT", (response as? HTTPURLResponse)?.statusCode == 404 { liveActivitiesUnsupported = true }
         } catch {
             // The activity still updates while Conduit runs.
         }

@@ -40,6 +40,8 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(state.context, 42)
         let capped = try XCTUnwrap(LiveTurnProgress.applying(.contextUpdate(sessionId: "s", percent: 130, used: 1, max: 1), to: state))
         XCTAssertEqual(capped.context, 100)
+        let huge = try XCTUnwrap(LiveTurnProgress.applying(.contextUpdate(sessionId: "s", percent: 1e20, used: 1, max: 1), to: State(phase: .thinking)))
+        XCTAssertEqual(huge.context, 100, "a huge value is clamped, never trapped on")
     }
 
     func testLiveTurnTheTurnEndsWithItsOutcomeAndTime() throws {

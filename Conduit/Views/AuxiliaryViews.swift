@@ -2228,8 +2228,8 @@ private struct NotificationsSettingsDetail: View {
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Show progress on the Lock Screen")
-                        Text("While Hermes works on a message you sent: what it's doing, how long it has run, its tools and context. Keeps updating in the background when notifications are on.")
+                        Text(AppLocalization.string("Show progress on the Lock Screen"))
+                        Text(AppLocalization.string("While Hermes works on a message you sent: what it's doing, how long it has run, its tools and context. Keeps updating in the background when notifications are on."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

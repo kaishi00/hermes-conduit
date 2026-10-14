@@ -23,7 +23,7 @@ enum LiveTurnProgress {
             next.phase = HermesTurnPhase.writing.rawValue
             next.tool = nil
         case .toolStart(_, let name, _, _):
-            if name.lowercased() == "clarify" {
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "clarify" {
                 next.phase = HermesTurnPhase.input.rawValue
                 next.tool = nil
             } else {
@@ -45,7 +45,8 @@ enum LiveTurnProgress {
             next.phase = HermesTurnPhase.thinking.rawValue
         case .contextUpdate(_, let percent, _, _):
             guard percent.isFinite else { return nil }
-            next.context = max(0, min(100, Int(percent.rounded())))
+            // Clamped as a Double: Int() traps on a huge value.
+            next.context = Int(max(0, min(100, percent.rounded())))
         case .messageComplete:
             return finished(state, .done, now: now)
         case .messageError:
@@ -99,6 +100,10 @@ final class LiveTurnActivities {
         var state: HermesTurnAttributes.ContentState
         var pushToken: String?
         var tokenTask: Task<Void, Never>?
+        var stateTask: Task<Void, Never>?
+        /// The last update handed to ActivityKit; each waits for the one
+        /// before it, so a burst of events lands in order.
+        var updateTask: Task<Void, Never>?
     }
 
     /// How long after a turn starts an idle `session.busy` / `session.info`
@@ -158,7 +163,11 @@ final class LiveTurnActivities {
             } else {
                 running[id]?.state = next
                 let content = ActivityContent(state: next, staleDate: Date().addingTimeInterval(Self.staleAfter))
-                Task { await entry.activity.update(content) }
+                let previous = entry.updateTask
+                running[id]?.updateTask = Task {
+                    await previous?.value
+                    await entry.activity.update(content)
+                }
             }
         }
     }
@@ -166,10 +175,11 @@ final class LiveTurnActivities {
     /// Lock Screen progress was turned off: every activity goes.
     func endAll() {
         adoptExisting()
-        for id in Array(running.keys) {
+        let tracked = Set(running.keys)
+        for id in tracked {
             finish(id, phase: .stopped, dismissal: .immediate)
         }
-        for activity in Activity<HermesTurnAttributes>.activities {
+        for activity in Activity<HermesTurnAttributes>.activities where !tracked.contains(activity.id) {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
     }
@@ -181,6 +191,12 @@ final class LiveTurnActivities {
         adopted = true
         for activity in Activity<HermesTurnAttributes>.activities where running[activity.id] == nil {
             guard activity.activityState == .active || activity.activityState == .stale else { continue }
+            // Left behind by a run that ended before the setting was
+            // turned off: it goes instead of being kept up to date.
+            guard Self.isEnabled else {
+                Task { await activity.end(nil, dismissalPolicy: .immediate) }
+                continue
+            }
             track(activity, state: activity.content.state)
         }
     }
@@ -207,7 +223,27 @@ final class LiveTurnActivities {
                 await self?.register(token: token, for: id, sessionIDs: sessionIDs)
             }
         }
-        running[id] = Running(activity: activity, sessionIDs: sessionIDs, state: state, tokenTask: tokenTask)
+        // Ended or dismissed outside Conduit (swiped away, the system's
+        // 8 hours, a push from the relay): stop tracking it and let the
+        // relay forget its token.
+        let stateTask = Task { [weak self] in
+            for await activityState in activity.activityStateUpdates {
+                if activityState == .ended || activityState == .dismissed {
+                    await self?.forget(id)
+                    return
+                }
+            }
+        }
+        running[id] = Running(activity: activity, sessionIDs: sessionIDs, state: state, tokenTask: tokenTask, stateTask: stateTask)
+    }
+
+    private func forget(_ id: String) async {
+        guard let entry = running.removeValue(forKey: id) else { return }
+        entry.tokenTask?.cancel()
+        entry.stateTask?.cancel()
+        if let token = entry.pushToken {
+            await PushNotificationService.shared.unregisterLiveActivity(token: token)
+        }
     }
 
     private func register(token: String, for id: String, sessionIDs: Set<String>) async {
@@ -223,10 +259,13 @@ final class LiveTurnActivities {
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy) {
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
+        entry.stateTask?.cancel()
         let lastState = entry.state.turnPhase.isFinished
             ? entry.state
             : LiveTurnProgress.finished(entry.state, phase, now: Date())
+        let pendingUpdate = entry.updateTask
         Task {
+            await pendingUpdate?.value
             await entry.activity.end(ActivityContent(state: lastState, staleDate: nil), dismissalPolicy: dismissal)
             if let token = entry.pushToken {
                 await PushNotificationService.shared.unregisterLiveActivity(token: token)

@@ -45,12 +45,16 @@ struct HermesTurnLiveActivity: Widget {
                 }
             } compactLeading: {
                 HermesTurnPhaseIcon(state: state)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
             } compactTrailing: {
                 HermesTurnElapsed(attributes: attributes, state: state)
                     .font(.caption2.monospacedDigit().weight(.semibold))
                     .frame(maxWidth: 48)
             } minimal: {
                 HermesTurnPhaseIcon(state: state)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
             }
             .widgetURL(attributes.link)
             .keylineTint(HermesTurnPhaseIcon.tint(for: state.turnPhase))
@@ -85,6 +89,7 @@ private struct HermesTurnLockScreenView: View {
                 .frame(maxWidth: 88, alignment: .trailing)
         }
         .padding(16)
+        .accessibilityElement(children: .combine)
         .opacity(isStale && !state.turnPhase.isFinished ? 0.6 : 1)
     }
 }
@@ -119,7 +124,7 @@ private struct HermesTurnElapsed: View {
             Text(timerInterval: attributes.startedAt...ended, pauseTime: ended, countsDown: false)
                 .multilineTextAlignment(.trailing)
         } else if state.turnPhase.isFinished {
-            Text(verbatim: "")
+            EmptyView()
         } else {
             Text(timerInterval: attributes.startedAt...Date.distantFuture, countsDown: false)
                 .multilineTextAlignment(.trailing)
