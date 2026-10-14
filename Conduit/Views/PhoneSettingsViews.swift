@@ -239,6 +239,9 @@ struct PhoneSettingsPage: View {
             Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text("Their nickname and company go too, when the contact has them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if choices.contacts {
                 ForEach(engine.people) { person in
                     PhonePersonRow(person: person) { relation in

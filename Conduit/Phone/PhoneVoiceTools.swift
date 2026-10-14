@@ -255,7 +255,7 @@ enum PhoneVoiceTools {
                 guard let at = localTime(date.text + "T" + time.text).flatMap({ PhoneDates.parse($0.text) }) else {
                     return ["error": "That date and time couldn't be read."]
                 }
-                guard at > Date() else { return ["error": "That time has already passed. Ask which day."] }
+                // A time already gone is refused by the phone's own clock when it's set.
                 fields["at"] = PhoneDates.format(at)
             } else {
                 fields["time"] = time.text

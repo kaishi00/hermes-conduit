@@ -241789,6 +241789,88 @@
           }
         }
       }
+    },
+    "Their nickname and company go too, when the contact has them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spitzname und Firma werden ebenfalls geteilt, wenn der Kontakt sie enthält."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También se comparten su apodo y su empresa, si el contacto los tiene."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son surnom et son entreprise sont aussi partagés, si le contact les indique."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama panggilan dan perusahaannya juga ikut, jika kontak memilikinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vengono condivisi anche soprannome e azienda, se il contatto li ha."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連絡先にあれば、ニックネームと会社名も共有されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연락처에 있으면 별명과 회사도 함께 공유됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pseudonim i firma też są udostępniane, jeśli kontakt je zawiera."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O apelido e a empresa também vão, se o contato os tiver."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прозвище и компания тоже передаются, если они есть в контакте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kişide varsa takma adı ve şirketi de paylaşılır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果联系人有昵称和公司，也会一并共享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果聯絡人有暱稱和公司，也會一併分享。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

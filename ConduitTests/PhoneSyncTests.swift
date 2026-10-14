@@ -386,6 +386,14 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.reported.first { $0["id"] as? String == "ch_timer" }?["item_id"] as? String, "alarm_1")
         XCTAssertEqual((host.batches.last?["alarms"] as? [[String: Any]])?.count, 0, "Both gone from the phone")
+        // AlarmKit unreadable for a pass: nothing is sent, the host keeps its list.
+        alarms.list = [["id": "a_new", "kind": "alarm"]]
+        alarms.unreadable = true
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(host.batches.last?["alarms"])
+        alarms.unreadable = false
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["alarms"] as? [[String: Any]])?.count, 1)
 
         // Turned off: the host is told, and nothing more goes.
         preferences.alarms = false
@@ -481,11 +489,12 @@ private final class FakePhoneAlarmSource: PhoneAlarmSource {
     var isSupported: Bool { true }
     var authorized = true
     var list: [[String: Any]] = []
+    var unreadable = false
     private(set) var applied: [PhoneChange] = []
     private(set) var cancelled: [String] = []
 
     func requestAccess() async throws {}
-    func alarms(now: Date, calendar: Calendar) -> [[String: Any]] { list }
+    func alarms(now: Date, calendar: Calendar) -> [[String: Any]]? { unreadable ? nil : list }
     func apply(_ change: PhoneChange, now: Date) async throws -> String {
         applied.append(change)
         let id = "alarm_\(applied.count)"

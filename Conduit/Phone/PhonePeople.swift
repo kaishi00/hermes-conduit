@@ -186,8 +186,10 @@ final class PhoneContactPicker: NSObject, CNContactPickerDelegate {
         top.present(picker, animated: true)
     }
 
-    func contactPicker(_ picker: CNContactPickerViewController, didSelect contacts: [CNContact]) {
-        picked(contacts)
+    // The single-pick callback: the multi-pick one may hand back contacts with
+    // only a name filled in.
+    func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
+        picked([contact])
         Self.current = nil
     }
 

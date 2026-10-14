@@ -42,7 +42,9 @@ protocol PhoneAlarmSource: AnyObject {
     func requestAccess() async throws
     /// The alarms and timers Conduit set that are still on the phone, as the
     /// host takes them: `{id, kind, label?, fires_at?, repeats?, state?}`.
-    func alarms(now: Date, calendar: Calendar) -> [[String: Any]]
+    /// Nil when AlarmKit couldn't be read: nothing is known, so nothing is
+    /// forgotten or sent.
+    func alarms(now: Date, calendar: Calendar) -> [[String: Any]]?
     /// Applies a `set_alarm`, `set_timer` or `cancel_alarm`; the alarm's id.
     func apply(_ change: PhoneChange, now: Date) async throws -> String
     /// Takes back an alarm Conduit set (the banner's Undo).
@@ -103,7 +105,7 @@ final class UnsupportedPhoneAlarmSource: PhoneAlarmSource {
     var isSupported: Bool { false }
     var authorized: Bool { false }
     func requestAccess() async throws { throw PhoneAlarmError.unsupported }
-    func alarms(now: Date, calendar: Calendar) -> [[String: Any]] { [] }
+    func alarms(now: Date, calendar: Calendar) -> [[String: Any]]? { [] }
     func apply(_ change: PhoneChange, now: Date) async throws -> String { throw PhoneAlarmError.unsupported }
     func cancel(id: String) throws { throw PhoneAlarmError.unsupported }
 }
@@ -134,9 +136,10 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
         }
     }
 
-    func alarms(now: Date, calendar: Calendar) -> [[String: Any]] {
+    func alarms(now: Date, calendar: Calendar) -> [[String: Any]]? {
         guard authorized else { return [] }
-        let scheduled = (try? manager.alarms) ?? []
+        // A failed read isn't an empty list: the labels would be lost for good.
+        guard let scheduled = try? manager.alarms else { return nil }
         var records = PhoneAlarmRecord.load(from: defaults)
         // Forget the ones that rang and went, or were deleted in Clock.
         let live = Set(scheduled.map { $0.id.uuidString.lowercased() })

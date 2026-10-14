@@ -95,7 +95,8 @@ extension AppState {
 
     /// Turns sharing on for the dashboard and profile in use, with these
     /// choices. Asks iOS for calendar, reminders and motion access first.
-    func turnOnPhoneSync(_ choices: PhoneSyncPreferences) async throws {
+    func turnOnPhoneSync(_ requested: PhoneSyncPreferences) async throws {
+        var choices = requested
         guard let dashboardID = activeDashboardID, let baseURL = connection?.baseUrl else {
             throw DashboardTicketBridgeError.notReady
         }
@@ -105,7 +106,10 @@ extension AppState {
         Self.phoneUpdateGeneration += 1
         try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         if choices.status { await phoneSync.statusSource.requestMotionAccess() }
-        if choices.alarms { try await phoneSync.alarmSource.requestAccess() }
+        if choices.alarms {
+            // A no to alarms still turns on the rest the user agreed to.
+            do { try await phoneSync.alarmSource.requestAccess() } catch PhoneAlarmError.denied { choices.alarms = false }
+        }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }

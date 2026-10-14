@@ -519,9 +519,10 @@ final class PhoneSyncEngine: ObservableObject {
         // Alarms and people go whole whenever they change; the host forgets
         // them when they're no longer shared.
         if preferences.alarms, alarmSource.authorized {
+            // An unreadable AlarmKit keeps what the host has until the next pass.
             let alarms = alarmSource.alarms(now: currentNow, calendar: calendar)
-            let hash = Self.hash(alarms)
-            if full || hash != state.alarmsHash {
+            let hash = alarms.map { Self.hash($0) } ?? state.alarmsHash
+            if let alarms, full || hash != state.alarmsHash {
                 batch["alarms"] = alarms
                 newAlarmsHash = hash
             }
@@ -686,7 +687,7 @@ final class PhoneSyncEngine: ObservableObject {
 
     private func alarmTitle(for change: PhoneChange) -> String? {
         guard change.kind == .cancelAlarm,
-              let alarm = alarmSource.alarms(now: now(), calendar: calendar).first(where: { $0["id"] as? String == change.alarmID })
+              let alarm = alarmSource.alarms(now: now(), calendar: calendar)?.first(where: { $0["id"] as? String == change.alarmID })
         else { return nil }
         let ring = (alarm["fires_at"] as? String).flatMap(PhoneDates.parse)?.formatted(date: .abbreviated, time: .shortened)
         let parts = [alarm["label"] as? String, ring].compactMap { $0 }
