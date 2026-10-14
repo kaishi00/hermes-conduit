@@ -386,6 +386,9 @@ enum MarkdownBlock: Equatable {
     case columns([String])
     case code(language: String, source: String)
     case divider
+    /// An HTML file on the Hermes host the reply asked to show in place
+    /// (`::preview{file="…"}`).
+    case htmlPreview(path: String)
 }
 
 struct MarkdownQuoteLine: Equatable {
@@ -755,6 +758,11 @@ struct MarkdownBlockView: View {
 
         case .image(let url, let alt):
             RemoteMarkdownImage(url: url, alt: alt, gatewayMediaDataURL: gatewayMediaDataURL)
+
+        case .htmlPreview(let path):
+            HTMLPreviewBlock(path: path, gatewayMediaDataURL: gatewayMediaDataURL, isComplete: !isStreamingTail) {
+                RemoteMarkdownImage(url: "MEDIA: \(path)", alt: MarkdownParser.mediaName(path), gatewayMediaDataURL: gatewayMediaDataURL)
+            }
 
         case .math(let source):
             // The #88 oversized-math guard applies to the block itself,
@@ -2418,6 +2426,26 @@ enum MarkdownParser {
                 continue
             }
 
+            // `::preview{file="…"}` asks for a host HTML file drawn in
+            // place; any other file gets its card, as a MEDIA: tag would. A
+            // quoted one is an example, as with MEDIA: tags.
+            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), !isTableHeader(lines, at: index), let segments = TranscriptDirectives.segments(in: trimmed) {
+                for segment in segments {
+                    switch segment {
+                    case .preview(let file):
+                        blocks.append(TranscriptDirectives.isHTML(file)
+                            ? .htmlPreview(path: file)
+                            : .image(url: "MEDIA: \(file)", alt: mediaName(file)))
+                    case .text(let text):
+                        // The text holds no previews any more, so this
+                        // cannot come back to this branch.
+                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: true))
+                    }
+                }
+                index += 1
+                continue
+            }
+
             // A line holding `MEDIA:` tags splits into media and the text
             // around them (#439); a line of only Hermes directives drops.
             if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
@@ -2475,7 +2503,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -2584,7 +2612,7 @@ enum MarkdownParser {
     static func gatewayMediaPath(_ value: String) -> String? {
         GatewayMediaTags.soleMediaPath(value)
     }
-    private static func mediaName(_ path: String) -> String {
+    static func mediaName(_ path: String) -> String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? AppLocalization.string("Image")
     }
     private static func quoteLine(_ value: String) -> MarkdownQuoteLine? {

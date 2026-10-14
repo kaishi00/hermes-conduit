@@ -97,6 +97,8 @@ struct MainView: View {
                 AgentSettingsBanner(sync: appState.agentSettings)
                 // A newer Conduit plugin for this dashboard's host.
                 NotifierPluginUpdateBanner()
+                // Calendar changes Hermes asked for (AppState+PhoneSync.swift).
+                PhoneChangeOverlay(engine: appState.phoneSync)
             }
         }
         .sheet(isPresented: $appState.showModelPicker) {
@@ -278,6 +280,7 @@ struct MainView: View {
         case .voice, .plugin: settingsOpensAt = page
         case .health: settingsOpensAt = appState.showsHealthSettings ? page : nil
         case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
+        case .phone: settingsOpensAt = appState.showsPhoneSettings ? page : nil
         }
         if appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()

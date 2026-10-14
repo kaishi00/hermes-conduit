@@ -403,7 +403,7 @@ struct MarkupReloads {
 /// proxy holds the page's coordinator weakly so the two don't keep each
 /// other alive.
 @MainActor
-private final class MarkupMessageProxy: NSObject, WKScriptMessageHandler {
+final class MarkupMessageProxy: NSObject, WKScriptMessageHandler {
     private weak var target: WKScriptMessageHandler?
 
     init(_ target: WKScriptMessageHandler) {

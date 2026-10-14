@@ -9,6 +9,9 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import os
+
+private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category: "BackgroundPush")
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -35,6 +38,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if location.settings.isOn || location.configUnreadable {
                 AppStateRuntimeRegistry.shared.appState.activateLocationSharing()
             }
+            // Calendar, reminders and phone status: a background refresh, and
+            // the calendar changing while Conduit runs.
+            AppState.registerPhoneSyncTask()
+            if PhoneSyncPreferences.load().isOn {
+                AppStateRuntimeRegistry.shared.appState.resumePhoneSyncAtLaunch()
+            }
         }
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()
@@ -53,6 +62,34 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
     }
 
+    /// A background push: the host saying Hermes asked for a calendar change
+    /// that applies without asking. Conduit fetches it from the host and
+    /// applies it in the time iOS gives.
+    ///
+    /// This is the only silent push the relay sends. Visible pushes are
+    /// handled by the notification center delegate (willPresent / didReceive),
+    /// so anything else here has nothing to do; it's logged so an unexpected
+    /// one shows up.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard AppState.isPhoneChangesPush(userInfo) else {
+            backgroundPushLogger.info("Background push that isn't a phone.changes push: nothing to do")
+            completionHandler(.noData)
+            return
+        }
+        Task { @MainActor in
+            let outcome = await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(userInfo)
+            switch outcome {
+            case .synced?: completionHandler(.newData)
+            case .failed?: completionHandler(.failed)
+            default: completionHandler(.noData)
+            }
+        }
+    }
+
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         Task { @MainActor in
             PushNotificationService.shared.didFailToRegister(error)
@@ -66,7 +103,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     ) {
         let request = response.notification.request
         Task { @MainActor in
-            if request.trigger is UNPushNotificationTrigger {
+            if AppState.isPhoneChangesPush(request.content.userInfo) {
+                // A calendar change Hermes asked for: its card shows once fetched.
+                await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(request.content.userInfo)
+            } else if request.trigger is UNPushNotificationTrigger {
                 PushNotificationService.shared.receiveNotificationPayload(request.content.userInfo)
             } else {
                 // Conduit posts only "Hermes wants to talk" itself (#449).
@@ -85,6 +125,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // foreground. Keep remote pushes quiet here and reserve banners/sound
         // for when the app is not being actively used. A call from Hermes
         // (#449) still shows: it asks for the user, wherever they are.
+        // A calendar change Hermes asked for while Conduit is open: fetch it
+        // and show its card in the app instead of a banner.
+        if AppState.isPhoneChangesPush(notification.request.content.userInfo) {
+            let userInfo = notification.request.content.userInfo
+            Task { @MainActor in
+                await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(userInfo)
+            }
+            completionHandler([])
+            return
+        }
         if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
             completionHandler([.banner, .list, .sound])
             return

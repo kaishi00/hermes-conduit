@@ -144,7 +144,7 @@ final class MessageReadAloudController: ObservableObject {
             return
         }
         // `MEDIA:` file tags are attachments, not words (#439).
-        let readable = GatewayMediaTags.removingTags(from: content)
+        let readable = TranscriptDirectives.removingPreviews(from: GatewayMediaTags.removingTags(from: content))
         guard !readable.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         // Starting is an on-screen action; a reply already playing is not
         // tied to the foreground and keeps going in the background.

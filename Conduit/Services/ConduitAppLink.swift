@@ -49,6 +49,8 @@ enum ConduitAppLink: Equatable {
         case health
         /// Location, where sharing the user's location with Hermes is set up.
         case location
+        /// Calendar & phone: calendar, reminders, Focus and phone status.
+        case phone
     }
 
     static let scheme = "conduit"

@@ -102,7 +102,7 @@ enum MarkdownSelectionSegmentPlan {
                 }
                 _ = source
 
-            case .image, .math, .divider:
+            case .image, .math, .divider, .htmlPreview:
                 order += 1
             }
         }
@@ -129,7 +129,7 @@ enum MarkdownSelectionSegmentPlan {
             return columns.count
         case .code(let language, _):
             return MarkdownLanguage.normalized(language) == "mermaid" ? 0 : 1
-        case .image, .math, .divider:
+        case .image, .math, .divider, .htmlPreview:
             return 0
         }
     }
