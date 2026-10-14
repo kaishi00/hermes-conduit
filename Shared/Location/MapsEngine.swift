@@ -15,10 +15,10 @@
 //    starts or ends at "me" has no steps (the first turns give the street);
 //  - inside a private saved place, a request that uses "me" is refused, and
 //    a private saved place is never an origin or destination;
-//  - saved places go by name only: their coordinates stay on the phone.
+//  - saved places go to the host by name only, never their coordinates.
 //
-//  Apple sees the queries, the start and the destination, as with any
-//  Apple Maps use. Answers are for a model, not UI copy, so not localized.
+//  Apple sees the queries, the start and the destination (a saved place's
+//  coordinates included), as with any Apple Maps use. Answers are for a model, not UI copy, so not localized.
 //
 
 import CoreLocation
@@ -442,7 +442,7 @@ private final class MapsRun {
                 throw MapsFailure.notFound("There's no saved place with that id on this iPhone.")
             }
             guard !place.isPrivate else { throw MapsFailure.privatePlace }
-            // By name only: where it is stays on the phone.
+            // The host hears its name only; Apple routes from its coordinates.
             let name = MapsText.clean(place.name, limit: LocationSavedPlace.maxNameLength)
             return Resolved(item: MapsKit.item(at: place.coordinate, name: name), coordinate: place.coordinate,
                             json: ["name": name.isEmpty ? "Saved place" : name], isMe: false)
@@ -687,7 +687,7 @@ private final class MapsRun {
         travelResults = [:]
         let count = request.to.count
         var start = 0
-        while start < count {
+        while start < count, !Task.isCancelled {
             let chunk = Array(start..<min(count, start + MapsEngine.concurrentLookups))
             // Each child stores its own result: a task group's results must
             // be Sendable, and the answers' JSON isn't.
@@ -755,10 +755,65 @@ private final class MapsRun {
 
 // MARK: MapKit calls
 
-/// MapKit's completion-handler calls as async ones. None is cancelled: a
-/// lookup that outlives its deadline finishes on its own and is ignored.
+/// MapKit's completion-handler calls as async ones. Cancelling the task
+/// (a deadline passing) cancels the MapKit call and throws
+/// CancellationError, so nothing keeps running after the answer is sent.
 @MainActor
 enum MapsKit {
+    /// One completion-handler call: resumed once, by its completion or by
+    /// cancellation, whichever comes first.
+    private final class Pending<Value>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Value, Error>?
+        private var cancelled = false
+        private let stop: () -> Void
+
+        init(stop: @escaping () -> Void) { self.stop = stop }
+
+        func begin(_ continuation: CheckedContinuation<Value, Error>) -> Bool {
+            lock.withLock {
+                guard !cancelled else { return false }
+                self.continuation = continuation
+                return true
+            }
+        }
+
+        func finish(_ result: Result<Value, Error>) {
+            let pending: CheckedContinuation<Value, Error>? = lock.withLock {
+                defer { continuation = nil }
+                return continuation
+            }
+            pending?.resume(with: result)
+        }
+
+        func cancel() {
+            let pending: CheckedContinuation<Value, Error>? = lock.withLock {
+                cancelled = true
+                defer { continuation = nil }
+                return continuation
+            }
+            guard let pending else { return }
+            pending.resume(throwing: CancellationError())
+            DispatchQueue.main.async { self.stop() }
+        }
+    }
+
+    private static func call<Value>(stop: @escaping () -> Void,
+                                    _ start: (@escaping (Result<Value, Error>) -> Void) -> Void) async throws -> Value {
+        let pending = Pending<Value>(stop: stop)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Value, Error>) in
+                guard pending.begin(continuation) else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                start { pending.finish($0) }
+            }
+        } onCancel: {
+            pending.cancel()
+        }
+    }
+
     static func item(at coordinate: CLLocationCoordinate2D, name: String?) -> MKMapItem {
         let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
         if let name, !name.isEmpty { item.name = name }
@@ -772,13 +827,13 @@ enum MapsKit {
             request.region = MKCoordinateRegion(center: centre, latitudinalMeters: span, longitudinalMeters: span)
         }
         let search = MKLocalSearch(request: request)
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[MKMapItem], Error>) in
+        return try await call(stop: { search.cancel() }) { done in
             search.start { response, error in
                 withExtendedLifetime(search) {}
                 if let response {
-                    continuation.resume(returning: response.mapItems)
+                    done(.success(response.mapItems))
                 } else {
-                    continuation.resume(throwing: error ?? MapsFailure.notFound())
+                    done(.failure(error ?? MapsFailure.notFound()))
                 }
             }
         }
@@ -789,13 +844,13 @@ enum MapsKit {
         let identifier: MKMapItem.Identifier? = MKMapItem.Identifier(rawValue: placeID)
         guard let identifier else { throw MapsFailure.notFound("That place id isn't one Apple Maps knows.") }
         let request = MKMapItemRequest(mapItemIdentifier: identifier)
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<MKMapItem, Error>) in
+        return try await call(stop: { request.cancel() }) { done in
             request.getMapItem { item, error in
                 withExtendedLifetime(request) {}
                 if let item {
-                    continuation.resume(returning: item)
+                    done(.success(item))
                 } else {
-                    continuation.resume(throwing: error ?? MapsFailure.notFound())
+                    done(.failure(error ?? MapsFailure.notFound()))
                 }
             }
         }
@@ -803,13 +858,13 @@ enum MapsKit {
 
     static func reverseGeocode(_ location: CLLocation) async throws -> CLPlacemark {
         let geocoder = CLGeocoder()
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLPlacemark, Error>) in
+        return try await call(stop: { geocoder.cancelGeocode() }) { done in
             geocoder.reverseGeocodeLocation(location) { placemarks, error in
                 withExtendedLifetime(geocoder) {}
                 if let placemark = placemarks?.first {
-                    continuation.resume(returning: placemark)
+                    done(.success(placemark))
                 } else {
-                    continuation.resume(throwing: error ?? MapsFailure.notFound())
+                    done(.failure(error ?? MapsFailure.notFound()))
                 }
             }
         }
@@ -817,13 +872,13 @@ enum MapsKit {
 
     static func routes(_ request: MKDirections.Request) async throws -> [MKRoute] {
         let directions = MKDirections(request: request)
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[MKRoute], Error>) in
+        return try await call(stop: { directions.cancel() }) { done in
             directions.calculate { response, error in
                 withExtendedLifetime(directions) {}
                 if let response {
-                    continuation.resume(returning: response.routes)
+                    done(.success(response.routes))
                 } else {
-                    continuation.resume(throwing: error ?? MapsFailure.noRoute())
+                    done(.failure(error ?? MapsFailure.noRoute()))
                 }
             }
         }
@@ -831,13 +886,13 @@ enum MapsKit {
 
     static func eta(_ request: MKDirections.Request) async throws -> MKDirections.ETAResponse {
         let directions = MKDirections(request: request)
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<MKDirections.ETAResponse, Error>) in
+        return try await call(stop: { directions.cancel() }) { done in
             directions.calculateETA { response, error in
                 withExtendedLifetime(directions) {}
                 if let response {
-                    continuation.resume(returning: response)
+                    done(.success(response))
                 } else {
-                    continuation.resume(throwing: error ?? MapsFailure.noRoute())
+                    done(.failure(error ?? MapsFailure.noRoute()))
                 }
             }
         }
