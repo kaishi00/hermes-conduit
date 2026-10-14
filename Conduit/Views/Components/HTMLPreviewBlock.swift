@@ -73,14 +73,15 @@ enum TranscriptDirectives {
     /// than render it (Read Aloud).
     static func removingPreviews(from text: String) -> String {
         guard text.contains("::preview{") else { return text }
-        let lines = text.components(separatedBy: "\n")
+        // Line endings normalized as the parser does, so its table check sees the same lines.
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         return lines.indices.compactMap { index -> String? in
             let line = lines[index]
             // A quoted directive is an example and a table header cell is
             // table text; the chat shows both as written.
             guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
-                  !MarkdownParser.isTableHeader(lines, at: index),
-                  let segments = segments(in: line) else { return line }
+                  let segments = segments(in: line),
+                  !MarkdownParser.isTableHeader(lines, at: index) else { return line }
             let kept = segments.compactMap { segment -> String? in
                 if case .text(let value) = segment { return value }
                 return nil
@@ -191,7 +192,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             .font(.caption2.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
             // The spinner over a measuring page isn't read out; say it here.
+            // Once measured, the page itself carries the name and the action.
             .accessibilityValue(measuredHeight == nil ? Text("Loading preview…") : Text(verbatim: ""))
+            .accessibilityHidden(measuredHeight != nil)
             Spacer()
             if measuredHeight != nil {
                 Button {
@@ -363,8 +366,8 @@ enum HTMLPreviewPage {
               dataURL[dataURL.index(after: comma)...].utf8.count <= ((maximumDocumentBytes + 2) / 3) * 4,
               let data = DataURLLimits.decodeBase64DataURL(dataURL),
               data.count <= maximumDocumentBytes else { return nil }
-        // UTF-8 only: any bytes decode as Latin-1, so a truncated or binary
-        // file would draw as garbage instead of falling back to the card.
+        // UTF-8 only: any bytes decode as Latin-1, so invalid or non-UTF-8
+        // bytes would draw as garbage instead of falling back to the card.
         guard let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return text
     }

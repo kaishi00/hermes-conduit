@@ -52,6 +52,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(TranscriptDirectives.removingPreviews(from: quoted), quoted)
         let table = "::preview{file=\"/tmp/a.html\"} | x\n--- | ---\n1 | 2"
         XCTAssertEqual(TranscriptDirectives.removingPreviews(from: table), table)
+        let crlfTable = table.replacingOccurrences(of: "\n", with: "\r\n")
+        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: crlfTable), table)
     }
 
     // MARK: - Parsing
