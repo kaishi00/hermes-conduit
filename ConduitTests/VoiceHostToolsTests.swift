@@ -147,6 +147,13 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(location.gptLiveRule.contains(#"Location: {"action": "now"}"#), "The example is the tool's own action")
         let odd: [String: Any] = ["tools": [["name": "conduit_location\nkid=x", "key": "location", "description": "", "parameters": [:]]]]
         XCTAssertTrue(VoiceHostTool.tools(from: odd).isEmpty, "A tool name is a plain identifier")
+
+        // Location reads need a plugin whose /voice-tools serves the location tool.
+        var plugin = NotifierPluginStatus(state: .reported(version: "0.27.0", capabilities: ["voice-tools"]))
+        plugin.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.27.0", restartNeeded: false, bootID: nil)
+        XCTAssertFalse(plugin.servesLocationVoice)
+        plugin.runtime?.loadedVersion = "0.28.0"
+        XCTAssertTrue(plugin.servesLocationVoice)
     }
 
     func testVoiceReadConsentIsPerModeAndOnlyWhileSharing() {

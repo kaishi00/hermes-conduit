@@ -136,6 +136,15 @@ struct NotifierPluginStatus: Equatable {
         return true
     }
 
+    /// The plugin version whose /voice-tools serves the location tool.
+    static let locationVoiceVersion = "0.28.0"
+
+    /// Whether the running plugin answers live voice reads of the location.
+    /// Older ones serve /voice-tools with health only.
+    var servesLocationVoice: Bool {
+        reports("voice-tools") && !Self.isOlder(runningVersion, than: Self.locationVoiceVersion)
+    }
+
     /// True only when the plugin reported this capability.
     func reports(_ capability: String) -> Bool {
         if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }

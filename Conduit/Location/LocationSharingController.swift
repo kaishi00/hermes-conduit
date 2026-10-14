@@ -527,6 +527,8 @@ final class LocationSharingController: ObservableObject {
             voiceCallEnded()
         }
         await flush(settingsOnly: true)
+        // Resumed: a voice mode the user allowed may read again.
+        if date == nil { await prepareVoiceReads() }
     }
 
     /// Resumes a pause whose time has passed, so it doesn't linger, and
@@ -538,7 +540,12 @@ final class LocationSharingController: ObservableObject {
             config.settings.pausedUntil = nil
             if config.binding != nil { config.settingsPending = true }
         }
-        if send, config.binding != nil { Task { await flush(settingsOnly: true) } }
+        if send, config.binding != nil {
+            Task {
+                await flush(settingsOnly: true)
+                await prepareVoiceReads()
+            }
+        }
     }
 
     // MARK: Live voice calls

@@ -115,7 +115,7 @@ struct LocationSettingsPage: View {
                 if settings.isOn { pauseSection }
                 retentionSection
             }
-            if settings.isOn, controller.binding != nil, appState.notifierPlugin.reports(AppState.voiceToolsCapability) {
+            if settings.isOn, controller.binding != nil, appState.notifierPlugin.servesLocationVoice {
                 voiceSection
             }
             if controller.binding != nil {

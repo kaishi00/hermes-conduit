@@ -22,7 +22,9 @@ enum VoiceReadSeal {
         case badToolName
     }
 
-    /// `direction` is "request" or "answer".
+    /// `direction` is "request" or "answer". `tool` must be a plain
+    /// identifier (`VoiceHostTool.isToolName`): `request` and `openAnswer`
+    /// refuse any other.
     static func aad(tag: String, direction: String, tool: String, kid: String, deviceID: String, callID: String) -> Data {
         Data([tag, "voice-\(direction)", "tool=\(tool)", "kid=\(kid)", "dev=\(deviceID)", "call=\(callID)"]
             .joined(separator: "\n").utf8)
@@ -74,6 +76,7 @@ enum VoiceReadSeal {
         deviceID: String,
         callID: String
     ) throws -> Any {
+        guard VoiceHostTool.isToolName(tool) else { throw Failure.badToolName }
         guard let nonceText = response["nonce"] as? String, let nonceData = NotificationE2E.base64URLDecoded(nonceText),
               let sealedText = response["ct"] as? String, let sealed = NotificationE2E.base64URLDecoded(sealedText),
               sealed.count >= 16, nonceData.count == 12 else {

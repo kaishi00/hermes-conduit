@@ -31,7 +31,8 @@ extension AppState {
             keys.insert("health")
         }
         let location = LocationSharingController.shared
-        if location.letsVoiceRead(mode), let binding = location.binding,
+        // An older plugin has no location tool: no key is set up for it.
+        if notifierPlugin.servesLocationVoice, location.letsVoiceRead(mode), let binding = location.binding,
            activeDashboardID == binding.dashboardID, activeProfile == binding.profile {
             keys.insert("location")
         }
