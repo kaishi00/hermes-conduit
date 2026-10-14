@@ -2331,7 +2331,7 @@ private struct NotificationsSettingsDetail: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6).frame(minHeight: 46)
                         }
-                        .disabled(notifications.isWorking || appState.activeDashboardID == nil)
+                        .disabled(notifications.isWorking || notifications.isPairing || appState.activeDashboardID == nil)
                         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                         if appState.activeDashboardID == nil {
                             Text("Connect to a dashboard before creating a pairing code.")
