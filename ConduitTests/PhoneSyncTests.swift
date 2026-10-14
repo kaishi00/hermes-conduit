@@ -280,14 +280,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(missing["error"], "Answered already: not applied twice")
 
         // An event the user asks for goes in at once and counts as sent.
-        let added = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Dentist", "start": "2026-10-16T15:00",
+        let added = await PhoneVoiceTools.run(fullAccessAdd, arguments: ["kind": "event", "title": "Dentist", "start": "2026-10-16T15:00",
                                                                    "calendar": "personal"],
                                               engine: engine, answer: answer)
         XCTAssertNotNil(added["result"], added["error"] ?? "")
         let voiceID = try XCTUnwrap(source.applied.last)
         XCTAssertTrue(voiceID.hasPrefix("voice_"))
         XCTAssertEqual(engine.state.eventHashes["item_\(voiceID)"], "")
-        let unknown = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Gym", "start": "2026-10-16T07:00",
+        let unknown = await PhoneVoiceTools.run(fullAccessAdd, arguments: ["kind": "event", "title": "Gym", "start": "2026-10-16T07:00",
                                                                      "calendar": "Work"],
                                                 engine: engine, answer: answer)
         XCTAssertNotNil(unknown["error"], "No calendar called Work")
