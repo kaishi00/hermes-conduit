@@ -475,6 +475,9 @@ final class PhoneSyncEngine: ObservableObject {
                 newStatusHash = hash
                 statusSent = true
             }
+        } else {
+            // The host forgets it when it's off, so turning it back on sends it again.
+            newStatusHash = nil
         }
         if preferences.focus, let focus = PhoneFocusSnapshot.load(from: defaults) {
             let hash = Self.hash(focus.json)
@@ -482,6 +485,8 @@ final class PhoneSyncEngine: ObservableObject {
                 batch["focus"] = focus.json
                 newFocusHash = hash
             }
+        } else if !preferences.focus {
+            newFocusHash = nil
         }
 
         let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
