@@ -22,9 +22,11 @@ enum MapsVoiceTool {
     static let name = "maps"
     /// What seals it: nothing, it never leaves the phone.
     static let key = "maps"
-    /// The whole lookup; a fix comes first when it uses "me".
-    static let lookupDeadline: TimeInterval = 12
-    static let fixTimeout: Duration = .seconds(8)
+    /// The lookup; a fix comes first when it uses "me". Together they stay
+    /// within the 12 s the other voice host reads get, so a call isn't left
+    /// waiting.
+    static let lookupDeadline: TimeInterval = 7
+    static let fixTimeout: Duration = .seconds(5)
     /// A fix iOS already has is good enough this long.
     static let fixMaxAge: TimeInterval = 120
 

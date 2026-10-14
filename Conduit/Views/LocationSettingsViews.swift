@@ -561,7 +561,9 @@ struct LocationSettingsPage: View {
     /// The host's reads and this iPhone's voice maps lookups, newest first.
     private var displayedReads: [LocationRead] {
         guard !voiceMapReads.isEmpty else { return reads }
-        return (reads + voiceMapReads).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        // Each date parsed once; ties keep their order so rows don't swap.
+        let dated = (reads + voiceMapReads).enumerated().map { (index: $0.offset, date: $0.element.date ?? .distantPast, read: $0.element) }
+        return dated.sorted { $0.date != $1.date ? $0.date > $1.date : $0.index < $1.index }.map(\.read)
     }
 
     private func loadVoiceMapReads() {

@@ -39,9 +39,9 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     private static let geocodeTimeout: TimeInterval = 1.5
     private static let postTimeout: TimeInterval = 8
     // A maps request (designs/maps-v1-contract.md): the host waits 20 s
-    // in all, so fetch, fix, lookup and answer share that.
+    // in all, so fetch (4), fix (6), lookup (5) and answer (5) fit in it.
     private static let mapsFetchTimeout: TimeInterval = 4
-    private static let mapsLookupDeadline: TimeInterval = 7
+    private static let mapsLookupDeadline: TimeInterval = 5
     private static let mapsPostTimeout: TimeInterval = 5
 
     func didReceiveLocationPushPayload(_ payload: [String: Any], completion: @escaping () -> Void) {
