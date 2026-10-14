@@ -12,6 +12,10 @@ import Foundation
 /// key the app agreed with the host, and posts it straight to the host with
 /// the app's host pass (LocationHostClient). The relay never sees where the
 /// phone is. Anything that doesn't check out posts nothing.
+///
+/// The same push can carry a maps request instead (designs/maps-v1-contract.md):
+/// the request is fetched sealed from the host, answered with MapKit on this
+/// iPhone (MapsEngine), and the sealed answer posted back.
 final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLocationManagerDelegate {
     // didReceive and serviceExtensionWillTerminate may run on different
     // threads; the lock guards `completion` and `work`, so completion runs
@@ -26,12 +30,19 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// released if the extension finishes or is stopped without posting.
     /// If iOS kills the extension outright the claim ages out instead.
     private var pendingReplayKey: String?
+    /// The replay namespace of `pendingReplayKey`: "locate" or "maps".
+    private var pendingNamespace = "locate"
     private static let claimLifetime: TimeInterval = 30
 
     // The whole answer has to fit iOS's budget for this extension.
     private static let fixTimeout: TimeInterval = 6
     private static let geocodeTimeout: TimeInterval = 1.5
     private static let postTimeout: TimeInterval = 8
+    // A maps request (designs/maps-v1-contract.md): the host waits 20 s
+    // in all, so fetch, fix, lookup and answer share that.
+    private static let mapsFetchTimeout: TimeInterval = 4
+    private static let mapsLookupDeadline: TimeInterval = 7
+    private static let mapsPostTimeout: TimeInterval = 5
 
     func didReceiveLocationPushPayload(_ payload: [String: Any], completion: @escaping () -> Void) {
         lock.withLock { self.completion = completion }
@@ -63,15 +74,15 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// Ends the push: releases an unanswered replay key, stops a fix still
     /// waiting, and calls the completion once.
     private func finish() {
-        let (handler, unanswered): ((() -> Void)?, String?) = lock.withLock {
+        let (handler, unanswered, namespace): ((() -> Void)?, String?, String) = lock.withLock {
             defer {
                 completion = nil
                 work = nil
                 pendingReplayKey = nil
             }
-            return (completion, pendingReplayKey)
+            return (completion, pendingReplayKey, pendingNamespace)
         }
-        if let unanswered { E2ESeenStore.shared.remove(unanswered, namespace: "locate") }
+        if let unanswered { E2ESeenStore.shared.remove(unanswered, namespace: namespace) }
         DispatchQueue.main.async {
             self.resumeFix(nil)
             self.manager?.delegate = nil
@@ -88,6 +99,10 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) else { return }
+        if request.kind == .maps {
+            await answerMaps(request)
+            return
+        }
         guard case .value(let config) = LocationSharedStore.readConfig(),
               request.isAnswered(by: config, at: Date()),
               let binding = config.binding,
@@ -102,7 +117,10 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // Stopped already (iOS's time ran out): leave it to a redelivery.
         guard !Task.isCancelled else { return }
         guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else { return }
-        lock.withLock { pendingReplayKey = request.replayKey }
+        lock.withLock {
+            pendingReplayKey = request.replayKey
+            pendingNamespace = "locate"
+        }
 
         let precision = config.settings.backgroundPrecision
         // Stopped between the claim and here: don't arm location hardware.
@@ -137,6 +155,106 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             // The claim is released (finish), so a redelivery can answer;
             // this fix isn't kept, and the app shares its own next time.
         }
+    }
+
+    // MARK: Maps
+
+    /// Answers a maps request (designs/maps-v1-contract.md sections 2-4):
+    /// fetches it sealed from the host, runs it with MapKit, and posts the
+    /// sealed answer. Only for the dashboard and profile sharing is bound
+    /// to; while sharing is paused or the background layer is off, the
+    /// answer is "paused". A fix is taken only when the request uses "me".
+    private func answerMaps(_ request: LocationLocateRequest) async {
+        guard case .value(let config) = LocationSharedStore.readConfig(),
+              request.isForBinding(of: config),
+              let binding = config.binding,
+              let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID, key.answersMaps,
+              let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date()),
+              LocationLocateRequest.isMapsID(request.id),
+              let deviceQuery = Self.queryValue(key.deviceID), let kidQuery = Self.queryValue(key.kid)
+        else { return }
+        guard !Task.isCancelled else { return }
+        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "maps", ttl: Self.claimLifetime) else { return }
+        lock.withLock {
+            pendingReplayKey = request.replayKey
+            pendingNamespace = "maps"
+        }
+
+        let path = "\(LocationHostClient.base)/maps/\(request.id)"
+        let sealed: [String: Any]
+        do {
+            sealed = try await LocationHostClient.requestJSON(
+                pass: pass,
+                path: LocationHostClient.withProfile("\(path)?device_id=\(deviceQuery)&kid=\(kidQuery)", profile: binding.profile),
+                method: "GET",
+                body: nil,
+                timeout: Self.mapsFetchTimeout
+            )
+        } catch {
+            // Expired, answered, another device's, or the host is away:
+            // nothing to answer. The claim is released (finish).
+            return
+        }
+        guard !Task.isCancelled,
+              let body = try? LocationCrypto.openMapsRequest(sealed, key: key, id: request.id),
+              body["id"] as? String == request.id
+        else { return }
+
+        let answer: MapsAnswer
+        switch MapsRequest.parse(body) {
+        case .failure(let failure):
+            answer = .failure(failure)
+        case .success(let maps):
+            if let expiresAt = maps.expiresAt, expiresAt < Date() { return }
+            answer = await run(maps, config: config)
+        }
+        guard !Task.isCancelled,
+              let envelope = try? LocationCrypto.mapsAnswer(plaintext: answer.plaintext(id: request.id), key: key, id: request.id)
+        else { return }
+        do {
+            _ = try await LocationHostClient.requestJSON(
+                pass: pass,
+                path: LocationHostClient.withProfile(path, profile: binding.profile),
+                method: "POST",
+                body: envelope,
+                timeout: Self.mapsPostTimeout
+            )
+            lock.withLock { pendingReplayKey = nil }
+            E2ESeenStore.shared.markAnswered(request.replayKey, namespace: "maps")
+        } catch {
+            // The claim is released (finish), so a redelivery can answer.
+        }
+    }
+
+    /// The answer, with "me" at the background precision (and the host's
+    /// `detail`, whichever is stricter).
+    private func run(_ request: MapsRequest, config: LocationSharedConfig) async -> MapsAnswer {
+        let now = Date()
+        guard config.settings.shares(.locate, at: now) else { return .failure(.paused) }
+        var me: MapsMe?
+        if request.usesMe {
+            var precision = config.settings.backgroundPrecision
+            if config.approximateOnly { precision = precision.capped(at: .area) }
+            if precision == .places {
+                me = .unavailable(.noLocation("Location detail is Places only, so nothing can be worked out from where the user is."))
+            } else {
+                guard !Task.isCancelled else { return .failure(.timeout) }
+                let (location, approximate) = await fix(precision: precision)
+                if let location {
+                    me = .at(location, approximate ? precision.capped(at: .area) : precision)
+                } else {
+                    me = .unavailable(.noLocation())
+                }
+            }
+        }
+        guard !Task.isCancelled else { return .failure(.timeout) }
+        let context = MapsContext(me: me, places: config.places, now: now)
+        return await MapsEngine.answer(request, context: context, deadline: Self.mapsLookupDeadline)
+    }
+
+    /// A value for the query string: ids are `[A-Za-z0-9_-]` already.
+    private static func queryValue(_ value: String) -> String? {
+        value.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil ? value : nil
     }
 
     // MARK: One fix
