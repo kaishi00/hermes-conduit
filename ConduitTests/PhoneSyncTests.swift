@@ -303,6 +303,13 @@ extension HermesVoiceGatewayTimeoutTests {
         let hint = PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive)
         XCTAssertTrue(hint.contains("GPT-Live"), "Names the mode the user would allow")
         XCTAssertTrue(hint.contains("Calendar & phone"), "Names where it's turned on")
+        XCTAssertTrue(hint.contains("calendar and reminders"), "Names what's shared")
+        var alarmsOnly = PhoneSyncPreferences()
+        alarmsOnly.alarms = true
+        alarmsOnly.destination = preferences.destination
+        let alarmsHint = PhoneVoiceTools.settingHint(for: alarmsOnly, mode: .gptLive)
+        XCTAssertTrue(alarmsHint.contains("their alarms with Hermes"), alarmsHint)
+        XCTAssertFalse(alarmsHint.contains("calendar and"), "Only what's shared is named")
         preferences.setVoiceUse(.gptLive, allowed: true)
         XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive), "", "An allowed mode has the tools instead")
         XCTAssertFalse(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive).isEmpty, "Each mode is its own consent")

@@ -46,10 +46,14 @@ enum PhoneVoiceTools {
         guard preferences.isOn, !preferences.letsVoiceUse(mode),
               preferences.calendar != .off || preferences.reminders || preferences.alarms || preferences.contacts
         else { return "" }
-        return "\n\nThe user shares their calendar and phone with Hermes, but hasn't let this call use them directly. "
-            + "When they ask about their calendar, reminders, alarms or the people they shared, you can still ask "
-            + "Hermes. The first time, also tell them in a sentence that they can let \(mode.displayName) use these "
-            + "directly, which is faster, under Live voice calls in Conduit's Settings, Calendar & phone."
+        let shared = [preferences.calendar != .off ? "calendar" : nil, preferences.reminders ? "reminders" : nil,
+                      preferences.alarms ? "alarms" : nil, preferences.contacts ? "the people they picked" : nil]
+            .compactMap { $0 }
+        let list = shared.count > 1 ? shared.dropLast().joined(separator: ", ") + " and " + shared[shared.count - 1] : shared[0]
+        return "\n\nThe user shares their \(list) with Hermes, but hasn't let this call use them directly. "
+            + "When they ask about those, you can still ask Hermes. The first time in this call, also tell them in "
+            + "a sentence that they can let \(mode.displayName) use these directly, which is faster, under Live "
+            + "voice calls in Conduit's Settings, Calendar & phone."
     }
 
     private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
