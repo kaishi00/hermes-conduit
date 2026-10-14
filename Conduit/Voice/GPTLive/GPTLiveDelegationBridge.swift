@@ -286,6 +286,14 @@ final class GPTLiveDelegationBridge {
         // user's earlier chats, looked up, opened and read by Conduit. None
         // is work for Hermes, and none waits for the user's OK.
         let markedWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        // "Health: {...}": the user's shared data, read straight from the
+        // host by Conduit, not a Hermes job.
+        if let marked = VoiceHostTool.marked(in: markedWords, tools: supervisor.hostTools) {
+            spokenWords?.settleWords(.delegation(id))
+            let result = await supervisor.callHostTool(marked.tool, arguments: marked.tool.arguments(from: marked.arguments))
+            guard callGeneration == call, !isEnding else { return [] }
+            return [.delegationReply(delegationID: id, text: VoiceHostTool.delegatedReply(result), channel: .commentary)]
+        }
         if let query = Self.findChatMarker(in: markedWords) {
             spokenWords?.settleWords(.delegation(id))
             // GPT-Live can leave a delegation's text empty: the user's own words then.
