@@ -45,6 +45,16 @@ enum NotifierPluginUpdateStep: Equatable {
     case waitingForChats(count: Int)
     /// The dashboard restarts to load the plugin's routes.
     case restartingDashboard
+
+    /// Where the step falls in the update, for "Step 2 of 3".
+    static let count = 3
+    var number: Int {
+        switch self {
+        case .downloading, .installing: return 1
+        case .restartingGateway: return 2
+        case .waitingForChats, .restartingDashboard: return 3
+        }
+    }
 }
 
 /// The update's state and the dashboard it belongs to: an update on one
@@ -53,6 +63,8 @@ enum NotifierPluginUpdateStep: Equatable {
 struct NotifierPluginUpdateSlot: Equatable {
     private(set) var state: NotifierPluginUpdateState = .idle
     private(set) var dashboardID: UUID?
+    /// When the running update began, for its elapsed time.
+    private(set) var startedAt: Date?
     private var runID: UUID?
 
     func state(on activeDashboardID: UUID?) -> NotifierPluginUpdateState {
@@ -63,6 +75,7 @@ struct NotifierPluginUpdateSlot: Equatable {
         let id = UUID()
         runID = id
         self.dashboardID = dashboardID
+        startedAt = Date()
         state = .updating(.downloading)
         return id
     }
@@ -90,6 +103,7 @@ struct NotifierPluginUpdateSlot: Equatable {
     private mutating func clear() {
         state = .idle
         dashboardID = nil
+        startedAt = nil
         runID = nil
     }
 }

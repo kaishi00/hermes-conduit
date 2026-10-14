@@ -236,6 +236,35 @@ private struct NotifierPluginUpdateConfirmation: ViewModifier {
 }
 
 /// Where the plugin update stands. Shows nothing until one starts.
+/// How far a running update is and how long it has run, so a long wait
+/// (a restart, chats finishing) doesn't read as stuck.
+struct NotifierPluginUpdateProgress: View {
+    let step: NotifierPluginUpdateStep
+    let startedAt: Date?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ProgressView(value: Double(step.number), total: Double(NotifierPluginUpdateStep.count))
+                .tint(Color.conduitAura)
+                .accessibilityHidden(true)
+            // Ticks every second: the elapsed time is the sign it's alive.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(verbatim: Self.caption(step: step, elapsed: startedAt.map { context.date.timeIntervalSince($0) } ?? 0))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    static func caption(step: NotifierPluginUpdateStep, elapsed: TimeInterval) -> String {
+        let time = Duration.seconds(max(0, elapsed.rounded(.down))).formatted(.time(pattern: .minuteSecond))
+        // Ordinals, not counts: no plural rules apply.
+        let current = String(step.number)
+        let last = String(NotifierPluginUpdateStep.count)
+        return AppLocalization.string("Step \(current) of \(last) · \(time)")
+    }
+}
+
 struct NotifierPluginUpdateStatusView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
@@ -254,6 +283,9 @@ struct NotifierPluginUpdateStatusView: View {
                             Text(verbatim: row.title)
                                 .font(.subheadline.weight(.semibold))
                                 .fixedSize(horizontal: false, vertical: true)
+                            if case .updating(let step) = appState.activeNotifierPluginUpdate {
+                                NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                            }
                             if let detail = row.detail, !detail.isEmpty {
                                 Text(verbatim: detail)
                                     .font(.footnote)
@@ -398,10 +430,15 @@ struct NotifierPluginUpdateBanner: View {
                     .foregroundStyle(row?.tint ?? Color.conduitAura)
                     .accessibilityHidden(true)
             }
-            Text(verbatim: text)
-                .font(.subheadline)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: text)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                if case .updating(let step) = update {
+                    NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             if update == .idle {
                 Button { confirming = true } label: {
                     Text(restartOnly ? AppLocalization.string("Finish Update") : AppLocalization.string("Update"))

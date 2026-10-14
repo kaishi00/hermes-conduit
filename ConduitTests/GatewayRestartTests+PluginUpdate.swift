@@ -156,6 +156,20 @@ extension GatewayRestartTests {
         XCTAssertEqual(slot.state(on: dashboard), .idle)
     }
 
+    func testProgressCountsStepsAndTimesTheRun() {
+        XCTAssertEqual(NotifierPluginUpdateStep.downloading.number, 1)
+        XCTAssertEqual(NotifierPluginUpdateStep.installing.number, 1)
+        XCTAssertEqual(NotifierPluginUpdateStep.restartingGateway(nil).number, 2)
+        XCTAssertEqual(NotifierPluginUpdateStep.waitingForChats(count: 2).number, 3)
+        XCTAssertEqual(NotifierPluginUpdateStep.restartingDashboard.number, NotifierPluginUpdateStep.count)
+        var slot = NotifierPluginUpdateSlot()
+        XCTAssertNil(slot.startedAt)
+        let run = slot.start(on: UUID())
+        XCTAssertNotNil(slot.startedAt)
+        slot.finish(.idle, run: run, activeDashboardID: nil)
+        XCTAssertNil(slot.startedAt)
+    }
+
     private static func capabilities(loaded: String, disk: String, boot: String) -> [String: Any] {
         [
             "ok": true, "version": disk, "loaded_version": loaded, "restart_needed": loaded != disk, "boot_id": boot,
