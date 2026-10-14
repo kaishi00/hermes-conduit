@@ -91,7 +91,11 @@ extension AppState {
         case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode)
         case MapsVoiceTool.key:
             guard let mode, tool.name == MapsVoiceTool.name else { return ["error": "That isn't available on this call."] }
-            return await MapsVoiceTool.run(arguments, mode: mode, controller: LocationSharingController.shared)
+            let location = LocationSharingController.shared
+            // Like the sealed location read: "me" and saved places only on a
+            // call with the dashboard and profile the location is shared with.
+            let sharedHere = location.binding.map { activeDashboardID == $0.dashboardID && activeProfile == $0.profile } ?? false
+            return await MapsVoiceTool.run(arguments, mode: mode, controller: location, sharedHere: sharedHere)
         default: return ["error": "That isn't available on this call."]
         }
     }

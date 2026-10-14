@@ -205,6 +205,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         case .failure(let failure):
             answer = .failure(failure)
         case .success(let maps):
+            // Too late: the host refuses answers after expires_at, so none is sent.
             if let expiresAt = maps.expiresAt, expiresAt < Date() { return }
             answer = await run(maps, config: config)
         }

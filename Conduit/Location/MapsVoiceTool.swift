@@ -61,7 +61,7 @@ enum MapsVoiceTool {
         key: key
     )
 
-    static let notShared = "The user doesn't share their location with this voice mode, so lookups from where they are or "
+    static let notShared = "The user doesn't share their location with this voice mode on this Hermes profile, so lookups from where they are or "
         + "their saved places aren't available. Lookups between named places and addresses still work. They can allow "
         + "it in Conduit's Settings > Location."
 
@@ -71,14 +71,16 @@ enum MapsVoiceTool {
     // MARK: Running it
 
     /// One call of the tool on `mode`. What the model hears back.
+    /// `sharedHere`: the call is on the dashboard and profile the location
+    /// is shared with; elsewhere only lookups between named places run.
     static func run(_ arguments: [String: Any], mode: LiveVoiceModeName,
-                    controller: LocationSharingController) async -> [String: String] {
+                    controller: LocationSharingController, sharedHere: Bool) async -> [String: String] {
         guard let actionName = arguments["action"] as? String, let action = MapsRequest.Action(rawValue: actionName) else {
             return ["error": "action is search, lookup, reverse_geocode, directions or travel_times."]
         }
         // Checked at each call: the user may have turned it off mid-call.
-        let locationAllowed = controller.letsVoiceRead(mode) && controller.settings.talking
-        let places = controller.places
+        let locationAllowed = sharedHere && controller.letsVoiceRead(mode) && controller.settings.talking
+        let places = locationAllowed ? controller.places : []
         let built = makeRequest(action: action, arguments: arguments, places: places, meByDefault: locationAllowed)
         let request: MapsRequest
         switch built {
@@ -101,7 +103,7 @@ enum MapsVoiceTool {
             }
         }
         let answer = await MapsEngine.answer(request, context: MapsContext(me: me, places: places), deadline: lookupDeadline)
-        // Listed whatever the outcome: the query went to Apple either way.
+        // Listed whatever the outcome: a lookup was attempted.
         HealthVoiceReadLog.record(mode: mode, action: "maps \(action.rawValue)", key: HealthVoiceReadLog.locationStorageKey)
         switch answer {
         case .failure(let failure):
