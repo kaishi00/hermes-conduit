@@ -2,9 +2,6 @@ name: opencode-review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-  # TEMP (#593): run this branch's own config so the new model is exercised before merge. Remove before merging.
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -12,7 +9,7 @@ on:
         required: true
         type: string
 concurrency:
-  group: opencode-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
