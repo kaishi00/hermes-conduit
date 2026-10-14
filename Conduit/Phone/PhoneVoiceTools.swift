@@ -247,7 +247,9 @@ enum PhoneVoiceTools {
                   let time = PhoneChangeFields.clockTime(timeText.count == 4 ? "0" + timeText : timeText) else {
                 return ["error": "An alarm needs a time like 06:30."]
             }
-            let days = (arguments["days"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() } ?? []
+            let named = (arguments["days"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() } ?? []
+            // Each day once, in week order.
+            let days = PhoneChangeFields.weekdays.filter { named.contains($0) } + named.filter { !PhoneChangeFields.weekdays.contains($0) }
             if days.contains(where: { !PhoneChangeFields.weekdays.contains($0) }) {
                 return ["error": "days are mon, tue, wed, thu, fri, sat or sun."]
             }

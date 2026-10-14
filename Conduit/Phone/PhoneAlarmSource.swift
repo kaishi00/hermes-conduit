@@ -19,6 +19,7 @@ import AlarmKit
 
 enum PhoneAlarmError: LocalizedError {
     case unsupported
+    case unavailable
     case denied
     case past
     case notFound
@@ -26,6 +27,7 @@ enum PhoneAlarmError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupported: return AppLocalization.string("Alarms from Hermes need iOS 26 or later.")
+        case .unavailable: return AppLocalization.string("Alarms couldn't be reached just now. Try again.")
         case .denied: return AppLocalization.string("Conduit isn't allowed to set alarms. Allow it in the Settings app.")
         case .past: return AppLocalization.string("That alarm time has already passed.")
         case .notFound: return AppLocalization.string("That alarm isn't on this iPhone any more.")
@@ -217,7 +219,11 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
 
     private func schedule(_ schedule: Alarm.Schedule, label: String, record: PhoneAlarmRecord) async throws -> String {
         let stop = AlarmButton(text: LocalizedStringResource("Stop"), textColor: .white, systemImageName: "stop.circle")
-        let alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: label), stopButton: stop)
+        // The label is the user's (or Hermes') own words: looked up in a table
+        // that doesn't exist, so it shows as typed even when it matches a key
+        // such as "Timer" or "Set".
+        let title = LocalizedStringResource(String.LocalizationValue(label), table: "Verbatim")
+        let alert = AlarmPresentation.Alert(title: title, stopButton: stop)
         let attributes = AlarmAttributes<ConduitAlarmMetadata>(presentation: AlarmPresentation(alert: alert),
                                                               metadata: ConduitAlarmMetadata(), tintColor: .orange)
         let configuration = AlarmManager.AlarmConfiguration<ConduitAlarmMetadata>(schedule: schedule, attributes: attributes)
@@ -233,7 +239,7 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
     func cancel(id: String) throws {
         guard let uuid = UUID(uuidString: id) else { throw PhoneAlarmError.notFound }
         // A failed read isn't "gone": the alarm may still ring.
-        guard let scheduled = try? manager.alarms else { throw PhoneAlarmError.unsupported }
+        guard let scheduled = try? manager.alarms else { throw PhoneAlarmError.unavailable }
         guard scheduled.contains(where: { $0.id == uuid }) else { throw PhoneAlarmError.notFound }
         try manager.cancel(id: uuid)
         var records = PhoneAlarmRecord.load(from: defaults)
