@@ -2429,7 +2429,7 @@ enum MarkdownParser {
             // `::preview{file="…"}` asks for a host HTML file drawn in
             // place; any other file gets its card, as a MEDIA: tag would. A
             // quoted one is an example, as with MEDIA: tags.
-            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) {
+            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), !isTableHeader(lines, at: index), let segments = TranscriptDirectives.segments(in: trimmed) {
                 for segment in segments {
                     switch segment {
                     case .preview(let file):

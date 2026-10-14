@@ -48,6 +48,8 @@ extension MarkdownLargeDocumentTests {
     func testHTMLPreview_ReadAloudSkipsPreviews() {
         let text = "Chart below.\n::preview{file=\"/tmp/a.html\"}\nDone."
         XCTAssertEqual(TranscriptDirectives.removingPreviews(from: text), "Chart below.\nDone.")
+        let quoted = "> Example: ::preview{file=\"/tmp/a.html\"}"
+        XCTAssertEqual(TranscriptDirectives.removingPreviews(from: quoted), quoted)
     }
 
     // MARK: - Parsing

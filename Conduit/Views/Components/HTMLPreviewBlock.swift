@@ -74,7 +74,9 @@ enum TranscriptDirectives {
     static func removingPreviews(from text: String) -> String {
         guard text.contains("::preview{") else { return text }
         return text.components(separatedBy: "\n").compactMap { line -> String? in
-            guard let segments = segments(in: line) else { return line }
+            // A quoted directive is an example, and the chat shows it as text.
+            guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
+                  let segments = segments(in: line) else { return line }
             let kept = segments.compactMap { segment -> String? in
                 if case .text(let value) = segment { return value }
                 return nil
