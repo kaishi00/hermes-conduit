@@ -441,7 +441,7 @@ extension HermesVoiceGatewayTimeoutTests {
                                               engine: engine, answer: answer)
         XCTAssertNotNil(timer["result"], timer["error"] ?? "")
         XCTAssertEqual(alarms.applied.last?.fields.seconds, 600)
-        let alarm = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "6:45", "days": ["sun", "sat", "sun"]],
+        let alarm = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "6:45", "days": ["sun", " Sat ", "sun"]],
                                               engine: engine, answer: answer)
         XCTAssertNotNil(alarm["result"], alarm["error"] ?? "")
         XCTAssertEqual(alarms.applied.last?.fields.time, PhoneClockTime(hour: 6, minute: 45))

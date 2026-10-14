@@ -247,12 +247,14 @@ enum PhoneVoiceTools {
                   let time = PhoneChangeFields.clockTime(timeText.count == 4 ? "0" + timeText : timeText) else {
                 return ["error": "An alarm needs a time like 06:30."]
             }
-            let named = (arguments["days"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() } ?? []
-            // Each day once, in week order.
-            let days = PhoneChangeFields.weekdays.filter { named.contains($0) } + named.filter { !PhoneChangeFields.weekdays.contains($0) }
-            if days.contains(where: { !PhoneChangeFields.weekdays.contains($0) }) {
+            let named = (arguments["days"] as? [Any])?.compactMap {
+                ($0 as? String)?.trimmingCharacters(in: .whitespaces).lowercased()
+            } ?? []
+            guard named.allSatisfy({ PhoneChangeFields.weekdays.contains($0) }) else {
                 return ["error": "days are mon, tue, wed, thu, fri, sat or sun."]
             }
+            // Each day once, in week order.
+            let days = PhoneChangeFields.weekdays.filter { named.contains($0) }
             if let date = arguments["date"] as? String, !date.trimmingCharacters(in: .whitespaces).isEmpty, !days.isEmpty {
                 return ["error": "An alarm takes a date (once) or days (repeating), not both. Ask which the user means."]
             }

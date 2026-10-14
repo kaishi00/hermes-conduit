@@ -219,10 +219,11 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
 
     private func schedule(_ schedule: Alarm.Schedule, label: String, record: PhoneAlarmRecord) async throws -> String {
         let stop = AlarmButton(text: LocalizedStringResource("Stop"), textColor: .white, systemImageName: "stop.circle")
-        // The label is the user's (or Hermes') own words: looked up in a table
-        // that doesn't exist, so it shows as typed even when it matches a key
-        // such as "Timer" or "Set".
-        let title = LocalizedStringResource(String.LocalizationValue(label), table: "Verbatim")
+        // The label is the user's (or Hermes') own words, so it goes in as an
+        // argument: the key is just "%@" (in a table that doesn't exist), and
+        // the label shows as typed even when it matches a key such as "Timer"
+        // or holds a "%".
+        let title = LocalizedStringResource("\(label)", table: "Verbatim")
         let alert = AlarmPresentation.Alert(title: title, stopButton: stop)
         let attributes = AlarmAttributes<ConduitAlarmMetadata>(presentation: AlarmPresentation(alert: alert),
                                                               metadata: ConduitAlarmMetadata(), tintColor: .orange)
