@@ -1364,6 +1364,19 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// The Conduit plugin update's progress and outcome, and the dashboard
+    /// it belongs to (AppState+NotifierPluginUpdate.swift).
+    @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
+    var notifierPluginUpdateTask: Task<Void, Never>?
+    /// Dashboard and profile pairs Conduit already tried to pair on its own
+    /// this launch, so a refused or failed pairing isn't retried on every
+    /// connect.
+    var automaticPairingAttempts: Set<String> = []
+    /// Bumped per plugin status request; the accepted one is the newest
+    /// request whose answer landed, so an older answer never lands over a
+    /// newer one, but still lands when a newer request failed.
+    var notifierPluginStatusGeneration = 0
+    var notifierPluginStatusAcceptedGeneration = 0
     @Published private(set) var modelVisibility = ModelVisibility()
 
     // MARK: - UI state
@@ -9406,6 +9419,8 @@ final class AppState: ObservableObject {
         // A restart already handed to Hermes carries on there; Conduit
         // stops following it.
         stopFollowingGatewayRestart()
+        stopFollowingNotifierPluginUpdate()
+        automaticPairingAttempts.removeAll()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
@@ -9700,6 +9715,8 @@ final class AppState: ObservableObject {
     /// disconnect(): no saved auth, cookie mirror, or registry state is
     /// cleared — the outgoing dashboard stays signed in while saved.
     private func retireConnectionRuntimeForDashboardSwitch() {
+        // A plugin update follows one dashboard; Hermes finishes it alone.
+        stopFollowingNotifierPluginUpdate()
         cancelChatResumeTransportRecovery()
         cancelScenePhaseAttempt()
         cancelScheduledReconnect()
@@ -18109,6 +18126,16 @@ final class AppState: ObservableObject {
     @Published var healthSyncPreferences = HealthSyncPreferences.load()
     lazy var healthSync = HealthSyncEngine(source: HealthKitDataSource(), deviceName: { UIDevice.current.name })
 
+    /// The dashboard|version update notices the user closed with Not now
+    /// (AppState+NotifierPluginUpdate.swift).
+    var dismissedPluginUpdates: Set<String> {
+        get { Set(defaults.stringArray(forKey: Self.dismissedPluginUpdateKey) ?? []) }
+        set {
+            defaults.set(newValue.sorted(), forKey: Self.dismissedPluginUpdateKey)
+            objectWillChange.send()
+        }
+    }
+
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
     lazy var agentSettings = AgentSettingsSync(defaults: defaults)
@@ -18116,16 +18143,25 @@ final class AppState: ObservableObject {
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
+        notifierPluginStatusGeneration += 1
+        let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
+        var runtime: NotifierPluginStatus.Runtime?
         do {
-            state = NotifierPluginStatus.state(from: try await bridge.requestJSON(path: NotifierPluginStatus.path))
+            let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
+            state = NotifierPluginStatus.state(from: response)
+            runtime = NotifierPluginStatus.runtime(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
         // A bridge swapped mid-request belongs to another host, and a failed
         // request says nothing new: keep the last real answer.
-        guard bridge === dashboardTicketBridge, state != .unknown else { return }
+        guard bridge === dashboardTicketBridge, generation > notifierPluginStatusAcceptedGeneration,
+              state != .unknown else { return }
+        notifierPluginStatusAcceptedGeneration = generation
         notifierPlugin.state = state
+        notifierPlugin.runtime = runtime
+        clearSettledNotifierPluginUpdateOutcome()
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
         // Whether calls can ring the Watch, for this host and profile.
@@ -18133,6 +18169,9 @@ final class AppState: ObservableObject {
         // Settings Hermes may change: share them, take its requests.
         Task { await syncAgentSettings() }
         await provisionNotificationEncryption(bridge: bridge)
+        // Notifications from this dashboard's profile, without a pairing
+        // code, after the rest so connecting doesn't wait on it.
+        Task { await pairActiveProfileAutomatically(bridge: bridge) }
         // Health data catches up once this host is known to serve it.
         Task { await runHealthSync(reason: .connected) }
     }
@@ -18142,7 +18181,7 @@ final class AppState: ObservableObject {
     /// connection so the key never passes through the push relay. Runs on
     /// every connect and Settings > Notifications visit; pairings that
     /// already have a key are left alone.
-    private func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
+    func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
         let notifications = PushNotificationService.shared
         guard case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains("e2e-notifications"),
