@@ -248,6 +248,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .unavailable
             return
         }
+        // A different file: don't keep showing the last one while it loads.
+        state = .loading
+        measuredHeight = nil
         let dataURL = await gatewayMediaDataURL(path)
         guard !Task.isCancelled else { return }
         guard let dataURL, let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
@@ -491,6 +494,7 @@ struct HTMLPreviewWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        // A no-op for the full-screen page, which never added it.
         view.configuration.userContentController.removeScriptMessageHandler(forName: HTMLPreviewPage.messageHandlerName)
         view.navigationDelegate = nil
         view.uiDelegate = nil
