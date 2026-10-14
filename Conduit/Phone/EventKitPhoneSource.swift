@@ -25,6 +25,7 @@ enum PhoneCalendarSourceError: LocalizedError {
     case notFound
     case readOnly
     case writeOnly
+    case locationAlarm
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,7 @@ enum PhoneCalendarSourceError: LocalizedError {
         case .notFound: return AppLocalization.string("That item isn't on this iPhone any more.")
         case .readOnly: return AppLocalization.string("That calendar can't be changed.")
         case .writeOnly: return AppLocalization.string("Conduit can only add events, so it can't find existing ones.")
+        case .locationAlarm: return AppLocalization.string("Reminders that go off at a place can't be set from Hermes yet.")
         }
     }
 }
@@ -310,6 +312,8 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
     func apply(_ change: PhoneChange, window: (from: Date, to: Date)) async throws -> String? {
         let fields = change.fields
         let span: EKSpan = change.span == "future" ? .futureEvents : .thisEvent
+        // Saying "applied" without the place alert would be untrue.
+        if !change.kind.isEvent, fields.locationAlarmName != nil { throw PhoneCalendarSourceError.locationAlarm }
         switch change.kind {
         case .addEvent:
             guard eventAccess != .off else { throw PhoneCalendarSourceError.denied }

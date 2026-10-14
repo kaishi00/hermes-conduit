@@ -228915,6 +228915,88 @@
           }
         }
       }
+    },
+    "Reminders that go off at a place can't be set from Hermes yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erinnerungen, die an einem Ort auslösen, können noch nicht von Hermes eingerichtet werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes aún no puede crear recordatorios que avisen al llegar a un lugar o salir de él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne peut pas encore créer de rappels qui se déclenchent à un lieu."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengingat yang berbunyi di suatu tempat belum bisa dibuat dari Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non può ancora impostare promemoria che si attivano in un luogo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所で通知されるリマインダーは、まだHermesから設定できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장소에서 알리는 미리 알림은 아직 Hermes에서 설정할 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie może jeszcze ustawiać przypomnień uruchamianych w danym miejscu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes ainda não pode criar lembretes que disparam em um local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes пока не может создавать напоминания, срабатывающие в определённом месте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir konumda çalan anımsatıcılar henüz Hermes'ten ayarlanamıyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暂时无法设置在某个地点提醒的提醒事项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暫時無法設定在某個地點提醒的提醒事項。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

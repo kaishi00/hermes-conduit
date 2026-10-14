@@ -99,6 +99,16 @@ struct PhoneSyncStateStore {
     }
 }
 
+/// One serial queue for the state file, so writes stay off the main thread
+/// and land in the order they were made.
+final class PhoneSyncStateWriter: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.milim.relay.phone-sync.state", qos: .utility)
+
+    func save(_ state: PhoneSyncState, to store: PhoneSyncStateStore) {
+        queue.async { store.save(state) }
+    }
+}
+
 struct PhoneSyncKeyStore {
     var load: () -> PhoneSyncCrypto.SessionKey?
     var save: (PhoneSyncCrypto.SessionKey) -> Void
@@ -167,6 +177,10 @@ final class PhoneSyncEngine: ObservableObject {
     private var running: Task<Outcome, Never>?
     private var turnOffs = 0
     private var stateUnread = false
+    /// What the state file holds (or is about to): a pass that changed
+    /// nothing writes nothing.
+    private var saved: PhoneSyncState?
+    private let writer = PhoneSyncStateWriter()
 
     init(
         calendarSource: PhoneCalendarSource,
@@ -189,6 +203,7 @@ final class PhoneSyncEngine: ObservableObject {
         preferences = PhoneSyncPreferences.load(from: defaults)
         if let state = store.loadIfReadable() {
             self.state = state
+            saved = state
         } else {
             self.state = PhoneSyncState()
             stateUnread = true
@@ -224,7 +239,14 @@ final class PhoneSyncEngine: ObservableObject {
     func note(_ pause: PhoneSyncPause?) {
         guard readStateIfNeeded(), state.pause != pause else { return }
         state.pause = pause
-        store.save(state)
+        persist()
+    }
+
+    /// Encodes and writes the state off the main thread, in order.
+    private func persist() {
+        guard state != saved else { return }
+        saved = state
+        writer.save(state, to: store)
     }
 
     @discardableResult
@@ -232,6 +254,7 @@ final class PhoneSyncEngine: ObservableObject {
         guard stateUnread else { return true }
         guard let state = store.loadIfReadable() else { return false }
         self.state = state
+        saved = state
         stateUnread = false
         return true
     }
@@ -264,7 +287,7 @@ final class PhoneSyncEngine: ObservableObject {
             }
         }
         state.startOver()
-        store.save(state)
+        persist()
         return deleted
     }
 
@@ -282,7 +305,7 @@ final class PhoneSyncEngine: ObservableObject {
         state.lastAttempt = now()
         state.pause = nil
         lastError = nil
-        defer { store.save(state) }
+        defer { persist() }
         do {
             let key = try await ensureKey(request: request)
             try checkTime(deadline)
@@ -413,6 +436,8 @@ final class PhoneSyncEngine: ObservableObject {
             }
             newEventHashes = section.hashes
         } else {
+            // The host drops every stored event when the batch's sharing
+            // says write-only or off (notifier phone_store `_apply`).
             newEventHashes = [:]
         }
 
@@ -428,6 +453,7 @@ final class PhoneSyncEngine: ObservableObject {
             }
             newReminderHashes = section.hashes
         } else {
+            // Likewise reminders when they're no longer shared.
             newReminderHashes = [:]
         }
 
@@ -453,8 +479,7 @@ final class PhoneSyncEngine: ObservableObject {
 
         let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         batch["batch_id"] = batchID
-        let plaintext = try JSONSerialization.data(withJSONObject: batch, options: [.sortedKeys])
-        let body = try PhoneSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: state.deviceID, batchID: batchID)
+        let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
         let answer = try await request("\(Self.base)/ingest", "POST", body)
         // Taken: what was sent is now what the host has.
         state.eventHashes = newEventHashes
@@ -465,7 +490,7 @@ final class PhoneSyncEngine: ObservableObject {
         if statusSent { state.statusSentAt = currentNow }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
-        store.save(state)
+        persist()
         return (answer["pending"] as? NSNumber)?.intValue ?? 0
     }
 
@@ -492,6 +517,14 @@ final class PhoneSyncEngine: ObservableObject {
         guard !full, !truncated else { return Section(upsert: upsert, delete: [], hashes: hashes) }
         let delete = sent.keys.filter { hashes[$0] == nil }.sorted()
         return Section(upsert: upsert, delete: delete, hashes: hashes)
+    }
+
+    /// A full upload can be thousands of items, so it's serialized and
+    /// sealed off the main thread.
+    nonisolated private static func sealBatch(_ batch: [String: Any], key: PhoneSyncCrypto.SessionKey,
+                                              deviceID: String, batchID: String) async throws -> [String: Any] {
+        let plaintext = try JSONSerialization.data(withJSONObject: batch, options: [.sortedKeys])
+        return try PhoneSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: deviceID, batchID: batchID)
     }
 
     /// Hashing thousands of items is kept off the main thread.
@@ -547,7 +580,7 @@ final class PhoneSyncEngine: ObservableObject {
             }
         }
         prompts = fresh
-        store.save(state)
+        persist()
     }
 
     /// The user's answer to a card (or to the question in a voice call).
@@ -572,7 +605,7 @@ final class PhoneSyncEngine: ObservableObject {
                 } else if state.reminderHashes[itemID] == nil {
                     state.reminderHashes[itemID] = ""
                 }
-                store.save(state)
+                persist()
             }
             if auto, let itemID {
                 autoAdded = PhoneAutoAdded(changeID: change.id, itemID: itemID, title: change.fields.title ?? "",
@@ -589,7 +622,7 @@ final class PhoneSyncEngine: ObservableObject {
     private func record(_ result: PhoneChangeResult) {
         state.answered[result.id] = result
         state.unreported.append(result)
-        store.save(state)
+        persist()
     }
 
     /// The banner's Undo: takes back an addition made without asking.
