@@ -397,6 +397,7 @@ struct PhoneSettingsPage: View {
                 errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
+            voiceUses = HealthVoiceReadLog()
             calendars = []
             isWorking = false
         }

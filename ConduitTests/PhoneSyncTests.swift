@@ -201,7 +201,9 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testPhoneVoiceUsesAreLoggedApart() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PhoneVoiceUses-\(UUID().uuidString)"))
+        let suite = "PhoneVoiceUses-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         HealthVoiceReadLog.record(mode: .geminiLive, action: "events", key: HealthVoiceReadLog.phoneStorageKey, in: defaults)
         XCTAssertEqual(HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey, from: defaults).entries.map(\.action), ["events"])
         XCTAssertTrue(HealthVoiceReadLog.load(from: defaults).entries.isEmpty, "Health reads keep their own log")
@@ -256,6 +258,9 @@ extension HermesVoiceGatewayTimeoutTests {
         let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
         XCTAssertEqual(((noReminders.last?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertEqual(PhoneVoiceTools.tools(for: eventsOnly, access: .off, remindersAuthorized: true).map(\.name), [PhoneVoiceTools.changesTool])
+        let addOnly = try XCTUnwrap(PhoneVoiceTools.tools(for: eventsOnly, access: .writeOnly, remindersAuthorized: true).last)
+        XCTAssertTrue(addOnly.description.contains("leave the calendar out"))
+        XCTAssertFalse(addTool.description.contains("leave the calendar out"))
 
         // A change Hermes asks for is answered out loud.
         host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",
