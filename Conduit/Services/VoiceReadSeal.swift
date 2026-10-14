@@ -26,6 +26,7 @@ enum VoiceReadSeal {
     /// identifier (`VoiceHostTool.isToolName`): `request` and `openAnswer`
     /// refuse any other.
     static func aad(tag: String, direction: String, tool: String, kid: String, deviceID: String, callID: String) -> Data {
+        assert(VoiceHostTool.isToolName(tool), "A voice tool name goes into the associated data unescaped")
         Data([tag, "voice-\(direction)", "tool=\(tool)", "kid=\(kid)", "dev=\(deviceID)", "call=\(callID)"]
             .joined(separator: "\n").utf8)
     }

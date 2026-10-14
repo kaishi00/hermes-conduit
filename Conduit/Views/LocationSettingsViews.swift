@@ -115,7 +115,10 @@ struct LocationSettingsPage: View {
                 if settings.isOn { pauseSection }
                 retentionSection
             }
-            if settings.isOn, controller.binding != nil, appState.notifierPlugin.servesLocationVoice {
+            // Kept while a mode is allowed, even on an older plugin, so it can
+            // still be turned off.
+            if settings.isOn, controller.binding != nil,
+               appState.notifierPlugin.servesLocationVoice || !(controller.config.voiceReaders ?? []).isEmpty {
                 voiceSection
             }
             if controller.binding != nil {

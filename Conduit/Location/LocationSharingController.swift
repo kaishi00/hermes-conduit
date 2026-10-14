@@ -577,11 +577,15 @@ final class LocationSharingController: ObservableObject {
     }
 
     /// A key agreed before voice reads existed is set up again now (a send
-    /// does it), with a fresh position when background sharing allows one:
+    /// does it), with a fresh position when sharing allows one now (the
+    /// background layer, or a call already running on the talking layer):
     /// the host drops the one it had with the old key.
     func prepareVoiceReads() async {
         guard voiceReadKey() == nil, config.readsByVoice(at: now()) else { return }
-        if fixes.canLocate, await shareFix(source: .app) { return }
+        if fixes.canLocate {
+            if await shareFix(source: .app) { return }
+            if callWatch != nil, await shareFix(source: .call) { return }
+        }
         await flush(settingsOnly: true)
     }
 
