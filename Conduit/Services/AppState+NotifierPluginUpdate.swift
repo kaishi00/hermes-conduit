@@ -109,14 +109,15 @@ extension AppState {
 
     func dismissNotifierPluginUpdateNotice() {
         if activeNotifierPluginUpdate.isInProgress { return }
+        // Closing an outcome closes the offer behind it too, or a failed or
+        // half-finished update would reappear as the offer right away.
         if activeNotifierPluginUpdate != .idle {
             dismissNotifierPluginUpdateOutcome()
-        } else {
-            // Only this version's dismissals matter from now on.
-            let version = "|\(notifierPlugin.offeredVersion)"
-            dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
-                .union([pluginUpdateDismissalToken])
         }
+        // Only this version's dismissals matter from now on.
+        let version = "|\(notifierPlugin.offeredVersion)"
+        dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
+            .union([pluginUpdateDismissalToken])
     }
 
     // MARK: - Pairing
