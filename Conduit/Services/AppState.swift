@@ -550,6 +550,18 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
+    /// A stable resolver for another profile's media (a Live Voice job that
+    /// ran there), cached so views read the same instance on every pass.
+    func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {
+        if profile == activeProfile { return gatewayMediaResolver }
+        if let cached = otherProfileGatewayMediaResolvers[profile] { return cached }
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: profile)
+        otherProfileGatewayMediaResolvers[profile] = resolver
+        return resolver
+    }
+
+    private var otherProfileGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
+
     @Published private(set) var activeProfile: String = "default" {
         didSet {
             refreshActiveChatScrollSessionIdentity()
@@ -25143,6 +25155,30 @@ final class AppState: ObservableObject {
             return nil
         } catch {
             return nil
+        }
+    }
+
+    /// Downloads a gateway `MEDIA:` video, audio clip or document to disk
+    /// for opening (#569). `/api/fs/read-data-url` caps files at 16 MB on
+    /// both ends, so larger ones stream from `/api/fs/download`, which
+    /// resolves `path` and `profile` the same way.
+    func gatewayMediaFile(
+        for path: String,
+        profile: String,
+        maxBytes: Int = DashboardFileDownloadLimits.maxBytes
+    ) async -> GatewayMediaFileResult {
+        guard let dashboardTicketBridge,
+              let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .unavailable }
+        let endpoint = DashboardPath.withProfile("/api/fs/download?path=\(encodedPath)", profile: profile)
+        // Read through the presenter so its first-use sweep of old staging
+        // folders runs before this download lands there, not after.
+        let root = MediaPreviewPresenter.shared.stagingDirectory
+        do {
+            return .downloaded(try await dashboardTicketBridge.downloadFile(path: endpoint, filename: path, into: root, maxBytes: maxBytes))
+        } catch DashboardTicketBridgeError.oversizedResponse {
+            return .tooLarge
+        } catch {
+            return .unavailable
         }
     }
 

@@ -232,6 +232,8 @@ struct ChatView: View {
             ComposerBar()
         }
         .environment(\.chatTextSize, chatTextSize)
+        // Gateway videos, audio and documents open from a download (#569).
+        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         .background(Color.clear)
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {

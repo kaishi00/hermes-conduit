@@ -593,6 +593,14 @@ extension NotificationE2ETests {
         XCTAssertNotEqual(digest, LocationBackgroundMonitor.monitoredDigest([LocationFixtures.home]))
     }
 
+    func testTheSavedPlacesMonitorNameIsLettersAndDigitsOnly() {
+        // CLMonitor(_:) raises "Monitor name is not valid" for anything else,
+        // which crashed Conduit on saving the first place.
+        let name = LocationBackgroundMonitor.monitorName
+        XCTAssertFalse(name.isEmpty)
+        XCTAssertTrue(name.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII }, name)
+    }
+
     func testAPlaintextLocateIsAnsweredOnlyForTheBoundProfileWhileSharing() throws {
         let payload: [AnyHashable: Any] = [
             "aps": [String: Any](),

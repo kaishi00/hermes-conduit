@@ -1817,8 +1817,10 @@ private struct GatewayMediaFileCard: View {
     let name: String
     let kind: GatewayMediaKind
     let gatewayMediaDataURL: ((String) async -> String?)?
+    @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
     @State private var loading = false
     @State private var failed = false
+    @State private var tooLarge = false
     @State private var openTask: Task<Void, Never>?
 
     var body: some View {
@@ -1858,7 +1860,7 @@ private struct GatewayMediaFileCard: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(verbatim: failed ? AppLocalization.string("Couldn't open this file") : kind.label)
+                Text(verbatim: failed ? failureLabel : kind.label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1885,33 +1887,78 @@ private struct GatewayMediaFileCard: View {
         name.isEmpty ? MediaPreviewPresenter.sanitizedFilename(path) : name
     }
 
-    /// The clip's bytes for inline playback, decoded off the main actor.
+    private var failureLabel: String {
+        tooLarge
+            ? AppLocalization.string("Too large to open on this phone")
+            : AppLocalization.string("Couldn't open this file")
+    }
+
+    /// The clip's bytes for inline playback, read or decoded off the main
+    /// actor. The player holds them in memory, so a clip over
+    /// `maxInlineAudioBytes` only opens full screen.
     private func loadAudio() async -> Data? {
-        guard let gatewayMediaDataURL, let dataURL = await gatewayMediaDataURL(path) else { return nil }
+        if let gatewayMediaFiles {
+            switch await gatewayMediaFiles.file(for: path, maxBytes: DashboardFileDownloadLimits.maxInlineAudioBytes) {
+            case .downloaded(let download):
+                return await Task.detached(priority: .userInitiated) {
+                    defer { MediaPreviewPresenter.removeDirectory(download.directory) }
+                    return try? Data(contentsOf: download.file)
+                }.value
+            case .tooLarge:
+                return nil
+            case .unavailable:
+                break
+            }
+        }
+        // A cancelled download reads as unavailable; don't start the
+        // fallback for a card that has gone.
+        guard !Task.isCancelled, let gatewayMediaDataURL,
+              let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return nil }
         return await Task.detached(priority: .userInitiated) {
             DataURLLimits.decodeBase64DataURL(dataURL)
         }.value
     }
 
+    private enum OpenOutcome {
+        case presented
+        case tooLarge
+        case failed
+    }
+
     private func open() {
-        guard !loading, let gatewayMediaDataURL else { return }
+        guard !loading, gatewayMediaFiles != nil || gatewayMediaDataURL != nil else { return }
         loading = true
         failed = false
+        tooLarge = false
         // Cancelled on disappear, so a slow fetch can't pop a preview over
         // whatever screen the user moved on to.
         openTask = Task {
-            let dataURL = await gatewayMediaDataURL(path)
-            guard !Task.isCancelled else { return }
-            let presented: Bool
-            if let dataURL {
-                presented = await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path)
-            } else {
-                presented = false
-            }
+            let outcome = await fetchAndPresent()
             guard !Task.isCancelled else { return }
             loading = false
-            failed = !presented
+            failed = outcome != .presented
+            tooLarge = outcome == .tooLarge
+            openTask = nil
         }
+    }
+
+    /// The file itself, downloaded to disk, so a video over the 16 MB data
+    /// URL ceiling still opens (#569); the data URL when the download is
+    /// unavailable (an older Hermes, or no sign-in yet).
+    private func fetchAndPresent() async -> OpenOutcome {
+        if let gatewayMediaFiles {
+            switch await gatewayMediaFiles.file(for: path) {
+            case .downloaded(let download):
+                return MediaPreviewPresenter.shared.present(downloaded: download) ? .presented : .failed
+            case .tooLarge:
+                return .tooLarge
+            case .unavailable:
+                break
+            }
+        }
+        guard !Task.isCancelled, let gatewayMediaDataURL,
+              let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return .failed }
+        return await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path) ? .presented : .failed
     }
 }
 

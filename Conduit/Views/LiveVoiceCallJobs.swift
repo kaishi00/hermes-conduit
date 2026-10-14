@@ -292,6 +292,7 @@ struct LiveVoiceScreenCardSheet: View {
                 MarkdownText(source: card.markdown, gatewayMediaDataURL: { path in
                     await appState.gatewayMediaDataURL(for: path, profile: profile)
                 })
+                .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -373,6 +374,7 @@ struct LiveVoiceJobResultSheet: View {
             MarkdownText(source: result, gatewayMediaDataURL: { path in
                 await appState.gatewayMediaDataURL(for: path, profile: profile)
             })
+            .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver(for: profile))
         } else if job.status.isActive {
             Text("Hermes is still working on this. The result will show here.")
                 .foregroundStyle(.secondary)

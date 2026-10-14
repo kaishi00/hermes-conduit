@@ -19,7 +19,9 @@ import OSLog
 
 @MainActor
 final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
-    static let monitorName = "conduit-saved-places"
+    /// Letters and digits only: CoreLocation aborts the app on any other
+    /// character ("Monitor name is not valid").
+    nonisolated static let monitorName = "conduitSavedPlaces"
     /// What the monitor was last given, so a launch doesn't re-add all.
     static let monitoredDigestKey = "conduit.location.monitoredPlaces.v1"
     static let callMoveDistance: CLLocationDistance = 200

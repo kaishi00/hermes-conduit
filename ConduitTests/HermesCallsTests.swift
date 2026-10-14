@@ -651,6 +651,16 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(plan(target, sentAgo: 91).startsTrace)
         XCTAssertFalse(plan(target, replayed: true).startsTrace, "A replay leaves the last call's trace alone")
         XCTAssertFalse(plan(nil).startsTrace)
+        // iOS 26.4+ says whether a push needs a CallKit call: one that
+        // rings always shows, one that wouldn't only when iOS needs it.
+        XCTAssertTrue(HermesNativeCalls.showsCall(.ring, mustReport: false))
+        XCTAssertTrue(HermesNativeCalls.showsCall(.endAtOnce(.missed), mustReport: true))
+        XCTAssertFalse(HermesNativeCalls.showsCall(.endAtOnce(.talk), mustReport: false))
+        XCTAssertFalse(HermesNativeCalls.showsCall(.endAtOnce(.none), mustReport: false))
+        if #available(iOS 26.4, *) {
+            let selector = NSSelectorFromString("pushRegistry:didReceiveIncomingVoIPPushWithPayload:metadata:withCompletionHandler:")
+            XCTAssertTrue(HermesNativeCalls.instancesRespond(to: selector), "PushKit finds the delegate method that says whether to report")
+        }
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls("USA"))
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls(nil))
         XCTAssertFalse(HermesNativeCallStorefront.allowsCalls("CHN"))

@@ -145,7 +145,7 @@ extension DashboardTicketBridge {
     /// Keychain mirror, WebKit's own store (when it answers in time), the
     /// native sign-in jar (a silent re-sign-in lands there), and cookies
     /// issued to requests sent without the page.
-    private func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
+    func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
         var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
         if let webKit = await webKitCookies(timeout: .seconds(2)) {
             cookies += webKit

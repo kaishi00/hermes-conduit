@@ -310,7 +310,7 @@ final class NativeOAuthAPIClient {
         return tokens
     }
 
-    private func endpointRequest(path: String) throws -> URLRequest {
+    func endpointRequest(path: String) throws -> URLRequest {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)\(path)"),
               ConnectionURLPolicy.originMatches(url, expected: URL(string: normalized)) else {
@@ -413,6 +413,30 @@ final class NativeOAuthSession {
         } catch let error as URLError where error.code == .cancelled && isInvalidated {
             throw CancellationError()
         }
+    }
+
+    /// A GET for `path` carrying the current access token, refreshed first
+    /// when it is about to expire, for a response that is not JSON (a file
+    /// download, #569). Pass the request the server just rejected to
+    /// refresh past that token, as `requestJSON` does on a 401.
+    func authorizedRequest(path: String, replacing rejected: URLRequest? = nil) async throws -> URLRequest {
+        guard !isInvalidated else { throw CancellationError() }
+        if let header = rejected?.value(forHTTPHeaderField: "Authorization"), header.hasPrefix("Bearer ") {
+            try await refresh(rejectedAccessToken: String(header.dropFirst("Bearer ".count)))
+        } else if tokens.needsRefresh() {
+            try await refresh()
+        }
+        guard !isInvalidated else { throw CancellationError() }
+        var request = try client.endpointRequest(path: path)
+        request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// Forgets a grant the server rejected again right after a refresh, as
+    /// `requestJSON`'s replay does.
+    func discardRejectedGrant() {
+        guard !isInvalidated else { return }
+        KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
     }
 
     func mintTicket() async throws -> String {
