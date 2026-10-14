@@ -21,7 +21,8 @@
 //  `conduit://settings/calls` opens Settings at Calls from Hermes: Hermes
 //  links it when the user asks for a call while calls are off.
 //  `conduit://settings/voice` opens Voice, where the user lets Hermes
-//  change settings. Only inside the app, like a bot link.
+//  change settings. `conduit://settings/plugin` opens Conduit plugin. Only
+//  inside the app, like a bot link.
 //
 
 import Foundation

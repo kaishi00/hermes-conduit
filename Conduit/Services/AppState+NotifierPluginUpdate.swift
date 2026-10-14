@@ -72,11 +72,29 @@ extension AppState {
     }
 
     /// "Restart the dashboard to finish" is stale once the plugin reports
-    /// nothing left to do: the user restarted Hermes.
+    /// nothing left to do: the user restarted Hermes. So is a failure once
+    /// the offered version is running, e.g. a comeback wait the phone slept
+    /// through.
     func clearSettledNotifierPluginUpdateOutcome() {
-        guard case .needsDashboardRestart = activeNotifierPluginUpdate,
-              !notifierPlugin.updateAvailable, !notifierPlugin.restartPending else { return }
+        switch activeNotifierPluginUpdate {
+        case .needsDashboardRestart:
+            guard !notifierPlugin.updateAvailable, !notifierPlugin.restartPending else { return }
+        case .failed:
+            guard !notifierPlugin.restartPending,
+                  let running = notifierPlugin.runtime?.loadedVersion,
+                  !NotifierPluginStatus.isOlder(running, than: notifierPlugin.offeredVersion) else { return }
+        default:
+            return
+        }
         dismissNotifierPluginUpdateOutcome()
+    }
+
+    /// Stops following a running update (Cancel). Hermes finishes whatever
+    /// step it already took; the status refresh shows where that left it.
+    func cancelNotifierPluginUpdate() {
+        guard activeNotifierPluginUpdate.isInProgress else { return }
+        stopFollowingNotifierPluginUpdate()
+        Task { await refreshNotifierPluginStatus() }
     }
 
     /// Stops following an update and forgets it, for sign-out. Hermes

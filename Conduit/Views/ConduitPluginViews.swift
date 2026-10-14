@@ -275,6 +275,11 @@ struct NotifierPluginUpdateStatusView: View {
                         .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
                         .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
+                    } else {
+                        Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
+                            .buttonStyle(.borderless)
+                            .font(.subheadline)
+                            .frame(minHeight: 44)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -407,16 +412,21 @@ struct NotifierPluginUpdateBanner: View {
                     .disabled(!appState.canUpdateNotifierPlugin)
                     .accessibilityIdentifier("pluginUpdate.update")
             }
-            if !update.isInProgress {
-                Button { appState.dismissNotifierPluginUpdateNotice() } label: {
-                    Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
+            // While it runs, the same button stops following it.
+            Button {
+                if update.isInProgress {
+                    appState.cancelNotifierPluginUpdate()
+                } else {
+                    appState.dismissNotifierPluginUpdateNotice()
                 }
-                .accessibilityLabel(Text(AppLocalization.string("Not now")))
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(Text(update.isInProgress ? AppLocalization.string("Cancel") : AppLocalization.string("Not now")))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
