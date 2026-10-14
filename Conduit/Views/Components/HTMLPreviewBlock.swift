@@ -138,6 +138,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     static var drawTimeout: Duration { .seconds(20) }
 
     private var draws: Bool { isComplete && drawsInPlace }
+    private var isMeasuring: Bool {
+        if case .loaded = state { return measuredHeight == nil }
+        return false
+    }
     private var name: String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }
@@ -191,9 +195,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             }
             .font(.caption2.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
-            // The spinner over a measuring page isn't read out; say it here.
-            // Once measured, the page itself carries the name and the action.
-            .accessibilityValue(measuredHeight == nil ? Text("Loading preview…") : Text(verbatim: ""))
+            // The spinner over a measuring page isn't read out; say it here
+            // (before the page loads, the loading row says it). Once
+            // measured, the page element carries the name and the action.
+            .accessibilityValue(isMeasuring ? Text("Loading preview…") : Text(verbatim: ""))
             .accessibilityHidden(measuredHeight != nil)
             Spacer()
             if measuredHeight != nil {
@@ -205,6 +210,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 }
                 .tint(.conduitAccent)
                 .accessibilityLabel(Text("Open full screen"))
+                .accessibilityHidden(true)
             }
         }
     }
