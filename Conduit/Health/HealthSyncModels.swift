@@ -221,8 +221,23 @@ struct HealthSyncPreferences: Codable, Equatable {
     var categories: Set<HealthCategory> = []
     var detailed: Set<HealthCategory> = []
     var history: HealthHistoryDepth = .default
+    /// Live voice modes the user lets read this data on a call
+    /// (`LiveVoiceModeName.storageID`). Optional so preferences saved
+    /// before it still decode; nil is none.
+    var voiceReaders: [String]?
 
     var isOn: Bool { destination != nil && !categories.isEmpty }
+
+    /// Whether a live call on `mode` may read the shared data.
+    func letsVoiceRead(_ mode: LiveVoiceModeName) -> Bool {
+        isOn && (voiceReaders ?? []).contains(mode.storageID)
+    }
+
+    mutating func setVoiceRead(_ mode: LiveVoiceModeName, allowed: Bool) {
+        var readers = Set(voiceReaders ?? [])
+        if allowed { readers.insert(mode.storageID) } else { readers.remove(mode.storageID) }
+        voiceReaders = readers.isEmpty ? nil : readers.sorted()
+    }
 
     static let storageKey = "conduit.healthSync.preferences.v1"
 
@@ -299,5 +314,46 @@ enum HealthSyncPause: Codable, Equatable {
         case .refused(let detail):
             return AppLocalization.string("Paused: the host refused health data (\(detail)).")
         }
+    }
+}
+
+/// What live voice calls read of the shared health data: when, which mode,
+/// which kind of read. Never the values. Kept on this iPhone for a week and
+/// shown in Settings > Health, since the phone makes every voice read.
+struct HealthVoiceReadLog: Codable, Equatable {
+    struct Entry: Codable, Equatable, Identifiable {
+        var at: Date
+        /// `LiveVoiceModeName.displayName`.
+        var mode: String
+        /// The tool's action ("sleep", "daily").
+        var action: String
+
+        var id: Date { at }
+    }
+
+    var entries: [Entry] = []
+
+    static let storageKey = "conduit.healthSync.voiceReads.v1"
+    static let keptFor: TimeInterval = 7 * 24 * 3600
+    static let maximumEntries = 200
+
+    static func load(from defaults: UserDefaults = .standard, now: Date = Date()) -> HealthVoiceReadLog {
+        guard let data = defaults.data(forKey: storageKey),
+              var log = try? JSONDecoder().decode(HealthVoiceReadLog.self, from: data) else {
+            return HealthVoiceReadLog()
+        }
+        log.entries.removeAll { now.timeIntervalSince($0.at) > keptFor }
+        return log
+    }
+
+    static func record(mode: LiveVoiceModeName, action: String, in defaults: UserDefaults = .standard, now: Date = Date()) {
+        var log = load(from: defaults, now: now)
+        log.entries.append(Entry(at: now, mode: mode.displayName, action: String(action.prefix(40))))
+        if log.entries.count > maximumEntries { log.entries.removeFirst(log.entries.count - maximumEntries) }
+        if let data = try? JSONEncoder().encode(log) { defaults.set(data, forKey: storageKey) }
+    }
+
+    static func clear(in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: storageKey)
     }
 }

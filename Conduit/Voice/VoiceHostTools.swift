@@ -1,0 +1,196 @@
+//
+//  VoiceHostTools.swift
+//  Conduit
+//
+//  Hermes tools a live voice model calls directly: the user's shared health
+//  data today (conduit_health), read through the plugin's sealed
+//  /voice-tools route rather than a whole Hermes job. The host lists each
+//  tool with the description and parameters Hermes' own tool has, so the
+//  voice model reads the same use policy the agent does, and a new read-only
+//  capability on the host needs no app change.
+//
+//  Gemini and Grok get them as function tools. Conduit's live sessions pass
+//  string arguments only, so a list or number parameter is declared as a
+//  string here and turned back into its JSON type from the host's schema.
+//  GPT-Live has no function tools: it delegates "Health: {json}".
+//
+
+import Foundation
+
+struct VoiceHostTool {
+    /// The Hermes tool's name ("conduit_health").
+    let name: String
+    let description: String
+    /// The host's JSON Schema for the arguments (lowercase types).
+    let parameters: [String: Any]
+    /// Which agreed key seals its calls ("health").
+    let key: String
+
+    /// The tools in a `GET /voice-tools` answer.
+    static func tools(from response: [String: Any]) -> [VoiceHostTool] {
+        (response["tools"] as? [[String: Any]] ?? []).compactMap { entry in
+            guard let name = entry["name"] as? String, !name.isEmpty,
+                  let description = entry["description"] as? String,
+                  let parameters = entry["parameters"] as? [String: Any],
+                  let key = entry["key"] as? String else { return nil }
+            return VoiceHostTool(name: name, description: description, parameters: parameters, key: key)
+        }
+    }
+
+    private var properties: [String: [String: Any]] {
+        parameters["properties"] as? [String: [String: Any]] ?? [:]
+    }
+
+    // MARK: Gemini and Grok
+
+    /// The function declaration for Gemini (Grok lowercases its types).
+    /// NON_BLOCKING like recall_memory: a blocking call holds the whole
+    /// server stream until it's answered.
+    var declaration: GeminiLiveProtocol.FunctionDeclaration {
+        var schema: [String: Any] = [
+            "type": "OBJECT",
+            "properties": properties.mapValues(Self.stringSchema),
+        ]
+        if let required = parameters["required"] as? [String], !required.isEmpty { schema["required"] = required }
+        return GeminiLiveProtocol.FunctionDeclaration(name: name, description: description, parameters: schema, behavior: .nonBlocking)
+    }
+
+    static func declarations(_ tools: [VoiceHostTool]) -> [GeminiLiveProtocol.FunctionDeclaration] {
+        tools.map(\.declaration)
+    }
+
+    /// One parameter as the live sessions can pass it: a string, or a
+    /// number or boolean, with what a list or object takes in words.
+    static func stringSchema(_ property: [String: Any]) -> [String: Any] {
+        let type = (property["type"] as? String)?.lowercased() ?? "string"
+        var description = property["description"] as? String ?? ""
+        var schema: [String: Any] = [:]
+        switch type {
+        case "integer", "number", "boolean":
+            schema["type"] = type.uppercased()
+        case "array":
+            schema["type"] = "STRING"
+            let choices = (property["items"] as? [String: Any])?["enum"] as? [String] ?? []
+            description += choices.isEmpty
+                ? " Several values: separate them with commas."
+                : " One or more of \(choices.joined(separator: ", ")), separated by commas."
+        case "object":
+            schema["type"] = "STRING"
+            description += " A JSON object."
+        default:
+            schema["type"] = "STRING"
+            if let choices = property["enum"] as? [String] { schema["enum"] = choices }
+        }
+        let trimmed = description.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { schema["description"] = trimmed }
+        return schema
+    }
+
+    /// The call's arguments in the host schema's JSON types. Names the
+    /// schema doesn't have are dropped.
+    func arguments(from values: [String: Any]) -> [String: Any] {
+        var arguments: [String: Any] = [:]
+        for (name, value) in values {
+            guard let property = properties[name], let converted = Self.convert(value, to: property) else { continue }
+            arguments[name] = converted
+        }
+        return arguments
+    }
+
+    static func convert(_ value: Any, to property: [String: Any]) -> Any? {
+        let type = (property["type"] as? String)?.lowercased() ?? "string"
+        guard let text = value as? String else {
+            // GPT-Live's JSON already carries real lists and numbers.
+            if value is NSNull { return nil }
+            return value
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch type {
+        case "array":
+            if trimmed.hasPrefix("["), let list = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [Any] {
+                return list
+            }
+            let items = trimmed.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            return items.isEmpty ? nil : items
+        case "integer":
+            return Int(trimmed) ?? Double(trimmed).flatMap { Int(exactly: $0.rounded()) }
+        case "number":
+            return Double(trimmed)
+        case "boolean":
+            return ["true", "1", "yes"].contains(trimmed.lowercased())
+        case "object":
+            return try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any]
+        default:
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    // MARK: GPT-Live
+
+    /// "Health" for conduit_health: the word GPT-Live delegates with.
+    var marker: String {
+        let bare = name.hasPrefix("conduit_") ? String(name.dropFirst("conduit_".count)) : name
+        let words = bare.split(separator: "_").map(String.init)
+        guard let first = words.first else { return name }
+        return ([first.prefix(1).uppercased() + first.dropFirst()] + words.dropFirst()).joined(separator: " ")
+    }
+
+    /// The briefing paragraph that teaches GPT-Live a tool's marker. Not UI
+    /// copy, so not localized.
+    var gptLiveRule: String {
+        let arguments = properties.keys.sorted().map { name -> String in
+            let property = properties[name] ?? [:]
+            var line = "\"\(name)\""
+            if let choices = property["enum"] as? [String] {
+                line += " (one of \(choices.joined(separator: ", ")))"
+            } else if let choices = (property["items"] as? [String: Any])?["enum"] as? [String] {
+                line += " (a list of \(choices.joined(separator: ", ")))"
+            }
+            if let description = property["description"] as? String, !description.isEmpty { line += ": \(description)" }
+            return line
+        }
+        return "\(description)\nTo use it, delegate \"\(marker):\" followed by its arguments as one JSON object, like \(marker): {\"action\": \"overview\"}. Arguments: \(arguments.joined(separator: "; ")). Conduit answers on that delegation at once (it isn't a Hermes job); answer the user from it. The marker is for Conduit only: never say it aloud."
+    }
+
+    static func gptLiveRules(_ tools: [VoiceHostTool]) -> String {
+        tools.isEmpty ? "" : "\n\n" + tools.map(\.gptLiveRule).joined(separator: "\n\n")
+    }
+
+    /// "Health: {...}" at the very start of a delegation: the tool and its
+    /// JSON arguments (empty when none came).
+    static func marked(in request: String, tools: [VoiceHostTool]) -> (tool: VoiceHostTool, arguments: [String: Any])? {
+        let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        for tool in tools {
+            let prefix = tool.marker + ":"
+            guard trimmed.lowercased().hasPrefix(prefix.lowercased()) else { continue }
+            let rest = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rest.isEmpty else { return (tool, [:]) }
+            // The object may be followed by words; read up to its last brace.
+            let json = rest.lastIndex(of: "}").map { String(rest[...$0]) } ?? rest
+            let object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
+            return (tool, object ?? [:])
+        }
+        return nil
+    }
+
+    // MARK: Answers
+
+    /// What the model gets back. Not UI copy, so not localized.
+    static func modelResult(_ result: Any) -> [String: String] {
+        guard JSONSerialization.isValidJSONObject(result),
+              let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return ["error": "The host's answer couldn't be read."]
+        }
+        return ["result": String(text.prefix(maximumResultCharacters)), "note": answerNote]
+    }
+
+    /// GPT-Live's delegation answer.
+    static func delegatedReply(_ result: [String: String]) -> String {
+        if let error = result["error"] { return "[\(error) Tell the user in a few words.]" }
+        return "[\(result["note"] ?? answerNote)]\n\(result["result"] ?? "")"
+    }
+
+    static let answerNote = "This is the user's own data, shared from their iPhone. Answer from it by ear: the numbers that matter, rounded, and how fresh it is when that matters. Never send it anywhere else."
+    static let maximumResultCharacters = 12_000
+}

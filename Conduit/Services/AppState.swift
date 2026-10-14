@@ -1736,7 +1736,7 @@ final class AppState: ObservableObject {
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
                         chats: true
-                    ),
+                    ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
                 )
@@ -1752,6 +1752,7 @@ final class AppState: ObservableObject {
                 async let search = self.resolveGeminiLiveSearchSource()
                 async let memory = wantsMemory ? tokens.memoryContext() : nil
                 async let personality = wantsPersonality ? tokens.personality() : nil
+                async let hostTools: Void = self.prepareVoiceHostTools(for: .geminiLive)
                 let status = try await tokens.availability()
                 // Unavailable: return now; leaving scope cancels the other
                 // calls instead of waiting on them.
@@ -1759,6 +1760,7 @@ final class AppState: ObservableObject {
                 self.geminiLiveSearchSource = await search
                 self.geminiLiveMemoryContext = await memory
                 self.geminiLivePersonality = await personality
+                await hostTools
                 return status
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
@@ -2102,6 +2104,7 @@ final class AppState: ObservableObject {
                         + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
+                        + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     // A call Hermes made opens with its brief instead (#449),
@@ -2115,6 +2118,7 @@ final class AppState: ObservableObject {
                 if status.isAvailable, let self {
                     self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
                     self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
+                    await self.prepareVoiceHostTools(for: .gptLive)
                 }
                 return status
             },
@@ -2128,6 +2132,7 @@ final class AppState: ObservableObject {
                     + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
+                    + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                     + (self?.liveVoiceStyle.instructions ?? "")
             },
@@ -2387,7 +2392,7 @@ final class AppState: ObservableObject {
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
                         chats: true
-                    ),
+                    ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     voice: self?.grokLiveVoice
                 )
             },
@@ -2399,6 +2404,7 @@ final class AppState: ObservableObject {
                 async let search = hostContext.webSearchAvailable()
                 async let memory = wantsMemory ? hostContext.memoryContext() : nil
                 async let personality = wantsPersonality ? hostContext.personality() : nil
+                async let hostTools: Void = self.prepareVoiceHostTools(for: .grokLive)
                 let status = try await client.availability()
                 // The controller shows a thrown reason as it is; Grok Live's
                 // names Grok Live.
@@ -2408,6 +2414,7 @@ final class AppState: ObservableObject {
                 self.grokLiveSearchSource = await search ? .hermes : .none
                 self.grokLiveMemoryContext = await memory
                 self.grokLivePersonality = await personality
+                await hostTools
                 self.grokLiveVoice = voice
                 return .available(model: model)
             },

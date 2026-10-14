@@ -24,6 +24,26 @@ enum LiveVoiceModeName: Equatable {
         case .grokLive: return "Grok Live"
         }
     }
+
+    /// Stored in consent settings (health reads by voice).
+    var storageID: String {
+        switch self {
+        case .geminiLive: return "gemini-live"
+        case .gptLive: return "gpt-live"
+        case .grokLive: return "grok-live"
+        }
+    }
+
+    /// The company that runs the model, which receives what it reads.
+    var company: String {
+        switch self {
+        case .geminiLive: return "Google"
+        case .gptLive: return "OpenAI"
+        case .grokLive: return "xAI"
+        }
+    }
+
+    static let all: [LiveVoiceModeName] = [.geminiLive, .gptLive, .grokLive]
 }
 
 /// What a live voice mode's host check found wrong, kept by the live

@@ -208,6 +208,13 @@ final class HealthSyncEngine: ObservableObject {
         return true
     }
 
+    /// This phone's id and agreed key, for a live voice call's read of its
+    /// own data. Nil until a sync has agreed a key that reads.
+    func voiceReadKey() -> (deviceID: String, key: HealthSyncCrypto.SessionKey)? {
+        guard readStateIfNeeded(), let key = keys.load(), key.readsByVoice else { return nil }
+        return (state.deviceID, key)
+    }
+
     /// Sharing turned off: forget the key, the anchors and the cursor, and
     /// optionally delete this phone's data on the host first. True when the
     /// host confirmed the deletion.
@@ -316,7 +323,9 @@ final class HealthSyncEngine: ObservableObject {
             // A new store on the host: everything goes again.
             restart()
         }
-        if let key = keys.load(), key.kid == hostKid {
+        // A key agreed before voice reads existed is set up again, once:
+        // the host then drops what it sent and this pass sends it all again.
+        if let key = keys.load(), key.kid == hostKid, key.readsByVoice {
             state.generation = generation ?? state.generation
             return key
         }

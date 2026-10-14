@@ -418,6 +418,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Opens a chat a call's search found, the call going on minimised.
     /// False when Conduit can't open chats right now. Nil: no chat opens.
     var openChat: (@MainActor (_ match: VoiceChatMatch) -> Bool)?
+    /// Hermes tools the running live call may call directly (the user's
+    /// shared health data), set by AppState as each call starts.
+    var hostTools: [VoiceHostTool] = []
+    /// Runs one of `hostTools` (AppState: a sealed /voice-tools/call).
+    var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
     /// The running call's last chat search, numbered from 1 as the model
     /// heard it.
     private(set) var chatMatches: [VoiceChatMatch] = []
@@ -961,6 +966,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)
         }
         return card
+    }
+
+    func callHostTool(_ tool: VoiceHostTool, arguments: [String: Any]) async -> [String: String] {
+        await runHostTool?(tool, arguments) ?? ["error": "That isn't available on this call."]
     }
 
     /// Looks up the user's earlier chats for the running call. A query that
