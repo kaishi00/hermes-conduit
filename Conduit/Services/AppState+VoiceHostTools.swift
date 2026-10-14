@@ -6,7 +6,8 @@
 //  Hermes host, when the user lets that voice mode read it (Settings >
 //  Health, off by default: what it reads goes to the mode's company). Each
 //  read is sealed with this iPhone's own health key and answered only for
-//  this iPhone's data; the phone logs every read, since it makes them all.
+//  this iPhone's data. The phone logs every read whose answer reached the
+//  call (what went to the mode's company), since it makes them all.
 //  (designs/voice-health-location.md)
 //
 
@@ -80,16 +81,24 @@ extension AppState {
     /// Bumped by each call's prepare, so an older one still fetching can't
     /// hand its mode's tools (and that mode's consent) to a newer call.
     @MainActor private static var voiceToolsGeneration = 0
+    /// The mode the published tools were prepared for.
+    @MainActor private static var voiceToolsMode: LiveVoiceModeName?
 
     /// Sets the running call's host tools for `mode`.
     func prepareVoiceHostTools(for mode: LiveVoiceModeName) async {
         let supervisor = voiceBackgroundJobSupervisor
         Self.voiceToolsGeneration += 1
         let mine = Self.voiceToolsGeneration
-        supervisor.hostTools = []
-        supervisor.runHostTool = nil
+        // A reconnect on the same mode keeps its tools while this fetches
+        // (each read still checks consent); another mode's go now.
+        if Self.voiceToolsMode != mode {
+            supervisor.hostTools = []
+            supervisor.runHostTool = nil
+            Self.voiceToolsMode = nil
+        }
         let tools = await voiceHostTools(for: mode)
         guard mine == Self.voiceToolsGeneration else { return }
+        Self.voiceToolsMode = mode
         supervisor.hostTools = tools
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
