@@ -107,8 +107,8 @@ extension AppState {
         try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         if choices.status { await phoneSync.statusSource.requestMotionAccess() }
         if choices.alarms {
-            // A no to alarms still turns on the rest the user agreed to.
-            do { try await phoneSync.alarmSource.requestAccess() } catch PhoneAlarmError.denied { choices.alarms = false }
+            // A no to alarms (or no AlarmKit) still turns on the rest the user agreed to.
+            do { try await phoneSync.alarmSource.requestAccess() } catch is PhoneAlarmError { choices.alarms = false }
         }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady

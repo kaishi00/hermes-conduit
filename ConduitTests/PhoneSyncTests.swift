@@ -451,6 +451,12 @@ extension HermesVoiceGatewayTimeoutTests {
         let both = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "07:00", "date": "2030-01-05",
                                                            "days": ["mon"]], engine: engine, answer: answer)
         XCTAssertNotNil(both["error"], "A date and days together is asked about, not half-dropped")
+        let funday = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "07:00", "days": ["funday"]],
+                                               engine: engine, answer: answer)
+        XCTAssertNotNil(funday["error"], "Not turned into a one-off")
+        let dateTime = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "07:00", "date": "2030-01-05T10:00"],
+                                                 engine: engine, answer: answer)
+        XCTAssertNotNil(dateTime["error"], "Not turned into a daily alarm")
         XCTAssertEqual(alarms.applied.count, 2)
     }
 

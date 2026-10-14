@@ -248,6 +248,9 @@ enum PhoneVoiceTools {
                 return ["error": "An alarm needs a time like 06:30."]
             }
             let days = (arguments["days"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() } ?? []
+            if days.contains(where: { !PhoneChangeFields.weekdays.contains($0) }) {
+                return ["error": "days are mon, tue, wed, thu, fri, sat or sun."]
+            }
             if let date = arguments["date"] as? String, !date.trimmingCharacters(in: .whitespaces).isEmpty, !days.isEmpty {
                 return ["error": "An alarm takes a date (once) or days (repeating), not both. Ask which the user means."]
             }
