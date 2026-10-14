@@ -242,8 +242,44 @@ enum CarPlayBrowseTemplateFactory {
         CPBarButton(title: kind.title) { _ in action() }
     }
 
+    /// The car screen's appearance at connect. Icons start in its colours.
+    static var carStyle: UIUserInterfaceStyle = .unspecified
+
+    /// A list or grid icon that reads on the car's light and dark screens.
+    /// CarPlay draws a plain SF Symbol black whatever its appearance, so the
+    /// symbol is drawn black and white as bitmaps and both go in one image
+    /// asset, which lets the car swap them when its appearance changes
+    /// (CarPlay Developer Guide, "Images"). Dark is the fallback: CarPlay
+    /// screens are dark nearly always. Assets are kept per symbol, since an
+    /// image only weakly holds the asset it came from.
     static func symbolImage(_ name: String) -> UIImage {
-        UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let asset = symbolAssets[name] ?? {
+            // Large enough for the biggest slot (grid buttons), so the car
+            // only ever scales it down.
+            let configuration = UIImage.SymbolConfiguration(pointSize: 44)
+            let symbol = UIImage(systemName: name, withConfiguration: configuration)
+                ?? UIImage(systemName: "circle.fill", withConfiguration: configuration) ?? UIImage()
+            let asset = UIImageAsset()
+            asset.register(drawn(symbol, color: .black), with: light)
+            asset.register(drawn(symbol, color: .white), with: dark)
+            symbolAssets[name] = asset
+            return asset
+        }()
+        return asset.image(with: carStyle == .light ? light : dark)
+    }
+
+    private static var symbolAssets: [String: UIImageAsset] = [:]
+
+    private static func drawn(_ symbol: UIImage, color: UIColor) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        // 3x, the sharpest car screen.
+        format.scale = 3
+        let tinted = symbol.withTintColor(color, renderingMode: .alwaysOriginal)
+        return UIGraphicsImageRenderer(size: symbol.size, format: format)
+            .image { _ in tinted.draw(in: CGRect(origin: .zero, size: symbol.size)) }
+            .withRenderingMode(.alwaysOriginal)
     }
 
     static func chatsTemplate(
@@ -404,7 +440,7 @@ enum CarPlayBrowseTemplateFactory {
             text: title,
             detailText: nil,
             image: symbolImage(symbol),
-            accessoryImage: isSelected ? UIImage(systemName: "checkmark") : nil,
+            accessoryImage: isSelected ? symbolImage("checkmark") : nil,
             accessoryType: .none
         )
         item.handler = { _, completion in

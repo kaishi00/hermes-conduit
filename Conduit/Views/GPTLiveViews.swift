@@ -315,6 +315,8 @@ struct GPTLiveSettingsSection: View {
 struct GPTLiveVoiceSheet: View {
     @ObservedObject var controller: GPTLiveConversationController
     let jobs: VoiceBackgroundJobSupervisor
+    /// Passed to the call screen for its own sheets; not observed.
+    let appState: AppState
     let onClose: () -> Void
     let onRetry: () -> Void
 
@@ -328,6 +330,7 @@ struct GPTLiveVoiceSheet: View {
             transcript: controller.transcript,
             assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
             jobs: jobs,
+            appState: appState,
             isMicrophoneMuted: controller.isMicrophoneMuted,
             isSpeakerMuted: controller.isSpeakerMuted,
             canMute: controller.isActive && !controller.isEnding,

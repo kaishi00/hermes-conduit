@@ -1056,6 +1056,16 @@ final class AppState: ObservableObject {
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
     private var botAvatarFetchInflight: [String: Int] = [:]
+    /// Each picture write this app makes takes the next serial, kept per
+    /// profile, so a roster or asset read that started before the write
+    /// never puts the older picture back.
+    private var profileAvatarWriteSerial = 0
+    private var profileAvatarLastWrite: [String: Int] = [:]
+    /// The running photo sync; each roster read queues the next behind it.
+    private var profileAvatarSyncTask: Task<Void, Never>?
+    /// Each profile's last queued photo write. Writes to one profile run in
+    /// the order they were asked for, so the latest one lands last.
+    private var profilePhotoWriteQueue: [String: Task<String?, Never>] = [:]
     /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
     /// teammate-messaging protocol itself, so a new bot's SOUL stays
     /// identity-only.
@@ -2734,9 +2744,11 @@ final class AppState: ObservableObject {
                     outbox.store(in: self.defaults)
                 }
                 let key = self.voiceHistoryKey(profile: recorder.profile)
+                // A call kept with its chat files its jobs under the chat.
+                let parentID = recorder.sessionID ?? recorder.chatID
                 for id in sessionIDs where !id.isEmpty {
                     self.voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(
-                        kind: .job, parentID: recorder.sessionID, parentTitle: self.voiceJobParentTitle(recorder.sessionID)
+                        kind: .job, parentID: parentID, parentTitle: self.voiceJobParentTitle(parentID)
                     )
                 }
             } else {
@@ -3824,12 +3836,11 @@ final class AppState: ObservableObject {
 
     /// A call attached to a chat was saved: the chat gets its marker, at
     /// once when it's on screen.
-    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
-        // A chat new at the call's start may only have its stored id now.
+    /// `callSessionID` is empty for a call kept with its chat, `chatID`
+    /// the chat it was kept with.
+    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, chatID: String? = nil, profile: String) {
         let runtimeID = attachment.thread.runtimeSessionID
-        let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
-            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
-            ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: attachment.thread.profile ?? profile)
+        let storedID = chatID ?? storedChatID(for: attachment.thread, profile: profile)
         learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
@@ -3851,6 +3862,32 @@ final class AppState: ObservableObject {
         guard merged.count != messages.count else { return }
         messages = merged
         cacheMessagePresentation()
+    }
+
+    /// The chat's durable id: a chat new at the call's start may only have
+    /// its stored id later.
+    private func storedChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
+        let runtimeID = thread.runtimeSessionID
+        return thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+            ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: thread.profile ?? profile)
+    }
+
+    /// The chat a call on `profile` is kept with (#556): its stored id, when
+    /// the chat is on that profile. A Bot Chat lives in the bot's profile,
+    /// so its calls keep rows of their own.
+    private func voiceCallChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
+        guard thread.profile == nil || thread.profile == profile else { return nil }
+        return storedChatID(for: thread, profile: profile)
+    }
+
+    /// Whether a call starting now goes on as the last call kept with a
+    /// chat: same chat and profile, started again within the reconnect
+    /// window.
+    static func continuesChatCall(lastChatID: String, lastProfile: String, endedAt: Date, chatID: String?, profile: String, now: Date) -> Bool {
+        guard let chatID, chatID == lastChatID, profile == lastProfile else { return false }
+        let gap = now.timeIntervalSince(endedAt)
+        return gap >= 0 && gap <= chatCallReconnectWindow
     }
 
     private func persistReview(_ record: ReviewSummaryRecord) {
@@ -4230,6 +4267,16 @@ final class AppState: ObservableObject {
     private var closingVoiceCallUntil: Date?
     /// A saved call the next live call continues (Resume Call).
     private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
+    /// The last call attached to a chat, which a reconnect in the same chat
+    /// goes on as (#556) instead of starting a second call.
+    private var lastChatCall: (recorder: VoiceTranscriptRecorder, chatID: String, startedAt: Date, endedAt: Date)?
+    /// A call started again in its chat within this long goes on as the
+    /// same call: one card, one transcript.
+    static let chatCallReconnectWindow: TimeInterval = 120
+    /// The call kept with its chat whose transcript is open (#556).
+    @Published var chatCallTranscript: VoiceChatCall?
+    /// The call card tap whose fetch may still set the transcript.
+    private var chatCallTranscriptRequest: UUID?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
     /// Opens the voice of a call answered in CallKit; the CallKit call's
@@ -4566,14 +4613,29 @@ final class AppState: ObservableObject {
         beginHermesCallPresence()
         // Read now, so "call me when it's done" knows whether Hermes can.
         if supportsHermesCalls { Task { await refreshHermesCallsStatus() } }
-        guard voiceCallSavingEnabled else { return }
+        guard voiceCallSavingEnabled else {
+            lastChatCall = nil
+            return
+        }
         voiceCallCheckpointedTurns = 0
         voiceCallCheckpointedAt = .distantPast
         let profile = activeProfile
+        let thread = voiceBackgroundJobSupervisor.liveThread
+        // A call attached to a chat is kept with it, not as a row of its own
+        // (#556). A Bot Chat lives in the bot's profile: its calls keep rows.
+        let chatID = resume == nil ? thread.flatMap { voiceCallChatID(for: $0, profile: profile) } : nil
+        let previous = lastChatCall.flatMap { last in
+            Self.continuesChatCall(
+                lastChatID: last.chatID, lastProfile: last.recorder.profile, endedAt: last.endedAt,
+                chatID: chatID, profile: profile, now: Date()
+            ) ? last : nil
+        }
+        lastChatCall = nil
         let recorder = VoiceTranscriptRecorder(
             engine: engine,
             profile: profile,
             resumingSessionID: resume?.sessionID,
+            continuing: previous?.recorder,
             // Nothing reaches the host while a live call runs: a closing
             // save that meets a newer call leaves its turns to the outbox,
             // which retries once no call is running.
@@ -4591,10 +4653,16 @@ final class AppState: ObservableObject {
         // starts, which can be after the first capture below: they aren't
         // this call's.
         recorder.ignore(liveVoiceTranscript(engine))
-        if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
+        if previous == nil { recorder.chatID = chatID }
+        if resume != nil || previous != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
+        // A reconnect picks up where the call left off; a Hermes call
+        // opens with its own news instead.
+        if let previous, liveHermesCall == nil {
+            liveVoiceResumeContext = VoiceResumeContext.continuing(previous.recorder.turns)
+        }
         voiceCallRecorder = recorder
-        voiceCallAttachment = voiceBackgroundJobSupervisor.liveThread.map {
-            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: Date(), resumed: resume != nil)
+        voiceCallAttachment = thread.map {
+            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: previous?.startedAt ?? Date(), resumed: resume != nil)
         }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
@@ -4678,6 +4746,14 @@ final class AppState: ObservableObject {
         voiceCallAttachment = nil
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
+        // A chat new at the call's start may only have its stored id now.
+        if recorder.chatID == nil, !recorder.savedWithChat, recorder.sessionID == nil,
+           let attachment, !attachment.resumed {
+            recorder.chatID = voiceCallChatID(for: attachment.thread, profile: recorder.profile)
+        }
+        if let chatID = recorder.chatID, let attachment {
+            lastChatCall = (recorder, chatID, attachment.startedAt, attachment.endedAt ?? Date())
+        }
         voiceCallTranscriptSubscription = nil
         voiceCallRecorder = nil
         closingVoiceCallRecorder = recorder
@@ -4687,6 +4763,8 @@ final class AppState: ObservableObject {
         // Queued before the final save starts, so the turns survive the app
         // being suspended or closed mid-save; the save then settles it.
         let queuedCallID = recorder.outboxRequest?.callID
+        // The id before the save; a chat that's gone gives the call a new one.
+        let callID = recorder.callID
         if let request = recorder.outboxRequest {
             queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             // The outbox leaves it alone while the save below is running.
@@ -4706,9 +4784,18 @@ final class AppState: ObservableObject {
             defer { endBackgroundTask() }
             await recorder.flush()
             guard let self else { return }
-            if let queuedCallID {
-                self.voiceTranscriptsSaving.remove(queuedCallID)
-                self.dequeueVoiceTranscript(callID: queuedCallID)
+            if self.closingVoiceCallRecorder === recorder {
+                self.closingVoiceCallRecorder = nil
+                self.closingVoiceCallUntil = nil
+            }
+            // A reconnect went on as this call: its recorder saves, queues
+            // and links all of it.
+            guard !recorder.handedOver else { return }
+            // Also settles an entry the reconnected call's first recorder
+            // left for the same id when this one had nothing left to send.
+            for id in Set([callID, queuedCallID].compactMap { $0 }) {
+                self.voiceTranscriptsSaving.remove(id)
+                self.dequeueVoiceTranscript(callID: id)
             }
             let requeued = recorder.outboxRequest
             if recorder.isDisabled { self.voiceCallSaveBlockedKeys.insert(key) }
@@ -4716,18 +4803,21 @@ final class AppState: ObservableObject {
                 // A later retry creates the row and links the jobs then.
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
-            if self.closingVoiceCallRecorder === recorder {
-                self.closingVoiceCallRecorder = nil
-                self.closingVoiceCallUntil = nil
-            }
             let callRow = recorder.sessionID
-            if callRow != nil || requeued == nil {
+            // A call kept with its chat files its jobs under the chat.
+            let chatID = recorder.savedWithChat ? recorder.chatID : nil
+            if callRow != nil || chatID != nil || requeued == nil {
                 // Filed under Voice Jobs even when the call saved no row.
                 self.tagVoiceSessions(
-                    recorder.jobSessionIDs, kind: .job, parentID: callRow,
-                    parentTitle: callRow.flatMap { recorder.newRowTitle ?? self.voiceJobParentTitle($0) },
+                    recorder.jobSessionIDs, kind: .job, parentID: callRow ?? chatID,
+                    parentTitle: callRow.flatMap { recorder.newRowTitle ?? self.voiceJobParentTitle($0) }
+                        ?? chatID.flatMap { _ in attachment?.thread.title },
                     profile: recorder.profile
                 )
+            }
+            if let chatID, let attachment {
+                self.linkVoiceCall(attachment, callSessionID: "", chatID: chatID, profile: recorder.profile)
+                return
             }
             guard let sessionID = callRow else { return }
             if let attachment { self.linkVoiceCall(attachment, callSessionID: sessionID, profile: recorder.profile) }
@@ -4846,11 +4936,30 @@ final class AppState: ObservableObject {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
                 }
                 if let jobs = entry.jobSessionIDs, !jobs.isEmpty {
-                    tagVoiceSessions(jobs, kind: .job, parentID: result.sessionID, parentTitle: result.sessionID.flatMap { _ in request.title }, profile: profile)
+                    tagVoiceSessions(
+                        jobs, kind: .job, parentID: result.sessionID ?? result.chatID,
+                        parentTitle: result.sessionID.flatMap { _ in request.title } ?? result.chatID.flatMap { _ in entry.chatAttachment?.thread.title },
+                        profile: profile
+                    )
                 }
-                if let sessionID = result.sessionID, let attachment = entry.chatAttachment {
-                    linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                if let attachment = entry.chatAttachment {
+                    if let sessionID = result.sessionID {
+                        linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                    } else if let chatID = result.chatID {
+                        linkVoiceCall(attachment, callSessionID: "", chatID: chatID, profile: profile)
+                    }
                 }
+            } catch VoiceHistoryError.rowUnavailable where request.sessionID == nil && request.chatID != nil {
+                // The chat is gone, and its card with it. A whole call is
+                // kept as a row of its own; the rest of one isn't worth one.
+                guard request.turns.first?.index == 0 else {
+                    settled.append((entry, nil))
+                    continue
+                }
+                request.chatID = nil
+                request.callID = UUID().uuidString
+                request.title = request.title ?? Self.fallbackVoiceCallTitle(at: entry.queuedAt)
+                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: nil)))
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil && (request.turns.first?.index ?? 0) > 0 {
                 // The row is gone with this call's earlier turns; the rest
                 // alone would pass for the whole call.
@@ -5111,8 +5220,52 @@ final class AppState: ObservableObject {
     /// the card is drawn. The row can also be gone (deleted on the host),
     /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
+        // Any later tap outdates a kept call's fetch still in flight.
+        chatCallTranscriptRequest = nil
         guard let link = voiceCallLink(markerID: markerID) else { return }
-        openLinkedSession(link.callSessionID, unavailable: AppLocalization.string("That call's transcript is no longer available."))
+        let unavailable = AppLocalization.string("That call's transcript is no longer available.")
+        guard link.storedWithChat else {
+            openLinkedSession(link.callSessionID, unavailable: unavailable)
+            return
+        }
+        // Kept with the chat (#556): read from the host when tapped.
+        guard let chatID = link.chatStoredSessionID, !chatID.isEmpty else {
+            errorMessage = unavailable
+            return
+        }
+        // Only the latest tap answers, whichever fetch lands last.
+        let request = UUID()
+        chatCallTranscriptRequest = request
+        Task { [weak self] in
+            guard let self else { return }
+            let calls: [VoiceChatCall]
+            do {
+                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.profile)
+            } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable, VoiceHistoryError.unsupported {
+                guard self.chatCallTranscriptRequest == request else { return }
+                self.errorMessage = unavailable
+                return
+            } catch is VoiceHistoryError {
+                // Busy or a garbled answer: worth another tap shortly.
+                guard self.chatCallTranscriptRequest == request else { return }
+                let name = AppLocalization.string("Voice call")
+                let reason = AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
+                self.errorMessage = AppLocalization.string("Could not load \(name): \(reason)")
+                return
+            } catch {
+                guard self.chatCallTranscriptRequest == request else { return }
+                // Offline or a host hiccup: the transcript may well be there.
+                let name = AppLocalization.string("Voice call")
+                self.errorMessage = AppLocalization.string("Could not load \(name): \(UserFacingError.message(for: error))")
+                return
+            }
+            guard self.chatCallTranscriptRequest == request else { return }
+            guard let call = calls.first(where: { $0.callID == link.callID }), !call.turns.isEmpty else {
+                self.errorMessage = unavailable
+                return
+            }
+            self.chatCallTranscript = call
+        }
     }
 
     /// Opens the chat a call was started from, from the card in the call's
@@ -8279,13 +8432,144 @@ final class AppState: ObservableObject {
         }
     }
 
-    func saveProfileAvatar(_ data: Data, for profile: String) throws {
+    /// A photo kept on this device only: the gateway has no profile asset
+    /// store (older Hermes).
+    func saveProfileAvatarOnDevice(_ data: Data, for profile: String) throws {
         profileAvatarURLs[profile] = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
     }
 
-    func removeProfileAvatar(for profile: String) {
+    private func removeProfileAvatarFile(for profile: String) {
         profileAppearanceStore.removeAvatar(for: profile, dashboardID: activeDashboardID)
         profileAvatarURLs.removeValue(forKey: profile)
+    }
+
+    /// False only on a gateway without the profile asset store, where
+    /// photos stay on this device.
+    var profilePhotosLiveOnHermes: Bool {
+        botModePhase != .gatewayUnsupported
+    }
+
+    /// The profile picker's photo. It is the profile's Hermes picture, the
+    /// one bots and Hermes Desktop show, so it is written there; the copy on
+    /// disk follows. Nil `image` removes it. Returns a message when it was
+    /// not saved.
+    func setProfilePhoto(_ image: UIImage?, for profile: String) async -> String? {
+        switch await profilePhotoHome(for: profile) {
+        case .device:
+            guard let image else {
+                removeProfileAvatarFile(for: profile)
+                return nil
+            }
+            guard let data = image.pngData() else { return ProfileAppearanceError.invalidImage.errorDescription }
+            do {
+                try saveProfileAvatarOnDevice(data, for: profile)
+                return nil
+            } catch {
+                return UserFacingError.message(for: error)
+            }
+        case .offline:
+            return AppLocalization.string("Connect to Hermes to change this photo.")
+        case .hermes(let bot, let client):
+            if let image {
+                guard let png = BotAvatarImage.normalizedPNG(from: image) else {
+                    return AppLocalization.string("That picture could not be used.")
+                }
+                return await queueProfilePhotoWrite(bot.name) {
+                    await self.setHermesPicture(png, for: bot, client: client)
+                }
+            }
+            return await queueProfilePhotoWrite(bot.name) {
+                await self.removeHermesPicture(for: bot, client: client)
+            }
+        }
+    }
+
+    private func queueProfilePhotoWrite(
+        _ name: String,
+        _ write: @escaping @MainActor () async -> String?
+    ) async -> String? {
+        let previous = profilePhotoWriteQueue[name]
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await write()
+        }
+        profilePhotoWriteQueue[name] = task
+        let result = await task.value
+        if profilePhotoWriteQueue[name] == task { profilePhotoWriteQueue[name] = nil }
+        return result
+    }
+
+    private enum ProfilePhotoHome {
+        case hermes(BotProfile, HermesClient)
+        case device
+        case offline
+    }
+
+    /// Every profile is on the `profiles.list` roster, so a roster row is
+    /// what says the picture lives on Hermes.
+    private func profilePhotoHome(for profile: String) async -> ProfilePhotoHome {
+        if botModePhase == .gatewayUnsupported { return .device }
+        guard let client, isConnected else { return .offline }
+        if !botRoster.contains(where: { $0.name == profile }) {
+            await refreshBotRoster()
+        }
+        guard client === self.client, isConnected else { return .offline }
+        if botModePhase == .gatewayUnsupported { return .device }
+        guard let bot = botRoster.first(where: { $0.name == profile }) else {
+            return botModePhase == .available ? .device : .offline
+        }
+        return .hermes(bot, client)
+    }
+
+    /// Uploads the picture, then sets Desktop's `imageKind` to the photo
+    /// (the bot editor's order, so `imageKind` never claims a photo the
+    /// asset store lacks).
+    private func setHermesPicture(_ png: Data, for bot: BotProfile, client: HermesClient) async -> String? {
+        let epoch = botRosterEpoch
+        guard await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch) else {
+            return AppLocalization.string("The picture was not saved.")
+        }
+        let lookSaved = await writeBotImageKind("photo", for: bot, client: client, epoch: epoch)
+        await refreshBotRosterAfterWrite()
+        return lookSaved ? nil : AppLocalization.string("The picture was saved, but its look was not.")
+    }
+
+    /// Sets `imageKind` back to the shape first, then clears the asset.
+    private func removeHermesPicture(for bot: BotProfile, client: HermesClient) async -> String? {
+        let epoch = botRosterEpoch
+        noteProfileAvatarWrite(bot.name)
+        guard await writeBotImageKind("shape", for: bot, client: client, epoch: epoch) else {
+            return AppLocalization.string("The picture was not removed.")
+        }
+        do {
+            try await client.setBotAvatar(name: bot.name, png: nil)
+        } catch {
+            return AppLocalization.string("The picture was not removed.")
+        }
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            forgetHermesPicture(for: bot.name)
+        }
+        await refreshBotRosterAfterWrite()
+        return nil
+    }
+
+    private func writeBotImageKind(_ kind: String, for bot: BotProfile, client: HermesClient, epoch: Int) async -> Bool {
+        var patch: [String: Any?] = ["imageKind": kind]
+        if kind == "photo" { patch["custom"] = true }
+        do {
+            let result = try await client.configureBotProfile(
+                name: bot.name,
+                botMeta: BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                expectedMetaRevision: bot.botMetaRevision
+            )
+            var outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+            }
+            return outcome == .persisted || outcome == .unsupported
+        } catch {
+            return false
+        }
     }
 
     /// Profile order is only a device-local presentation preference, kept
@@ -15053,6 +15337,7 @@ final class AppState: ObservableObject {
     private func performBotRosterRefresh() async {
         let epoch = botRosterEpoch
         let dashboardID = activeDashboardID
+        let avatarWriteSerial = profileAvatarWriteSerial
         guard let client, isConnected else {
             if botRoster.isEmpty, botModePhase != .gatewayUnsupported {
                 botModePhase = .failed(
@@ -15094,6 +15379,7 @@ final class AppState: ObservableObject {
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
             botRosterVerifiedForCurrentConnection = true
+            syncProfileAvatarsWithHermes(rosterWriteSerial: avatarWriteSerial)
         } catch {
             guard botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID),
                   !Task.isCancelled else { return }
@@ -15169,6 +15455,8 @@ final class AppState: ObservableObject {
         guard botAvatarFetchInflight[name] != generation,
               let client, isConnected else { return false }
         let epoch = botRosterEpoch
+        let dashboardID = activeDashboardID
+        let writeMark = profileAvatarLastWrite[name]
         botAvatarFetchInflight[name] = generation
         defer {
             if epoch == botRosterEpoch, botAvatarFetchInflight[name] == generation {
@@ -15178,10 +15466,16 @@ final class AppState: ObservableObject {
         do {
             let data = try await client.botAvatar(name: name)
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
-            // An older generation's fetch landing late never replaces a newer one.
+            // An older generation's fetch landing late never replaces a newer
+            // one, nor a picture this app wrote meanwhile.
             if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return true }
+            guard profileAvatarLastWrite[name] == writeMark else { return true }
+            // A read with no usable bytes keeps the last picture and is not
+            // pinned to the generation, so a retry can still land it.
+            guard let data, let image = UIImage(data: data) else { return false }
             botAvatarFetchedGeneration[name] = generation
-            botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
+            botAvatarImages[name] = image
+            mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
             return true
         } catch {
             // Not pinned to the generation, so the caller can retry; whatever
@@ -15392,8 +15686,7 @@ final class AppState: ObservableObject {
             do {
                 try await client.setBotAvatar(name: bot.name, png: nil)
                 if botOpenFenceIsCurrent(epoch: epoch, client: client) {
-                    botAvatarImages[bot.name] = nil
-                    botAvatarFetchedGeneration[bot.name] = nil
+                    forgetHermesPicture(for: bot.name)
                 }
             } catch {
                 problems.append(AppLocalization.string("The picture was not removed."))
@@ -15465,8 +15758,7 @@ final class AppState: ObservableObject {
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {
             clearActiveConversation(replacement: .delete)
         }
-        botAvatarImages[bot.name] = nil
-        botAvatarFetchedGeneration[bot.name] = nil
+        forgetHermesPicture(for: bot.name)
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
@@ -15476,18 +15768,109 @@ final class AppState: ObservableObject {
         // The generation the write belongs to: a reload that starts while it
         // is in flight must still refetch, in case it read the older asset.
         let generation = botAvatarGeneration
+        let dashboardID = activeDashboardID
+        noteProfileAvatarWrite(name)
         do {
             try await client.setBotAvatar(name: name, png: png)
         } catch {
             return false
         }
+        // Again after it landed: a fetch that started during the upload may
+        // have read the older picture.
+        noteProfileAvatarWrite(name)
         if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
             // The upload is the newest picture, but the recorded generation
             // never moves backwards past a newer fetch.
             botAvatarImages[name] = image
             botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
+            mirrorHermesPicture(png, for: name, dashboardID: dashboardID)
         }
         return true
+    }
+
+    // MARK: - Profile photos from Hermes
+
+    private func noteProfileAvatarWrite(_ name: String) {
+        profileAvatarWriteSerial &+= 1
+        profileAvatarLastWrite[name] = profileAvatarWriteSerial
+    }
+
+    /// Keeps the profile's photo file a copy of its Hermes picture, so chats
+    /// and the profile picker draw it at launch and offline. Only a roster
+    /// saying the profile has no picture removes the copy (`dropMirror`).
+    private func mirrorHermesPicture(_ data: Data, for name: String, dashboardID: UUID?) {
+        guard dashboardID == activeDashboardID,
+              let saved = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID)
+        else { return }
+        // Published when the bytes changed (same URL, new content) or the
+        // URL is new, so views redraw only for a real change.
+        if saved.changed || profileAvatarURLs[name] != saved.url {
+            profileAvatarURLs[name] = saved.url
+        }
+    }
+
+    /// The picture is gone from Hermes (removed here, or its profile was
+    /// deleted).
+    private func forgetHermesPicture(for name: String) {
+        noteProfileAvatarWrite(name)
+        botAvatarImages[name] = nil
+        botAvatarFetchedGeneration[name] = nil
+        removeProfileAvatarFile(for: name)
+    }
+
+    /// After each roster read, brings every profile's photo file in step
+    /// with its Hermes picture (see `ProfileAvatarSyncAction`). Runs on its
+    /// own, so a connection never waits on picture downloads, and one sync
+    /// at a time. `rosterWriteSerial` is the write serial when the roster
+    /// read started: a profile whose picture this app changed since is
+    /// newer than the roster and left alone.
+    private func syncProfileAvatarsWithHermes(rosterWriteSerial: Int) {
+        let epoch = botRosterEpoch
+        let dashboardID = activeDashboardID
+        let rows = botRoster
+        let previous = profileAvatarSyncTask
+        profileAvatarSyncTask = Task { @MainActor [weak self] in
+            await previous?.value
+            for bot in rows {
+                guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
+                      let client = self.client, self.isConnected else { return }
+                if (self.profileAvatarLastWrite[bot.name] ?? 0) > rosterWriteSerial { continue }
+                switch ProfileAvatarSyncAction.action(
+                    hermesHasAvatar: bot.hasAvatar,
+                    hasPhotoOnDevice: self.profileAvatarURLs[bot.name] != nil,
+                    photoIsMirror: self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID)
+                ) {
+                case .fetch:
+                    await self.loadBotAvatarIfNeeded(bot)
+                case .dropMirror:
+                    self.removeProfileAvatarFile(for: bot.name)
+                case .upload:
+                    await self.moveDevicePhotoToHermes(bot, client: client)
+                case .keep:
+                    break
+                }
+            }
+        }
+    }
+
+    /// A photo picked on this device before photos moved to Hermes becomes
+    /// the profile's Hermes picture. A failed upload keeps the photo and is
+    /// tried again at the next roster read. A failed `imageKind` write after
+    /// a good upload is accepted: the picture is on Hermes and Conduit shows
+    /// it, and only Desktop keeps its old look until the photo is set again
+    /// (an asset without `imageKind = photo` is also a state Desktop itself
+    /// writes, so a sync can't tell it apart to retry).
+    private func moveDevicePhotoToHermes(_ bot: BotProfile, client: HermesClient) async {
+        let dashboardID = activeDashboardID
+        _ = await queueProfilePhotoWrite(bot.name) {
+            // A write queued ahead of this one may have replaced the photo.
+            guard self.activeDashboardID == dashboardID,
+                  !self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID),
+                  let data = self.profileAppearanceStore.avatarData(for: bot.name, dashboardID: dashboardID),
+                  let image = UIImage(data: data),
+                  let png = BotAvatarImage.normalizedPNG(from: image) else { return nil }
+            return await self.setHermesPicture(png, for: bot, client: client)
+        }
     }
 
     /// One retry of a ui_meta write that lost its compare-and-swap: re-read
@@ -22749,9 +23132,9 @@ final class AppState: ObservableObject {
             // or the options payload's current selection.
             let modelConfig = config["model"] as? [String: Any] ?? [:]
             let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
-                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
             let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
-                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
             let reasoning = config["reasoning"] as? String ?? config["reasoning_effort"] as? String ?? "medium"
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
@@ -23763,11 +24146,11 @@ final class AppState: ObservableObject {
             expireClarifyRequest(requestId: requestId, reason: reason)
 
         case .approval(_, let activity):
-            applyApprovalActivity(activity, authoritative: false)
+            applyApprovalActivity(activity, authoritative: false, commitsStreamedText: true)
             setRunning(true)
 
         case .inputPrompt(_, let activity):
-            applyInputPromptActivity(activity)
+            applyInputPromptActivity(activity, commitsStreamedText: true)
             setRunning(true)
 
         case .inputPromptExpire(_, let requestId, let reason):
@@ -23924,7 +24307,8 @@ final class AppState: ObservableObject {
     /// that session; explicitly identified queued approvals remain distinct.
     private func applyApprovalActivity(
         _ activity: ApprovalActivity,
-        authoritative: Bool
+        authoritative: Bool,
+        commitsStreamedText: Bool = false
     ) {
         let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
             .union([activity.sessionId])
@@ -23991,6 +24375,7 @@ final class AppState: ObservableObject {
         }
 
         settleReasoningSegmentIntoTranscript()
+        if commitsStreamedText { flushStreamingPartial() }
         let identity = activity.requestId ?? activity.sessionId
         messages.append(ChatMessage(
             id: "approval-\(identity)-\(UUID().uuidString)",
@@ -24121,9 +24506,15 @@ final class AppState: ObservableObject {
                 sessionIDs: cacheSessionIDs
             )
         }
-        // The clarify row must sit above the live reasoning card's
-        // eventual commit — settle the segment before it lands.
+        // The clarify row must sit below everything the turn produced before
+        // it: settle the live reasoning segment, then commit streamed
+        // assistant text (the explanation leading up to the question).
+        // Hermes' clarify tool.start is skipped above, so nothing else
+        // flushes that text and it would render below the card (#572).
+        // Only the live event does this: a resume snapshot lands before the
+        // stream buffer is rebuilt from the recovered in-flight text.
         settleReasoningSegmentIntoTranscript()
+        if source == .streamEvent { flushStreamingPartial() }
         messages.append(ChatMessage(
             id: "clarify-\(activity.requestId)",
             role: .clarify,
@@ -24155,7 +24546,10 @@ final class AppState: ObservableObject {
     /// Upserts one masked input card keyed by its server request id. A
     /// re-delivery (resume replay) never re-arms a card this device already
     /// answered, skipped or has in flight.
-    private func applyInputPromptActivity(_ activity: InputPromptActivity) {
+    private func applyInputPromptActivity(
+        _ activity: InputPromptActivity,
+        commitsStreamedText: Bool = false
+    ) {
         if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
             guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
             messages[index].content = activity.title
@@ -24163,6 +24557,7 @@ final class AppState: ObservableObject {
             return
         }
         settleReasoningSegmentIntoTranscript()
+        if commitsStreamedText { flushStreamingPartial() }
         messages.append(ChatMessage(
             id: "input-prompt-\(activity.requestId)",
             role: .inputPrompt,

@@ -100,24 +100,34 @@ struct MainView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(.clear)
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showContextSheet) {
             ContextSheet()
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showWorkspaceSheet) {
             WorkspaceBrowserSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showGatewaySheet) {
             GatewayDiagnosticsSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showAgentsSheet) {
             DelegateAgentsSheet()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
+        .sheet(item: $appState.chatCallTranscript) { call in
+            VoiceChatCallTranscriptSheet(call: call)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -140,6 +150,7 @@ struct MainView: View {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
+                appState: appState,
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
@@ -151,6 +162,7 @@ struct MainView: View {
             GeminiLiveVoiceSheet(
                 controller: appState.grokLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
+                appState: appState,
                 engine: .grok,
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
@@ -163,6 +175,7 @@ struct MainView: View {
             GPTLiveVoiceSheet(
                 controller: appState.gptLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
+                appState: appState,
                 onClose: appState.closeGPTLiveConversation,
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
@@ -207,6 +220,7 @@ struct MainView: View {
                 disconnect: { appState.disconnect() }
             )
                 .presentationDetents([.large])
+                .environmentObject(appState)
         }
         // Settings can go with this screen (switching or adding a dashboard
         // swaps in sign-in), and SwiftUI doesn't promise the sheet's

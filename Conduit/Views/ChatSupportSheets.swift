@@ -243,6 +243,7 @@ struct WorkspaceBrowserSheet: View {
         .sheet(isPresented: $previewOpen) {
             WorkspaceFilePreviewSheet()
                 .presentationDetents([.medium, .large])
+                .environmentObject(appState)
         }
     }
 

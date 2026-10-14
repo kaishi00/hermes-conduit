@@ -197,7 +197,7 @@ STRING_DISPLAY_PROPERTIES = (
 DISPLAY_BRAND_NAMES = frozenset({
     "Cloudflare Access", "Hermes Conduit", "Gemini Live", "Grok Live",
     "GPT-Live", "LaTeX", "Mermaid", "Discord", "Telegram", "API",
-    "Tailscale",
+    "Tailscale", "Apple",
 })
 
 # Dynamic sites the extractor cannot see: variable-key lookups where the

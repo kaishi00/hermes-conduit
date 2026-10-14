@@ -930,6 +930,7 @@ private struct SettingsHome: View {
                 plan.perform(appState: appState)
                 pendingAppliedNotice = !plan.isEmpty
             }
+            .environmentObject(appState)
         }
         .alert("Settings applied", isPresented: $appliedConnectionNotice) {
             Button("OK", role: .cancel) {}
@@ -1547,6 +1548,15 @@ private struct ProfileModelSettingsDetail: View {
         return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: model)] + listed
     }
 
+    /// Keeps a saved provider the catalog does not list (e.g. `auto`)
+    /// visible instead of showing the first provider. Exact `name` equality
+    /// is enough: `provider` only ever holds a row's `name` (from `selection`
+    /// or a menu pick) or a saved value no row matched.
+    private func providerChoices(_ providers: [ProviderInfo]) -> [(id: String, title: String)] {
+        let listed = providers.map { (id: $0.name, title: $0.title) }
+        return provider.isEmpty || providers.contains(where: { $0.name == provider }) ? listed : [(id: provider, title: provider)] + listed
+    }
+
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
@@ -1555,7 +1565,7 @@ private struct ProfileModelSettingsDetail: View {
                 if let defaults, !defaults.providers.isEmpty {
                     ConduitMenuPicker(
                         value: provider,
-                        choices: defaults.providers.map { (id: $0.name, title: $0.title) },
+                        choices: providerChoices(defaults.providers),
                         onSelect: chooseProvider
                     ) {
                         Text("Provider").foregroundStyle(.secondary)
@@ -1600,7 +1610,13 @@ private struct ProfileModelSettingsDetail: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        model = defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+        // The unlisted saved entry has no model list, so keep the model.
+        // Otherwise keep a model the new provider also lists (e.g. one saved
+        // with no provider) rather than swapping it for the row's first model.
+        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
+        if !models.contains(where: { $0.id == model }) {
+            model = models.first?.id ?? ""
+        }
     }
     private func persist() {
         Task {

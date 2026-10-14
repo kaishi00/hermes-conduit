@@ -93,13 +93,49 @@ final class ProfileModelDefaultsTests: XCTestCase {
         XCTAssertEqual(value.selection.model, "claude-a")
     }
 
-    func testFirstRowFallbackDoesNotKeepAModelItDoesNotList() {
+    func testUnmatchedSavedDefaultIsKeptInsteadOfFirstRow() {
         let value = defaults([
             provider("anthropic", models: ["claude-a"]),
             provider("openrouter", models: ["x"])
         ], provider: "gone", model: "unlisted")
-        XCTAssertEqual(value.selection.provider, "anthropic")
-        XCTAssertEqual(value.selection.model, "claude-a")
+        XCTAssertEqual(value.selection.provider, "gone")
+        XCTAssertEqual(value.selection.model, "unlisted")
+    }
+
+    /// `auto` names no row and Hermes marks none current; a model two
+    /// aggregators both list must not fall to the first provider's first model.
+    func testAutoProviderWithModelInTwoRowsKeepsSavedDefault() {
+        let value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("nous", models: ["anthropic/claude-b"]),
+            provider("openrouter", models: ["anthropic/claude-b"])
+        ], provider: "auto", model: "anthropic/claude-b")
+        XCTAssertEqual(value.selection.provider, "auto")
+        XCTAssertEqual(value.selection.model, "anthropic/claude-b")
+    }
+
+    /// A custom endpoint Hermes hides as a duplicate of a built-in provider's
+    /// URL (e.g. a custom api.z.ai entry beside `zai`) resolves to the built-in
+    /// row that lists the saved model, since that row serves the same endpoint.
+    func testHiddenDuplicateCustomEndpointResolvesToBuiltInRowListingModel() {
+        let value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("zai", name: "Z.AI / GLM", models: ["glm-5.2", "glm-5.3-flash"])
+        ], provider: "custom:zai-proxy", model: "glm-5.3-flash")
+        XCTAssertEqual(value.selection.provider, "zai")
+        XCTAssertEqual(value.selection.model, "glm-5.3-flash")
+    }
+
+    func testUnmatchedSavedProviderWithoutModelIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "gone", model: "")
+        XCTAssertEqual(value.selection.provider, "gone")
+        XCTAssertEqual(value.selection.model, "")
+    }
+
+    func testSavedModelWithoutProviderIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "", model: "unlisted")
+        XCTAssertEqual(value.selection.provider, "")
+        XCTAssertEqual(value.selection.model, "unlisted")
     }
 
     func testMatchingTrimsCatalogValuesAndTitleUsesDisplayName() {

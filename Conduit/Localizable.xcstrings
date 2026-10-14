@@ -212542,6 +212542,1482 @@
         }
       }
     },
+    "Add a word or name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wort oder Namen hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir una palabra o nombre"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter un mot ou un nom"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan kata atau nama"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi una parola o un nome"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "単語や名前を追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단어나 이름 추가"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj słowo lub nazwę"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar uma palavra ou nome"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить слово или имя"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kelime veya ad ekle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加词语或名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入字詞或名稱"
+          }
+        }
+      }
+    },
+    "Apple (new model)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (neues Modell)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (modelo nuevo)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (nouveau modèle)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (model baru)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (nuovo modello)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple（新しいモデル）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (새 모델)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (nowy model)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (modelo novo)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (новая модель)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple (yeni model)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple（新模型）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple（新模型）"
+          }
+        }
+      }
+    },
+    "Apple's dictation, on this iPhone when your language allows. Words appear as you speak." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples Diktierfunktion, auf diesem iPhone, wenn deine Sprache es zulässt. Die Wörter erscheinen, während du sprichst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El dictado de Apple, en este iPhone cuando tu idioma lo permite. Las palabras aparecen mientras hablas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dictée d’Apple, sur cet iPhone quand votre langue le permet. Les mots s’affichent pendant que vous parlez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte Apple, di iPhone ini jika bahasa Anda mendukung. Kata-kata muncul saat Anda berbicara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dettatura di Apple, su questo iPhone quando la lingua lo consente. Le parole appaiono mentre parli."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple の音声入力です。言語が対応していればこの iPhone 上で処理します。話すそばから文字が表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 받아쓰기로, 언어가 지원되면 이 iPhone에서 처리합니다. 말하는 동안 글자가 나타납니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dyktowanie Apple, na tym iPhonie, jeśli pozwala na to język. Słowa pojawiają się w trakcie mówienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O ditado da Apple, neste iPhone quando seu idioma permite. As palavras aparecem enquanto você fala."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диктовка Apple, на этом iPhone, если язык это позволяет. Слова появляются по мере речи."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple dikte özelliği; diliniz destekliyorsa bu iPhone’da çalışır. Siz konuştukça sözcükler görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 的听写，语言支持时在这台 iPhone 上处理。说话时文字会随即出现。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 的聽寫，語言支援時在這部 iPhone 上處理。說話時文字會隨即出現。"
+          }
+        }
+      }
+    },
+    "Apple's new speech model couldn't be downloaded. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples neues Sprachmodell konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo descargar el nuevo modelo de voz de Apple. Revisa tu conexión e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de télécharger le nouveau modèle vocal d’Apple. Vérifiez votre connexion et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model suara baru Apple tidak dapat diunduh. Periksa koneksi Anda dan coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile scaricare il nuovo modello vocale di Apple. Controlla la connessione e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple の新しい音声モデルをダウンロードできませんでした。接続を確認してもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple의 새 음성 모델을 다운로드할 수 없습니다. 연결을 확인하고 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się pobrać nowego modelu mowy Apple. Sprawdź połączenie i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível baixar o novo modelo de voz da Apple. Verifique sua conexão e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить новую речевую модель Apple. Проверьте подключение и попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple’ın yeni konuşma modeli indirilemedi. Bağlantınızı kontrol edip yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法下载 Apple 的新语音模型。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法下載 Apple 的新語音模型。請檢查網路連線後再試一次。"
+          }
+        }
+      }
+    },
+    "Apple's new speech model doesn't support your language yet. Pick Apple in Voice settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples neues Sprachmodell unterstützt deine Sprache noch nicht. Wähle Apple in den Spracheinstellungen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nuevo modelo de voz de Apple aún no admite tu idioma. Elige Apple en los ajustes de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nouveau modèle vocal d’Apple ne prend pas encore en charge votre langue. Choisissez Apple dans les réglages Voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model suara baru Apple belum mendukung bahasa Anda. Pilih Apple di pengaturan Suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il nuovo modello vocale di Apple non supporta ancora la tua lingua. Scegli Apple nelle impostazioni Voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple の新しい音声モデルはまだお使いの言語に対応していません。音声設定で Apple を選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple의 새 음성 모델은 아직 사용 중인 언어를 지원하지 않습니다. 음성 설정에서 Apple을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowy model mowy Apple nie obsługuje jeszcze Twojego języka. Wybierz Apple w ustawieniach głosu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O novo modelo de voz da Apple ainda não é compatível com seu idioma. Escolha Apple nos ajustes de Voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новая речевая модель Apple пока не поддерживает ваш язык. Выберите Apple в настройках голоса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple’ın yeni konuşma modeli henüz dilinizi desteklemiyor. Ses ayarlarında Apple’ı seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 的新语音模型暂不支持你的语言。请在语音设置中选择 Apple。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 的新語音模型尚未支援你的語言。請在語音設定中選擇 Apple。"
+          }
+        }
+      }
+    },
+    "Apple's new speech model isn't available on this iPhone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples neues Sprachmodell ist auf diesem iPhone nicht verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nuevo modelo de voz de Apple no está disponible en este iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nouveau modèle vocal d’Apple n’est pas disponible sur cet iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model suara baru Apple tidak tersedia di iPhone ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il nuovo modello vocale di Apple non è disponibile su questo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この iPhone では Apple の新しい音声モデルを利用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone에서는 Apple의 새 음성 모델을 사용할 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowy model mowy Apple nie jest dostępny na tym iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O novo modelo de voz da Apple não está disponível neste iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новая речевая модель Apple недоступна на этом iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple’ın yeni konuşma modeli bu iPhone’da kullanılamıyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPhone 无法使用 Apple 的新语音模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這部 iPhone 無法使用 Apple 的新語音模型。"
+          }
+        }
+      }
+    },
+    "Custom words" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Wörter"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras personalizadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mots personnalisés"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kata khusus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parole personalizzate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カスタム単語"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자 단어"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Własne słowa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palavras personalizadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Свои слова"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Özel kelimeler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义词语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自訂字詞"
+          }
+        }
+      }
+    },
+    "Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictée"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dettatura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dyktowanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диктовка"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聽寫"
+          }
+        }
+      }
+    },
+    "Dictation needs microphone access. You can allow it in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren braucht Conduit Zugriff auf das Mikrofon. Du kannst ihn in den Einstellungen erlauben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El dictado necesita acceso al micrófono. Puedes permitirlo en Ajustes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dictée a besoin d’accéder au micro. Vous pouvez l’autoriser dans Réglages."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte memerlukan akses mikrofon. Anda dapat mengizinkannya di Pengaturan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dettatura richiede l’accesso al microfono. Puoi consentirlo in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力にはマイクへのアクセスが必要です。設定で許可できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기에는 마이크 접근 권한이 필요합니다. 설정에서 허용할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dyktowanie wymaga dostępu do mikrofonu. Możesz na to zezwolić w Ustawieniach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O ditado precisa de acesso ao microfone. Você pode permitir em Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для диктовки нужен доступ к микрофону. Его можно разрешить в Настройках."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte için mikrofon erişimi gerekir. Ayarlar’dan izin verebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写需要麦克风权限。你可以在“设置”中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聽寫需要麥克風權限。你可以在「設定」中允許。"
+          }
+        }
+      }
+    },
+    "Dictation with Hermes needs a connection to Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren mit Hermes braucht es eine Verbindung zu Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para dictar con Hermes hace falta una conexión con Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dictée avec Hermes nécessite une connexion à Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte dengan Hermes memerlukan koneksi ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per dettare con Hermes serve una connessione a Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes で音声入力するには Hermes への接続が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes로 받아쓰려면 Hermes에 연결되어 있어야 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dyktowanie przez Hermesa wymaga połączenia z Hermesem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditar com o Hermes requer uma conexão com o Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для диктовки через Hermes нужно подключение к Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ile dikte için Hermes bağlantısı gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 听写需要连接到 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 聽寫需要連線到 Hermes。"
+          }
+        }
+      }
+    },
+    "Engine" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engine"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Motor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moteur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesin"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Motore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンジン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "엔진"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silnik"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mecanismo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Движок"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Motor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引擎"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引擎"
+          }
+        }
+      }
+    },
+    "Hermes couldn't transcribe that: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte das nicht transkribieren: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo transcribir eso: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a pas pu transcrire cela : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat mentranskripsikannya: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito a trascriverlo: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes で文字起こしできませんでした: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 받아쓰지 못했습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł tego przepisać: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu transcrever isso: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не смог распознать запись: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bunu yazıya dökemedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法转写这段内容：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法轉寫這段內容：%@"
+          }
+        }
+      }
+    },
+    "Names and terms dictation should expect, written the way you want them. Hermes uses the words in its own speech to text settings (stt.prompt), not this list." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen und Begriffe, die das Diktieren erwarten soll, so geschrieben, wie du sie haben möchtest. Hermes verwendet die Wörter aus seinen eigenen Sprache-zu-Text-Einstellungen (stt.prompt), nicht diese Liste."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombres y términos que el dictado debe esperar, escritos como quieres que aparezcan. Hermes usa las palabras de sus propios ajustes de voz a texto (stt.prompt), no esta lista."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les noms et termes que la dictée doit reconnaître, écrits comme vous le souhaitez. Hermes utilise les mots de ses propres réglages de transcription (stt.prompt), pas cette liste."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama dan istilah yang perlu dikenali dikte, ditulis seperti yang Anda inginkan. Hermes memakai kata-kata dari pengaturan ucapan-ke-teks miliknya sendiri (stt.prompt), bukan daftar ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nomi e termini che la dettatura deve aspettarsi, scritti come li vuoi. Hermes usa le parole delle proprie impostazioni di trascrizione (stt.prompt), non questo elenco."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力が認識すべき名前や用語を、書きたい表記で登録します。Hermes はこのリストではなく、自身の音声認識設定（stt.prompt）の単語を使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기가 인식해야 할 이름과 용어를 원하는 표기로 적어 두세요. Hermes는 이 목록이 아니라 자체 음성 인식 설정(stt.prompt)의 단어를 사용합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nazwy i terminy, których dyktowanie ma się spodziewać, zapisane tak, jak chcesz. Hermes używa słów z własnych ustawień zamiany mowy na tekst (stt.prompt), a nie tej listy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nomes e termos que o ditado deve esperar, escritos do jeito que você quer. O Hermes usa as palavras das próprias configurações de fala para texto (stt.prompt), não esta lista."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Имена и термины, которые диктовка должна ожидать, в нужном вам написании. Hermes использует слова из собственных настроек распознавания речи (stt.prompt), а не этот список."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktenin tanıması gereken adlar ve terimler, istediğiniz yazımla. Hermes bu listeyi değil, kendi konuşmadan metne ayarlarındaki (stt.prompt) kelimeleri kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写应识别的名称和术语，按你希望的写法填写。Hermes 使用其自身语音转文字设置（stt.prompt）中的词语，而不是这个列表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聽寫應辨識的名稱和術語，依你想要的寫法填寫。Hermes 使用其本身語音轉文字設定（stt.prompt）中的字詞，而不是這份清單。"
+          }
+        }
+      }
+    },
+    "Names and terms dictation should expect, written the way you want them: your company, people, products." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen und Begriffe, die das Diktieren erwarten soll, so geschrieben, wie du sie haben möchtest: deine Firma, Personen, Produkte."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombres y términos que el dictado debe esperar, escritos como quieres que aparezcan: tu empresa, personas, productos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les noms et termes que la dictée doit reconnaître, écrits comme vous le souhaitez : votre entreprise, des personnes, des produits."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama dan istilah yang perlu dikenali dikte, ditulis seperti yang Anda inginkan: perusahaan, orang, produk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nomi e termini che la dettatura deve aspettarsi, scritti come li vuoi: la tua azienda, persone, prodotti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力が認識すべき名前や用語を、書きたい表記で登録します。会社名、人名、製品名など。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기가 인식해야 할 이름과 용어를 원하는 표기로 적어 두세요: 회사, 사람, 제품 이름."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nazwy i terminy, których dyktowanie ma się spodziewać, zapisane tak, jak chcesz: Twoja firma, osoby, produkty."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nomes e termos que o ditado deve esperar, escritos do jeito que você quer: sua empresa, pessoas, produtos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Имена и термины, которые диктовка должна ожидать, в нужном вам написании: ваша компания, люди, продукты."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktenin tanıması gereken adlar ve terimler, istediğiniz yazımla: şirketiniz, kişiler, ürünler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写应识别的名称和术语，按你希望的写法填写：公司、人名、产品。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聽寫應辨識的名稱和術語，依你想要的寫法填寫：公司、人名、產品。"
+          }
+        }
+      }
+    },
+    "The speech to text your Hermes uses, such as Whisper. Audio goes to your Hermes. Words appear as you speak when Hermes streams them, otherwise when you stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Spracherkennung, die dein Hermes nutzt, etwa Whisper. Das Audio geht an deinen Hermes. Die Wörter erscheinen beim Sprechen, wenn Hermes sie streamt, sonst wenn du aufhörst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conversión de voz a texto que usa tu Hermes, como Whisper. El audio va a tu Hermes. Las palabras aparecen mientras hablas si Hermes las transmite en directo; si no, cuando te detienes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La transcription vocale qu’utilise votre Hermes, comme Whisper. L’audio est envoyé à votre Hermes. Les mots s’affichent pendant que vous parlez si Hermes les diffuse en direct, sinon quand vous vous arrêtez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ucapan-ke-teks yang dipakai Hermes Anda, seperti Whisper. Audio dikirim ke Hermes Anda. Kata-kata muncul saat Anda berbicara jika Hermes mengalirkannya, jika tidak saat Anda berhenti."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La trascrizione vocale usata dal tuo Hermes, come Whisper. L’audio va al tuo Hermes. Le parole appaiono mentre parli se Hermes le trasmette in diretta, altrimenti quando ti fermi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が使う音声認識（Whisper など）です。音声は Hermes に送られます。Hermes がストリーミングに対応していれば話すそばから、そうでなければ停止したときに文字が表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 사용하는 음성 인식(예: Whisper)입니다. 오디오는 Hermes로 전송됩니다. Hermes가 스트리밍하면 말하는 동안, 그렇지 않으면 멈췄을 때 글자가 나타납니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamiana mowy na tekst, której używa Twój Hermes, np. Whisper. Dźwięk trafia do Twojego Hermesa. Słowa pojawiają się w trakcie mówienia, jeśli Hermes przesyła je strumieniowo, a w przeciwnym razie po zakończeniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conversão de fala em texto que o seu Hermes usa, como o Whisper. O áudio vai para o seu Hermes. As palavras aparecem enquanto você fala se o Hermes as transmitir ao vivo; caso contrário, quando você parar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Распознавание речи, которое использует ваш Hermes, например Whisper. Звук отправляется на ваш Hermes. Слова появляются по мере речи, если Hermes передаёт их потоком, иначе — когда вы закончите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes’inizin kullandığı konuşmadan metne dönüştürme, örneğin Whisper. Ses Hermes’inize gider. Hermes akış yapıyorsa sözcükler siz konuştukça, yapmıyorsa durduğunuzda görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 使用的语音转文字（如 Whisper）。音频会发送到你的 Hermes。如果 Hermes 支持流式传输，文字会边说边出现，否则在你停止时出现。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 使用的語音轉文字（例如 Whisper）。音訊會傳送到你的 Hermes。若 Hermes 支援串流，文字會邊說邊出現，否則在你停止時出現。"
+          }
+        }
+      }
+    },
+    "Apple's newer speech model, on this iPhone. Better with long sentences, though it may not use your custom words. The first use may download it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples neueres Sprachmodell, auf diesem iPhone. Besser bei langen Sätzen, nutzt deine eigenen Wörter aber eventuell nicht. Bei der ersten Nutzung wird es eventuell geladen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modelo de voz más reciente de Apple, en este iPhone. Mejor con frases largas, aunque puede no usar tus palabras personalizadas. Puede descargarse la primera vez que lo uses."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle vocal plus récent d’Apple, sur cet iPhone. Meilleur avec les longues phrases, mais il peut ignorer vos mots personnalisés. Il peut être téléchargé à la première utilisation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model suara Apple yang lebih baru, di iPhone ini. Lebih baik untuk kalimat panjang, tetapi mungkin tidak memakai kata khusus Anda. Mungkin diunduh saat pertama kali digunakan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il modello vocale più recente di Apple, su questo iPhone. Migliore con frasi lunghe, ma potrebbe non usare le tue parole personalizzate. Al primo utilizzo potrebbe essere scaricato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple の新しい音声モデルで、この iPhone 上で処理します。長い文に強い一方、カスタム単語は使われない場合があります。初回はモデルのダウンロードが必要な場合があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple의 최신 음성 모델로, 이 iPhone에서 처리합니다. 긴 문장을 더 잘 인식하지만 사용자 단어는 사용하지 않을 수 있습니다. 처음 사용할 때 다운로드될 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowszy model mowy Apple, na tym iPhonie. Lepiej radzi sobie z długimi zdaniami, ale może nie używać Twoich własnych słów. Przy pierwszym użyciu może zostać pobrany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O modelo de voz mais recente da Apple, neste iPhone. Melhor com frases longas, mas pode não usar suas palavras personalizadas. Pode ser baixado no primeiro uso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Более новая речевая модель Apple, на этом iPhone. Лучше справляется с длинными фразами, но может не учитывать ваши слова. При первом использовании может загрузиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple’ın daha yeni konuşma modeli; bu iPhone’da çalışır. Uzun cümlelerde daha iyidir ama özel kelimelerinizi kullanmayabilir. İlk kullanımda indirilebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 较新的语音模型，在这台 iPhone 上处理。长句识别更好，但可能不会使用你的自定义词语。首次使用可能需要下载模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 較新的語音模型，在這部 iPhone 上處理。長句辨識更好，但可能不會使用你的自訂字詞。首次使用可能需要下載模型。"
+          }
+        }
+      }
+    },
+    "Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzungen und Einstellungen folgen dem aktiven Profil. Fotos werden in Hermes gespeichert, daher zeigen Bots und Hermes Desktop sie auch."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las sesiones y los ajustes siguen al perfil activo. Las fotos se guardan en Hermes, así que los bots y Hermes Desktop también las muestran."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les sessions et les réglages suivent le profil actif. Les photos sont enregistrées dans Hermes, donc les bots et Hermes Desktop les affichent aussi."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi dan pengaturan mengikuti profil aktif. Foto disimpan di Hermes, jadi bot dan Hermes Desktop juga menampilkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sessioni e impostazioni seguono il profilo attivo. Le foto vengono salvate in Hermes, quindi anche i bot e Hermes Desktop le mostrano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッションと設定はアクティブなプロファイルに従います。写真はHermesに保存されるため、ボットやHermes Desktopにも表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션과 설정은 사용 중인 프로필을 따라요. 사진은 Hermes에 저장되므로 봇과 Hermes Desktop에도 표시돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesje i ustawienia zależą od aktywnego profilu. Zdjęcia są zapisywane w Hermesie, więc boty i Hermes Desktop też je pokazują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As sessões e os ajustes seguem o perfil ativo. As fotos são salvas no Hermes, então os bots e o Hermes Desktop também as mostram."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сеансы и настройки относятся к активному профилю. Фото сохраняются в Hermes, поэтому боты и Hermes Desktop тоже их показывают."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturumlar ve ayarlar etkin profili izler. Fotoğraflar Hermes'e kaydedilir, bu yüzden botlar ve Hermes Desktop da onları gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话与设置跟随当前档案。照片保存在 Hermes 上，因此机器人和 Hermes Desktop 也会显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作階段和設定會跟隨目前的設定檔。照片會儲存在 Hermes 上，因此機器人和 Hermes Desktop 也會顯示。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to change this photo." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde dich mit Hermes, um dieses Foto zu ändern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate a Hermes para cambiar esta foto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous à Hermes pour modifier cette photo."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hubungkan ke Hermes untuk mengubah foto ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connettiti a Hermes per cambiare questa foto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この写真を変更するには、Hermesに接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 사진을 바꾸려면 Hermes에 연결하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz się z Hermesem, aby zmienić to zdjęcie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conecte-se ao Hermes para alterar esta foto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь к Hermes, чтобы изменить это фото."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu fotoğrafı değiştirmek için Hermes'e bağlanın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以更改此照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線到 Hermes 以更改此照片。"
+          }
+        }
+      }
+    },
     "1 year" : {
       "localizations" : {
         "de" : {

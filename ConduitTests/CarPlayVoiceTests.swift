@@ -522,6 +522,50 @@ extension CarPlayVoiceTemplateFactoryTests {
         XCTAssertNotNil(items.first?.image)
     }
 
+    func testIconsFollowTheCarsAppearance() throws {
+        let saved = CarPlayBrowseTemplateFactory.carStyle
+        defer { CarPlayBrowseTemplateFactory.carStyle = saved }
+
+        CarPlayBrowseTemplateFactory.carStyle = .unspecified
+        let fallback = CarPlayBrowseTemplateFactory.symbolImage(CarPlayBrowse.chatSymbol)
+        XCTAssertEqual(fallback.renderingMode, .alwaysOriginal, "never the template CarPlay draws black")
+        let asset = try XCTUnwrap(fallback.imageAsset)
+        XCTAssertGreaterThan(try inkBrightness(asset.image(with: UITraitCollection(userInterfaceStyle: .dark))), 0.9)
+        XCTAssertLessThan(try inkBrightness(asset.image(with: UITraitCollection(userInterfaceStyle: .light))), 0.1)
+        XCTAssertGreaterThan(try inkBrightness(fallback), 0.9, "white until the car says it is light")
+
+        CarPlayBrowseTemplateFactory.carStyle = .light
+        XCTAssertLessThan(try inkBrightness(CarPlayBrowseTemplateFactory.symbolImage(CarPlayBrowse.chatSymbol)), 0.1)
+    }
+
+    /// The red level of the most opaque pixel an icon draws; the icons are
+    /// black or white, so that is their brightness.
+    private func inkBrightness(_ image: UIImage) throws -> CGFloat {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let size = CGSize(width: 32, height: 32)
+        let drawn = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        let cgImage = try XCTUnwrap(drawn.cgImage)
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 32 * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(cgImage, in: CGRect(origin: .zero, size: size))
+        let data = try XCTUnwrap(context.data?.assumingMemoryBound(to: UInt8.self))
+        var best = (alpha: 0, brightness: CGFloat(-1))
+        for pixel in 0..<(32 * 32) {
+            let alpha = Int(data[pixel * 4 + 3])
+            guard alpha > best.alpha else { continue }
+            let red = CGFloat(data[pixel * 4]) / CGFloat(alpha)
+            best = (alpha, red)
+        }
+        XCTAssertGreaterThan(best.alpha, 0, "the icon drew nothing")
+        return best.brightness
+    }
+
     func testMoreOffersJobsShortcutsAndVoice() {
         let grid = CarPlayBrowseTemplateFactory.moreTemplate(handlers: CarPlayBrowseHandlers())
         XCTAssertEqual(grid.gridButtons.map { $0.titleVariants.first }, ["Jobs", "Shortcuts", "Voice"])

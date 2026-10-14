@@ -2,11 +2,11 @@
 //  ComposerDictationService.swift
 //  Conduit
 //
-//  The composer's dictate button (issues #290, #335). Apple's speech
-//  recognizer turns what is said into text in the draft; nothing is sent. It
-//  runs on the device when the language supports it. The microphone is
-//  taken through the shared audio coordinator, so wake listening steps
-//  aside while it runs.
+//  The composer's dictate button (issues #290, #335). A speech recognizer
+//  turns what is said into text in the draft; nothing is sent. The engine
+//  is the person's choice (Apple, Apple's new model, or Hermes), and each
+//  is told the person's custom words. The microphone is taken through the
+//  shared audio coordinator, so wake listening steps aside while it runs.
 //
 
 import AVFAudio
@@ -22,6 +22,9 @@ final class ComposerDictationService: ObservableObject {
     /// The microphone is open. A dictation still settling its last words
     /// after the release is dictating but no longer capturing.
     @Published private(set) var isCapturing = false
+    /// Stopped, and the words are still on their way (a Hermes upload).
+    /// A new dictation waits for them rather than dropping them.
+    @Published private(set) var isTranscribing = false
 
     /// The whole transcript of this dictation so far, each time it changes.
     /// Cleared when the dictation ends: the view that set it is captured.
@@ -29,6 +32,9 @@ final class ComposerDictationService: ObservableObject {
     /// Called once the dictation is over, with whether it produced text,
     /// then cleared.
     var onFinish: ((Bool) -> Void)?
+    /// Called when the recognizer gave up mid-dictation, with a message
+    /// for the person, just before `onFinish`.
+    var onFailure: ((String) -> Void)?
 
     private let audioCoordinator: VoiceAudioSessionCoordinator
     private let audioSink = DictationAudioSink()
@@ -37,11 +43,10 @@ final class ComposerDictationService: ObservableObject {
     /// Interruption, media-reset and engine-configuration observers while
     /// the microphone is open.
     private var audioObservers: [NSObjectProtocol] = []
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognizer: (any DictationRecognizer)?
     private var finishTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var producedText = false
-    private var transcript = DictationTranscript()
     /// Bumped by `cancel()` so a reserved start that hasn't run, or is
     /// still awaiting permission, gives up.
     private var startToken: UInt64 = 0
@@ -52,74 +57,111 @@ final class ComposerDictationService: ObservableObject {
 
     /// Reserves a start, synchronously: a `cancel()` that lands before
     /// `start(token:)` runs still stops it. A dictation still settling its
-    /// last words ends here, so its results never reach the new one.
-    /// Returns nil while one is starting or capturing.
+    /// last words ends here, so its results never reach the new one; one
+    /// still transcribing words the draft hasn't had (a Hermes upload)
+    /// is waited for instead.
+    /// Returns nil while one is starting, capturing or transcribing.
     func reserveStart() -> UInt64? {
-        guard !isStarting, !isCapturing else { return nil }
+        guard !isStarting, !isCapturing, !isTranscribing else { return nil }
         if isDictating { finish() }
         startToken &+= 1
         isStarting = true
         return startToken
     }
 
-    /// Starts listening for the start `reserveStart()` returned. Throws a
-    /// message for the user when it can't.
-    func start(token: UInt64) async throws {
+    /// Starts listening for the start `reserveStart()` returned, with the
+    /// picked engine. `hermesGateway` makes the connected Hermes' gateway
+    /// for the Hermes engine. Throws a message for the user when it can't.
+    func start(
+        token: UInt64,
+        engine choice: DictationEngine = .current(),
+        words: [String] = DictationCustomWords.load(),
+        hermesGateway: () -> HermesVoiceGateway? = { nil }
+    ) async throws {
         guard startToken == token, !isDictating else { return }
         defer { if startToken == token { isStarting = false } }
-        let allowed = await AppleSpeechWakeWordService.requestPermissions()
-        // Cancelled (the composer went away) while permission was asked;
-        // cancel() already cleared the callbacks.
-        guard startToken == token else { return }
-        guard allowed else {
+        let recognizer: any DictationRecognizer
+        do {
+            recognizer = try await makeRecognizer(choice, words: words, hermesGateway: hermesGateway)
+        } catch {
+            // Cancelled (the composer went away) meanwhile: cancel()
+            // already cleared the callbacks.
+            guard startToken == token else { return }
             clearCallbacks()
-            throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))
+            throw error
+        }
+        guard startToken == token else {
+            recognizer.cancel()
+            return
         }
         // A voice conversation already has the microphone (one the
         // composer hasn't re-rendered for yet).
         guard !audioCoordinator.hasCaptureOwner else {
+            recognizer.cancel()
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
-        }
-        guard let recognizer = SFSpeechRecognizer(locale: SpeechRecognitionLocale.preferred()) ?? SFSpeechRecognizer(),
-              recognizer.isAvailable else {
-            clearCallbacks()
-            throw DictationError.message(AppLocalization.string("Dictation isn't available right now."))
         }
         generation &+= 1
         let generation = generation
         producedText = false
-        transcript = DictationTranscript()
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.taskHint = .dictation
-        request.addsPunctuation = true
-        // On the device when the language allows it.
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        let format: AVAudioFormat
         do {
             // Voice or a live call taking the microphone ends dictation.
             lease = try audioCoordinator.acquire(.conversationCapture) { [weak self] in
                 self?.audioWasLost(generation: generation)
             }
-            try startAudio()
+            format = try startAudio()
             observeAudioLoss(generation: generation)
         } catch {
+            recognizer.cancel()
             releaseAudio()
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
         }
-        audioSink.replace(with: request)
+        let input: any DictationAudioInput
+        do {
+            input = try recognizer.begin(format: format) { [weak self] update in
+                self?.receive(update, generation: generation)
+            }
+        } catch {
+            recognizer.cancel()
+            stopAudio()
+            releaseAudio()
+            clearCallbacks()
+            throw error
+        }
+        self.recognizer = recognizer
+        audioSink.replace(with: input)
         isCapturing = true
         isDictating = true
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let transcript = result?.bestTranscription.formattedString
-            // Set on the result that closes an utterance (a pause); the
-            // recognizer may start the next one from empty.
-            let endsUtterance = result?.speechRecognitionMetadata != nil
-            let isFinal = (result?.isFinal ?? false) || error != nil
-            Task { @MainActor [weak self] in
-                self?.receive(transcript: transcript, endsUtterance: endsUtterance, isFinal: isFinal, generation: generation)
+    }
+
+    /// Permission, language and the model, before the microphone opens.
+    private func makeRecognizer(
+        _ choice: DictationEngine,
+        words: [String],
+        hermesGateway: () -> HermesVoiceGateway?
+    ) async throws -> any DictationRecognizer {
+        switch choice {
+        case .hermes:
+            if AVAudioApplication.shared.recordPermission == .undetermined {
+                _ = await AVAudioApplication.requestRecordPermission()
             }
+            guard AVAudioApplication.shared.recordPermission == .granted else {
+                throw DictationError.message(AppLocalization.string("Dictation needs microphone access. You can allow it in Settings."))
+            }
+            guard let gateway = hermesGateway() else {
+                throw DictationError.message(AppLocalization.string("Dictation with Hermes needs a connection to Hermes."))
+            }
+            return HermesDictationRecognizer(gateway: gateway)
+        case .apple, .appleSpeechAnalyzer:
+            guard await AppleSpeechWakeWordService.requestPermissions() else {
+                throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))
+            }
+            if choice == .appleSpeechAnalyzer, #available(iOS 26.0, *), SpeechTranscriber.isAvailable {
+                return try await SpeechAnalyzerDictationRecognizer.make(words: words)
+            }
+            return try AppleSpeechDictationRecognizer(words: words)
         }
     }
 
@@ -131,13 +173,30 @@ final class ComposerDictationService: ObservableObject {
         stopAudio()
         releaseAudio()
         audioSink.replace(with: nil)
+        recognizer?.endAudio()
+        // Only while none of its words have reached the draft: live words
+        // already there are kept like any engine's.
+        isTranscribing = (recognizer?.holdsWordsWhileSettling ?? false) && !producedText
         let generation = generation
+        let timeout = recognizer?.settleTimeout ?? .milliseconds(1_500)
         finishTask?.cancel()
         finishTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(1_500))
+            try? await Task.sleep(for: timeout)
             guard let self, !Task.isCancelled, self.generation == generation else { return }
+            // Its words never came: say so rather than end in silence.
+            if self.isTranscribing {
+                self.onFailure?(AppLocalization.string("Hermes didn't answer in time. Check that your Hermes server is running, then try again."))
+            }
             self.finish()
         }
+    }
+
+    /// The person typed or replaced the draft: a dictation ends there,
+    /// keeping its words, unless it is still transcribing words that never
+    /// reached the draft. Those keep coming and land at the draft's end.
+    func yieldToTyping() {
+        guard !isTranscribing else { return }
+        if isDictating || isStarting { cancel() }
     }
 
     /// Ends it now (the composer went away or was disabled), including a
@@ -176,28 +235,34 @@ final class ComposerDictationService: ObservableObject {
         ]
     }
 
-    private func receive(transcript text: String?, endsUtterance: Bool, isFinal: Bool, generation: UInt64) {
+    private func receive(_ update: DictationUpdate, generation: UInt64) {
         guard isDictating, generation == self.generation else { return }
-        if let text, !text.isEmpty {
-            transcript.receive(text, endsUtterance: endsUtterance)
-            producedText = true
-            onTranscript?(transcript.text)
+        switch update {
+        case .text(let text, let isFinal):
+            if !text.isEmpty {
+                producedText = true
+                onTranscript?(text)
+            }
+            // A final result after the stop ends it; one while still
+            // listening (a recognizer error) does too.
+            if isFinal { finish() }
+        case .failed(let message):
+            onFailure?(message)
+            finish()
         }
-        // A final result after the stop ends it; one while still
-        // listening (a recognizer error) does too.
-        if isFinal { finish() }
     }
 
     private func finish() {
         generation &+= 1
         finishTask?.cancel()
         finishTask = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
+        recognizer?.cancel()
+        recognizer = nil
         audioSink.replace(with: nil)
         stopAudio()
         releaseAudio()
         isCapturing = false
+        isTranscribing = false
         isDictating = false
         let onFinish = onFinish
         clearCallbacks()
@@ -207,9 +272,11 @@ final class ComposerDictationService: ObservableObject {
     private func clearCallbacks() {
         onTranscript = nil
         onFinish = nil
+        onFailure = nil
     }
 
-    private func startAudio() throws {
+    /// Opens the microphone and returns the format its buffers come in.
+    private func startAudio() throws -> AVAudioFormat {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -229,6 +296,7 @@ final class ComposerDictationService: ObservableObject {
             throw error
         }
         self.engine = engine
+        return format
     }
 
     private func stopAudio() {
@@ -270,9 +338,11 @@ enum ComposerDictation {
         case nothing
     }
 
-    static func tap(isCapturing: Bool, isStarting: Bool, canDictate: Bool) -> Tap {
+    static func tap(isCapturing: Bool, isStarting: Bool, canDictate: Bool, isTranscribing: Bool = false) -> Tap {
         if isCapturing { return .stop }
         if isStarting { return .cancelStart }
+        // Its words are on their way; a new dictation waits for them.
+        if isTranscribing { return .nothing }
         return canDictate ? .start : .nothing
     }
 
@@ -351,7 +421,7 @@ struct DictationTranscript: Equatable {
             .map(String.init)
     }
 
-    private static func join(_ first: String, _ second: String) -> String {
+    static func join(_ first: String, _ second: String) -> String {
         let first = first.trimmingCharacters(in: .whitespacesAndNewlines)
         let second = second.trimmingCharacters(in: .whitespacesAndNewlines)
         if first.isEmpty { return second }
@@ -360,20 +430,21 @@ struct DictationTranscript: Equatable {
     }
 }
 
-/// Hands microphone buffers from the render thread to the current request.
+/// Hands microphone buffers from the render thread to the current
+/// recognizer's input.
 private final class DictationAudioSink: @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock<SFSpeechAudioBufferRecognitionRequest?>(uncheckedState: nil)
+    private let state = OSAllocatedUnfairLock<(any DictationAudioInput)?>(uncheckedState: nil)
 
-    func replace(with newRequest: SFSpeechAudioBufferRecognitionRequest?) {
-        state.withLockUnchecked { request in
-            request?.endAudio()
-            request = newRequest
+    func replace(with newInput: (any DictationAudioInput)?) {
+        state.withLockUnchecked { input in
+            input?.end()
+            input = newInput
         }
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
-        state.withLockUnchecked { request in
-            request?.append(buffer)
+        state.withLockUnchecked { input in
+            input?.append(buffer)
         }
     }
 }

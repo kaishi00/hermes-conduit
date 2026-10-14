@@ -195,9 +195,11 @@ struct LoginView: View {
                 failure = nil
                 focusedField = nil
             }
+            .environmentObject(appState)
         }
         .sheet(item: $connectionRepairContext) { context in
             ConnectionRepairSetupSheet(context: context)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showExtraHeaders) {
             let address = (try? ConnectionURLPolicy.normalizedBaseURL(serverUrl)) ?? serverUrl

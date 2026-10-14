@@ -466,7 +466,7 @@ extension AppStateMultiDashboardTests {
         let review = dashboard("Review", "https://review.example.com")
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
         appState.saveDefaultProfileName("Atlas")
-        try appState.saveProfileAvatar(photoData(), for: "default")
+        try appState.saveProfileAvatarOnDevice(photoData(), for: "default")
         XCTAssertEqual(appState.profileDisplayName("default"), "Atlas")
         XCTAssertNotNil(appState.profileAvatarURL(for: "default"))
 
@@ -553,13 +553,65 @@ extension AppStateMultiDashboardTests {
         let review = dashboard("Review", "https://review.example.com")
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: review.id, dashboards: [primary, review]))
         appState.saveDefaultProfileName("Reviewer")
-        try appState.saveProfileAvatar(photoData(), for: "default")
+        try appState.saveProfileAvatarOnDevice(photoData(), for: "default")
 
         appState.removeDashboard(review.id)
 
         let store = makeAppearanceStore()
         XCTAssertEqual(store.loadDefaultName(dashboardID: review.id), ProfileAppearanceStore.defaultName)
         XCTAssertTrue(store.loadAvatarURLs(dashboardID: review.id).isEmpty)
+    }
+
+    // MARK: - Photos from Hermes
+
+    func testMirroredPhotoKeepsHermesBytesAndIsScopedToItsDashboard() throws {
+        let primary = UUID()
+        let review = UUID()
+        let store = makeAppearanceStore()
+        let png = photoData()
+
+        let saved = try store.saveMirroredAvatar(png, for: "coder", dashboardID: primary)
+        let url = saved.url
+        XCTAssertTrue(saved.changed)
+        XCTAssertFalse(try store.saveMirroredAvatar(png, for: "coder", dashboardID: primary).changed, "the same bytes are not rewritten")
+
+        XCTAssertEqual(try Data(contentsOf: url), png, "the Hermes bytes are kept as they are, transparency included")
+        XCTAssertTrue(store.isMirrored("coder", dashboardID: primary))
+        XCTAssertFalse(store.isMirrored("coder", dashboardID: review))
+        XCTAssertEqual(store.loadAvatarURLs(dashboardID: primary)["coder"], url)
+        XCTAssertThrowsError(try store.saveMirroredAvatar(Data("not an image".utf8), for: "coder", dashboardID: primary))
+        XCTAssertEqual(try Data(contentsOf: url), png, "an unreadable answer leaves the copy alone")
+    }
+
+    func testDevicePhotoAndRemovalClearTheMirrorMark() throws {
+        let primary = UUID()
+        let store = makeAppearanceStore()
+        _ = try store.saveMirroredAvatar(photoData(), for: "default", dashboardID: primary)
+
+        _ = try store.saveAvatar(photoData(), for: "default", dashboardID: primary)
+        XCTAssertFalse(store.isMirrored("default", dashboardID: primary), "a device pick is not a Hermes copy")
+        XCTAssertNotNil(store.avatarData(for: "default", dashboardID: primary))
+
+        _ = try store.saveMirroredAvatar(photoData(), for: "default", dashboardID: primary)
+        store.removeAvatar(for: "default", dashboardID: primary)
+        XCTAssertFalse(store.isMirrored("default", dashboardID: primary))
+        XCTAssertNil(store.avatarData(for: "default", dashboardID: primary))
+
+        _ = try store.saveMirroredAvatar(photoData(), for: "default", dashboardID: primary)
+        store.removeAll(dashboardID: primary)
+        XCTAssertFalse(store.isMirrored("default", dashboardID: primary))
+    }
+
+    func testRosterSyncFetchesUploadsOrDropsByWhereThePhotoCameFrom() {
+        // Hermes has a picture: it wins, whatever is on the device.
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: true, hasPhotoOnDevice: false, photoIsMirror: false), .fetch)
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: true, hasPhotoOnDevice: true, photoIsMirror: false), .fetch)
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: true, hasPhotoOnDevice: true, photoIsMirror: true), .fetch)
+        // A photo picked here before photos moved to Hermes carries over.
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: false, hasPhotoOnDevice: true, photoIsMirror: false), .upload)
+        // A copy of a picture removed elsewhere goes.
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: false, hasPhotoOnDevice: true, photoIsMirror: true), .dropMirror)
+        XCTAssertEqual(ProfileAvatarSyncAction.action(hermesHasAvatar: false, hasPhotoOnDevice: false, photoIsMirror: false), .keep)
     }
 
     // MARK: - Avatar images

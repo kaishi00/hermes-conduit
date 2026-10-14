@@ -181,7 +181,8 @@ jobs:
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
         # SIMULATOR_UDID for the steps below.
         env:
-          BUILD_TIMEOUT_SECS: 900
+          # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
+          BUILD_TIMEOUT_SECS: 1200
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's unit classes
@@ -313,7 +314,8 @@ jobs:
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
         # SIMULATOR_UDID for the steps below.
         env:
-          BUILD_TIMEOUT_SECS: 900
+          # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
+          BUILD_TIMEOUT_SECS: 1200
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated UI smoke suite

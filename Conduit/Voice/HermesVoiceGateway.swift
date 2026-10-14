@@ -60,6 +60,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
         return rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Which host and profile this gateway speaks to.
+    var identity: String { baseURL + "|" + profile }
+
     private var profileQuery: String {
         DashboardPath.withProfile("", profile: profile)
     }

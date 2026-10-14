@@ -35,6 +35,10 @@ struct LiveVoiceCallSheet: View {
     /// Observed only by the small views that show the attached chat, so job
     /// progress doesn't redraw the whole call.
     let jobs: VoiceBackgroundJobSupervisor
+    /// Handed to the job and screen-card sheets, which read it from the
+    /// environment. A plain reference, not an observed one: the call never
+    /// redraws for app-wide state changes.
+    let appState: AppState
     let isMicrophoneMuted: Bool
     /// The assistant's voice is silenced (#487); the call carries on.
     let isSpeakerMuted: Bool
@@ -115,6 +119,7 @@ struct LiveVoiceCallSheet: View {
                     LiveVoiceScreenCardSheet(card: card)
                 }
             }
+            .environmentObject(appState)
             .presentationDetents([.medium, .large])
         }
         .onReceive(jobs.$screenCards) { cards in
@@ -567,7 +572,7 @@ private struct LiveVoiceCallButton: View {
     }
 }
 
-private struct LiveVoiceTranscriptBubble: View {
+struct LiveVoiceTranscriptBubble: View {
     let entry: VoiceConversationTranscriptEntry
     let label: String
 

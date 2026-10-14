@@ -764,6 +764,88 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertNil(state.liveReasoningSegment)
     }
 
+    /// #572: Hermes' clarify tool.start is skipped, so the clarify card is
+    /// the first boundary after the explanation streamed ahead of it. The
+    /// explanation must commit above the card instead of staying in the
+    /// live tail below it.
+    func testClarifyCardCommitsPrecedingAssistantTextAboveIt() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(["weighing options "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Two ways to do this. "))
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "clarify", toolInput: "{}", toolID: "clarify-tool"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "A is faster, B is safer."))
+        state.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-1")))
+
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .partial, .clarify])
+        XCTAssertEqual(state.messages[1].content, "Two ways to do this. A is faster, B is safer.")
+        XCTAssertEqual(state.streamingText, "")
+
+        // A replayed request updates the existing card in place: text that
+        // streamed after the card stays live below it, not above.
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Waiting on you."))
+        state.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-1")))
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .partial, .clarify])
+        forceFlushPendingReasoning(on: state)
+        XCTAssertEqual(state.streamingText, "Waiting on you.")
+
+        // A clarify with nothing buffered adds no empty partial row.
+        let quiet = makeAppState()
+        installActiveSession(quiet, id: "stored-a")
+        quiet.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-2")))
+        XCTAssertEqual(quiet.messages.map(\.role), [.clarify])
+    }
+
+    /// Approval and masked-input cards are the same kind of boundary: text
+    /// streamed ahead of a live one commits above it.
+    func testApprovalAndInputPromptCardsCommitPrecedingAssistantTextAboveThem() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "I need to run the tests."))
+        state.handleStreamEvent(.approval(
+            sessionId: "stored-a",
+            activity: ApprovalActivity(
+                sessionId: "stored-a",
+                command: "run tests",
+                description: "wants to run tests",
+                choices: nil,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        ))
+        XCTAssertEqual(state.messages.map(\.role), [.partial, .approval])
+        XCTAssertEqual(state.messages.first?.content, "I need to run the tests.")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Now the token."))
+        state.handleStreamEvent(.inputPrompt(sessionId: "stored-a", activity: inputPromptActivity()))
+        XCTAssertEqual(state.messages.map(\.role), [.partial, .approval, .partial, .inputPrompt])
+        XCTAssertEqual(state.messages[2].content, "Now the token.")
+    }
+
+    private func inputPromptActivity() -> InputPromptActivity {
+        var activity = InputPromptActivity(requestId: "srq-1", sessionId: "stored-a", kind: .secret)
+        activity.envVar = "API_TOKEN"
+        activity.prompt = "Paste the token"
+        return activity
+    }
+
+    private func clarifyActivity(_ requestId: String) -> ClarifyActivity {
+        ClarifyActivity(
+            requestId: requestId,
+            questions: [
+                ClarifyQuestion(id: "q0", question: "which one?", choices: [
+                    ClarifyChoice(label: "A", value: "a"),
+                    ClarifyChoice(label: "B", value: "b")
+                ])
+            ]
+        )
+    }
+
     func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
         let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")

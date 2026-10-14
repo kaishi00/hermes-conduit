@@ -164,6 +164,7 @@ struct SidebarView: View {
             ProfilePickerSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .onAppear {
             // Explicitly migrate removed raw values such as Capabilities.
@@ -446,17 +447,21 @@ struct SessionList: View {
             SessionFilterOrderSheet()
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
+                .environmentObject(appState)
         }
         .sheet(item: $selectedProject) { project in
             ProjectSessionsSheet(project: project)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showProjectCreator) {
             ProjectCreateSheet()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
@@ -1799,6 +1804,7 @@ private struct ProjectCreateSheet: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            .environmentObject(appState)
         }
     }
 
@@ -2021,7 +2027,10 @@ struct CronList: View {
         .listStyle(.plain)
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
         .refreshable { await appState.refreshCronContent() }
-        .sheet(item: $selectedJob) { CronJobDetailSheet(job: $0) }
+        .sheet(item: $selectedJob) {
+            CronJobDetailSheet(job: $0)
+                .environmentObject(appState)
+        }
     }
 
     private var isSearching: Bool {

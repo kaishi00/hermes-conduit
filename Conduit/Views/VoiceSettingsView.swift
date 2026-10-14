@@ -300,6 +300,7 @@ struct VoiceSettingsView: View {
                     CarPlaySettingsSection()
                     WatchSettingsSection()
                     readAloudSection
+                    DictationSettingsSection()
                     advancedSection
                 }
                 .padding(16)
