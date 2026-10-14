@@ -1911,7 +1911,10 @@ private struct GatewayMediaFileCard: View {
                 break
             }
         }
-        guard let gatewayMediaDataURL, let dataURL = await gatewayMediaDataURL(path) else { return nil }
+        // A cancelled download reads as unavailable; don't start the
+        // fallback for a card that has gone.
+        guard !Task.isCancelled, let gatewayMediaDataURL,
+              let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return nil }
         return await Task.detached(priority: .userInitiated) {
             DataURLLimits.decodeBase64DataURL(dataURL)
         }.value
@@ -1953,8 +1956,8 @@ private struct GatewayMediaFileCard: View {
                 break
             }
         }
-        guard let gatewayMediaDataURL, let dataURL = await gatewayMediaDataURL(path),
-              !Task.isCancelled else { return .failed }
+        guard !Task.isCancelled, let gatewayMediaDataURL,
+              let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return .failed }
         return await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path) ? .presented : .failed
     }
 }
