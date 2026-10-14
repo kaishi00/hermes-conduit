@@ -82,8 +82,9 @@ struct LocationRead: Identifiable, Equatable {
             guard let at = entry["at"] as? String else { return nil }
             var read = LocationRead(at: at, action: entry["action"] as? String ?? "",
                                     sessionTitle: entry["session_title"] as? String, platform: entry["platform"] as? String)
-            read.occurrence = seen[read.id, default: 0]
-            seen[read.id, default: 0] += 1
+            let base = read.id
+            read.occurrence = seen[base, default: 0]
+            seen[base, default: 0] += 1
             return read
         }
     }

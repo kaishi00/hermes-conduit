@@ -264,6 +264,12 @@ struct LocationSharedConfig: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         binding = try? container.decodeIfPresent(LocationBinding.self, forKey: .binding)
         settings = (try? container.decodeIfPresent(LocationSharingSettings.self, forKey: .settings)) ?? LocationSharingSettings()
+        if binding == nil, container.contains(.binding), (try? container.decodeNil(forKey: .binding)) != true {
+            // A binding that can't be read sends nothing, so the layers show
+            // off rather than on; turning one on binds again.
+            settings.talking = false
+            settings.background = false
+        }
         places = (try? container.decodeIfPresent([LossyPlace].self, forKey: .places))?.compactMap(\.place) ?? []
         deviceID = (try? container.decodeIfPresent(String.self, forKey: .deviceID)) ?? LocationIDs.hex(bytes: 16)
         approximateOnly = (try? container.decodeIfPresent(Bool.self, forKey: .approximateOnly)) ?? false

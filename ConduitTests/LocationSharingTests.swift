@@ -213,6 +213,11 @@ extension NotificationE2ETests {
         XCTAssertEqual(config.places.first?.radius, LocationSavedPlace.defaultRadius)
         XCTAssertNil(config.binding)
 
+        // A binding that can't be read shows sharing off, not on and silent.
+        let unbound = try JSONDecoder().decode(LocationSharedConfig.self, from: Data(#"{"binding": {"dashboardID": 7}, "settings": {"talking": true, "background": true}}"#.utf8))
+        XCTAssertNil(unbound.binding)
+        XCTAssertFalse(unbound.settings.talking || unbound.settings.background)
+
         // A round trip keeps everything.
         var full = LocationFixtures.config()
         full.places = [LocationFixtures.home]
@@ -426,8 +431,9 @@ extension NotificationE2ETests {
         let reads = LocationRead.parse(["reads": [
             ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"],
             ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"],
+            ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"],
         ]])
-        XCTAssertEqual(Set(reads.map(\.id)).count, 2)
+        XCTAssertEqual(Set(reads.map(\.id)).count, 3)
     }
 
     func testAReadKeepsItsIDWhenANewerReadArrives() {

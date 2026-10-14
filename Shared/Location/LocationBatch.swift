@@ -152,7 +152,8 @@ enum LocationPrecisionRules {
         places.prefix(LocationSavedPlace.maxCount)
             .map { place -> String in
                 let name = place.isPrivate ? privatePlaceName : String(place.name.prefix(LocationSavedPlace.maxNameLength))
-                return [place.id, name, place.kind.rawValue, place.isPrivate ? "1" : "0"].joined(separator: "|")
+                let kind = place.isPrivate ? LocationPlaceKind.other.rawValue : place.kind.rawValue
+                return [place.id, name, kind, place.isPrivate ? "1" : "0"].joined(separator: "|")
             }
             .joined(separator: "\n")
     }
