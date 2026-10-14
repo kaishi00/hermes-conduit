@@ -46,13 +46,16 @@ enum PhoneVoiceTools {
         guard preferences.isOn, !preferences.letsVoiceUse(mode),
               preferences.calendar != .off || preferences.reminders || preferences.alarms || preferences.contacts
         else { return "" }
-        let shared = [preferences.calendar != .off ? "calendar" : nil, preferences.reminders ? "reminders" : nil,
-                      preferences.alarms ? "alarms" : nil, preferences.contacts ? "the people they picked" : nil]
+        let shared = [preferences.calendar != .off ? "their calendar" : nil, preferences.reminders ? "their reminders" : nil,
+                      preferences.alarms ? "their alarms" : nil, preferences.contacts ? "the people they picked" : nil]
             .compactMap { $0 }
-        let list = shared.count > 1 ? shared.dropLast().joined(separator: ", ") + " and " + shared[shared.count - 1] : shared[0]
-        return "\n\nThe user shares their \(list) with Hermes, but hasn't let this call use them directly. "
-            + "When they ask about those, you can still ask Hermes. The first time in this call, also tell them in "
-            + "a sentence that they can let \(mode.displayName) use these directly, which is faster, under Live "
+        guard let last = shared.last else { return "" }
+        let list = shared.count > 1 ? shared.dropLast().joined(separator: ", ") + " and " + last : last
+        // "the people they picked" alone is plural too.
+        let (them, those) = shared.count > 1 || preferences.contacts ? ("these", "those") : ("it", "that")
+        return "\n\nThe user shares \(list) with Hermes, but hasn't let this call use \(them) directly. "
+            + "When they ask about \(those), you can still ask Hermes. The first time in this call, also tell them in "
+            + "a sentence that they can let \(mode.displayName) use \(them) directly, which is faster, under Live "
             + "voice calls in Conduit's Settings, Calendar & phone."
     }
 

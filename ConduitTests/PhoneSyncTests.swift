@@ -303,13 +303,18 @@ extension HermesVoiceGatewayTimeoutTests {
         let hint = PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive)
         XCTAssertTrue(hint.contains("GPT-Live"), "Names the mode the user would allow")
         XCTAssertTrue(hint.contains("Calendar & phone"), "Names where it's turned on")
-        XCTAssertTrue(hint.contains("calendar and reminders"), "Names what's shared")
+        XCTAssertTrue(hint.contains("shares their calendar and their reminders with Hermes"), hint)
         var alarmsOnly = PhoneSyncPreferences()
         alarmsOnly.alarms = true
         alarmsOnly.destination = preferences.destination
         let alarmsHint = PhoneVoiceTools.settingHint(for: alarmsOnly, mode: .gptLive)
-        XCTAssertTrue(alarmsHint.contains("their alarms with Hermes"), alarmsHint)
-        XCTAssertFalse(alarmsHint.contains("calendar and"), "Only what's shared is named")
+        XCTAssertTrue(alarmsHint.contains("shares their alarms with Hermes, but hasn't let this call use it"), alarmsHint)
+        XCTAssertFalse(alarmsHint.contains("calendar"), "Only what's shared is named")
+        var peopleOnly = PhoneSyncPreferences()
+        peopleOnly.contacts = true
+        peopleOnly.destination = preferences.destination
+        let peopleHint = PhoneVoiceTools.settingHint(for: peopleOnly, mode: .gptLive)
+        XCTAssertTrue(peopleHint.contains("shares the people they picked with Hermes"), peopleHint)
         preferences.setVoiceUse(.gptLive, allowed: true)
         XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive), "", "An allowed mode has the tools instead")
         XCTAssertFalse(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive).isEmpty, "Each mode is its own consent")
