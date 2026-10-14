@@ -34,11 +34,88 @@ struct NotifierPluginStatus: Equatable {
         // they fall back to the phone without it, so it's no reason to nag.
     ]
 
-    var state: State = .unknown
+    /// What a plugin 0.24+ adds to its report: which version this dashboard
+    /// process is actually running, since Hermes imports the plugin's routes
+    /// once and a `hermes plugins update` only changes the files on disk.
+    struct Runtime: Equatable {
+        /// The version the dashboard process imported.
+        var loadedVersion: String?
+        /// The files on disk are another version than the running one.
+        var restartNeeded: Bool
+        /// New with every dashboard process.
+        var bootID: String?
+    }
 
+    /// The plugin version this Conduit build was made against. Below it, the
+    /// update notice shows even when no feature is missing yet.
+    static let recommendedVersion = "0.27.0"
+
+    /// Where Hermes installs it from (`hermes plugins install …`).
+    static let repository = "kaishi00/hermes-conduit-notifier"
+
+    var state: State = .unknown
+    /// Nil until a plugin 0.24+ reports it.
+    var runtime: Runtime?
+
+    /// The version installed on disk, as the plugin reports it.
     var version: String? {
         if case .reported(let version, _) = state { return version }
         return nil
+    }
+
+    /// The version the dashboard is serving. Older plugins only report the
+    /// version on disk, which is the best there is.
+    var runningVersion: String? {
+        runtime?.loadedVersion ?? (restartPending ? nil : version)
+    }
+
+    /// The plugin was updated on disk but the dashboard still runs the old
+    /// one. A plugin that reports 0.24+ on disk without the running version
+    /// is old code serving new files: every 0.24+ reports it.
+    var restartPending: Bool {
+        if let runtime { return runtime.restartNeeded }
+        guard case .reported(let version, _) = state else { return false }
+        return version != nil && !Self.isOlder(version, than: Self.runtimeReportingVersion)
+    }
+
+    /// The first plugin version that reports `loaded_version`.
+    static let runtimeReportingVersion = "0.24.0"
+
+    /// Worth offering an update: something Conduit uses is missing, or the
+    /// plugin is older than this build's recommended version. A plugin that
+    /// is already new enough on disk only needs its restart.
+    var updateAvailable: Bool {
+        switch state {
+        case .unknown:
+            return false
+        case .predatesCapabilities:
+            return true
+        case .reported(let version, _):
+            let older = Self.isOlder(version, than: Self.recommendedVersion)
+            return restartPending ? older : (needsUpdate || older)
+        }
+    }
+
+    /// The version an update brings, for the notice.
+    var offeredVersion: String { Self.recommendedVersion }
+
+    /// Dotted numeric versions compared part by part ("0.9.1" < "0.10.0").
+    /// An unreadable or missing version counts as older.
+    static func isOlder(_ version: String?, than other: String) -> Bool {
+        guard let version, let lhs = numericParts(version), let rhs = numericParts(other) else { return true }
+        for index in 0..<max(lhs.count, rhs.count) {
+            let left = index < lhs.count ? lhs[index] : 0
+            let right = index < rhs.count ? rhs[index] : 0
+            if left != right { return left < right }
+        }
+        return false
+    }
+
+    private static func numericParts(_ version: String) -> [Int]? {
+        let core = version.split(separator: "-", maxSplits: 1).first.map(String.init) ?? version
+        let parts = core.split(separator: ".").map { Int($0) }
+        guard !parts.isEmpty, !parts.contains(nil) else { return nil }
+        return parts.compactMap { $0 }
     }
 
     /// Whether the plugin should be updated: it predates capability
@@ -70,6 +147,15 @@ struct NotifierPluginStatus: Equatable {
             return .unknown
         }
         return .reported(version: response["version"] as? String, capabilities: Set(capabilities))
+    }
+
+    static func runtime(from response: [String: Any]) -> Runtime? {
+        guard response["ok"] as? Bool == true, response.keys.contains("loaded_version") else { return nil }
+        return Runtime(
+            loadedVersion: response["loaded_version"] as? String,
+            restartNeeded: response["restart_needed"] as? Bool ?? false,
+            bootID: response["boot_id"] as? String
+        )
     }
 
     static func state(from error: Error) -> State {

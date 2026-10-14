@@ -435,12 +435,13 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, health, phone, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
         case .calls: self = .hermesCalls
         case .voice: self = .voice
+        case .plugin: self = .conduitPlugin
         case .health: self = .health
         case .phone: self = .phone
         }
@@ -749,6 +750,8 @@ struct SettingsView: View {
             CapabilitiesView()
         case .gateway:
             GatewaySettingsDetail(snapshot: snapshot, reconnect: reconnect, disconnect: disconnect, close: { dismiss() }, saveCloudflareAccess: appState.saveCloudflareAccess, removeCloudflareAccess: appState.removeCloudflareAccess, customHeaders: appState.customHeaders(), saveCustomHeaders: appState.saveCustomHeaders)
+        case .conduitPlugin:
+            ConduitPluginSettingsDetail()
         case .savedDashboards:
             SavedDashboardsSettingsDetail(close: { dismiss() })
         case .appearance:
@@ -848,8 +851,11 @@ private struct SettingsHome: View {
             ConduitBackdrop()
             ScrollView {
                 VStack(spacing: 14) {
-                    if appState.notifierPlugin.needsUpdate {
-                        NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel)
+                    if appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending {
+                        NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
+                            Haptics.selection()
+                            path.append(.conduitPlugin)
+                        }
                     }
                     homeSection(AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent) {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
@@ -868,6 +874,7 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
+                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
                         settingsActionRow(
                             icon: "checkmark.circle",
                             title: AppLocalization.string("Connection Setup"),
@@ -1276,40 +1283,46 @@ private struct ChatTakeoverSettings: View {
     }
 }
 
-/// Shown at the top of Settings when the host's notifier plugin is older
-/// than the features Conduit uses (chat takeover, live voice, call
-/// transcripts), with the commands that update it.
+/// Shown at the top of Settings when the host's Conduit plugin is older
+/// than this build wants, or needs a restart to finish updating. Opens
+/// Settings > Conduit plugin, where the update runs.
 private struct NotifierPluginUpdateNotice: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let status: NotifierPluginStatus
     /// Names the dashboard when several are saved: each has its own host.
     let dashboardLabel: String?
+    let open: () -> Void
 
     var body: some View {
         ConduitSettingsSection(
-            title: AppLocalization.string("Update the Conduit notifier"),
+            title: AppLocalization.string("Update the Conduit plugin"),
             symbol: "arrow.down.circle",
             tint: .orange
         ) {
             Text(detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
-            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+            Button(action: open) {
+                Label(AppLocalization.string("Open Conduit plugin"), systemImage: "puzzlepiece.extension")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 44)
+            }
+            .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.14))
         }
         .accessibilityIdentifier("settings.notifier-update")
     }
 
     private var detail: String {
-        switch (dashboardLabel, status.version) {
-        case (let label?, let version?):
-            return AppLocalization.string("The notifier plugin on \(label) (version \(version)) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on that dashboard's host.")
-        case (let label?, .none):
-            return AppLocalization.string("The notifier plugin on \(label) is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on that dashboard's host.")
-        case (.none, let version?):
-            return AppLocalization.string("The notifier plugin on your Hermes host (version \(version)) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on the host.")
-        case (.none, .none):
-            return AppLocalization.string("The notifier plugin on your Hermes host is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on the host.")
+        switch (dashboardLabel, status.restartPending && !status.updateAvailable) {
+        case (let label?, true):
+            return AppLocalization.string("The Conduit plugin on \(label) was updated, and Hermes needs a restart to use it.")
+        case (.none, true):
+            return AppLocalization.string("The Conduit plugin on your Hermes host was updated, and Hermes needs a restart to use it.")
+        case (let label?, false):
+            return AppLocalization.string("A newer Conduit plugin is available for \(label). Conduit can update it for you.")
+        case (.none, false):
+            return AppLocalization.string("A newer Conduit plugin is available for your Hermes host. Conduit can update it for you.")
         }
     }
 }
@@ -2114,9 +2127,8 @@ private struct NotificationsSettingsDetail: View {
     // unsaved edit (and flash Save or the re-pair warning).
     @State private var relayDraft = UserDefaults.standard.string(forKey: PushNotificationService.relayURLDefaultsKey) ?? ""
     @State private var relayDraftInvalid = false
-    /// Starts true so the first render, before the check's task runs,
-    /// reads as checking rather than as a failure.
-    @State private var checkingNotifierPlugin = true
+    @State private var pairing = false
+    @State private var pairingError: String?
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2166,6 +2178,9 @@ private struct NotificationsSettingsDetail: View {
                         }
                         if notifications.lastError == nil && notifications.isEnabled != wasEnabled {
                             Haptics.success()
+                            // Just turned on: pair this dashboard's profile
+                            // now rather than on the next connect.
+                            if notifications.isEnabled { await appState.refreshNotifierPluginStatus() }
                         } else {
                             Haptics.error()
                         }
@@ -2179,7 +2194,7 @@ private struct NotificationsSettingsDetail: View {
                     .padding(.vertical, 6).frame(minHeight: 48)
                     .foregroundStyle(notifications.isEnabled ? Color.primary : Color.white)
                 }
-                .disabled(notifications.isWorking)
+                .disabled(notifications.isWorking || notifications.isPairing)
                 .conduitGlassControl(
                     cornerRadius: 17,
                     tint: notifications.isEnabled ? .red.opacity(0.18) : .conduitAccent,
@@ -2220,10 +2235,10 @@ private struct NotificationsSettingsDetail: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    notifierPluginRow
-                    if appState.notifierPlugin.needsUpdate {
-                        NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
-                        NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+                    // The plugin itself has its own page; here only a way there
+                    // when it needs attention.
+                    if appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending {
+                        pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                     }
                     if notifications.isFetchingMeta {
                         Text("Checking compatibility…")
@@ -2251,7 +2266,9 @@ private struct NotificationsSettingsDetail: View {
                                 title: AppLocalization.string("Not paired"),
                                 version: nil,
                                 mark: .actionNeeded,
-                                detail: AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below.")
+                                detail: appState.notifierPlugin.reports("pairing")
+                                    ? AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Pair it below.")
+                                    : AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below.")
                             )
                         }
                         ForEach(pairings.thisDashboard) { gateway in
@@ -2261,10 +2278,9 @@ private struct NotificationsSettingsDetail: View {
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
                         // behind.
-                        if !appState.notifierPlugin.needsUpdate,
+                        if !(appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending),
                            pairings.thisDashboard.contains(where: Self.isOutdated) {
-                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
-                            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+                            pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
                         ForEach(pairings.unscoped) { gateway in
                             compatibilityRow(
@@ -2299,50 +2315,49 @@ private struct NotificationsSettingsDetail: View {
                 // connect-time check can miss (bridge still loading), and
                 // the plugin may have been updated since.
                 .task(id: appState.activeDashboardID) {
-                    checkingNotifierPlugin = true
                     await appState.refreshNotifierPluginStatus()
-                    // A switch mid-check cancels this one; the new check
-                    // owns the flag.
-                    if !Task.isCancelled { checkingNotifierPlugin = false }
                 }
 
                 ConduitSettingsSection(title: AppLocalization.string("Connect a Hermes profile"), symbol: "link.badge.plus", tint: .conduitAura) {
-                    Text("Install the notifier once on each gateway, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install kaishi00/hermes-conduit-notifier --enable")
-                    NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
-                    Button {
-                        Task {
-                            // Pairings are bound to the active dashboard
-                            // (#148): pushes from the claimed gateway are
-                            // stamped with its identity, so server A can
-                            // never act against server B. The action is
-                            // disabled without an active dashboard — Conduit
-                            // never creates a new unscoped pairing.
-                            guard let dashboardID = appState.activeDashboardID else { return }
-                            await notifications.createPairingCode(dashboardID: dashboardID)
-                            notifications.pairingCode == nil ? Haptics.error() : Haptics.success()
-                        }
-                    } label: {
-                        Label(notifications.isWorking ? AppLocalization.string("Creating code…") : AppLocalization.string("Create pairing code"), systemImage: "number")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6).frame(minHeight: 46)
-                    }
-                    .disabled(notifications.isWorking || appState.activeDashboardID == nil)
-                    .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
-                    if appState.activeDashboardID == nil {
-                        Text("Connect to a dashboard before creating a pairing code.")
+                    if appState.notifierPlugin.reports("pairing") {
+                        oneTapPairing
+                    } else {
+                        Text("Install the Conduit plugin on each dashboard's host, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                    }
-
-                    if let code = notifications.pairingCode {
-                        NotificationSetupCommand(step: 3, title: AppLocalization.string("Pair the active dashboard"), command: "hermes conduit-push pair \(code)")
-                        if let expiry = notifications.pairingExpiry {
-                            Text("This code expires \(expiry).")
-                                .font(.caption)
+                        pluginPageLink(AppLocalization.string("Install or update the Conduit plugin"))
+                        Button {
+                            Task {
+                                // Pairings are bound to the active dashboard
+                                // (#148): pushes from the claimed gateway are
+                                // stamped with its identity, so server A can
+                                // never act against server B. The action is
+                                // disabled without an active dashboard — Conduit
+                                // never creates a new unscoped pairing.
+                                guard let dashboardID = appState.activeDashboardID else { return }
+                                await notifications.createPairingCode(dashboardID: dashboardID)
+                                notifications.pairingCode == nil ? Haptics.error() : Haptics.success()
+                            }
+                        } label: {
+                            Label(notifications.isWorking ? AppLocalization.string("Creating code…") : AppLocalization.string("Create pairing code"), systemImage: "number")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6).frame(minHeight: 46)
+                        }
+                        .disabled(notifications.isWorking || notifications.isPairing || appState.activeDashboardID == nil)
+                        .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+                        if appState.activeDashboardID == nil {
+                            Text("Connect to a dashboard before creating a pairing code.")
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
+                        }
+
+                        if let code = notifications.pairingCode {
+                            NotificationSetupCommand(step: 3, title: AppLocalization.string("Pair the active dashboard"), command: "hermes conduit-push pair \(code)")
+                            if let expiry = notifications.pairingExpiry {
+                                Text("This code expires \(expiry).")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -2434,41 +2449,70 @@ private struct NotificationsSettingsDetail: View {
         }
     }
 
-    /// The active dashboard's own notifier, asked through its host's
-    /// capabilities route. Unlike the relay's gateway rows (the version the
-    /// last push carried), this covers every feature Conduit uses.
+    /// A row that opens Settings > Conduit plugin.
+    private func pluginPageLink(_ title: String) -> some View {
+        NavigationLink(value: SettingsDestination.conduitPlugin) {
+            HStack(spacing: 10) {
+                Image(systemName: "puzzlepiece.extension")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(verbatim: title)
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("notifications.plugin-link")
+    }
+
+    /// Plugin 0.24+: this profile pairs with one tap, no code to type.
+    /// Conduit also does it by itself on connect when nothing receives this
+    /// profile's notifications yet.
     @ViewBuilder
-    private var notifierPluginRow: some View {
-        let status = appState.notifierPlugin
-        let title = AppLocalization.string("Notifier plugin")
-        switch status.state {
-        case .unknown:
-            compatibilityRow(
-                title: title,
-                version: nil,
-                mark: .unknown,
-                detail: checkingNotifierPlugin
-                    ? AppLocalization.string("Checking this dashboard's notifier…")
-                    : appState.isConnected
-                        ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
-                        : AppLocalization.string("Connect to this dashboard to check its notifier.")
+    private var oneTapPairing: some View {
+        let profile = appState.activeProfile
+        Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        Button {
+            Task {
+                pairing = true
+                pairingError = nil
+                do {
+                    try await appState.pairProfileWithThisDevice(profile)
+                    Haptics.success()
+                } catch {
+                    pairingError = UserFacingError.message(for: error)
+                    Haptics.error()
+                }
+                pairing = false
+            }
+        } label: {
+            Label(
+                pairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
+                systemImage: "link"
             )
-        case .predatesCapabilities:
-            compatibilityRow(
-                title: title,
-                version: nil,
-                mark: .updateNeeded,
-                detail: AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
-            )
-        case .reported:
-            compatibilityRow(
-                title: title,
-                version: status.version,
-                mark: status.needsUpdate ? .updateNeeded : .supported,
-                detail: status.needsUpdate
-                    ? AppLocalization.string("Update available. This dashboard's notifier is missing features Conduit uses.")
-                    : AppLocalization.string("Up to date on this dashboard's host")
-            )
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6).frame(minHeight: 46)
+        }
+        .disabled(pairing || notifications.isPairing || notifications.isWorking || appState.activeDashboardID == nil
+                  || !notifications.isEnabled)
+        .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
+        .accessibilityIdentifier("notifications.pair")
+        if !notifications.isEnabled {
+            Text("Turn on notifications above to pair this profile.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        if let pairingError {
+            Label(pairingError, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
         }
     }
 
