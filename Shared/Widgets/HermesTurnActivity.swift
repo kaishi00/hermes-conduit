@@ -138,13 +138,17 @@ enum HermesTurnCopy {
         }
     }
 
+    /// Interpolated like AppLocalization, so the catalog's plural
+    /// variants ("1 tool", Russian one/few/many) are picked.
     static func tools(_ count: Int, language: String) -> String {
-        String(format: WidgetLocalization.string("%lld tools", language: language), locale: locale(language), Int64(count))
+        String(localized: "\(count) tools", bundle: WidgetLocalization.bundle(language: language), locale: locale(language))
     }
 
     static func context(_ percent: Int, language: String) -> String {
-        let value = (Double(percent) / 100).formatted(.percent.precision(.fractionLength(0)).locale(locale(language)))
-        return String(format: WidgetLocalization.string("Context %@", language: language), locale: locale(language), value)
+        // Pushed states skip the app's own clamp.
+        let clamped = max(0, min(100, percent))
+        let value = (Double(clamped) / 100).formatted(.percent.precision(.fractionLength(0)).locale(locale(language)))
+        return String(localized: "Context \(value)", bundle: WidgetLocalization.bundle(language: language), locale: locale(language))
     }
 
     static func locale(_ language: String) -> Locale {
