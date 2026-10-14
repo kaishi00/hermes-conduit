@@ -440,10 +440,18 @@ struct LocationSettingsPage: View {
                 Text(AppLocalization.string("Reads in the last 24 hours: \(String(hostStatus.readsToday))"))
                     .font(.subheadline)
             }
-            if reads.isEmpty {
-                Text(hostUnreachable ? AppLocalization.string("Couldn't reach the host.") : AppLocalization.string("Hermes hasn't read your location yet."))
+            if hostUnreachable {
+                // Shown over older rows too, so they don't pass as current.
+                Text(AppLocalization.string("Couldn't reach the host."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if reads.isEmpty {
+                if !hostUnreachable {
+                    Text("Hermes hasn't read your location yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 ForEach(reads.prefix(50)) { read in
                     VStack(alignment: .leading, spacing: 2) {

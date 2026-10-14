@@ -99,7 +99,12 @@ enum LocationSharedStore {
                 .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
             ])
             // NSURL's setter doesn't need a mutable URL.
-            try? (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
+            do {
+                try (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
+            } catch {
+                // The write still goes: losing the data would be worse.
+                log.error("Location folder backup exclusion failed: \(error.localizedDescription, privacy: .public)")
+            }
             try JSONEncoder().encode(value).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
         } catch {

@@ -422,6 +422,8 @@ final class E2ESeenStore {
     /// Claims `key` for work that may not finish (an extension iOS can kill
     /// outright). False while it's answered, or claimed less than `ttl` ago;
     /// a claim nobody marked answered ages out, so a redelivery can try.
+    /// Like `insert`, it goes ahead when the file lock can't be had: at
+    /// worst two deliveries both answer, which the host takes as two fixes.
     func claim(_ key: String, namespace: String, ttl: TimeInterval, now: Date = Date()) -> Bool {
         withFileLock {
             var entries = load()

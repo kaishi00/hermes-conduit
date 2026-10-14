@@ -329,6 +329,15 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
         guard settings.shares(source, at: now()) else { return false }
+        // A background relaunch gets a few seconds: the fix, place name and
+        // send run inside an assertion, and an arrive/leave is kept before
+        // the fix so a suspension can't lose it.
+        let background = beginBackgroundWork(for: source)
+        defer { endBackgroundWork(background) }
+        if !events.isEmpty {
+            unsent.keep(fix: nil, events: events)
+            saveUnsent()
+        }
         let precision = settings.precision(for: source)
         let location = await fixes.currentFix(
             accuracy: LocationFixProvider.desiredAccuracy(for: precision),
@@ -341,6 +350,8 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func share(_ location: CLLocation?, source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
         guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
+        let background = beginBackgroundWork(for: source)
+        defer { endBackgroundWork(background) }
         var record: LocationFixRecord?
         if let location {
             let precision = settings.precision(for: source)
@@ -351,6 +362,14 @@ final class LocationSharingController: ObservableObject {
         unsent.keep(fix: record, events: events)
         saveUnsent()
         return await flush()
+    }
+
+    private func beginBackgroundWork(for source: LocationFixSource) -> UIBackgroundTaskIdentifier {
+        source.isTalking ? .invalid : UIApplication.shared.beginBackgroundTask(withName: "conduit.location.fix")
+    }
+
+    private func endBackgroundWork(_ identifier: UIBackgroundTaskIdentifier) {
+        if identifier != .invalid { UIApplication.shared.endBackgroundTask(identifier) }
     }
 
     /// Sends the unsent fix and events (or just the sharing choices and
