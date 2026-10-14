@@ -120,7 +120,8 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
     func requestWhenInUse() async -> CLAuthorizationStatus {
         guard manager.authorizationStatus == .notDetermined else { return manager.authorizationStatus }
         manager.requestWhenInUseAuthorization()
-        return await waitForAnswer(from: .notDetermined)
+        // Not asked yet, so iOS shows its prompt: wait for the answer.
+        return await waitForAnswer(from: .notDetermined, promptCertain: true)
     }
 
     /// Asks for Always (after When In Use). iOS shows its prompt only once;
@@ -132,14 +133,15 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
         return await waitForAnswer(from: .authorizedWhenInUse)
     }
 
-    /// Waits for the user's answer. If no prompt shows (iOS asked before),
-    /// Conduit stays active and the status doesn't change: give up soon.
-    private func waitForAnswer(from initial: CLAuthorizationStatus) async -> CLAuthorizationStatus {
+    /// Waits for the user's answer. If no prompt shows (iOS asked for
+    /// Always before), Conduit stays active and the status doesn't change:
+    /// give up soon, unless a prompt is certain.
+    private func waitForAnswer(from initial: CLAuthorizationStatus, promptCertain: Bool = false) async -> CLAuthorizationStatus {
         let started = Date()
         while Date().timeIntervalSince(started) < 120 {
             try? await Task.sleep(for: .milliseconds(250))
             if manager.authorizationStatus != initial { return manager.authorizationStatus }
-            if Date().timeIntervalSince(started) > 1.5, UIApplication.shared.applicationState == .active {
+            if !promptCertain, Date().timeIntervalSince(started) > 1.5, UIApplication.shared.applicationState == .active {
                 return manager.authorizationStatus
             }
         }

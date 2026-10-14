@@ -130,7 +130,8 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             lock.withLock { pendingReplayKey = nil }
             E2ESeenStore.shared.markAnswered(request.replayKey, namespace: "locate")
         } catch {
-            // Nothing else to do from here: the app sends when it next runs.
+            // The claim is released (finish), so a redelivery can answer;
+            // this fix isn't kept, and the app shares its own next time.
         }
     }
 

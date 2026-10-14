@@ -182,6 +182,12 @@ extension NotificationE2ETests {
         XCTAssertEqual(json["precision"] as? String, "area")
         XCTAssertNil(json["place_id"])
         XCTAssertEqual(json["lat"] as? Double, 51.53)
+
+        // Places only stays places only: no position or distances.
+        let places = LocationFixtures.json(LocationFixtures.fix(latitude: 51.5322, longitude: -0.0754), .places,
+                                           places: [LocationFixtures.work], approximate: true)
+        XCTAssertEqual(places["precision"] as? String, "places")
+        XCTAssertEqual(Set(places.keys), ["id", "at", "source", "precision"])
     }
 
     func testAPrivatePlaceIsHiddenEvenInARoughFix() {
