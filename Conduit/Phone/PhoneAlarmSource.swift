@@ -204,7 +204,7 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
                 guard at > now else { throw PhoneAlarmError.past }
                 return try await schedule(.fixed(at), label: label, record: PhoneAlarmRecord(kind: "alarm", label: fields.label))
             }
-            guard let time = fields.time else { throw PhoneAlarmError.past }
+            guard let time = fields.time else { throw PhoneAlarmError.notFound }
             let days = fields.repeats ?? []
             let repeats: Alarm.Schedule.Relative.Recurrence = days.isEmpty ? .never : .weekly(days.compactMap(Self.weekday))
             let relative = Alarm.Schedule.Relative(time: .init(hour: time.hour, minute: time.minute), repeats: repeats)
@@ -232,7 +232,9 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
 
     func cancel(id: String) throws {
         guard let uuid = UUID(uuidString: id) else { throw PhoneAlarmError.notFound }
-        guard ((try? manager.alarms) ?? []).contains(where: { $0.id == uuid }) else { throw PhoneAlarmError.notFound }
+        // A failed read isn't "gone": the alarm may still ring.
+        guard let scheduled = try? manager.alarms else { throw PhoneAlarmError.unsupported }
+        guard scheduled.contains(where: { $0.id == uuid }) else { throw PhoneAlarmError.notFound }
         try manager.cancel(id: uuid)
         var records = PhoneAlarmRecord.load(from: defaults)
         records[id.lowercased()] = nil

@@ -251,7 +251,11 @@ enum PhoneVoiceTools {
             if let date = arguments["date"] as? String, !date.trimmingCharacters(in: .whitespaces).isEmpty, !days.isEmpty {
                 return ["error": "An alarm takes a date (once) or days (repeating), not both. Ask which the user means."]
             }
-            if let date = (arguments["date"] as? String).flatMap(localTime), date.isDate, days.isEmpty {
+            let dateText = (arguments["date"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !dateText.isEmpty, localTime(dateText)?.isDate != true {
+                return ["error": "date is a day, like 2026-10-16; the time goes in time."]
+            }
+            if let date = localTime(dateText), date.isDate, days.isEmpty {
                 guard let at = localTime(date.text + "T" + time.text).flatMap({ PhoneDates.parse($0.text) }) else {
                     return ["error": "That date and time couldn't be read."]
                 }

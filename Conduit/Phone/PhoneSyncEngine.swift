@@ -687,7 +687,7 @@ final class PhoneSyncEngine: ObservableObject {
 
     private func alarmTitle(for change: PhoneChange) -> String? {
         guard change.kind == .cancelAlarm,
-              let alarm = alarmSource.alarms(now: now(), calendar: calendar)?.first(where: { $0["id"] as? String == change.alarmID })
+              let alarm = alarmSource.alarms(now: now(), calendar: calendar)?.first(where: { ($0["id"] as? String)?.lowercased() == change.alarmID?.lowercased() })
         else { return nil }
         let ring = (alarm["fires_at"] as? String).flatMap(PhoneDates.parse)?.formatted(date: .abbreviated, time: .shortened)
         let parts = [alarm["label"] as? String, ring].compactMap { $0 }
