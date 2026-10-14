@@ -940,14 +940,17 @@ final class PushNotificationService: ObservableObject {
 
     /// A relay that answered 404 has no Live Activity route: it isn't asked
     /// again until Conduit restarts.
-    private var liveActivitiesUnsupported = false
+    /// The installation whose relay answered 404 for the Live Activity
+    /// route; pairing with another relay tries again.
+    private var liveActivitiesUnsupportedInstallation: String?
 
     /// Registers the push token of the Live Activity Conduit started for a
     /// chat, under every id the chat is known by, so the host's progress
     /// reports reach it. Best effort: without notifications, or on a relay
     /// without the route, the activity is only updated while Conduit runs.
     func registerLiveActivity(token: String, sessionIDs: [String]) async {
-        guard !liveActivitiesUnsupported, let registration, !sessionIDs.isEmpty else { return }
+        guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
+              !sessionIDs.isEmpty else { return }
         await sendLiveActivity(
             LiveActivityRegistration(pushToken: token, sessionIDs: Array(sessionIDs.prefix(6))),
             method: "PUT",
@@ -957,7 +960,7 @@ final class PushNotificationService: ObservableObject {
 
     /// The activity ended on the phone: the relay forgets its token.
     func unregisterLiveActivity(token: String) async {
-        guard !liveActivitiesUnsupported, let registration else { return }
+        guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID else { return }
         await sendLiveActivity(LiveActivityRemoval(pushToken: token), method: "DELETE", registration: registration)
     }
 
@@ -971,7 +974,9 @@ final class PushNotificationService: ObservableObject {
             )
             let (_, response) = try await URLSession.shared.data(for: request)
             // Only a registration's 404 means the relay has no route.
-            if method == "PUT", (response as? HTTPURLResponse)?.statusCode == 404 { liveActivitiesUnsupported = true }
+            if method == "PUT", (response as? HTTPURLResponse)?.statusCode == 404 {
+                liveActivitiesUnsupportedInstallation = registration.installationID
+            }
         } catch {
             // The activity still updates while Conduit runs.
         }

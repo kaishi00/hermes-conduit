@@ -112,15 +112,33 @@ final class LiveTurnActivities {
 
     private var running: [String: Running] = [:]
     private var adopted = false
+    /// Stream events of chats whose prompt is still being submitted: the
+    /// gateway can stream before prompt.submit answers, and those events
+    /// belong to the activity that starts once it does.
+    private var early: (sessionIDs: Set<String>, since: Date, events: [StreamEvent])?
+    private static let earlyLimit = 64
+    private static let earlyMaxAge: TimeInterval = 60
 
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
+    }
+
+    /// A prompt is about to be submitted: its chat's events are held until
+    /// `turnStarted` (or dropped by the next submission).
+    func turnSubmitting(sessionIDs: Set<String>) {
+        early = Self.isEnabled && !sessionIDs.isEmpty ? (sessionIDs, Date(), []) : nil
     }
 
     /// A prompt Conduit sent was accepted: the turn gets an activity, and an
     /// older one for the same chat ends.
     func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?) {
         adoptExisting()
+        let held = early.flatMap { pending -> [StreamEvent]? in
+            guard !pending.sessionIDs.isDisjoint(with: sessionIDs),
+                  Date().timeIntervalSince(pending.since) < Self.earlyMaxAge else { return nil }
+            return pending.events
+        } ?? []
+        early = nil
         guard Self.isEnabled, !sessionIDs.isEmpty, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         for id in matching(sessionIDs) {
             finish(id, phase: .stopped, dismissal: .immediate)
@@ -140,6 +158,11 @@ final class LiveTurnActivities {
                 pushType: .token
             )
             track(activity, state: state)
+            // What streamed while the prompt was being submitted.
+            let primary = sessionIDs.contains(primaryID) ? primaryID : sessionIDs.sorted()[0]
+            for event in held {
+                observe(event, sessionID: primary)
+            }
         } catch {
             liveActivityLog.notice("Live Activity not started: \(error.localizedDescription, privacy: .public)")
         }
@@ -147,7 +170,11 @@ final class LiveTurnActivities {
 
     /// A stream event of the active chat.
     func observe(_ event: StreamEvent, sessionID: String) {
-        guard !running.isEmpty, !sessionID.isEmpty else { return }
+        guard !sessionID.isEmpty else { return }
+        if early?.sessionIDs.contains(sessionID) == true, (early?.events.count ?? 0) < Self.earlyLimit {
+            early?.events.append(event)
+        }
+        guard !running.isEmpty else { return }
         for id in matching([sessionID]) {
             guard let entry = running[id] else { continue }
             // An idle snapshot read just as the prompt went out can predate
@@ -166,6 +193,7 @@ final class LiveTurnActivities {
                 let previous = entry.updateTask
                 running[id]?.updateTask = Task {
                     await previous?.value
+                    guard !Task.isCancelled else { return }
                     await entry.activity.update(content)
                 }
             }
@@ -195,6 +223,12 @@ final class LiveTurnActivities {
             // turned off: it goes instead of being kept up to date.
             guard Self.isEnabled else {
                 Task { await activity.end(nil, dismissalPolicy: .immediate) }
+                continue
+            }
+            // Finished, but Conduit stopped before ending it.
+            if activity.content.state.turnPhase.isFinished {
+                let content = ActivityContent(state: activity.content.state, staleDate: nil)
+                Task { await activity.end(content, dismissalPolicy: .default) }
                 continue
             }
             track(activity, state: activity.content.state)
@@ -241,6 +275,7 @@ final class LiveTurnActivities {
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()
+        entry.updateTask?.cancel()
         if let token = entry.pushToken {
             await PushNotificationService.shared.unregisterLiveActivity(token: token)
         }

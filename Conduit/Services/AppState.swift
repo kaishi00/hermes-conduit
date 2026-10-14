@@ -18598,6 +18598,9 @@ final class AppState: ObservableObject {
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
         await locationShare?.value
+        // Events that arrive while prompt.submit is in flight are held for
+        // the turn's Live Activity (#605), which starts once it's accepted.
+        LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
