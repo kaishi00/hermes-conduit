@@ -17,6 +17,9 @@ import Foundation
 enum VoiceReadSeal {
     enum Failure: Error, Equatable {
         case malformedAnswer
+        /// The tool name isn't a plain identifier, so it can't go into the
+        /// associated data.
+        case badToolName
     }
 
     /// `direction` is "request" or "answer".
@@ -42,6 +45,7 @@ enum VoiceReadSeal {
         callID: String,
         nonce: ChaChaPoly.Nonce = ChaChaPoly.Nonce()
     ) throws -> [String: Any] {
+        guard VoiceHostTool.isToolName(tool) else { throw Failure.badToolName }
         let box = try ChaChaPoly.seal(
             plaintext,
             using: SymmetricKey(data: requestKey),

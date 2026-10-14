@@ -238099,6 +238099,88 @@
           }
         }
       }
+    },
+    "Nothing reads your location by voice while sharing is paused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solange die Freigabe pausiert ist, liest kein Sprachanruf deinen Standort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mientras compartir está en pausa, ninguna llamada de voz lee tu ubicación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tant que le partage est en pause, aucun appel vocal ne lit ta position."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selama berbagi dijeda, tidak ada panggilan suara yang membaca lokasimu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentre la condivisione è in pausa, nessuna chiamata vocale legge la tua posizione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有を一時停止している間は、音声通話が位置情報を読み取ることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유가 일시 정지된 동안에는 음성 통화가 위치를 읽지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy udostępnianie jest wstrzymane, żadna rozmowa głosowa nie odczytuje Twojej lokalizacji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enquanto o compartilhamento estiver pausado, nenhuma chamada de voz lê sua localização."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока обмен приостановлен, голосовые звонки не читают ваше местоположение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paylaşım duraklatıldığında hiçbir sesli arama konumunu okumaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享暂停期间，语音通话不会读取你的位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享暫停期間，語音通話不會讀取你的位置。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
