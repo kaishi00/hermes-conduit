@@ -285,15 +285,18 @@ final class PhoneSyncEngine: ObservableObject {
         defer { store.save(state) }
         do {
             let key = try await ensureKey(request: request)
-            try Task.checkCancellation()
+            try checkTime(deadline)
             let pending = try await upload(preferences: preferences, key: key, request: request)
-            try Task.checkCancellation()
+            try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
             }
             state.lastSync = now()
             return .synced
         } catch is CancellationError {
+            return .unfinished
+        } catch is DeadlineReached {
+            // Out of the time iOS gave: the next pass carries on.
             return .unfinished
         } catch let error as DashboardTicketBridgeError {
             switch error {
@@ -320,6 +323,11 @@ final class PhoneSyncEngine: ObservableObject {
             lastError = Self.describe(error)
             return .failed(Self.describe(error))
         }
+    }
+
+    private func checkTime(_ deadline: Date) throws {
+        try Task.checkCancellation()
+        if now() >= deadline { throw DeadlineReached() }
     }
 
     private func ensureKey(request: Request) async throws -> PhoneSyncCrypto.SessionKey {
@@ -390,10 +398,12 @@ final class PhoneSyncEngine: ObservableObject {
         }
 
         if readsEvents {
-            let events = calendarSource.events(from: window.from, to: window.to, hidden: preferences.hiddenCalendars,
-                                               details: preferences.details, emails: preferences.details && preferences.attendeeEmails,
-                                               limit: PhoneSyncLimits.maxEvents)
-            let section = Self.diff(events, against: state.eventHashes, full: full)
+            let events = await calendarSource.events(from: window.from, to: window.to, hidden: preferences.hiddenCalendars,
+                                                     details: preferences.details,
+                                                     emails: preferences.details && preferences.attendeeEmails,
+                                                     limit: PhoneSyncLimits.maxEvents)
+            let section = await Self.diffInBackground(events, against: state.eventHashes, full: full,
+                                                      truncated: events.count >= PhoneSyncLimits.maxEvents)
             if full || !section.upsert.isEmpty || !section.delete.isEmpty {
                 let events: [String: Any] = [
                     "full": full, "from": PhoneDates.format(window.from), "to": PhoneDates.format(window.to),
@@ -410,7 +420,8 @@ final class PhoneSyncEngine: ObservableObject {
             let since = calendar.date(byAdding: .day, value: -PhoneSyncLimits.completedReminderDays, to: currentNow) ?? currentNow
             let reminders = await calendarSource.reminders(hidden: preferences.hiddenCalendars, details: preferences.details,
                                                            completedSince: since, limit: PhoneSyncLimits.maxReminders)
-            let section = Self.diff(reminders, against: state.reminderHashes, full: full)
+            let section = await Self.diffInBackground(reminders, against: state.reminderHashes, full: full,
+                                                      truncated: reminders.count >= PhoneSyncLimits.maxReminders)
             if full || !section.upsert.isEmpty || !section.delete.isEmpty {
                 let reminders: [String: Any] = ["full": full, "upsert": section.upsert, "delete": section.delete]
                 batch["reminders"] = reminders
@@ -466,7 +477,10 @@ final class PhoneSyncEngine: ObservableObject {
 
     /// What to send of `items` given the hashes last sent: everything when
     /// `full`, otherwise new and changed items and the ids that went away.
-    static func diff(_ items: [[String: Any]], against sent: [String: String], full: Bool) -> Section {
+    /// When the list was cut at its limit, an item missing from it may only
+    /// have fallen past the cut, so nothing is reported deleted.
+    nonisolated static func diff(_ items: [[String: Any]], against sent: [String: String], full: Bool,
+                                 truncated: Bool = false) -> Section {
         var hashes: [String: String] = [:]
         var upsert: [[String: Any]] = []
         for item in items {
@@ -475,11 +489,18 @@ final class PhoneSyncEngine: ObservableObject {
             hashes[id] = hash
             if full || sent[id] != hash { upsert.append(item) }
         }
-        let delete = full ? [] : sent.keys.filter { hashes[$0] == nil }.sorted()
+        guard !full, !truncated else { return Section(upsert: upsert, delete: [], hashes: hashes) }
+        let delete = sent.keys.filter { hashes[$0] == nil }.sorted()
         return Section(upsert: upsert, delete: delete, hashes: hashes)
     }
 
-    static func hash(_ value: Any) -> String {
+    /// Hashing thousands of items is kept off the main thread.
+    nonisolated private static func diffInBackground(_ items: [[String: Any]], against sent: [String: String],
+                                                     full: Bool, truncated: Bool) async -> Section {
+        diff(items, against: sent, full: full, truncated: truncated)
+    }
+
+    nonisolated static func hash(_ value: Any) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])) ?? Data()
         return SHA256.hash(data: data).prefix(12).map { String(format: "%02x", $0) }.joined()
     }

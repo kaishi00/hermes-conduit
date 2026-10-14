@@ -156,6 +156,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let whole = PhoneSyncEngine.diff([["id": "a", "title": "A"]], against: sent, full: true)
         XCTAssertEqual(whole.upsert.count, 1)
         XCTAssertTrue(whole.delete.isEmpty, "A full upload replaces; nothing to delete by id")
+        let cut = PhoneSyncEngine.diff([["id": "a", "title": "A"]], against: sent, full: false, truncated: true)
+        XCTAssertTrue(cut.delete.isEmpty, "An item past the limit isn't reported deleted")
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {

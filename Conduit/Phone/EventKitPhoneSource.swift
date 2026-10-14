@@ -44,7 +44,7 @@ protocol PhoneCalendarSource: AnyObject {
     /// Calendars and reminder lists, each `{id, title, kind, color, source, writable, shared, default}`.
     func calendars(eventsReadable: Bool, reminders: Bool) -> [[String: Any]]
     /// Events overlapping [from, to), at most `limit`, soonest first.
-    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]]
+    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) async -> [[String: Any]]
     /// Open reminders and those completed since `completedSince`.
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]]
     /// Applies one change; the id of the item it made or touched.
@@ -150,7 +150,9 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         store.calendars(for: type).filter { !hidden.contains($0.calendarIdentifier) }
     }
 
-    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]] {
+    /// Async so the fetch runs off the main thread: a wide window on a busy
+    /// calendar can take a while.
+    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) async -> [[String: Any]] {
         let calendars = shownCalendars(.event, hidden: hidden)
         guard !calendars.isEmpty else { return [] }
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: calendars)

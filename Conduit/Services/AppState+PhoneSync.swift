@@ -112,16 +112,22 @@ extension AppState {
         Task { await runPhoneSync(reason: .turnedOn) }
     }
 
+    /// Bumped by each change of what's shared, so an older one still
+    /// waiting on an iOS permission prompt can't overwrite it.
+    private static var phoneUpdateGeneration = 0
+
     /// Changes what's shared while sharing is on. New kinds ask iOS first.
     func updatePhoneSync(_ choices: PhoneSyncPreferences) async throws {
         let current = phoneSync.preferences
         guard let destination = current.destination else { return }
+        Self.phoneUpdateGeneration += 1
+        let mine = Self.phoneUpdateGeneration
         if choices.calendar != current.calendar || (choices.reminders && !current.reminders) {
             try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         }
         if choices.status, !current.status { await phoneSync.statusSource.requestMotionAccess() }
-        // Turned off while iOS asked.
-        guard phoneSync.preferences.destination == destination else { return }
+        // A newer change, or turning sharing off, came in while iOS asked.
+        guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices
         preferences.destination = destination
         guard preferences.sharesAnything else {
