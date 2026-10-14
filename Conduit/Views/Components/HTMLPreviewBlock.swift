@@ -118,6 +118,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     @State private var state: LoadState = .loading
     @State private var measuredHeight: CGFloat?
     @State private var showsFullScreen = false
+    /// The page the sheet shows, kept apart from `state` so a reload
+    /// underneath doesn't blank an open sheet.
+    @State private var sheetHTML: String?
 
     enum LoadState: Equatable {
         case loading
@@ -168,8 +171,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
         .sheet(isPresented: $showsFullScreen) {
-            if case .loaded(let html) = state {
-                HTMLPreviewSheet(name: name, html: html)
+            if let sheetHTML {
+                HTMLPreviewSheet(name: name, html: sheetHTML)
             }
         }
     }
@@ -186,7 +189,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             Spacer()
             if measuredHeight != nil {
                 Button {
-                    showsFullScreen = true
+                    openFullScreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.caption2.weight(.semibold))
@@ -202,12 +205,16 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let light = colorScheme == .light
         HTMLPreviewWebView(
             html: HTMLPreviewPage.framed(html, theme: HTMLPreviewTheme(light: light), presentation: .inline),
-            interactive: false
-        ) { height in
-            let clamped = HTMLPreviewPage.clampedInlineHeight(height)
-            HTMLPreviewHeights.store(clamped, for: path)
-            if measuredHeight != clamped { measuredHeight = clamped }
-        }
+            interactive: false,
+            onHeight: { height in
+                let clamped = HTMLPreviewPage.clampedInlineHeight(height)
+                HTMLPreviewHeights.store(clamped, for: path)
+                if measuredHeight != clamped { measuredHeight = clamped }
+            },
+            // WebKit kept ending the page's process: the file card instead
+            // of a blank frame.
+            onFailed: { state = .unavailable }
+        )
         .frame(maxWidth: .infinity)
         .frame(height: measuredHeight ?? HTMLPreviewHeights.height(for: path) ?? HTMLPreviewPage.placeholderHeight)
         .opacity(measuredHeight == nil ? 0 : 1)
@@ -217,7 +224,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             } else {
                 Color.clear
                     .contentShape(Rectangle())
-                    .onTapGesture { showsFullScreen = true }
+                    .onTapGesture { openFullScreen() }
             }
         }
         .task(id: html) {
@@ -231,8 +238,14 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .accessibilityLabel(Text(verbatim: name))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint(Text("Open full screen"))
-        .accessibilityAction { showsFullScreen = true }
+        .accessibilityAction { openFullScreen() }
         .accessibilityHidden(measuredHeight == nil)
+    }
+
+    private func openFullScreen() {
+        guard case .loaded(let html) = state else { return }
+        sheetHTML = html
+        showsFullScreen = true
     }
 
     private func loadDocument() async {
@@ -241,6 +254,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             return
         }
         if let cached = HTMLPreviewDocuments.document(for: path) {
+            // Only a different page measures again; the same one re-shown
+            // keeps its height.
+            if state != .loaded(cached) { measuredHeight = nil }
             state = .loaded(cached)
             return
         }
@@ -460,6 +476,7 @@ struct HTMLPreviewWebView: UIViewRepresentable {
     let html: String
     let interactive: Bool
     var onHeight: ((CGFloat) -> Void)? = nil
+    var onFailed: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -484,12 +501,14 @@ struct HTMLPreviewWebView: UIViewRepresentable {
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         context.coordinator.onHeight = onHeight
+        context.coordinator.onFailed = onFailed
         context.coordinator.load(html, into: view)
         return view
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
+        context.coordinator.onFailed = onFailed
         context.coordinator.load(html, into: view)
     }
 
@@ -500,10 +519,12 @@ struct HTMLPreviewWebView: UIViewRepresentable {
         view.uiDelegate = nil
         view.stopLoading()
         coordinator.onHeight = nil
+        coordinator.onFailed = nil
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var onHeight: ((CGFloat) -> Void)?
+        var onFailed: (() -> Void)?
         private var html = ""
         private var reloads = MarkupReloads()
 
@@ -524,8 +545,12 @@ struct HTMLPreviewWebView: UIViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            guard !html.isEmpty, reloads.mayReload() else { return }
-            webView.loadHTMLString(html, baseURL: nil)
+            guard !html.isEmpty else { return }
+            if reloads.mayReload() {
+                webView.loadHTMLString(html, baseURL: nil)
+            } else {
+                onFailed?()
+            }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
