@@ -81,10 +81,17 @@ struct NotifierPluginStatus: Equatable {
     /// The first plugin version that reports `loaded_version`.
     static let runtimeReportingVersion = "0.24.0"
 
-    /// The dashboard runs a plugin older than one-tap updates (0.24), so the
-    /// first update after installing a new Conduit build is a manual one.
+    /// The plugin on the host is missing or older than one-tap updates
+    /// (0.24), so the first update after installing a new Conduit build is a
+    /// manual one. Not a 0.24+ on disk that the old process still serves:
+    /// that one only needs its restart.
     var predatesOneTapUpdate: Bool {
-        state != .unknown && runtime == nil
+        guard runtime == nil else { return false }
+        switch state {
+        case .unknown: return false
+        case .predatesCapabilities: return true
+        case .reported(let version, _): return Self.isOlder(version, than: Self.runtimeReportingVersion)
+        }
     }
 
     /// Worth offering an update: something Conduit uses is missing, or the

@@ -329,8 +329,9 @@ struct NotifierPluginUpdateStatusView: View {
             }
         }
         .onChange(of: appState.activeNotifierPluginUpdate) { previous, state in
+            let before = Self.row(for: previous, plugin: appState.notifierPlugin)
             guard let row = Self.row(for: state, plugin: appState.notifierPlugin),
-                  row.title != Self.row(for: previous, plugin: appState.notifierPlugin)?.title else { return }
+                  row.title != before?.title || row.detail != before?.detail else { return }
             AccessibilityNotification.Announcement(row.title).post()
         }
     }
@@ -392,7 +393,7 @@ struct NotifierPluginUpdateStatusView: View {
     private static func firstManualUpdateRow(plugin: NotifierPluginStatus, hermesDetail: String?) -> Row {
         let why = plugin.version.map {
             AppLocalization.string("This dashboard's plugin (version \($0)) is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
-        } ?? AppLocalization.string("This dashboard's plugin is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
+        } ?? AppLocalization.string("This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
         let detail = hermesDetail.flatMap { $0.isEmpty ? nil : AppLocalization.string("Hermes said: \($0)") }
         return Row(
             title: AppLocalization.string("Update the plugin on the host this once"),

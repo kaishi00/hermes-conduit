@@ -186,6 +186,15 @@ extension GatewayRestartTests {
         XCTAssertFalse(current.predatesOneTapUpdate)
         XCTAssertEqual(NotifierPluginUpdateStatusView.row(for: .failed(detail: nil), plugin: current)?.title, "Couldn't update the Conduit plugin")
         XCTAssertFalse(NotifierPluginStatus().predatesOneTapUpdate)
+
+        // New files on disk served by the old process: only a restart is left.
+        var restartOnly = NotifierPluginStatus()
+        restartOnly.state = .reported(version: "0.29.0", capabilities: ["session-takeover"])
+        XCTAssertFalse(restartOnly.predatesOneTapUpdate)
+        var missing = NotifierPluginStatus()
+        missing.state = .predatesCapabilities
+        XCTAssertTrue(missing.predatesOneTapUpdate)
+        XCTAssertTrue(NotifierPluginUpdateStatusView.row(for: .unsupported, plugin: missing)?.detail?.contains("missing") == true)
     }
 
     private static func capabilities(loaded: String, disk: String, boot: String) -> [String: Any] {

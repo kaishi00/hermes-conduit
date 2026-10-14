@@ -242118,88 +242118,6 @@
         }
       }
     },
-    "This dashboard's plugin is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Plugin dieses Dashboards ist älter als Ein-Tipp-Updates. Führe die Schritte unter „Manuell erledigen“ einmal auf dem Host aus. Danach aktualisiert Conduit es für dich."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El plugin de este panel es anterior a las actualizaciones con un toque. Ejecuta una vez en el host los pasos de «Hazlo manualmente». Después, Conduit lo actualizará por ti."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le plugin de ce tableau de bord est antérieur aux mises à jour en un geste. Exécutez une fois sur l’hôte les étapes de « Le faire manuellement ». Ensuite, Conduit le mettra à jour pour vous."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plugin dasbor ini lebih lama dari pembaruan sekali ketuk. Jalankan langkah di Lakukan secara manual di host sekali. Setelah itu, Conduit memperbaruinya untuk Anda."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il plugin di questa dashboard è precedente agli aggiornamenti con un tocco. Esegui una volta sull’host i passaggi in «Fallo manualmente». Dopo, Conduit lo aggiornerà per te."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このダッシュボードのプラグインはワンタップアップデートより前のものです。「手動で行う」の手順をホストで一度実行してください。以降はConduitがアップデートします。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 대시보드의 플러그인은 원탭 업데이트 이전 버전입니다. 호스트에서 '직접 하기'의 단계를 한 번 실행하세요. 그 후에는 Conduit가 업데이트합니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wtyczka tego panelu jest starsza niż aktualizacje jednym dotknięciem. Wykonaj raz na hoście kroki z sekcji „Zrób to ręcznie”. Potem Conduit zaktualizuje ją za Ciebie."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O plugin deste painel é anterior às atualizações com um toque. Execute uma vez no host os passos em “Fazer manualmente”. Depois disso, o Conduit o atualiza para você."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Плагин этой панели старше обновлений одним касанием. Один раз выполните на хосте шаги из раздела «Сделать вручную». После этого Conduit будет обновлять его сам."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu panonun eklentisi tek dokunuşla güncellemelerden eski. Elle yapın altındaki adımları ana makinede bir kez çalıştırın. Bundan sonra Conduit onu sizin için günceller."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此仪表板的插件早于一键更新。请在主机上运行一次“手动操作”下的步骤。之后 Conduit 会为你更新。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此儀表板的外掛程式早於一鍵更新。請在主機上執行一次「手動操作」下的步驟。之後 Conduit 會為你更新。"
-          }
-        }
-      }
-    },
     "Hermes said: %@" : {
       "localizations" : {
         "de" : {
@@ -242278,6 +242196,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 回覆：%@"
+          }
+        }
+      }
+    },
+    "This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Plugin dieses Dashboards fehlt oder ist älter als Ein-Tipp-Updates. Führe die Schritte unter „Manuell erledigen“ einmal auf dem Host aus. Danach aktualisiert Conduit es für dich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de este panel falta o es anterior a las actualizaciones con un toque. Ejecuta una vez en el host los pasos de «Hazlo manualmente». Después, Conduit lo actualizará por ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin de ce tableau de bord est absent ou antérieur aux mises à jour en un geste. Exécutez une fois sur l’hôte les étapes de « Le faire manuellement ». Ensuite, Conduit le mettra à jour pour vous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin dasbor ini tidak ada atau lebih lama dari pembaruan sekali ketuk. Jalankan langkah di Lakukan secara manual di host sekali. Setelah itu, Conduit memperbaruinya untuk Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di questa dashboard manca o è precedente agli aggiornamenti con un tocco. Esegui una volta sull’host i passaggi in «Fallo manualmente». Dopo, Conduit lo aggiornerà per te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードのプラグインがないか、ワンタップアップデートより前のものです。「手動で行う」の手順をホストで一度実行してください。以降はConduitがアップデートします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드의 플러그인이 없거나 원탭 업데이트 이전 버전입니다. 호스트에서 '직접 하기'의 단계를 한 번 실행하세요. 그 후에는 Conduit가 업데이트합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczki tego panelu brakuje lub jest starsza niż aktualizacje jednym dotknięciem. Wykonaj raz na hoście kroki z sekcji „Zrób to ręcznie”. Potem Conduit zaktualizuje ją za Ciebie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin deste painel não está instalado ou é anterior às atualizações com um toque. Execute uma vez no host os passos em “Fazer manualmente”. Depois disso, o Conduit o atualiza para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагина этой панели нет или он старше обновлений одним касанием. Один раз выполните на хосте шаги из раздела «Сделать вручную». После этого Conduit будет обновлять его сам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panonun eklentisi yok ya da tek dokunuşla güncellemelerden eski. Elle yapın altındaki adımları ana makinede bir kez çalıştırın. Bundan sonra Conduit onu sizin için günceller."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的插件缺失或早于一键更新。请在主机上运行一次“手动操作”下的步骤。之后 Conduit 会为你更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板的外掛程式缺少或早於一鍵更新。請在主機上執行一次「手動操作」下的步驟。之後 Conduit 會為你更新。"
           }
         }
       }
