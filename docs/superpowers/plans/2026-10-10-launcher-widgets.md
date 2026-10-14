@@ -1,4 +1,5 @@
 # Conduit Launcher Widgets Implementation Plan
+> **Superseded 2026-10-14:** the planned App Group `group.com.milim.relay.widgets` could not be registered (globally taken by another team). The shipped group is `group.com.milim.relay.launcher`, assigned to both `com.milim.relay` and `com.milim.relay.widgets`; see docs/WIDGETS.md.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

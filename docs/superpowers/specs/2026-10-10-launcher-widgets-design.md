@@ -1,6 +1,7 @@
 # Conduit launcher widgets
 
 Date: 2026-10-10. Status: approved by the user in conversation. Implementation has not started.
+> **Superseded 2026-10-14:** the planned App Group `group.com.milim.relay.widgets` could not be registered (globally taken by another team). The shipped group is `group.com.milim.relay.launcher`, assigned to both `com.milim.relay` and `com.milim.relay.widgets`; see docs/WIDGETS.md.
 
 ## Goal and first-version scope
 
