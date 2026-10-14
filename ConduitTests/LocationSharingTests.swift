@@ -730,12 +730,12 @@ extension NotificationE2ETests {
         }
     }
 
-    func testAMapsPushIsTakenOnlyWithAValidIDAndAPlainOneIsRefused() throws {
+    func testAMapsPushIsTakenOnlyWithAValidID() throws {
         XCTAssertTrue(LocationLocateRequest.isMapsID("m_0123456789abcdefgh"))
         XCTAssertFalse(LocationLocateRequest.isMapsID("m_short"))
         XCTAssertFalse(LocationLocateRequest.isMapsID("l_0123456789abcdefgh"))
         XCTAssertFalse(LocationLocateRequest.isMapsID("m_0123456789abcdef/../x"))
-        // The request id rides only inside a sealed envelope.
+        // A pairing without keys sends the id in the plain stub, like a locate.
         let payload: [AnyHashable: Any] = [
             "aps": [String: Any](),
             "conduit": [
@@ -744,10 +744,15 @@ extension NotificationE2ETests {
                 "maps": ["id": "m_0123456789abcdefgh"],
             ] as [String: Any],
         ]
-        XCTAssertNil(LocationLocateRequest.parse(payload, records: [], knownGatewayIDs: [], keysProvisioned: false))
-
-        let request = LocationLocateRequest(id: "m_0123456789abcdefgh", profile: "coder", gatewayID: "gw-1",
-                                            dashboardID: LocationFixtures.dashboardID, replayKey: "k", kind: .maps)
+        let request = try XCTUnwrap(LocationLocateRequest.parse(payload, records: [], knownGatewayIDs: [], keysProvisioned: false))
+        XCTAssertEqual(request.kind, .maps)
+        XCTAssertEqual(request.id, "m_0123456789abcdefgh")
+        XCTAssertEqual(request.profile, "coder")
+        // Once this iPhone holds encryption keys, plaintext isn't trusted.
+        XCTAssertNil(LocationLocateRequest.parse(payload, records: [], knownGatewayIDs: [], keysProvisioned: true))
+        var badID = payload
+        badID["conduit"] = ["type": "location.requested", "maps": ["id": "m_short"]] as [String: Any]
+        XCTAssertNil(LocationLocateRequest.parse(badID, records: [], knownGatewayIDs: [], keysProvisioned: false))
         let now = LocationFixtures.at
         XCTAssertTrue(request.isForBinding(of: LocationFixtures.config()))
         // Paused or off still reaches the binding check: the host hears "paused".

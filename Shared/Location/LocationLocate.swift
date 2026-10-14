@@ -11,8 +11,9 @@
 //  `locate.id`. It's opened with the same keys and trust rules as the
 //  Notification Service Extension, and answered only for the dashboard and
 //  profile sharing is bound to, while background sharing is on and not
-//  paused. The same push can instead carry a maps request id (inner field
-//  `maps`, sealed pairings only; designs/maps-v1-contract.md section 2).
+//  paused. The same push can instead carry a maps request id (`maps.id`,
+//  sealed or in the plain stub like `locate`; designs/maps-v1-contract.md
+//  section 2); the lookup itself is always fetched sealed from the host.
 //
 
 import Foundation
@@ -71,12 +72,24 @@ struct LocationLocateRequest: Equatable {
             )
         case .legacy:
             guard let stub = NotificationE2E.routingStub(payload),
-                  (stub["type"] as? String) == type,
-                  let id = locateID(stub["locate"]) else { return nil }
+                  (stub["type"] as? String) == type else { return nil }
+            // A pairing without keys: the id in the plain stub, read the
+            // same way. A maps lookup itself is always fetched sealed.
+            let kind: Kind
+            let id: String
+            if let locate = locateID(stub["locate"]) {
+                kind = .locate
+                id = locate
+            } else if let maps = mapsID(stub["maps"]) {
+                kind = .maps
+                id = maps
+            } else {
+                return nil
+            }
             return LocationLocateRequest(
                 id: id, profile: stub["profile"] as? String, gatewayID: stub["gateway_id"] as? String,
                 dashboardID: (stub["dashboard_id"] as? String).flatMap(UUID.init(uuidString:)),
-                replayKey: "plain:\(id)"
+                replayKey: "plain:\(id)", kind: kind
             )
         }
     }
