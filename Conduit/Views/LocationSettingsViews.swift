@@ -52,6 +52,9 @@ enum LocationSettingsText {
     }
 
     static func readAction(_ action: String) -> String {
+        // "maps search", "maps directions": the host's conduit_maps and a
+        // live voice call's maps lookups alike.
+        if action == "maps" || action.hasPrefix("maps ") { return AppLocalization.string("Looked something up in Apple Maps") }
         switch action {
         case "now": return AppLocalization.string("Checked where you are")
         case "places": return AppLocalization.string("Listed your places")
@@ -94,6 +97,8 @@ struct LocationSettingsPage: View {
     @State private var errorMessage: String?
     @State private var hostStatus: LocationHostStatus?
     @State private var reads: [LocationRead] = []
+    /// Live voice calls' maps lookups, logged on this iPhone.
+    @State private var voiceMapReads: [LocationRead] = []
     @State private var rules: [LocationRule] = []
     /// Rules whose delete is on its way: their trash button is disabled.
     @State private var deletingRules: Set<String> = []
@@ -114,6 +119,7 @@ struct LocationSettingsPage: View {
                 placesSection
                 if settings.isOn { pauseSection }
                 retentionSection
+                mapsSection
             }
             // Kept while a mode is allowed, even on an older plugin, so it can
             // still be turned off.
@@ -194,6 +200,9 @@ struct LocationSettingsPage: View {
     private var introSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Location for Hermes"), symbol: "location", tint: .blue) {
             Text("Let Hermes know where you are, so it can answer “what's near me”, work out travel times and remind you at places. Your location goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Maps lookups use Apple Maps on this iPhone, so Apple sees the start and destination.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !pluginServesLocation, !settings.isOn {
@@ -451,6 +460,25 @@ struct LocationSettingsPage: View {
         }
     }
 
+    // MARK: Maps
+
+    private var mapsSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Maps"), symbol: "map", tint: .conduitAccent) {
+            Toggle("Keep maps lookups on this iPhone", isOn: Binding(
+                get: { !settings.mapsHost },
+                set: { on in
+                    Haptics.selection()
+                    Task { await controller.setMapsHost(!on) }
+                }
+            ))
+            .disabled(isWorking)
+            .accessibilityIdentifier("settings.location.maps-on-iphone")
+            Text("Hermes looks up places and routes only through this iPhone, never from your Hermes server. Lookups don't work while the iPhone can't be reached.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: Live voice calls
 
     /// Which live voice modes may read the shared location on a call. Each
@@ -506,14 +534,14 @@ struct LocationSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if reads.isEmpty {
+            if displayedReads.isEmpty {
                 if !hostUnreachable {
                     Text("Hermes hasn't read your location yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             } else {
-                ForEach(reads.prefix(50)) { read in
+                ForEach(displayedReads.prefix(50)) { read in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(LocationSettingsText.readAction(read.action))
                             .font(.subheadline)
@@ -527,6 +555,22 @@ struct LocationSettingsPage: View {
             Text("Every time Hermes reads your location it's listed here, for 30 days. The list never holds the location itself.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The host's reads and this iPhone's voice maps lookups, newest first.
+    private var displayedReads: [LocationRead] {
+        guard !voiceMapReads.isEmpty else { return reads }
+        return (reads + voiceMapReads).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+    }
+
+    private func loadVoiceMapReads() {
+        let formatter = ISO8601DateFormatter()
+        voiceMapReads = HealthVoiceReadLog.load(key: HealthVoiceReadLog.locationStorageKey).entries.reversed().enumerated().map { index, entry in
+            var read = LocationRead(at: formatter.string(from: entry.at), action: entry.action, sessionTitle: nil, platform: entry.modeName)
+            // Apart from the host's reads and from each other.
+            read.occurrence = 1_000 + index
+            return read
         }
     }
 
@@ -619,6 +663,7 @@ struct LocationSettingsPage: View {
     // MARK: Actions
 
     private func loadFromHost() async {
+        loadVoiceMapReads()
         guard controller.binding != nil, let request = await controller.hostRequest() else {
             hostUnreachable = controller.binding != nil
             return

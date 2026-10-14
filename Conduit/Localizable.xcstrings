@@ -242445,6 +242445,416 @@
           }
         }
       }
+    },
+    "Maps lookups use Apple Maps on this iPhone, so Apple sees the start and destination." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartensuchen nutzen Apple Karten auf diesem iPhone, daher sieht Apple Start und Ziel."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las búsquedas de mapas usan Apple Maps en este iPhone, así que Apple ve el origen y el destino."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les recherches de cartes utilisent Plans d’Apple sur cet iPhone : Apple voit le départ et la destination."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pencarian peta memakai Apple Maps di iPhone ini, jadi Apple melihat titik awal dan tujuan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le ricerche sulle mappe usano Mappe di Apple su questo iPhone, quindi Apple vede partenza e destinazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地図の検索にはこのiPhoneのAppleマップを使うため、Appleには出発地と目的地が見えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지도 검색은 이 iPhone의 Apple 지도를 사용하므로 Apple이 출발지와 목적지를 볼 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyszukiwanie na mapach korzysta z Map Apple na tym iPhonie, więc Apple widzi punkt startowy i cel."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As buscas de mapas usam o Apple Mapas neste iPhone, então a Apple vê a origem e o destino."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поиск по картам идёт через Apple Карты на этом iPhone, поэтому Apple видит начало и конец маршрута."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harita aramaları bu iPhone'daki Apple Haritalar'ı kullanır, bu yüzden Apple başlangıç ve varış noktasını görür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地图查询使用此 iPhone 上的 Apple 地图，因此 Apple 会看到起点和终点。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地圖查詢使用此 iPhone 上的 Apple 地圖，因此 Apple 會看到起點和終點。"
+          }
+        }
+      }
+    },
+    "Looked something up in Apple Maps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat etwas in Apple Karten nachgeschlagen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscó algo en Apple Maps"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A recherché quelque chose dans Plans"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencari sesuatu di Apple Maps"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ha cercato qualcosa in Mappe"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appleマップで調べました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 지도에서 검색함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyszukał coś w Mapach Apple"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesquisou algo no Apple Mapas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Искал что-то в Apple Картах"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Haritalar'da bir şey aradı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Apple 地图中查询了内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Apple 地圖中查詢了內容"
+          }
+        }
+      }
+    },
+    "Maps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mapas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cartes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peta"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mappe"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지도"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mapy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mapas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Карты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haritalar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地图"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地圖"
+          }
+        }
+      }
+    },
+    "Keep maps lookups on this iPhone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartensuchen auf diesem iPhone behalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener las búsquedas de mapas en este iPhone"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Garder les recherches de cartes sur cet iPhone"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan pencarian peta di iPhone ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tieni le ricerche sulle mappe su questo iPhone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地図の検索をこのiPhoneだけで行う"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지도 검색을 이 iPhone에서만 하기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyszukiwanie na mapach tylko na tym iPhonie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter as buscas de mapas neste iPhone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Искать по картам только на этом iPhone"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harita aramalarını bu iPhone'da tut"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅在此 iPhone 上进行地图查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅在此 iPhone 上進行地圖查詢"
+          }
+        }
+      }
+    },
+    "Hermes looks up places and routes only through this iPhone, never from your Hermes server. Lookups don't work while the iPhone can't be reached." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sucht Orte und Routen nur über dieses iPhone, nie von deinem Hermes-Server aus. Solange das iPhone nicht erreichbar ist, funktionieren Suchen nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes busca lugares y rutas solo a través de este iPhone, nunca desde tu servidor de Hermes. Las búsquedas no funcionan mientras no se pueda acceder al iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes cherche les lieux et les itinéraires uniquement via cet iPhone, jamais depuis votre serveur Hermes. Les recherches ne fonctionnent pas tant que l’iPhone est injoignable."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mencari tempat dan rute hanya melalui iPhone ini, tidak pernah dari server Hermes-mu. Pencarian tidak berfungsi selama iPhone tidak dapat dijangkau."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes cerca luoghi e percorsi solo tramite questo iPhone, mai dal tuo server Hermes. Le ricerche non funzionano mentre l’iPhone non è raggiungibile."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesは場所や経路をこのiPhone経由でのみ調べ、Hermesサーバーからは調べません。iPhoneに接続できない間は検索できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 장소와 경로를 이 iPhone을 통해서만 찾고, Hermes 서버에서는 찾지 않습니다. iPhone에 연결할 수 없는 동안에는 검색이 작동하지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes szuka miejsc i tras tylko przez ten iPhone, nigdy ze swojego serwera Hermes. Gdy iPhone jest nieosiągalny, wyszukiwanie nie działa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes busca lugares e rotas só por este iPhone, nunca pelo seu servidor Hermes. As buscas não funcionam enquanto o iPhone estiver inacessível."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ищет места и маршруты только через этот iPhone и никогда со своего сервера Hermes. Пока iPhone недоступен, поиск не работает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yerleri ve rotaları yalnızca bu iPhone üzerinden arar, asla Hermes sunucundan aramaz. iPhone'a ulaşılamadığı sürece aramalar çalışmaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只通过此 iPhone 查询地点和路线，从不通过你的 Hermes 服务器查询。iPhone 无法连接时，查询无法进行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只透過此 iPhone 查詢地點和路線，從不透過你的 Hermes 伺服器查詢。iPhone 無法連線時，查詢無法進行。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
