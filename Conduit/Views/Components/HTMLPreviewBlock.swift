@@ -253,18 +253,12 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .loading
             return
         }
-        if let cached = HTMLPreviewDocuments.document(for: path) {
-            // Only a different page measures again; the same one re-shown
-            // keeps its height.
-            if state != .loaded(cached) { measuredHeight = nil }
-            state = .loaded(cached)
-            return
-        }
         guard let gatewayMediaDataURL else {
             state = .unavailable
             return
         }
-        // A different file: don't keep showing the last one while it loads.
+        // Read on every appearance, so a file the agent rewrote for a later
+        // reply shows its new version; the reserved height keeps the row still.
         state = .loading
         measuredHeight = nil
         let dataURL = await gatewayMediaDataURL(path)
@@ -273,48 +267,12 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .unavailable
             return
         }
-        HTMLPreviewDocuments.store(html, for: path)
         state = .loaded(html)
     }
 
     private struct LoadKey: Hashable {
         let path: String
         let draws: Bool
-    }
-}
-
-/// Recently read files, so a row the chat rebuilds as it scrolls back
-/// doesn't read its file again. Kept briefly: an agent often rewrites the
-/// same file for a later reply, which should show the new version.
-@MainActor
-enum HTMLPreviewDocuments {
-    private static var documents: [String: (html: String, readAt: Date)] = [:]
-    static let lifetime: TimeInterval = 120
-    private static let limit = 12
-    /// What the kept files may hold together, so a few large ones that are
-    /// never revisited don't stay resident.
-    static let byteBudget = 8 * 1024 * 1024
-
-    static func document(for path: String, now: Date = Date()) -> String? {
-        guard let entry = documents[path] else { return nil }
-        guard now.timeIntervalSince(entry.readAt) < lifetime else {
-            documents[path] = nil
-            return nil
-        }
-        return entry.html
-    }
-
-    static func store(_ html: String, for path: String, now: Date = Date()) {
-        documents = documents.filter { now.timeIntervalSince($0.value.readAt) < lifetime }
-        documents[path] = nil
-        let size = html.utf8.count
-        guard size <= byteBudget else { return }
-        while documents.count >= limit
-                || documents.values.reduce(0, { $0 + $1.html.utf8.count }) + size > byteBudget,
-              let oldest = documents.min(by: { $0.value.readAt < $1.value.readAt })?.key {
-            documents[oldest] = nil
-        }
-        documents[path] = (html, now)
     }
 }
 
@@ -589,7 +547,9 @@ struct HTMLPreviewSheet: View {
         NavigationStack {
             HTMLPreviewWebView(
                 html: HTMLPreviewPage.framed(html, theme: HTMLPreviewTheme(light: colorScheme == .light), presentation: .fullScreen),
-                interactive: true
+                interactive: true,
+                // WebKit kept ending the page: close rather than stay blank.
+                onFailed: { dismiss() }
             )
             .ignoresSafeArea(edges: .bottom)
             .navigationTitle(Text(verbatim: name))

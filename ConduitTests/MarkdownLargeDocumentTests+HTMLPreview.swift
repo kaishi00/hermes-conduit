@@ -158,17 +158,4 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(phone.openExternally)
         XCTAssertFalse(HTMLPreviewPage.navigationDecision(url: URL(string: "file:///etc/hosts"), isMainFrame: false, userTapped: false).allow)
     }
-
-    @MainActor
-    func testHTMLPreview_ReadFilesAreKeptBriefly() {
-        let path = "/tmp/html-preview-cache-\(UUID().uuidString).html"
-        let start = Date()
-        HTMLPreviewDocuments.store("<p>v1</p>", for: path, now: start)
-        XCTAssertEqual(HTMLPreviewDocuments.document(for: path, now: start.addingTimeInterval(30)), "<p>v1</p>")
-        XCTAssertNil(HTMLPreviewDocuments.document(for: path, now: start.addingTimeInterval(HTMLPreviewDocuments.lifetime + 1)))
-        // A file past the byte budget isn't kept at all.
-        let huge = String(repeating: "x", count: HTMLPreviewDocuments.byteBudget + 1)
-        HTMLPreviewDocuments.store(huge, for: path, now: start)
-        XCTAssertNil(HTMLPreviewDocuments.document(for: path, now: start))
-    }
 }
