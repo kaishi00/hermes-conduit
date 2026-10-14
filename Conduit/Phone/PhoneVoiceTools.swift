@@ -22,14 +22,22 @@ enum PhoneVoiceTools {
     static let key = "local"
 
     /// The tools for what's shared: changes whenever sharing is on (Hermes
-    /// can ask for one), adding when events or reminders can be written.
-    static func tools(for preferences: PhoneSyncPreferences) -> [VoiceHostTool] {
+    /// can ask for one), adding when events or reminders can be written,
+    /// both by the user's choice and by what iOS still allows.
+    static func tools(for preferences: PhoneSyncPreferences, access: PhoneCalendarAccess = .full,
+                      remindersAuthorized: Bool = true) -> [VoiceHostTool] {
         guard preferences.isOn else { return [] }
         var tools = [changes]
-        if preferences.calendar != .off || preferences.reminders {
-            tools.append(add(events: preferences.calendar != .off, reminders: preferences.reminders))
+        let allowed = addable(preferences, access: access, remindersAuthorized: remindersAuthorized)
+        if allowed.events || allowed.reminders {
+            tools.append(add(events: allowed.events, reminders: allowed.reminders))
         }
         return tools
+    }
+
+    private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
+                                remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
+        (preferences.calendar != .off && access != .off, preferences.reminders && remindersAuthorized)
     }
 
     private static let changes = VoiceHostTool(
@@ -37,7 +45,8 @@ enum PhoneVoiceTools {
         description: "Calendar and reminder changes Hermes asked for that wait on the user's answer on this iPhone. "
             + "list: what's waiting. approve or dismiss: answer one by its id from list, only after the user said "
             + "so out loud in this call. Approving applies it on the phone at once. Tell the user what it is in "
-            + "a sentence (what, when, which calendar, and why if Hermes said) before asking.",
+            + "a sentence (what, when, which calendar, and why if Hermes said) before asking. List once early "
+            + "in the call: some may be waiting from before it.",
         parameters: [
             "type": "object",
             "properties": [
@@ -117,15 +126,16 @@ enum PhoneVoiceTools {
     }
 
     private static func runAdd(_ arguments: [String: Any], engine: PhoneSyncEngine) async -> [String: String] {
-        let preferences = engine.preferences
+        let allowed = addable(engine.preferences, access: engine.calendarSource.eventAccess,
+                              remindersAuthorized: engine.calendarSource.remindersAuthorized)
         guard let title = (arguments["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !title.isEmpty else {
             return ["error": "An event or reminder needs a title."]
         }
         let isEvent: Bool
         switch arguments["kind"] as? String ?? "" {
-        case "event" where preferences.calendar != .off: isEvent = true
-        case "reminder" where preferences.reminders: isEvent = false
+        case "event" where allowed.events: isEvent = true
+        case "reminder" where allowed.reminders: isEvent = false
         case "event", "reminder": return ["error": "The user doesn't let Hermes add those. They can turn it on in Conduit's Settings."]
         default: return ["error": "kind is event or reminder."]
         }

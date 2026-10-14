@@ -177,6 +177,13 @@ extension HermesVoiceGatewayTimeoutTests {
         let addOnly = PhoneSyncPreferences(calendar: .writeOnly, reminders: false, status: false, focus: false)
         XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["calendar"] as? String, "write_only")
         XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["reminders"] as? Bool, false)
+        var withEmails = chosen
+        withEmails.details = true
+        withEmails.attendeeEmails = true
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(withEmails, access: .full, remindersAuthorized: true)["attendee_emails"] as? Bool, true)
+        let emailsNarrowed = PhoneSyncEngine.effectiveSharing(withEmails, access: .writeOnly, remindersAuthorized: true)
+        XCTAssertEqual(emailsNarrowed["attendee_emails"] as? Bool, false)
+        XCTAssertEqual(emailsNarrowed["details"] as? Bool, true, "Details also cover reminder notes")
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {
@@ -234,6 +241,10 @@ extension HermesVoiceGatewayTimeoutTests {
         let addTool = try XCTUnwrap(tools.last)
         XCTAssertEqual(((addTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences()).isEmpty)
+        // Nor what iOS no longer allows.
+        let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
+        XCTAssertEqual(((noReminders.last?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        XCTAssertEqual(PhoneVoiceTools.tools(for: eventsOnly, access: .off, remindersAuthorized: true).map(\.name), [PhoneVoiceTools.changesTool])
 
         // A change Hermes asks for is answered out loud.
         host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",

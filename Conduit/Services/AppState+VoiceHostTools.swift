@@ -31,7 +31,10 @@ extension AppState {
         let healthAllowed = health.letsVoiceRead(mode) && health.destination.map(isActiveDestination) == true
         let phone = phoneSync.preferences
         let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map(isActiveDestination) == true
-        let local = phoneAllowed ? PhoneVoiceTools.tools(for: phone) : []
+        let local = phoneAllowed
+            ? PhoneVoiceTools.tools(for: phone, access: phoneSync.calendarSource.eventAccess,
+                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized)
+            : []
         guard healthAllowed || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".

@@ -9,6 +9,7 @@
 //  starts, watches, and cancels sessions it created.
 //
 
+import Combine
 import Foundation
 import OSLog
 
@@ -428,7 +429,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
     /// What keeps an eye on the phone for the running call (Hermes' calendar
     /// changes while it runs); dropping it stops the watch.
-    var hostToolsWatch: AnyObject?
+    var hostToolsWatch: AnyCancellable?
     /// The running call's last chat search, numbered from 1 as the model
     /// heard it.
     private(set) var chatMatches: [VoiceChatMatch] = []

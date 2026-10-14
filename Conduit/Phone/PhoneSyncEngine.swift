@@ -512,7 +512,9 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     /// The sharing as it really is: access taken away in the Settings app
-    /// narrows it, so the host drops what it can no longer have.
+    /// narrows it, so the host drops what it can no longer have. Attendee
+    /// emails go with full calendar access; "details" stays, since it also
+    /// covers reminder notes.
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                              remindersAuthorized: Bool) -> [String: Any] {
         var sharing = preferences.sharingJSON
@@ -523,6 +525,7 @@ final class PhoneSyncEngine: ObservableObject {
         case (.full, .writeOnly), (.writeOnly, .full), (.writeOnly, .writeOnly): calendar = .writeOnly
         }
         sharing["calendar"] = calendar.rawValue
+        if calendar != .full { sharing["attendee_emails"] = false }
         sharing["reminders"] = preferences.reminders && remindersAuthorized
         return sharing
     }
@@ -666,7 +669,9 @@ final class PhoneSyncEngine: ObservableObject {
     struct VoiceNotReady: Error {}
 
     /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
-    /// host's result, for this iPhone's data only.
+    /// host's result, for this iPhone's data only. Checks only that sharing
+    /// is on: the caller checks the voice mode may use it
+    /// (`AppState.callVoiceHostTool`).
     func voiceRead(tool: String, arguments: [String: Any], provider: String, path: String,
                    request: Request) async throws -> Any {
         guard preferences.isOn, readStateIfNeeded(), let key = keys.load() else { throw VoiceNotReady() }
@@ -688,7 +693,8 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     /// Adds an event or reminder the user asked for in a voice call, straight
-    /// away (no card: they said so out loud). The next upload sends it.
+    /// away (no card: they said so out loud). The next upload sends it. Like
+    /// `voiceRead`, the caller checks the voice mode may use it.
     func addFromVoice(_ change: PhoneChange) async throws -> String? {
         guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
         let itemID = try await calendarSource.apply(change, window: window)
