@@ -171,6 +171,7 @@ extension AppState {
             }
         }
         phoneSync.savePreferences(PhoneSyncPreferences())
+        HealthVoiceReadLog.clear(key: HealthVoiceReadLog.phoneStorageKey)
         let deleted = await phoneSync.turnOff(deleteFromHost: request)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.phoneSyncTaskIdentifier)
         if deleteFromHost, !deleted, let destination, let deviceID {

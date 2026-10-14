@@ -116,7 +116,11 @@ enum PhoneVoiceTools {
             }
             await answer(prompt, action == "approve")
             if action == "dismiss" { return ["result": "Dismissed. Hermes will hear the user said no."] }
-            if let result = engine.state.answered[id], result.outcome == .failed {
+            // No outcome yet: another answer to it is still being applied.
+            guard let result = engine.state.answered[id] else {
+                return ["result": "It's still being applied; list again in a moment to check."]
+            }
+            if result.outcome == .failed {
                 return ["error": "It couldn't be applied: \(result.note ?? "the phone refused it")."]
             }
             return ["result": "Done on the phone; Hermes will hear it went in."]
@@ -142,6 +146,10 @@ enum PhoneVoiceTools {
         var fields: [String: Any] = ["title": title]
         if let notes = arguments["notes"] as? String { fields["notes"] = notes }
         let calendarName = (arguments["calendar"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Add-only access can't see the calendars, so none can be named.
+        if isEvent, calendarName?.isEmpty == false, engine.calendarSource.eventAccess != .full {
+            return ["error": "This iPhone lets Conduit add events but not see its calendars. Leave the calendar out to use the default."]
+        }
         let calendarID = calendarName.flatMap { name in
             engine.calendarSource.calendars(eventsReadable: engine.calendarSource.eventAccess == .full,
                                             reminders: engine.calendarSource.remindersAuthorized)

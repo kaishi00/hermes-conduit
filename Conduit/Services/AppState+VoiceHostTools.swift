@@ -78,11 +78,13 @@ extension AppState {
             return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
         }
         if tool.key == PhoneVoiceTools.key {
-            return await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine) { prompt, approve in
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine) { prompt, approve in
                 await engine.answer(prompt, approve: approve)
                 // Reported in the background: the call hears the outcome now.
                 Task { await self.runPhoneSync(reason: .answered) }
             }
+            if result["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            return result
         }
         guard let bridge = dashboardTicketBridge else {
             return ["error": "The calendar isn't reachable just now."]
@@ -94,6 +96,7 @@ extension AppState {
             ) { path, method, body in
                 try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 12_000)
             }
+            Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
             return VoiceHostTool.modelResult(result)
         } catch is PhoneSyncEngine.VoiceNotReady {
             return ["error": "The calendar isn't ready for voice yet; it will be after the next sync."]
@@ -103,6 +106,20 @@ extension AppState {
             // model's company would get it.
             return ["error": "The calendar couldn't be read just now."]
         }
+    }
+
+    /// Logs what a call used of the calendar and phone (Settings > Calendar &
+    /// phone): the tool's action ("events", "add reminder"), never the data.
+    private static func recordPhoneVoiceUse(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName) {
+        let action: String
+        if tool.name == PhoneVoiceTools.addTool {
+            action = "add \(arguments["kind"] as? String ?? "")"
+        } else if tool.name == PhoneVoiceTools.changesTool {
+            action = "changes \(arguments["action"] as? String ?? "")"
+        } else {
+            action = arguments["action"] as? String ?? tool.name
+        }
+        HealthVoiceReadLog.record(mode: mode, action: action, key: HealthVoiceReadLog.phoneStorageKey)
     }
 
     /// One sealed health read for the running call.
@@ -177,6 +194,8 @@ extension AppState {
     /// Tells the running call about each change Hermes asks for while it
     /// runs, so the user can answer it out loud.
     private func watchPhoneChanges(for mode: LiveVoiceModeName) -> AnyCancellable {
+        // What was waiting at the last update: a change Hermes withdraws and
+        // asks for again is told again.
         var known = Set(phoneSync.prompts.map(\.id))
         return phoneSync.$prompts
             .receive(on: DispatchQueue.main)
@@ -184,7 +203,7 @@ extension AppState {
                 guard let self else { return }
                 let supervisor = self.voiceBackgroundJobSupervisor
                 let fresh = prompts.filter { !known.contains($0.id) }
-                known.formUnion(prompts.map(\.id))
+                known = Set(prompts.map(\.id))
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
                       self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive,
                       self.phoneSync.preferences.letsVoiceUse(mode) else { return }

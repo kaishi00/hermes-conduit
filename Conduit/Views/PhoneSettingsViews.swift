@@ -25,6 +25,8 @@ struct PhoneSettingsPage: View {
     @State private var calendars: [PhoneCalendarRow] = []
     /// The voice mode whose switch is waiting on the user's yes.
     @State private var askingVoiceMode: LiveVoiceModeName?
+    /// Loaded on appear (loading prunes and saves).
+    @State private var voiceUses = HealthVoiceReadLog()
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
@@ -218,6 +220,20 @@ struct PhoneSettingsPage: View {
             Text("Let a live voice call read what you share here when you ask, add events and reminders you ask for, and ask you out loud about Hermes' changes. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !voiceUses.entries.isEmpty {
+                Text("Read by voice in the last 7 days")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.top, 4)
+                ForEach(voiceUses.entries.suffix(20).reversed()) { entry in
+                    HStack {
+                        Text(verbatim: "\(entry.mode): \(entry.action)")
+                        Spacer()
+                        Text(entry.at.formatted(.relative(presentation: .named)))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
         }
     }
 
@@ -320,6 +336,7 @@ struct PhoneSettingsPage: View {
     // MARK: Actions
 
     private func load() {
+        voiceUses = HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey)
         guard !loadedPreferences else { return }
         loadedPreferences = true
         if preferences.isOn { choices = preferences }

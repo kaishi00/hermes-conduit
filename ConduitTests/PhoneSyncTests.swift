@@ -184,6 +184,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let emailsNarrowed = PhoneSyncEngine.effectiveSharing(withEmails, access: .writeOnly, remindersAuthorized: true)
         XCTAssertEqual(emailsNarrowed["attendee_emails"] as? Bool, false)
         XCTAssertEqual(emailsNarrowed["details"] as? Bool, true, "Details also cover reminder notes")
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(withEmails, access: .writeOnly, remindersAuthorized: false)["details"] as? Bool,
+                       false, "Nothing detailed is sent")
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {
@@ -196,6 +198,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(AppState.isPhoneChangesPush(["conduit": ["type": "phone.changes", "e2e": 1] as [String: Any]]))
         XCTAssertTrue(AppState.isPhoneChangesPush(["body": ["conduit": ["type": "phone.changes"]]]))
         XCTAssertFalse(AppState.isPhoneChangesPush(["conduit": ["type": "response.ready"]]))
+    }
+
+    func testPhoneVoiceUsesAreLoggedApart() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PhoneVoiceUses-\(UUID().uuidString)"))
+        HealthVoiceReadLog.record(mode: .geminiLive, action: "events", key: HealthVoiceReadLog.phoneStorageKey, in: defaults)
+        XCTAssertEqual(HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey, from: defaults).entries.map(\.action), ["events"])
+        XCTAssertTrue(HealthVoiceReadLog.load(from: defaults).entries.isEmpty, "Health reads keep their own log")
+        HealthVoiceReadLog.clear(key: HealthVoiceReadLog.phoneStorageKey, in: defaults)
+        XCTAssertTrue(HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey, from: defaults).entries.isEmpty)
     }
 
     func testPhoneChangeIsNeverAppliedTwice() async throws {

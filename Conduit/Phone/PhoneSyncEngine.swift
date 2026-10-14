@@ -513,8 +513,8 @@ final class PhoneSyncEngine: ObservableObject {
 
     /// The sharing as it really is: access taken away in the Settings app
     /// narrows it, so the host drops what it can no longer have. Attendee
-    /// emails go with full calendar access; "details" stays, since it also
-    /// covers reminder notes.
+    /// emails go with full calendar access; "details" with full access or
+    /// reminders (it also covers reminder notes).
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                              remindersAuthorized: Bool) -> [String: Any] {
         var sharing = preferences.sharingJSON
@@ -526,7 +526,9 @@ final class PhoneSyncEngine: ObservableObject {
         }
         sharing["calendar"] = calendar.rawValue
         if calendar != .full { sharing["attendee_emails"] = false }
-        sharing["reminders"] = preferences.reminders && remindersAuthorized
+        let reminders = preferences.reminders && remindersAuthorized
+        sharing["reminders"] = reminders
+        if calendar != .full, !reminders { sharing["details"] = false }
         return sharing
     }
 
