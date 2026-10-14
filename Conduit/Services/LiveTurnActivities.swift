@@ -54,15 +54,34 @@ enum LiveTurnProgress {
         case .messageInterrupted:
             return finished(state, .stopped, now: now)
         case .sessionBusy(_, let busy):
-            guard !busy else { return nil }
+            // An approval or answer still pending outlasts an idle report.
+            guard !busy, !state.turnPhase.waitsOnUser else { return nil }
             return finished(state, .done, now: now)
         case .sessionInfo(_, let snapshot):
-            guard snapshot.running == false else { return nil }
+            guard snapshot.running == false, !state.turnPhase.waitsOnUser else { return nil }
             return finished(state, .done, now: now)
         default:
             return nil
         }
         return next == state ? nil : next
+    }
+
+    /// The held events that belong to the new turn: those from its
+    /// `messageStart` on. Without one, a terminal event can only be the end
+    /// of the turn before, which would end the new activity at once.
+    static func newTurnEvents(_ events: [StreamEvent]) -> [StreamEvent] {
+        if let start = events.lastIndex(where: { event in
+            if case .messageStart = event { return true }
+            return false
+        }) {
+            return Array(events[start...])
+        }
+        return events.filter { event in
+            switch event {
+            case .messageComplete, .messageError, .messageInterrupted: return false
+            default: return true
+            }
+        }
     }
 
     static func finished(
@@ -136,7 +155,7 @@ final class LiveTurnActivities {
         adoptExisting()
         let held = early.flatMap { pending -> [StreamEvent]? in
             guard !pending.sessionIDs.isDisjoint(with: sessionIDs) else { return nil }
-            return pending.events
+            return LiveTurnProgress.newTurnEvents(pending.events)
         } ?? []
         early = nil
         guard Self.isEnabled, !sessionIDs.isEmpty, ActivityAuthorizationInfo().areActivitiesEnabled else { return }

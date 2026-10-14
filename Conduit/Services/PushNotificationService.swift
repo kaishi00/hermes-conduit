@@ -938,16 +938,15 @@ final class PushNotificationService: ObservableObject {
 
     // MARK: - Live Activities (#605)
 
-    /// A relay that answered 404 has no Live Activity route: it isn't asked
-    /// again until Conduit restarts.
     /// The installation whose relay answered 404 for the Live Activity
     /// route; pairing with another relay tries again.
     private var liveActivitiesUnsupportedInstallation: String?
 
     /// Registers the push token of the Live Activity Conduit started for a
-    /// chat, under every id the chat is known by, so the host's progress
-    /// reports reach it. Best effort: without notifications, or on a relay
-    /// without the route, the activity is only updated while Conduit runs.
+    /// chat, under the ids the chat is known by (at most 6, the relay's
+    /// limit), so the host's progress reports reach it. Best effort: without
+    /// notifications, or on a relay without the route, the activity is only
+    /// updated while Conduit runs.
     func registerLiveActivity(token: String, sessionIDs: [String]) async {
         guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
               !sessionIDs.isEmpty else { return }

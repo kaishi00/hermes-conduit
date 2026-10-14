@@ -62,6 +62,15 @@ extension WidgetLaunchLinkTests {
         let resumed = try XCTUnwrap(LiveTurnProgress.applying(.approvalWithdrawn(sessionId: "s", requestId: "r", reason: "resolved"), to: waiting))
         XCTAssertEqual(resumed.turnPhase, .thinking)
         XCTAssertNil(LiveTurnProgress.applying(.approvalWithdrawn(sessionId: "s", requestId: "r", reason: "resolved"), to: State(phase: .tool, tool: .files)))
+        XCTAssertNil(LiveTurnProgress.applying(.sessionBusy(sessionId: "s", busy: false), to: waiting), "a pending approval outlasts an idle report")
+    }
+
+    func testLiveTurnHeldEventsSkipThePreviousTurnsEnd() {
+        let oldEnd = StreamEvent.messageComplete(sessionId: "s", messageId: nil, content: "Old", reasoning: nil)
+        let tool = StreamEvent.toolStart(sessionId: "s", toolName: "terminal", toolInput: nil)
+        let held = LiveTurnProgress.newTurnEvents([oldEnd, .messageStart(sessionId: "s"), tool])
+        XCTAssertEqual(held.count, 2, "only what follows the new turn's start")
+        XCTAssertEqual(LiveTurnProgress.newTurnEvents([oldEnd, tool]).count, 1, "without a start, an end belongs to the turn before")
     }
 
     /// The relay's push carries this JSON; ActivityKit decodes it into
