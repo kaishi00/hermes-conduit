@@ -187,6 +187,61 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(AppState.isPhoneChangesPush(["conduit": ["type": "response.ready"]]))
     }
 
+    func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+
+        // A read goes sealed to the host with op voice.
+        let read = try await engine.voiceRead(tool: "conduit_calendar", arguments: ["action": "next"], provider: "gemini-live",
+                                              path: "/api/plugins/conduit_push/voice-tools/call", request: host.handle)
+        XCTAssertEqual((read as? [String: Any])?["tool"] as? String, "conduit_calendar")
+
+        // Only what's shared: no reminders shared, no reminder adds.
+        var eventsOnly = phonePreferences()
+        eventsOnly.reminders = false
+        let tools = PhoneVoiceTools.tools(for: eventsOnly)
+        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
+        let addTool = try XCTUnwrap(tools.last)
+        XCTAssertEqual(((addTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences()).isEmpty)
+
+        // A change Hermes asks for is answered out loud.
+        host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",
+                         "fields": ["title": "Call the plumber"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences()).first)
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
+        let listed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "list"], engine: engine, answer: answer)
+        XCTAssertTrue(listed["result"]?.contains("Call the plumber") == true)
+        XCTAssertTrue(PhoneVoiceTools.note(for: try XCTUnwrap(engine.prompts.first)).contains("ch_voice"))
+        let approved = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
+                                                 engine: engine, answer: answer)
+        XCTAssertNotNil(approved["result"])
+        XCTAssertEqual(source.applied, ["ch_voice"])
+        let missing = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(missing["error"], "Answered already: not applied twice")
+
+        // An event the user asks for goes in at once and counts as sent.
+        let added = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Dentist", "start": "2026-10-16T15:00",
+                                                                   "calendar": "personal"],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(added["result"], added["error"] ?? "")
+        let voiceID = try XCTUnwrap(source.applied.last)
+        XCTAssertTrue(voiceID.hasPrefix("voice_"))
+        XCTAssertEqual(engine.state.eventHashes["item_\(voiceID)"], "")
+        let unknown = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Gym", "start": "2026-10-16T07:00",
+                                                                     "calendar": "Work"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(unknown["error"], "No calendar called Work")
+        XCTAssertNotNil(PhoneVoiceTools.localTime("2026-10-16T15:00"))
+        XCTAssertEqual(PhoneVoiceTools.localTime("2026-10-16")?.isDate, true)
+        XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
+    }
+
     // MARK: Helpers
 
     private func makePhoneEngine(source: FakePhoneCalendarSource) -> PhoneSyncEngine {
@@ -318,6 +373,19 @@ private final class FakePhoneHost {
             let answerJSON: [String: Any] = ["call_id": callID, "changes": waiting]
             let answer = try JSONSerialization.data(withJSONObject: answerJSON)
             let answerAAD = PhoneSyncCrypto.exchangeAAD(direction: "answer", op: op, kid: keys.kid, deviceID: deviceID, callID: callID)
+            let sealedAnswer = try ChaChaPoly.seal(answer, using: SymmetricKey(data: keys.answer), authenticating: answerAAD)
+            return ["ok": true, "v": 1, "nonce": NotificationE2E.base64URL(Data(sealedAnswer.nonce)),
+                    "ct": NotificationE2E.base64URL(sealedAnswer.ciphertext + sealedAnswer.tag)]
+        }
+        if path.hasSuffix("/voice-tools/call") {
+            let callID = try XCTUnwrap(body["call_id"] as? String)
+            XCTAssertEqual(body["op"] as? String, "voice")
+            let aad = PhoneSyncCrypto.exchangeAAD(direction: "request", op: "voice", kid: keys.kid, deviceID: deviceID, callID: callID)
+            let plaintext = try ChaChaPoly.open(box, using: SymmetricKey(data: keys.request), authenticating: aad)
+            let request = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+            let result: [String: Any] = ["ok": true, "tool": request["tool"] ?? "", "args": request["args"] ?? [:]]
+            let answer = try JSONSerialization.data(withJSONObject: ["call_id": callID, "result": result])
+            let answerAAD = PhoneSyncCrypto.exchangeAAD(direction: "answer", op: "voice", kid: keys.kid, deviceID: deviceID, callID: callID)
             let sealedAnswer = try ChaChaPoly.seal(answer, using: SymmetricKey(data: keys.answer), authenticating: answerAAD)
             return ["ok": true, "v": 1, "nonce": NotificationE2E.base64URL(Data(sealedAnswer.nonce)),
                     "ct": NotificationE2E.base64URL(sealedAnswer.ciphertext + sealedAnswer.tag)]

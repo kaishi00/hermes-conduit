@@ -228997,6 +228997,170 @@
           }
         }
       }
+    },
+    "Let %@ use your calendar and reminders?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deinen Kalender und deine Erinnerungen nutzen lassen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Permitir que %@ use tu calendario y tus recordatorios?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser %@ à utiliser ton calendrier et tes rappels ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan %@ menggunakan kalender dan pengingatmu?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consentire a %@ di usare il tuo calendario e i tuoi promemoria?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ にカレンダーとリマインダーの使用を許可しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 캘린더와 미리 알림을 사용하도록 허용할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwolić %@ korzystać z Twojego kalendarza i przypomnień?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que %@ use seu calendário e seus lembretes?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ пользоваться вашим календарём и напоминаниями?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ takviminizi ve anımsatıcılarınızı kullanabilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 %@ 使用你的日历和提醒事项吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 %@ 使用你的行事曆和提醒事項嗎？"
+          }
+        }
+      }
+    },
+    "Let a live voice call read what you share here when you ask, add events and reminders you ask for, and ask you out loud about Hermes' changes. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass einen Live-Sprachanruf lesen, was du hier teilst, wenn du danach fragst, Termine und Erinnerungen hinzufügen, um die du bittest, und dich laut zu Änderungen von Hermes fragen. Was er liest, geht an das Unternehmen, das diesen Sprachmodus betreibt, zu dessen Bedingungen. Klassische Sprache ist Hermes selbst und braucht hier nichts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que una llamada de voz en vivo lea lo que compartes aquí cuando lo pidas, añada los eventos y recordatorios que pidas y te pregunte en voz alta por los cambios de Hermes. Lo que lee va a la empresa que gestiona ese modo de voz, según sus condiciones. La voz clásica es el propio Hermes y no necesita nada aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permets à un appel vocal en direct de lire ce que tu partages ici quand tu le demandes, d'ajouter les événements et rappels que tu demandes et de te demander à voix haute pour les modifications de Hermes. Ce qu'il lit va à l'entreprise qui gère ce mode vocal, selon ses conditions. La voix classique, c'est Hermes lui-même : rien à régler ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan panggilan suara langsung membaca apa yang kamu bagikan di sini saat kamu memintanya, menambahkan acara dan pengingat yang kamu minta, dan menanyakan perubahan dari Hermes dengan suara. Apa yang dibacanya dikirim ke perusahaan yang menjalankan mode suara itu, sesuai ketentuannya. Suara klasik adalah Hermes sendiri dan tidak perlu apa-apa di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a una chiamata vocale dal vivo di leggere ciò che condividi qui quando lo chiedi, aggiungere gli eventi e i promemoria che chiedi e chiederti a voce delle modifiche di Hermes. Ciò che legge va all'azienda che gestisce quella modalità vocale, secondo i suoi termini. La voce classica è Hermes stesso e non richiede nulla qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブ音声通話で、頼んだときにここで共有している内容を読み、頼んだ予定やリマインダーを追加し、Hermes からの変更を声で確認できるようにします。読み取った内容は、その音声モードを運営する会社に、その会社の規約に従って送られます。クラシック音声は Hermes そのものなので、ここでの設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이브 음성 통화가 요청할 때 여기에서 공유하는 내용을 읽고, 요청한 일정과 미리 알림을 추가하고, Hermes의 변경 사항을 소리 내어 물어보도록 허용합니다. 읽은 내용은 해당 음성 모드를 운영하는 회사에 그 회사의 약관에 따라 전달됩니다. 클래식 음성은 Hermes 자체이므로 여기서 설정할 것이 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól, by rozmowa głosowa na żywo czytała to, co tu udostępniasz, gdy o to poprosisz, dodawała wydarzenia i przypomnienia, o które prosisz, i pytała Cię na głos o zmiany od Hermesa. To, co odczyta, trafia do firmy obsługującej ten tryb głosowy, na jej warunkach. Głos klasyczny to sam Hermes i nie wymaga tu niczego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permita que uma chamada de voz ao vivo leia o que você compartilha aqui quando você pedir, adicione os eventos e lembretes que você pedir e pergunte em voz alta sobre as alterações do Hermes. O que ela lê vai para a empresa que opera esse modo de voz, segundo os termos dela. A voz clássica é o próprio Hermes e não precisa de nada aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите живому голосовому звонку читать то, чем вы делитесь здесь, когда вы просите, добавлять события и напоминания по вашей просьбе и вслух спрашивать вас об изменениях от Hermes. Прочитанное уходит компании, которая обслуживает этот голосовой режим, на её условиях. Классический голос — это сам Hermes, ему здесь ничего не нужно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canlı sesli aramanın, istediğinde burada paylaştıklarını okumasına, istediğin etkinlikleri ve anımsatıcıları eklemesine ve Hermes'in değişikliklerini sana sesli sormasına izin ver. Okudukları, o ses modunu çalıştıran şirkete, onun koşullarıyla gider. Klasik ses Hermes'in kendisidir ve burada bir şey gerektirmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许实时语音通话在你要求时读取你在这里共享的内容、添加你要求的日程和提醒事项，并就 Hermes 的更改出声询问你。它读取的内容会按照该语音模式运营公司的条款发送给该公司。经典语音就是 Hermes 本身，这里无需设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許即時語音通話在你要求時讀取你在這裡分享的內容、加入你要求的行程和提醒事項，並就 Hermes 的變更出聲詢問你。它讀取的內容會依照該語音模式營運公司的條款傳送給該公司。經典語音就是 Hermes 本身，這裡無需設定。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

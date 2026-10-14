@@ -660,6 +660,48 @@ final class PhoneSyncEngine: ObservableObject {
         persist()
     }
 
+    // MARK: Live voice calls
+
+    struct VoiceNotReady: Error {}
+
+    /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
+    /// host's result, for this iPhone's data only.
+    func voiceRead(tool: String, arguments: [String: Any], provider: String, path: String,
+                   request: Request) async throws -> Any {
+        guard preferences.isOn, readStateIfNeeded(), let key = keys.load() else { throw VoiceNotReady() }
+        let deviceID = state.deviceID
+        let callID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let payload: [String: Any] = ["call_id": callID, "tool": tool, "args": arguments, "provider": provider]
+        // JSONSerialization raises, rather than throws, on anything else.
+        guard JSONSerialization.isValidJSONObject(payload) else { throw PhoneSyncCrypto.Failure.malformedAnswer }
+        let plaintext = try JSONSerialization.data(withJSONObject: payload)
+        let body = try PhoneSyncCrypto.exchangeEnvelope(plaintext: plaintext, op: "voice", key: key,
+                                                        deviceID: deviceID, callID: callID)
+        let answer = try await request(path, "POST", body)
+        let opened = try PhoneSyncCrypto.openAnswer(answer, op: "voice", key: key, deviceID: deviceID, callID: callID)
+        guard let json = try JSONSerialization.jsonObject(with: opened) as? [String: Any],
+              json["call_id"] as? String == callID else {
+            throw PhoneSyncCrypto.Failure.malformedAnswer
+        }
+        return json["result"] ?? NSNull()
+    }
+
+    /// Adds an event or reminder the user asked for in a voice call, straight
+    /// away (no card: they said so out loud). The next upload sends it.
+    func addFromVoice(_ change: PhoneChange) async throws -> String? {
+        guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
+        let itemID = try await calendarSource.apply(change, window: window)
+        if let itemID {
+            if change.kind.isEvent {
+                if state.eventHashes[itemID] == nil { state.eventHashes[itemID] = "" }
+            } else if state.reminderHashes[itemID] == nil {
+                state.reminderHashes[itemID] = ""
+            }
+            persist()
+        }
+        return itemID
+    }
+
     /// The banner's Undo: takes back an addition made without asking.
     func undo(_ added: PhoneAutoAdded) async {
         if autoAdded == added { autoAdded = nil }

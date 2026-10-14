@@ -72,9 +72,25 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var window: PhoneCalendarWindow = .default
     /// Calendars and reminder lists the user left out, by EventKit id.
     var hiddenCalendars: Set<String> = []
+    /// Live voice modes the user lets read what's shared on a call, answer
+    /// Hermes' changes and add events and reminders
+    /// (`LiveVoiceModeName.storageID`). Optional so preferences saved before
+    /// it still decode; nil is none.
+    var voiceReaders: [String]?
 
     var isOn: Bool { destination != nil && sharesAnything }
     var sharesAnything: Bool { calendar != .off || reminders || status || focus }
+
+    /// Whether a live call on `mode` may use the calendar and phone.
+    func letsVoiceUse(_ mode: LiveVoiceModeName) -> Bool {
+        isOn && (voiceReaders ?? []).contains(mode.storageID)
+    }
+
+    mutating func setVoiceUse(_ mode: LiveVoiceModeName, allowed: Bool) {
+        var readers = Set(voiceReaders ?? [])
+        if allowed { readers.insert(mode.storageID) } else { readers.remove(mode.storageID) }
+        voiceReaders = readers.isEmpty ? nil : readers.sorted()
+    }
 
     static let storageKey = "conduit.phoneSync.preferences.v1"
 
