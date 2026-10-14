@@ -437,10 +437,11 @@ struct MainView: View {
         .sheet(isPresented: $appState.showSidebar, onDismiss: presentSettingsAfterSidebarDismissal) {
             SidebarView(onRequestSettings: presentSettingsFromDrawer)
                 .environmentObject(appState)
+                // No blanket .transaction animation here: forcing one onto
+                // every update made the drawer's first layout passes animate,
+                // so the glass header and tab bar visibly grew across the
+                // screen as the sheet opened. Rows animate via withAnimation.
                 .presentationDetents([.large])
-                .transaction { transaction in
-                    transaction.animation = .easeInOut(duration: 0.15)
-                }
         }
     }
 
