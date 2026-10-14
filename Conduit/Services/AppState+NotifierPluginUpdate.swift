@@ -97,7 +97,7 @@ extension AppState {
     var showsNotifierPluginUpdateNotice: Bool {
         if activeNotifierPluginUpdate != .idle { return true }
         guard notifierPlugin.updateAvailable else { return false }
-        return dismissedPluginUpdateVersion != pluginUpdateDismissalToken
+        return !dismissedPluginUpdates.contains(pluginUpdateDismissalToken)
     }
 
     /// "Not now" belongs to one dashboard and one offered version.
@@ -110,7 +110,10 @@ extension AppState {
         if activeNotifierPluginUpdate != .idle {
             dismissNotifierPluginUpdateOutcome()
         } else {
-            dismissedPluginUpdateVersion = pluginUpdateDismissalToken
+            // Only this version's dismissals matter from now on.
+            let version = "|\(notifierPlugin.offeredVersion)"
+            dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
+                .union([pluginUpdateDismissalToken])
         }
     }
 

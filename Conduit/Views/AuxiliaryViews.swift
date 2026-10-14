@@ -2469,7 +2469,8 @@ private struct NotificationsSettingsDetail: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6).frame(minHeight: 46)
         }
-        .disabled(pairing || notifications.isWorking || appState.activeDashboardID == nil || !notifications.isEnabled)
+        .disabled(pairing || notifications.isPairing || notifications.isWorking || appState.activeDashboardID == nil
+                  || !notifications.isEnabled)
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
         .accessibilityIdentifier("notifications.pair")
         if let pairingError {

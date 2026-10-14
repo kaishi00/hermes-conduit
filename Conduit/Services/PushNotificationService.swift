@@ -426,7 +426,8 @@ final class PushNotificationService: ObservableObject {
 
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published private(set) var isWorking = false
-    private var isPairing = false
+    /// A pairing with a host is running (the button or the automatic one).
+    @Published private(set) var isPairing = false
     @Published private(set) var lastError: String?
     @Published private(set) var pairingCode: String?
     @Published private(set) var pairingExpiry: String?

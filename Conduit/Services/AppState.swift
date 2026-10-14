@@ -17869,12 +17869,12 @@ final class AppState: ObservableObject {
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
 
-    /// The plugin version whose update notice the user closed with Not now
+    /// The dashboard|version update notices the user closed with Not now
     /// (AppState+NotifierPluginUpdate.swift).
-    var dismissedPluginUpdateVersion: String? {
-        get { defaults.string(forKey: Self.dismissedPluginUpdateKey) }
+    var dismissedPluginUpdates: Set<String> {
+        get { Set(defaults.stringArray(forKey: Self.dismissedPluginUpdateKey) ?? []) }
         set {
-            defaults.set(newValue, forKey: Self.dismissedPluginUpdateKey)
+            defaults.set(newValue.sorted(), forKey: Self.dismissedPluginUpdateKey)
             objectWillChange.send()
         }
     }
