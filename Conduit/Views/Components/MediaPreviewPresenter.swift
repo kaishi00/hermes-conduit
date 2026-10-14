@@ -156,6 +156,18 @@ final class MediaPreviewPresenter {
         return presentStaged(staged, previewable: previewable)
     }
 
+    /// Previews a gateway file already downloaded into its own directory
+    /// (#569); the directory is removed when the preview closes.
+    @discardableResult
+    func present(downloaded download: DashboardDownloadedFile) -> Bool {
+        let previewable = Self.isPreviewable(filename: download.file.lastPathComponent, mimeType: download.mimeType)
+        return presentStaged((download.directory, download.file), previewable: previewable)
+    }
+
+    /// Where downloads for preview are staged. Reached through `shared`, so
+    /// the sweep of a previous run's leftovers has already happened.
+    var stagingDirectory: URL { Self.stagingRoot }
+
     private func presentStaged(_ staged: (directory: URL, file: URL)?, previewable: Bool) -> Bool {
         guard let staged else { return false }
         guard !Task.isCancelled else {

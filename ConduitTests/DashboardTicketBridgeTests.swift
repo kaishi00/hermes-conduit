@@ -340,4 +340,94 @@ extension DashboardTicketBridgeTests {
             "cookies never follow a redirect to another origin"
         )
     }
+
+    // MARK: - File downloads (#569)
+
+    private func downloadSession(status: Int, body: Data, headers: [String: String] = [:]) -> URLSession {
+        DashboardDownloadURLProtocolStub.response = (status, body, headers)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DashboardDownloadURLProtocolStub.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private func downloadRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DashboardDownloadTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    func testDownloadWritesTheBodyToDiskInChunks() async throws {
+        // Several chunks plus a partial one.
+        let body = Data((0..<(2 * 1024 * 1024 + 4_321)).map { UInt8(truncatingIfNeeded: $0) })
+        let session = downloadSession(status: 200, body: body, headers: ["Content-Type": "video/mp4"])
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/fs/download?path=/tmp/reel.mp4")))
+
+        let download = try await DashboardTicketBridge.download(
+            request, filename: "/tmp/out/reel.mp4", into: try downloadRoot(), maxBytes: 4 * 1024 * 1024, session: session
+        )
+
+        XCTAssertEqual(download.file.lastPathComponent, "reel.mp4")
+        XCTAssertEqual(download.mimeType, "video/mp4")
+        XCTAssertEqual(try Data(contentsOf: download.file), body)
+    }
+
+    func testDownloadOverTheLimitIsOversizedAndLeavesNothingBehind() async throws {
+        let session = downloadSession(status: 200, body: Data(repeating: 1, count: 600_000))
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/fs/download?path=/tmp/a.mov")))
+        let root = try downloadRoot()
+
+        do {
+            _ = try await DashboardTicketBridge.download(request, filename: "a.mov", into: root, maxBytes: 500_000, session: session)
+            XCTFail("a file over the limit is refused")
+        } catch DashboardTicketBridgeError.oversizedResponse(let limit) {
+            XCTAssertEqual(limit, 500_000)
+        }
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        XCTAssertTrue(leftovers.isEmpty, "a refused download removes its directory")
+    }
+
+    func testDownloadReportsSignInAndHTTPFailures() async throws {
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/fs/download?path=/tmp/a.mp3")))
+        let root = try downloadRoot()
+
+        do {
+            _ = try await DashboardTicketBridge.download(
+                request, filename: "a.mp3", into: root, maxBytes: 1_000,
+                session: downloadSession(status: 401, body: Data("{}".utf8))
+            )
+            XCTFail("401 needs a sign-in")
+        } catch DashboardTicketBridgeError.signInRequired {}
+
+        do {
+            _ = try await DashboardTicketBridge.download(
+                request, filename: "a.mp3", into: root, maxBytes: 1_000,
+                session: downloadSession(status: 404, body: Data(#"{"detail":"Not Found"}"#.utf8))
+            )
+            XCTFail("an older Hermes without the route is a failure the data URL can fall back from")
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            XCTAssertEqual(status, 404)
+        }
+    }
+}
+
+private final class DashboardDownloadURLProtocolStub: URLProtocol {
+    nonisolated(unsafe) static var response: (status: Int, body: Data, headers: [String: String]) = (200, Data(), [:])
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let (status, body, headers) = Self.response
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

@@ -25146,6 +25146,26 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Downloads a gateway `MEDIA:` video, audio clip or document to disk
+    /// for opening (#569). `/api/fs/read-data-url` caps files at 16 MB on
+    /// both ends, so larger ones stream from `/api/fs/download`, which
+    /// resolves `path` and `profile` the same way.
+    func gatewayMediaFile(for path: String, profile: String) async -> GatewayMediaFileResult {
+        guard let dashboardTicketBridge,
+              let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .unavailable }
+        let endpoint = DashboardPath.withProfile("/api/fs/download?path=\(encodedPath)", profile: profile)
+        // Read through the presenter so its first-use sweep of old staging
+        // folders runs before this download lands there, not after.
+        let root = MediaPreviewPresenter.shared.stagingDirectory
+        do {
+            return .downloaded(try await dashboardTicketBridge.downloadFile(path: endpoint, filename: path, into: root))
+        } catch DashboardTicketBridgeError.oversizedResponse {
+            return .tooLarge
+        } catch {
+            return .unavailable
+        }
+    }
+
     func loadGatewayDiagnostics() async {
         showGatewaySheet = true
         await refreshGatewayDiagnostics()

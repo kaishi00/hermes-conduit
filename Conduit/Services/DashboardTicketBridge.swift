@@ -394,7 +394,7 @@ final class DashboardTicketBridge: NSObject {
     let dashboardID: UUID?
     /// Bearer-backed session for Hermes' native PKCE flow. The bridge keeps
     /// one interface for callers while cookie/password mode stays intact.
-    private var nativeOAuthSession: NativeOAuthSession?
+    private(set) var nativeOAuthSession: NativeOAuthSession?
     /// AppState includes the authentication transport in its bridge-reuse
     /// identity. A same-URL login that changes cookie ↔ bearer mode must
     /// replace this bridge rather than retaining its in-memory session.
