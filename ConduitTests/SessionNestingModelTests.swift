@@ -117,6 +117,55 @@ final class SessionNestingModelTests: XCTestCase {
         }
     }
 
+    func testAPinnedChatNestsItsCallsAndJobsInThePinnedSection() {
+        // #606: the call and its job follow the pinned chat into Pinned,
+        // even though the call is listed above the chat.
+        let rows = [nestSession("call-1", source: .voice),
+                    nestSession("other"),
+                    nestSession("chat-1"),
+                    nestSession("job-1", source: .voiceJob)]
+        let parents = ["call-1": "chat-1", "job-1": "call-1"]
+        let sections = SessionNesting.sections(
+            rows, query: "", statusFilterActive: false,
+            isPinned: { $0.id == "chat-1" },
+            parentKeyOf: { parents[$0.id] }
+        )
+
+        XCTAssertEqual(nestIDs(sections.pinned), ["chat-1", "call-1", "job-1"])
+        XCTAssertEqual(sections.pinned[0].children.map(\.session.id), ["call-1"])
+        XCTAssertEqual(nestIDs(sections.recent), ["other"])
+    }
+
+    func testAPinnedRowStaysInPinnedInsteadOfNestingUnderItsParent() {
+        // A pinned call under an unpinned chat keeps its Pinned row, and
+        // its job still nests under it there.
+        let rows = [nestSession("chat-1"),
+                    nestSession("call-1", source: .voice),
+                    nestSession("job-1", source: .voiceJob)]
+        let parents = ["call-1": "chat-1", "job-1": "call-1"]
+        let sections = SessionNesting.sections(
+            rows, query: "", statusFilterActive: false,
+            isPinned: { $0.id == "call-1" },
+            parentKeyOf: { parents[$0.id] }
+        )
+
+        XCTAssertEqual(nestIDs(sections.pinned), ["call-1", "job-1"])
+        XCTAssertEqual(nestIDs(sections.recent), ["chat-1"])
+        XCTAssertTrue(sections.recent[0].children.isEmpty)
+    }
+
+    func testNarrowingSplitsTheFlatRowsByPin() {
+        let rows = [nestSession("chat-1"), nestSession("call-1", source: .voice)]
+        let sections = SessionNesting.sections(
+            rows, query: "call", statusFilterActive: false,
+            isPinned: { $0.id == "chat-1" },
+            parentKeyOf: { $0.id == "call-1" ? "chat-1" : nil }
+        )
+
+        XCTAssertEqual(nestIDs(sections.pinned), ["chat-1"])
+        XCTAssertEqual(nestIDs(sections.recent), ["call-1"])
+    }
+
     func testANestSurfacesItsChildrensSignals() {
         let unread: (SessionSummary) -> Bool = { $0.id == "job-1" }
         let quiet: (SessionSummary) -> SessionLiveStatus? = { _ in nil }

@@ -404,17 +404,18 @@ struct SessionList: View {
                     )
                 }
 
-                if layout.liveSections && !pinnedSessions.isEmpty {
+                let sections = nestedSessionSections
+                if layout.liveSections && !sections.pinned.isEmpty {
                     Section("Pinned") {
-                        ForEach(pinnedSessions) { session in
-                            sessionRow(session)
+                        ForEach(sections.pinned) { node in
+                            sessionNestRow(node, depth: 0)
                         }
                     }
                 }
 
-                if layout.liveSections && !unpinnedSessions.isEmpty {
-                    Section(pinnedSessions.isEmpty ? AppLocalization.string("Sessions") : AppLocalization.string("Recent")) {
-                        ForEach(nestedSessionNodes) { node in
+                if layout.liveSections && !sections.recent.isEmpty {
+                    Section(sections.pinned.isEmpty ? AppLocalization.string("Sessions") : AppLocalization.string("Recent")) {
+                        ForEach(sections.recent) { node in
                             sessionNestRow(node, depth: 0)
                         }
                     }
@@ -431,7 +432,9 @@ struct SessionList: View {
             // The row list covers a parent arriving, leaving, or changing
             // shape; a stored id backfilled into it can parent a row
             // without changing any id.
-            .onChange(of: unpinnedSessions) { _, _ in revealActiveNestAncestors() }
+            .onChange(of: displayedSessions) { _, _ in revealActiveNestAncestors() }
+            // Pinning a row moves it out of the nest it sat in.
+            .onChange(of: appState.pinnedSessionIDs) { _, _ in revealActiveNestAncestors() }
             // Tags and call-chat links can parent a row without changing
             // the row list, so the reveal re-runs when they land too.
             .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
@@ -666,22 +669,16 @@ struct SessionList: View {
         appState.sessionFilterOrder.filter { !sourceRows($0).isEmpty }
     }
 
-    private var pinnedSessions: [SessionSummary] {
-        displayedSessions.filter { appState.isSessionPinned($0) }
-    }
-
-    private var unpinnedSessions: [SessionSummary] {
-        displayedSessions.filter { !appState.isSessionPinned($0) }
-    }
-
-    /// The Recent rows, voice-spawned sessions nested under the session
-    /// that started them (#556). A search or a status filter is a lookup,
-    /// not a browse: it flattens the list to the matching rows.
-    private var nestedSessionNodes: [SessionNesting.Node] {
-        SessionNesting.rows(
-            unpinnedSessions,
+    /// The Pinned and Recent rows, voice-spawned sessions nested under the
+    /// session that started them (#556), a pinned chat's included (#606).
+    /// A search or a status filter is a lookup, not a browse: it flattens
+    /// the list to the matching rows.
+    private var nestedSessionSections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
+        SessionNesting.sections(
+            displayedSessions,
             query: searchText,
             statusFilterActive: statusFilter != nil,
+            isPinned: appState.isSessionPinned,
             parentKeyOf: appState.sessionNestingParentKey
         )
     }
@@ -978,7 +975,7 @@ struct SessionList: View {
         guard let toExpand = revealLatch.reveal(
             active: appState.activeSessionId,
             ancestors: nest.keys,
-            listHasRows: !unpinnedSessions.isEmpty,
+            listHasRows: !displayedSessions.isEmpty,
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
@@ -992,7 +989,8 @@ struct SessionList: View {
     /// whether its row is listed at all, ranked like the grouping itself
     /// (SessionNesting.ancestorKeys).
     private var activeNestAncestors: (keys: Set<String>, rowIsListed: Bool) {
-        SessionNesting.ancestorKeys(of: appState.activeSessionId ?? "", in: nestedSessionNodes)
+        let sections = nestedSessionSections
+        return SessionNesting.ancestorKeys(of: appState.activeSessionId ?? "", in: sections.pinned + sections.recent)
     }
 
     /// The expander's hint names the tap's effect (#556): hiding an

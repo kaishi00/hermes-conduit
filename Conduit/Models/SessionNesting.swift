@@ -112,9 +112,8 @@ enum SessionNesting {
     }
 
     /// The drawer's rows: nested while browsing, flat while narrowing.
-    /// A parent the user pinned or a filter excluded leaves the list, and
-    /// its children degrade to top-level rows by design — the nest never
-    /// hides a row.
+    /// A parent a filter excluded leaves the list, and its children
+    /// degrade to top-level rows by design — the nest never hides a row.
     static func rows(
         _ sessions: [SessionSummary],
         query: String,
@@ -125,6 +124,36 @@ enum SessionNesting {
             return sessions.map { Node(session: $0, children: []) }
         }
         return group(sessions, parentKeyOf: parentKeyOf)
+    }
+
+    /// The drawer's Pinned and Recent sections (#606). The whole list is
+    /// grouped once, so a pinned chat nests its calls and jobs like any
+    /// other parent. A pinned row never nests under another row, so it
+    /// always stays in Pinned; every other row follows its root into
+    /// whichever section that root lands in.
+    static func sections(
+        _ sessions: [SessionSummary],
+        query: String,
+        statusFilterActive: Bool,
+        isPinned: (SessionSummary) -> Bool,
+        parentKeyOf: (SessionSummary) -> String?
+    ) -> (pinned: [Node], recent: [Node]) {
+        let nodes = rows(
+            sessions,
+            query: query,
+            statusFilterActive: statusFilterActive,
+            parentKeyOf: { isPinned($0) ? nil : parentKeyOf($0) }
+        )
+        var pinned: [Node] = []
+        var recent: [Node] = []
+        for node in nodes {
+            if isPinned(node.session) {
+                pinned.append(node)
+            } else {
+                recent.append(node)
+            }
+        }
+        return (pinned, recent)
     }
 
     /// The nest's own signals: the row's own unread/live status merged
