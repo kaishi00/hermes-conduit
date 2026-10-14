@@ -163,6 +163,29 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(whole.delete.isEmpty, "A full upload replaces; nothing to delete by id")
         let cut = PhoneSyncEngine.diff([["id": "a", "title": "A"]], against: sent, full: false, truncated: true)
         XCTAssertTrue(cut.delete.isEmpty, "An item past the limit isn't reported deleted")
+
+        // Access taken away in the Settings app narrows what the host is told,
+        // and access granted never widens what the user chose.
+        let chosen = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
+        let narrowed = PhoneSyncEngine.effectiveSharing(chosen, access: .writeOnly, remindersAuthorized: false)
+        XCTAssertEqual(narrowed["calendar"] as? String, "write_only")
+        XCTAssertEqual(narrowed["reminders"] as? Bool, false)
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(chosen, access: .off, remindersAuthorized: true)["calendar"] as? String, "off")
+        let kept = PhoneSyncEngine.effectiveSharing(chosen, access: .full, remindersAuthorized: true)
+        XCTAssertEqual(kept["calendar"] as? String, "full")
+        XCTAssertEqual(kept["reminders"] as? Bool, true)
+        let addOnly = PhoneSyncPreferences(calendar: .writeOnly, reminders: false, status: false, focus: false)
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["calendar"] as? String, "write_only")
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(addOnly, access: .full, remindersAuthorized: true)["reminders"] as? Bool, false)
+        var withEmails = chosen
+        withEmails.details = true
+        withEmails.attendeeEmails = true
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(withEmails, access: .full, remindersAuthorized: true)["attendee_emails"] as? Bool, true)
+        let emailsNarrowed = PhoneSyncEngine.effectiveSharing(withEmails, access: .writeOnly, remindersAuthorized: true)
+        XCTAssertEqual(emailsNarrowed["attendee_emails"] as? Bool, false)
+        XCTAssertEqual(emailsNarrowed["details"] as? Bool, true, "Details also cover reminder notes")
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(withEmails, access: .writeOnly, remindersAuthorized: false)["details"] as? Bool,
+                       false, "Nothing detailed is sent")
     }
 
     func testPhoneSettingsLinkOpensOnlyInsideTheApp() throws {
@@ -175,6 +198,97 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(AppState.isPhoneChangesPush(["conduit": ["type": "phone.changes", "e2e": 1] as [String: Any]]))
         XCTAssertTrue(AppState.isPhoneChangesPush(["body": ["conduit": ["type": "phone.changes"]]]))
         XCTAssertFalse(AppState.isPhoneChangesPush(["conduit": ["type": "response.ready"]]))
+    }
+
+    func testPhoneVoiceUsesAreLoggedApart() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PhoneVoiceUses-\(UUID().uuidString)"))
+        HealthVoiceReadLog.record(mode: .geminiLive, action: "events", key: HealthVoiceReadLog.phoneStorageKey, in: defaults)
+        XCTAssertEqual(HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey, from: defaults).entries.map(\.action), ["events"])
+        XCTAssertTrue(HealthVoiceReadLog.load(from: defaults).entries.isEmpty, "Health reads keep their own log")
+        HealthVoiceReadLog.clear(key: HealthVoiceReadLog.phoneStorageKey, in: defaults)
+        XCTAssertTrue(HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey, from: defaults).entries.isEmpty)
+    }
+
+    func testPhoneChangeIsNeverAppliedTwice() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        host.changes = [["id": "ch_once", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let prompt = try XCTUnwrap(engine.prompts.first)
+
+        // The first approval is still saving when a second one and an
+        // exchange land: neither hands the change out again.
+        source.holdApply = true
+        let first = Task { await engine.answer(prompt, approve: true) }
+        for _ in 0..<500 where !source.isHolding { try await Task.sleep(for: .milliseconds(2)) }
+        XCTAssertTrue(source.isHolding)
+        await engine.answer(prompt, approve: true)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+        source.releaseApply()
+        await first.value
+        XCTAssertEqual(source.applied, ["ch_once"])
+    }
+
+    func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+
+        // A read goes sealed to the host with op voice.
+        let read = try await engine.voiceRead(tool: "conduit_calendar", arguments: ["action": "next"], provider: "gemini-live",
+                                              path: "/api/plugins/conduit_push/voice-tools/call", request: host.handle)
+        XCTAssertEqual((read as? [String: Any])?["tool"] as? String, "conduit_calendar")
+
+        // Only what's shared: no reminders shared, no reminder adds.
+        var eventsOnly = phonePreferences()
+        eventsOnly.reminders = false
+        let tools = PhoneVoiceTools.tools(for: eventsOnly, access: .full, remindersAuthorized: true)
+        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
+        let addTool = try XCTUnwrap(tools.last)
+        XCTAssertEqual(((addTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences(), access: .full, remindersAuthorized: true).isEmpty)
+        // Nor what iOS no longer allows.
+        let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
+        XCTAssertEqual(((noReminders.last?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        XCTAssertEqual(PhoneVoiceTools.tools(for: eventsOnly, access: .off, remindersAuthorized: true).map(\.name), [PhoneVoiceTools.changesTool])
+
+        // A change Hermes asks for is answered out loud.
+        host.changes = [["id": "ch_voice", "kind": "add_reminder", "auto": false, "reason": "You asked",
+                         "fields": ["title": "Call the plumber"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: true).first)
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
+        let listed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "list"], engine: engine, answer: answer)
+        XCTAssertTrue(listed["result"]?.contains("Call the plumber") == true)
+        XCTAssertTrue(PhoneVoiceTools.note(for: try XCTUnwrap(engine.prompts.first)).contains("ch_voice"))
+        let approved = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
+                                                 engine: engine, answer: answer)
+        XCTAssertNotNil(approved["result"])
+        XCTAssertEqual(source.applied, ["ch_voice"])
+        let missing = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(missing["error"], "Answered already: not applied twice")
+
+        // An event the user asks for goes in at once and counts as sent.
+        let added = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Dentist", "start": "2026-10-16T15:00",
+                                                                   "calendar": "personal"],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(added["result"], added["error"] ?? "")
+        let voiceID = try XCTUnwrap(source.applied.last)
+        XCTAssertTrue(voiceID.hasPrefix("voice_"))
+        XCTAssertEqual(engine.state.eventHashes["item_\(voiceID)"], "")
+        let unknown = await PhoneVoiceTools.run(addTool, arguments: ["kind": "event", "title": "Gym", "start": "2026-10-16T07:00",
+                                                                     "calendar": "Work"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(unknown["error"], "No calendar called Work")
+        XCTAssertNotNil(PhoneVoiceTools.localTime("2026-10-16T15:00"))
+        XCTAssertEqual(PhoneVoiceTools.localTime("2026-10-16")?.isDate, true)
+        XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
     }
 
     // MARK: Helpers
@@ -224,7 +338,21 @@ private final class FakePhoneCalendarSource: PhoneCalendarSource {
     }
     func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]] { events }
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]] { reminderItems }
+    /// Holds each apply until releaseApply, to land something in between.
+    var holdApply = false
+    private let holdLock = NSLock()
+    private var held: CheckedContinuation<Void, Never>?
+    var isHolding: Bool { holdLock.withLock { held != nil } }
+    func releaseApply() {
+        holdApply = false
+        holdLock.withLock { held }?.resume()
+        holdLock.withLock { held = nil }
+    }
+
     func apply(_ change: PhoneChange, window: (from: Date, to: Date)) async throws -> String? {
+        if holdApply {
+            await withCheckedContinuation { continuation in holdLock.withLock { held = continuation } }
+        }
         applied.append(change.id)
         return "item_\(change.id)"
     }
@@ -308,6 +436,19 @@ private final class FakePhoneHost {
             let answerJSON: [String: Any] = ["call_id": callID, "changes": waiting]
             let answer = try JSONSerialization.data(withJSONObject: answerJSON)
             let answerAAD = PhoneSyncCrypto.exchangeAAD(direction: "answer", op: op, kid: keys.kid, deviceID: deviceID, callID: callID)
+            let sealedAnswer = try ChaChaPoly.seal(answer, using: SymmetricKey(data: keys.answer), authenticating: answerAAD)
+            return ["ok": true, "v": 1, "nonce": NotificationE2E.base64URL(Data(sealedAnswer.nonce)),
+                    "ct": NotificationE2E.base64URL(sealedAnswer.ciphertext + sealedAnswer.tag)]
+        }
+        if path.hasSuffix("/voice-tools/call") {
+            let callID = try XCTUnwrap(body["call_id"] as? String)
+            XCTAssertEqual(body["op"] as? String, "voice")
+            let aad = PhoneSyncCrypto.exchangeAAD(direction: "request", op: "voice", kid: keys.kid, deviceID: deviceID, callID: callID)
+            let plaintext = try ChaChaPoly.open(box, using: SymmetricKey(data: keys.request), authenticating: aad)
+            let request = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+            let result: [String: Any] = ["ok": true, "tool": request["tool"] ?? "", "args": request["args"] ?? [:]]
+            let answer = try JSONSerialization.data(withJSONObject: ["call_id": callID, "result": result])
+            let answerAAD = PhoneSyncCrypto.exchangeAAD(direction: "answer", op: "voice", kid: keys.kid, deviceID: deviceID, callID: callID)
             let sealedAnswer = try ChaChaPoly.seal(answer, using: SymmetricKey(data: keys.answer), authenticating: answerAAD)
             return ["ok": true, "v": 1, "nonce": NotificationE2E.base64URL(Data(sealedAnswer.nonce)),
                     "ct": NotificationE2E.base64URL(sealedAnswer.ciphertext + sealedAnswer.tag)]

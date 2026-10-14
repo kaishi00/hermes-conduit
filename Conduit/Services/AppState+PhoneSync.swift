@@ -28,6 +28,7 @@ enum PhoneSyncReason: String {
     case answered
     case manual
     case turnedOn
+    case voiceCall
 }
 
 extension AppState {
@@ -55,7 +56,7 @@ extension AppState {
             engine.note(nil)
         }
         // Frequent moments that are rarely news: a pass at most every half minute.
-        if reason == .foreground || reason == .messageSent || reason == .calendarChanged,
+        if reason == .foreground || reason == .messageSent || reason == .calendarChanged || reason == .voiceCall,
            let last = engine.state.lastAttempt, Date().timeIntervalSince(last) < 30 {
             return .unfinished
         }
@@ -105,6 +106,8 @@ extension AppState {
             throw DashboardTicketBridgeError.notReady
         }
         var preferences = choices
+        // Each voice mode is asked for on its own, after sharing is on.
+        preferences.voiceReaders = nil
         preferences.destination = PhoneSyncDestination(dashboardID: dashboardID, profile: activeProfile,
                                                        host: URL(string: baseURL)?.host ?? baseURL)
         phoneSync.savePreferences(preferences)
@@ -131,6 +134,8 @@ extension AppState {
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices
         preferences.destination = destination
+        // Voice is its own switch (setPhoneVoiceUse), not one of these choices.
+        preferences.voiceReaders = phoneSync.preferences.voiceReaders
         guard preferences.sharesAnything else {
             // Nothing left shared is the narrowest sharing: like any other
             // narrowing, what the host holds goes too.
@@ -139,6 +144,14 @@ extension AppState {
         }
         phoneSync.savePreferences(preferences)
         Task { await runPhoneSync(reason: .manual) }
+    }
+
+    /// Lets a live voice mode use the calendar and phone on a call, or not.
+    func setPhoneVoiceUse(_ mode: LiveVoiceModeName, allowed: Bool) {
+        var preferences = phoneSync.preferences
+        guard preferences.isOn else { return }
+        preferences.setVoiceUse(mode, allowed: allowed)
+        phoneSync.savePreferences(preferences)
     }
 
     /// Turns sharing off. With `deleteFromHost`, this phone's data is
@@ -158,6 +171,7 @@ extension AppState {
             }
         }
         phoneSync.savePreferences(PhoneSyncPreferences())
+        HealthVoiceReadLog.clear(key: HealthVoiceReadLog.phoneStorageKey)
         let deleted = await phoneSync.turnOff(deleteFromHost: request)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.phoneSyncTaskIdentifier)
         if deleteFromHost, !deleted, let destination, let deviceID {

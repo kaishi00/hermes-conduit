@@ -23,6 +23,10 @@ struct PhoneSettingsPage: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var calendars: [PhoneCalendarRow] = []
+    /// The voice mode whose switch is waiting on the user's yes.
+    @State private var askingVoiceMode: LiveVoiceModeName?
+    /// Loaded on appear (loading prunes and saves).
+    @State private var voiceUses = HealthVoiceReadLog()
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
@@ -45,6 +49,7 @@ struct PhoneSettingsPage: View {
                 calendarSection
                 changesSection
                 phoneSection
+                if preferences.isOn { voiceSection }
                 actionSection
             }
         }
@@ -57,6 +62,17 @@ struct PhoneSettingsPage: View {
             } cancel: {
                 showsConsent = false
             }
+        }
+        .confirmationDialog(
+            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") use your calendar and reminders?")),
+            isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
+            titleVisibility: .visible,
+            presenting: askingVoiceMode
+        ) { mode in
+            Button("Allow") { setVoiceUse(mode, allowed: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: { mode in
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
         }
         .confirmationDialog("Turn off sharing?", isPresented: $showsTurnOff, titleVisibility: .visible) {
             Button("Turn off and delete from the host", role: .destructive) { turnOff(delete: true) }
@@ -189,6 +205,56 @@ struct PhoneSettingsPage: View {
         }
     }
 
+    // MARK: Voice
+
+    /// Which live voice modes may use the calendar and phone on a call. Each
+    /// is its own yes: what it reads goes to that mode's company.
+    private var voiceSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+            ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
+                Toggle(isOn: voiceBinding(mode)) {
+                    Text(verbatim: "\(mode.displayName) (\(mode.company))")
+                }
+                .accessibilityIdentifier("settings.phone.voice.\(mode.storageID)")
+            }
+            Text("Let a live voice call read what you share here when you ask, add events and reminders you ask for, and ask you out loud about Hermes' changes. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if !voiceUses.entries.isEmpty {
+                Text("Read by voice in the last 7 days")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.top, 4)
+                ForEach(voiceUses.entries.suffix(20).reversed()) { entry in
+                    HStack {
+                        Text(verbatim: "\(entry.modeName): \(entry.action)")
+                        Spacer()
+                        Text(entry.at.formatted(.relative(presentation: .named)))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+    }
+
+    private func voiceBinding(_ mode: LiveVoiceModeName) -> Binding<Bool> {
+        Binding(
+            get: { preferences.letsVoiceUse(mode) },
+            set: { on in
+                if on {
+                    askingVoiceMode = mode
+                } else {
+                    setVoiceUse(mode, allowed: false)
+                }
+            }
+        )
+    }
+
+    private func setVoiceUse(_ mode: LiveVoiceModeName, allowed: Bool) {
+        Haptics.selection()
+        appState.setPhoneVoiceUse(mode, allowed: allowed)
+    }
+
     private var actionSection: some View {
         VStack(spacing: 10) {
             if preferences.isOn {
@@ -270,6 +336,7 @@ struct PhoneSettingsPage: View {
     // MARK: Actions
 
     private func load() {
+        voiceUses = HealthVoiceReadLog.load(key: HealthVoiceReadLog.phoneStorageKey)
         guard !loadedPreferences else { return }
         loadedPreferences = true
         if preferences.isOn { choices = preferences }

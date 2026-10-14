@@ -12,6 +12,7 @@
 //  (designs/voice-health-location.md)
 //
 
+import Combine
 import Foundation
 import OSLog
 
@@ -20,14 +21,13 @@ extension AppState {
     static let voiceToolsPath = "/api/plugins/conduit_push/voice-tools"
     static let voiceToolsLog = Logger(subsystem: "com.milim.relay", category: "voice-tools")
 
-    /// The kinds of data (`VoiceHostTool.key`) a call on `mode` may read
-    /// now: each one the user lets `mode` read, shared with the dashboard
-    /// and profile in use.
+    /// The kinds of sealed host data (`VoiceHostTool.key`) a call on `mode`
+    /// may read now: each one the user lets `mode` read, shared with the
+    /// dashboard and profile in use.
     func voiceReadableKeys(for mode: LiveVoiceModeName) -> Set<String> {
         var keys: Set<String> = []
         let health = healthSyncPreferences
-        if health.letsVoiceRead(mode), let destination = health.destination,
-           activeDashboardID == destination.dashboardID, activeProfile == destination.profile {
+        if health.letsVoiceRead(mode), health.destination.map(isActiveDestination) == true {
             keys.insert("health")
         }
         let location = LocationSharingController.shared
@@ -39,33 +39,112 @@ extension AppState {
         return keys
     }
 
-    /// The host tools a call on `mode` may use: those whose data the user
-    /// lets `mode` read. Starts a health sync too, so the call reads fresh
-    /// numbers. Nil when the host couldn't be asked (a reconnect then keeps
+    /// What a call on `mode` may use: the host's tools (health, location,
+    /// the calendar and phone status) each when the user lets `mode` read it
+    /// and its dashboard and profile are the ones in use, and the phone's own
+    /// calendar tools. Starts a sync of each, so the call reads fresh data.
+    /// `host` is nil when the host couldn't be asked (a reconnect then keeps
     /// what it had).
-    func voiceHostTools(for mode: LiveVoiceModeName) async -> [VoiceHostTool]? {
+    func voiceHostTools(for mode: LiveVoiceModeName) async -> (host: [VoiceHostTool]?, local: [VoiceHostTool]) {
         let keys = voiceReadableKeys(for: mode)
-        guard !keys.isEmpty else { return [] }
+        let phone = phoneSync.preferences
+        let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map(isActiveDestination) == true
+        let local = phoneAllowed
+            ? PhoneVoiceTools.tools(for: phone, access: phoneSync.calendarSource.eventAccess,
+                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized)
+            : []
+        guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".
-        guard notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return nil }
+        guard notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return (nil, local) }
         // Not waited on: the call starts now and reads what has arrived by
         // the time it asks. A key from before voice reads is replaced here.
         if keys.contains("health"), !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
         if keys.contains("location") { Task { await LocationSharingController.shared.prepareVoiceReads() } }
+        if phoneAllowed, !phoneSync.isSyncing { Task { await runPhoneSync(reason: .voiceCall) } }
         do {
             let response = try await bridge.requestJSON(
                 path: DashboardPath.withProfile(Self.voiceToolsPath, profile: activeProfile),
                 method: "GET", body: nil, timeoutMilliseconds: 5_000)
-            return VoiceHostTool.tools(from: response).filter { keys.contains($0.key) }
+            let host = VoiceHostTool.tools(from: response).filter { tool in
+                keys.contains(tool.key) || (tool.key == "phone" && phoneAllowed)
+            }
+            return (host, local)
         } catch {
             Self.voiceToolsLog.info("Voice tools unavailable: \(HealthSyncEngine.describe(error), privacy: .public)")
-            return nil
+            return (nil, local)
         }
     }
 
-    /// One sealed read for the running call. What the model hears back.
+    private func isActiveDestination(_ destination: HealthSyncDestination) -> Bool {
+        activeDashboardID == destination.dashboardID && activeProfile == destination.profile
+    }
+
+    /// One call for the running call. What the model hears back.
     func callVoiceHostTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
+        switch tool.key {
+        case "health", "location": return await callSealedReadTool(tool, arguments: arguments, mode: mode)
+        case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode)
+        default: return ["error": "That isn't available on this call."]
+        }
+    }
+
+    private func callPhoneVoiceTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
+        // Checked again at each call: the user may have turned it off mid-call.
+        let engine = phoneSync
+        guard let mode, engine.preferences.letsVoiceUse(mode),
+              let destination = engine.preferences.destination, isActiveDestination(destination) else {
+            return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
+        }
+        if tool.key == PhoneVoiceTools.key {
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine) { prompt, approve in
+                await engine.answer(prompt, approve: approve)
+                // Reported in the background: the call hears the outcome now.
+                Task { await self.runPhoneSync(reason: .answered) }
+            }
+            if result["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            return result
+        }
+        guard let bridge = dashboardTicketBridge else {
+            return ["error": "The calendar isn't reachable just now."]
+        }
+        do {
+            let result = try await engine.voiceRead(
+                tool: tool.name, arguments: arguments, provider: mode.storageID,
+                path: DashboardPath.withProfile("\(Self.voiceToolsPath)/call", profile: destination.profile)
+            ) { path, method, body in
+                try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 12_000)
+            }
+            let answer = VoiceHostTool.modelResult(result)
+            // Logged only when the answer reaches the call.
+            if answer["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            return answer
+        } catch is PhoneSyncEngine.VoiceNotReady {
+            return ["error": "The calendar isn't ready for voice yet; it will be after the next sync."]
+        } catch {
+            Self.voiceToolsLog.info("Voice read failed: \(PhoneSyncEngine.describe(error), privacy: .public)")
+            // The detail stays in the log: it can name the host, and the
+            // model's company would get it.
+            return ["error": "The calendar couldn't be read just now."]
+        }
+    }
+
+    /// Logs what a call used of the calendar and phone (Settings > Calendar &
+    /// phone): the tool's action ("events", "add reminder"), never the data.
+    private static func recordPhoneVoiceUse(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName) {
+        let action: String
+        if tool.name == PhoneVoiceTools.addTool {
+            action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
+        } else if tool.name == PhoneVoiceTools.changesTool {
+            action = "changes \(arguments["action"] as? String ?? "")"
+        } else {
+            action = arguments["action"] as? String ?? tool.name
+        }
+        HealthVoiceReadLog.record(mode: mode, action: action, key: HealthVoiceReadLog.phoneStorageKey)
+    }
+
+    /// One sealed health or location read for the running call.
+    private func callSealedReadTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
         // Checked again at each read: the user may have turned it off mid-call.
         guard let mode, voiceReadableKeys(for: mode).contains(tool.key), let bridge = dashboardTicketBridge else {
             return ["error": tool.key == "location"
@@ -167,18 +246,40 @@ extension AppState {
             supervisor.hostTools = []
             supervisor.runHostTool = nil
             supervisor.hostToolsMode = nil
+            supervisor.hostToolsWatch = nil
         }
         let fetched = await voiceHostTools(for: mode)
         // A cancelled probe (the call isn't starting) publishes nothing.
         guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
-        // The host couldn't be asked: the same mode keeps its tools (each
-        // read still checks consent); another mode's were cleared above.
-        guard let tools = fetched else { return }
+        // The host couldn't be asked: the same mode keeps its host tools
+        // (each read still checks consent); another mode's were cleared above.
+        let host = fetched.host ?? supervisor.hostTools.filter { $0.key != PhoneVoiceTools.key }
         supervisor.hostToolsMode = mode
-        supervisor.hostTools = tools
+        supervisor.hostTools = host + fetched.local
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]
         }
+        supervisor.hostToolsWatch = fetched.local.isEmpty ? nil : watchPhoneChanges(for: mode)
+    }
+
+    /// Tells the running call about each change Hermes asks for while it
+    /// runs, so the user can answer it out loud.
+    private func watchPhoneChanges(for mode: LiveVoiceModeName) -> AnyCancellable {
+        // What was waiting at the last update: a change Hermes withdraws and
+        // asks for again is told again.
+        var known = Set(phoneSync.prompts.map(\.id))
+        return phoneSync.$prompts
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] prompts in
+                guard let self else { return }
+                let supervisor = self.voiceBackgroundJobSupervisor
+                let fresh = prompts.filter { !known.contains($0.id) }
+                known = Set(prompts.map(\.id))
+                guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
+                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive,
+                      self.phoneSync.preferences.letsVoiceUse(mode) else { return }
+                for prompt in fresh { supervisor.notePhoneChange(PhoneVoiceTools.note(for: prompt)) }
+            }
     }
 }

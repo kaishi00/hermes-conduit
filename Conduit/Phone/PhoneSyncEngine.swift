@@ -184,6 +184,10 @@ final class PhoneSyncEngine: ObservableObject {
     /// nothing writes nothing.
     private var saved: PhoneSyncState?
     private let writer = PhoneSyncStateWriter()
+    /// Changes being applied right now, so an exchange that lands meanwhile
+    /// doesn't hand the same one out again. In memory: it covers races in
+    /// one run of the app.
+    private var applying: Set<String> = []
 
     init(
         calendarSource: PhoneCalendarSource,
@@ -405,7 +409,8 @@ final class PhoneSyncEngine: ObservableObject {
         var batch: [String: Any] = [
             "sent_at": PhoneDates.format(currentNow),
             "time_zone": TimeZone.current.identifier,
-            "sharing": preferences.sharingJSON,
+            "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
+                                             remindersAuthorized: calendarSource.remindersAuthorized),
         ]
         var newEventHashes = state.eventHashes
         var newReminderHashes = state.reminderHashes
@@ -506,6 +511,27 @@ final class PhoneSyncEngine: ObservableObject {
         return (answer["pending"] as? NSNumber)?.intValue ?? 0
     }
 
+    /// The sharing as it really is: access taken away in the Settings app
+    /// narrows it, so the host drops what it can no longer have. Attendee
+    /// emails go with full calendar access; "details" with full access or
+    /// reminders (it also covers reminder notes).
+    nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
+                                             remindersAuthorized: Bool) -> [String: Any] {
+        var sharing = preferences.sharingJSON
+        let calendar: PhoneCalendarAccess
+        switch (preferences.calendar, access) {
+        case (.full, .full): calendar = .full
+        case (.off, _), (_, .off): calendar = .off
+        case (.full, .writeOnly), (.writeOnly, .full), (.writeOnly, .writeOnly): calendar = .writeOnly
+        }
+        sharing["calendar"] = calendar.rawValue
+        if calendar != .full { sharing["attendee_emails"] = false }
+        let reminders = preferences.reminders && remindersAuthorized
+        sharing["reminders"] = reminders
+        if calendar != .full, !reminders { sharing["details"] = false }
+        return sharing
+    }
+
     struct Section {
         var upsert: [[String: Any]]
         var delete: [String]
@@ -578,6 +604,7 @@ final class PhoneSyncEngine: ObservableObject {
         state.answered = state.answered.filter { waiting.contains($0.key) || state.unreported.contains($0.value) }
         var fresh: [PhoneChangePrompt] = []
         for change in changes {
+            if applying.contains(change.id) { continue }
             if let known = state.answered[change.id] {
                 // Answered, but the report was lost: say it again.
                 if !state.unreported.contains(known) { state.unreported.append(known) }
@@ -606,6 +633,8 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func applyNow(_ change: PhoneChange, auto: Bool) async {
+        guard state.answered[change.id] == nil, applying.insert(change.id).inserted else { return }
+        defer { applying.remove(change.id) }
         do {
             let itemID = try await calendarSource.apply(change, window: window)
             record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: itemID))
@@ -635,6 +664,54 @@ final class PhoneSyncEngine: ObservableObject {
         state.answered[result.id] = result
         state.unreported.append(result)
         persist()
+    }
+
+    // MARK: Live voice calls
+
+    struct VoiceNotReady: Error {}
+    /// Voice adds only: updates and deletions stay with Hermes' cards.
+    struct NotAnAddition: Error {}
+
+    /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
+    /// host's result, for this iPhone's data only. Checks only that sharing
+    /// is on: the caller checks the voice mode may use it
+    /// (`AppState.callVoiceHostTool`).
+    func voiceRead(tool: String, arguments: [String: Any], provider: String, path: String,
+                   request: Request) async throws -> Any {
+        guard preferences.isOn, readStateIfNeeded(), let key = keys.load() else { throw VoiceNotReady() }
+        let deviceID = state.deviceID
+        let callID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let payload: [String: Any] = ["call_id": callID, "tool": tool, "args": arguments, "provider": provider]
+        // JSONSerialization raises, rather than throws, on anything else.
+        guard JSONSerialization.isValidJSONObject(payload) else { throw PhoneSyncCrypto.Failure.malformedAnswer }
+        let plaintext = try JSONSerialization.data(withJSONObject: payload)
+        let body = try PhoneSyncCrypto.exchangeEnvelope(plaintext: plaintext, op: "voice", key: key,
+                                                        deviceID: deviceID, callID: callID)
+        let answer = try await request(path, "POST", body)
+        let opened = try PhoneSyncCrypto.openAnswer(answer, op: "voice", key: key, deviceID: deviceID, callID: callID)
+        guard let json = try JSONSerialization.jsonObject(with: opened) as? [String: Any],
+              json["call_id"] as? String == callID else {
+            throw PhoneSyncCrypto.Failure.malformedAnswer
+        }
+        return json["result"] ?? NSNull()
+    }
+
+    /// Adds an event or reminder the user asked for in a voice call, straight
+    /// away (no card: they said so out loud). The next upload sends it. Like
+    /// `voiceRead`, the caller checks the voice mode may use it.
+    func addFromVoice(_ change: PhoneChange) async throws -> String? {
+        guard change.kind.isAddition else { throw NotAnAddition() }
+        guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
+        let itemID = try await calendarSource.apply(change, window: window)
+        if let itemID {
+            if change.kind.isEvent {
+                if state.eventHashes[itemID] == nil { state.eventHashes[itemID] = "" }
+            } else if state.reminderHashes[itemID] == nil {
+                state.reminderHashes[itemID] = ""
+            }
+            persist()
+        }
+        return itemID
     }
 
     /// The banner's Undo: takes back an addition made without asking.

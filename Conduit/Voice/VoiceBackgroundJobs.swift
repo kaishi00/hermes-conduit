@@ -9,6 +9,7 @@
 //  starts, watches, and cancels sessions it created.
 //
 
+import Combine
 import Foundation
 import OSLog
 
@@ -418,13 +419,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Opens a chat a call's search found, the call going on minimised.
     /// False when Conduit can't open chats right now. Nil: no chat opens.
     var openChat: (@MainActor (_ match: VoiceChatMatch) -> Bool)?
-    /// Hermes tools the running live call may call directly (the user's
-    /// shared health data), set by AppState as each call starts.
+    /// Tools the running live call may call directly (the user's shared
+    /// health data, calendar and phone status from the host, and the phone's
+    /// own calendar tools), set by AppState as each call starts.
     var hostTools: [VoiceHostTool] = []
     /// The mode `hostTools` were prepared for.
     var hostToolsMode: LiveVoiceModeName?
     /// Runs one of `hostTools` (AppState: a sealed /voice-tools/call).
     var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
+    /// What keeps an eye on the phone for the running call (Hermes' calendar
+    /// changes while it runs); dropping it stops the watch.
+    var hostToolsWatch: AnyCancellable?
     /// The running call's last chat search, numbered from 1 as the model
     /// heard it.
     private(set) var chatMatches: [VoiceChatMatch] = []
@@ -1784,6 +1789,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         hostTools = []
         hostToolsMode = nil
         runHostTool = nil
+        hostToolsWatch = nil
         pollTask?.cancel()
         pollTask = nil
         threadTask?.cancel()
@@ -2019,6 +2025,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if screenshotNotesHeard.removeValue(forKey: replacedURI) ?? inInstructions {
             screenshotNotesHeard[attachmentURI] = true
         }
+    }
+
+    /// Hermes asked for a calendar change while the call runs: the model
+    /// hears it at the next turn and asks the user.
+    func notePhoneChange(_ text: String) {
+        queueChatNote(ChatNote(text: text))
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
