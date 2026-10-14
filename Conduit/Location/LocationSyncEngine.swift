@@ -65,10 +65,10 @@ struct LocationHostStatus: Equatable {
 
 /// One time the agent read the location (never the location itself).
 struct LocationRead: Identifiable, Equatable {
-    /// The position in the host's list keeps two reads in the same second
-    /// apart.
-    var id: String { "\(index)|\(at)|\(action)|\(sessionTitle ?? "")|\(platform ?? "")" }
-    var index: Int = 0
+    /// Keyed on the read itself so rows keep their identity when the host
+    /// adds newer reads; `occurrence` keeps identical reads apart.
+    var id: String { "\(at)|\(action)|\(sessionTitle ?? "")|\(platform ?? "")|\(occurrence)" }
+    var occurrence: Int = 0
     var at: String
     var action: String
     var sessionTitle: String?
@@ -77,10 +77,14 @@ struct LocationRead: Identifiable, Equatable {
     var date: Date? { LocationHostDates.parse(at) }
 
     static func parse(_ response: [String: Any]) -> [LocationRead] {
-        (response["reads"] as? [[String: Any]] ?? []).enumerated().compactMap { index, entry in
+        var seen: [String: Int] = [:]
+        return (response["reads"] as? [[String: Any]] ?? []).compactMap { entry in
             guard let at = entry["at"] as? String else { return nil }
-            return LocationRead(index: index, at: at, action: entry["action"] as? String ?? "",
-                                sessionTitle: entry["session_title"] as? String, platform: entry["platform"] as? String)
+            var read = LocationRead(at: at, action: entry["action"] as? String ?? "",
+                                    sessionTitle: entry["session_title"] as? String, platform: entry["platform"] as? String)
+            read.occurrence = seen[read.id, default: 0]
+            seen[read.id, default: 0] += 1
+            return read
         }
     }
 }
@@ -131,10 +135,16 @@ struct LocationRule: Identifiable, Equatable {
 
 enum LocationHostDates {
     static func parse(_ value: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return ISO8601DateFormatter().date(from: value) ?? withFraction.date(from: value)
+        plain.date(from: value) ?? (value.contains(".") ? withFraction.date(from: value) : nil)
     }
+
+    // Built once: the read log parses a date per row.
+    private static let plain = ISO8601DateFormatter()
+    private static let withFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 /// The state file: Application Support, readable after first unlock,
@@ -425,11 +435,6 @@ final class LocationSyncEngine: ObservableObject {
         clearKey()
         state = LocationSyncState()
         store.save(state)
-    }
-
-    func clearPause() {
-        guard state.pause != nil else { return }
-        acknowledged { $0.pause = nil }
     }
 
     static func describe(_ error: Error) -> String {

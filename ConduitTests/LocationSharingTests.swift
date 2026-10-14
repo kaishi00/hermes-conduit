@@ -428,6 +428,13 @@ extension NotificationE2ETests {
         XCTAssertEqual(Set(reads.map(\.id)).count, 2)
     }
 
+    func testAReadKeepsItsIDWhenANewerReadArrives() {
+        let older = ["at": "2026-10-14T09:00:00Z", "action": "now", "platform": "telegram"]
+        let before = LocationRead.parse(["reads": [older]])
+        let after = LocationRead.parse(["reads": [["at": "2026-10-14T09:05:00Z", "action": "locate"], older]])
+        XCTAssertEqual(after.last?.id, before.first?.id)
+    }
+
     // MARK: On-demand locate
 
     func testALocateClaimAgesOutUnlessAnswered() throws {

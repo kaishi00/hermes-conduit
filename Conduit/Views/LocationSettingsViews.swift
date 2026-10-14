@@ -144,10 +144,10 @@ struct LocationSettingsPage: View {
         .sheet(item: $editingPlace) { draft in
             LocationPlaceEditor(draft: draft, canLocate: controller.fixes.canLocate) { place in
                 editingPlace = nil
-                Task { await controller.savePlace(place) }
+                Task { await controller.savePlace(place); await loadFromHost() }
             } delete: { id in
                 editingPlace = nil
-                Task { await controller.removePlace(id) }
+                Task { await controller.removePlace(id); await loadFromHost() }
             } cancel: {
                 editingPlace = nil
             } locate: {
@@ -305,7 +305,7 @@ struct LocationSettingsPage: View {
             ConduitMenuPicker(
                 value: value,
                 choices: LocationPrecision.allCases.map { (id: $0, title: LocationSettingsText.precisionTitle($0)) },
-                onSelect: { precision in Task { await controller.setPrecision(precision, for: layer) } }
+                onSelect: { precision in Task { await controller.setPrecision(precision, for: layer); await loadFromHost() } }
             ) {
                 Text("Detail").foregroundStyle(.secondary)
             }
@@ -422,7 +422,7 @@ struct LocationSettingsPage: View {
             ConduitMenuPicker(
                 value: settings.retentionDays,
                 choices: LocationSharingSettings.retentionChoices.map { (id: $0, title: LocationSettingsText.retentionTitle($0)) },
-                onSelect: { days in Task { await controller.setRetention(days) } }
+                onSelect: { days in Task { await controller.setRetention(days); await loadFromHost() } }
             ) {
                 Text("Keep places visited for").foregroundStyle(.secondary)
             }

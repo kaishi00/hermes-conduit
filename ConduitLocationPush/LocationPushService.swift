@@ -26,7 +26,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// released if the extension finishes or is stopped without posting.
     /// If iOS kills the extension outright the claim ages out instead.
     private var pendingReplayKey: String?
-    private static let claimLifetime: TimeInterval = 120
+    private static let claimLifetime: TimeInterval = 30
 
     // The whole answer has to fit iOS's budget for this extension.
     private static let fixTimeout: TimeInterval = 6
