@@ -26,8 +26,10 @@ extension AppState {
     func voiceHostTools(for mode: LiveVoiceModeName) async -> [VoiceHostTool]? {
         let preferences = healthSyncPreferences
         guard preferences.letsVoiceRead(mode), let destination = preferences.destination,
-              activeDashboardID == destination.dashboardID, activeProfile == destination.profile,
-              notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return [] }
+              activeDashboardID == destination.dashboardID, activeProfile == destination.profile else { return [] }
+        // The connection or the plugin's report isn't back yet (a gateway
+        // restart): can't ask now, which isn't "nothing offered".
+        guard notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return nil }
         // Not waited on: the call starts now and reads what has arrived by
         // the time it asks. A key from before voice reads is replaced here.
         if !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
