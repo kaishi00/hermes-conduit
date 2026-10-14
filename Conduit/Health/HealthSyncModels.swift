@@ -325,7 +325,8 @@ enum HealthSyncPause: Codable, Equatable {
 struct HealthVoiceReadLog: Codable, Equatable {
     struct Entry: Codable, Equatable, Identifiable {
         var at: Date
-        /// `LiveVoiceModeName.displayName`.
+        /// `LiveVoiceModeName.storageID` (a display name in entries from
+        /// before it was stored).
         var mode: String
         /// The tool's action ("sleep", "daily").
         var action: String
@@ -333,6 +334,11 @@ struct HealthVoiceReadLog: Codable, Equatable {
         var id = UUID()
 
         private enum CodingKeys: String, CodingKey { case at, mode, action }
+
+        /// The mode's name in the reads list.
+        var modeName: String {
+            LiveVoiceModeName.all.first { $0.storageID == mode }?.displayName ?? mode
+        }
     }
 
     var entries: [Entry] = []
@@ -359,7 +365,7 @@ struct HealthVoiceReadLog: Codable, Equatable {
     static func record(mode: LiveVoiceModeName, action: String, key: String = storageKey,
                        in defaults: UserDefaults = .standard, now: Date = Date()) {
         var log = load(key: key, from: defaults, now: now)
-        log.entries.append(Entry(at: now, mode: mode.displayName, action: String(action.prefix(40))))
+        log.entries.append(Entry(at: now, mode: mode.storageID, action: String(action.prefix(40))))
         if log.entries.count > maximumEntries { log.entries.removeFirst(log.entries.count - maximumEntries) }
         if let data = try? JSONEncoder().encode(log) { defaults.set(data, forKey: key) }
     }

@@ -33,7 +33,6 @@ enum HealthSyncCrypto {
         case keyIDMismatch
         /// The key predates voice reads; the next sync sets up a new one.
         case noVoiceKey
-        case malformedAnswer
     }
 
     /// The agreed key, kept in the Keychain until sharing is turned off or
@@ -111,13 +110,7 @@ enum HealthSyncCrypto {
 
     /// `direction` is "request" or "answer".
     static func voiceAAD(direction: String, tool: String, kid: String, deviceID: String, callID: String) -> Data {
-        Data([aadTag, "voice-\(direction)", "tool=\(tool)", "kid=\(kid)", "dev=\(deviceID)", "call=\(callID)"]
-            .joined(separator: "\n").utf8)
-    }
-
-    /// A fresh id for one voice read; the answer is bound to it.
-    static func newCallID() -> String {
-        NotificationE2E.base64URL(Data((0..<16).map { _ in UInt8.random(in: .min ... .max) }))
+        VoiceReadSeal.aad(tag: aadTag, direction: direction, tool: tool, kid: kid, deviceID: deviceID, callID: callID)
     }
 
     /// The `/voice-tools/call` body: `plaintext` is the request's JSON
@@ -131,44 +124,16 @@ enum HealthSyncCrypto {
         nonce: ChaChaPoly.Nonce = ChaChaPoly.Nonce()
     ) throws -> [String: Any] {
         guard let requestKey = key.voiceRequestKey else { throw Failure.noVoiceKey }
-        let box = try ChaChaPoly.seal(
-            plaintext,
-            using: SymmetricKey(data: requestKey),
-            nonce: nonce,
-            authenticating: voiceAAD(direction: "request", tool: tool, kid: key.kid, deviceID: deviceID, callID: callID)
-        )
-        return [
-            "v": 1,
-            "tool": tool,
-            "device_id": deviceID,
-            "kid": key.kid,
-            "call_id": callID,
-            "nonce": NotificationE2E.base64URL(Data(box.nonce)),
-            "ct": NotificationE2E.base64URL(box.ciphertext + box.tag),
-        ]
+        return try VoiceReadSeal.request(tag: aadTag, tool: tool, plaintext: plaintext, requestKey: requestKey,
+                                         kid: key.kid, deviceID: deviceID, callID: callID, nonce: nonce)
     }
 
-    /// The opened answer's JSON (`call_id`, `result`), checked against the
-    /// tool and call it answers.
+    /// The opened answer's `result`, checked against the tool and call it
+    /// answers.
     static func openVoiceAnswer(_ response: [String: Any], tool: String, key: SessionKey,
                                 deviceID: String, callID: String) throws -> Any {
         guard let answerKey = key.voiceAnswerKey else { throw Failure.noVoiceKey }
-        guard let nonceText = response["nonce"] as? String, let nonceData = NotificationE2E.base64URLDecoded(nonceText),
-              let sealedText = response["ct"] as? String, let sealed = NotificationE2E.base64URLDecoded(sealedText),
-              sealed.count >= 16 else {
-            throw Failure.malformedAnswer
-        }
-        guard nonceData.count == 12 else { throw Failure.malformedAnswer }
-        let box = try ChaChaPoly.SealedBox(combined: nonceData + sealed)
-        let plaintext = try ChaChaPoly.open(
-            box,
-            using: SymmetricKey(data: answerKey),
-            authenticating: voiceAAD(direction: "answer", tool: tool, kid: key.kid, deviceID: deviceID, callID: callID)
-        )
-        guard let object = try JSONSerialization.jsonObject(with: plaintext) as? [String: Any],
-              object["call_id"] as? String == callID, let result = object["result"] else {
-            throw Failure.malformedAnswer
-        }
-        return result
+        return try VoiceReadSeal.openAnswer(response, tag: aadTag, tool: tool, answerKey: answerKey,
+                                            kid: key.kid, deviceID: deviceID, callID: callID)
     }
 }

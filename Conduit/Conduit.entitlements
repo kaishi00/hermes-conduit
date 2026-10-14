@@ -17,7 +17,7 @@
     <key>com.apple.security.application-groups</key>
     <array>
         <string>group.com.milim.relay.notifications</string>
-        <string>group.com.milim.relay.widgets</string>
+        <string>group.com.milim.relay.launcher</string>
     </array>
 </dict>
 </plist>

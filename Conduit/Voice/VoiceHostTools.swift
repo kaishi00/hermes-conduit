@@ -3,17 +3,19 @@
 //  Conduit
 //
 //  Hermes tools a live voice model calls directly: the user's shared health
-//  data today (conduit_health), read through the plugin's sealed
-//  /voice-tools route rather than a whole Hermes job. The host lists each
-//  tool with the description and parameters Hermes' own tool has, so the
-//  voice model reads the same use policy the agent does, and a new read-only
-//  capability on the host needs no app change.
+//  data (conduit_health) and location (conduit_location), read through the
+//  plugin's sealed /voice-tools route rather than a whole Hermes job. The
+//  host lists each tool with its description and parameters, so the voice
+//  model reads the same use policy the agent does. Each tool's key is its
+//  own consent in Conduit (AppState+VoiceHostTools.swift), so a new kind of
+//  data needs an app change before a call can read it.
 //
 //  Gemini and Grok get them as function tools. Conduit's live sessions pass
 //  string arguments only: numbers and booleans keep their declared type (the
 //  model still sends text), lists and objects are declared as strings, and
 //  each value is turned back into its JSON type from the host's schema.
-//  GPT-Live has no function tools: it delegates "Health: {json}".
+//  GPT-Live has no function tools: it delegates "Health: {json}" or
+//  "Location: {json}".
 //
 
 import Foundation
@@ -30,11 +32,19 @@ struct VoiceHostTool {
     /// The tools in a `GET /voice-tools` answer.
     static func tools(from response: [String: Any]) -> [VoiceHostTool] {
         (response["tools"] as? [[String: Any]] ?? []).compactMap { entry in
-            guard let name = entry["name"] as? String, !name.isEmpty,
+            // The name goes into each read's associated data: plain
+            // identifiers only.
+            guard let name = entry["name"] as? String, isToolName(name),
                   let description = entry["description"] as? String,
                   let parameters = entry["parameters"] as? [String: Any],
                   let key = entry["key"] as? String else { return nil }
             return VoiceHostTool(name: name, description: description, parameters: parameters, key: key)
+        }
+    }
+
+    static func isToolName(_ name: String) -> Bool {
+        !name.isEmpty && name.count <= 64 && name.unicodeScalars.allSatisfy {
+            ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_"
         }
     }
 
@@ -168,7 +178,12 @@ struct VoiceHostTool {
             if let description = property["description"] as? String, !description.isEmpty { line += ": \(description)" }
             return line
         }
-        return "\(description)\nTo use it, delegate \"\(marker):\" followed by its arguments as one JSON object, like \(marker): {\"action\": \"overview\"}. Arguments: \(arguments.joined(separator: "; ")). Conduit answers on that delegation at once (it isn't a Hermes job); answer the user from it. The marker is for Conduit only: never say it aloud."
+        return "\(description)\nTo use it, delegate \"\(marker):\" followed by its arguments as one JSON object, like \(marker): {\"action\": \"\(exampleAction)\"}. Arguments: \(arguments.joined(separator: "; ")). Conduit answers on that delegation at once (it isn't a Hermes job); answer the user from it. The marker is for Conduit only: never say it aloud."
+    }
+
+    /// The first action the schema offers, for the example.
+    private var exampleAction: String {
+        (properties["action"]?["enum"] as? [String])?.first ?? "overview"
     }
 
     static func gptLiveRules(_ tools: [VoiceHostTool]) -> String {

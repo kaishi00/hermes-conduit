@@ -365,6 +365,9 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             }
             try store.save(reminder, commit: true)
             return Self.reminderID(reminder)
+        case .setAlarm, .setTimer, .cancelAlarm:
+            // Alarms go to PhoneAlarmSource, never here.
+            throw PhoneCalendarSourceError.notFound
         }
     }
 

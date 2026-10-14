@@ -97,6 +97,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>When you let Hermes set alarms and timers, Conduit sets the ones your agent asks for, after you approve them unless you chose to add without asking.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>When you share your calendar, Conduit sends the events you choose to your own Hermes server so your agent can answer questions about your schedule, and adds or changes events when you approve them. Nothing goes to Conduit's developer.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>

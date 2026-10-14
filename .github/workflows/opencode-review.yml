@@ -20,8 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - reviewer: DeepSeek V4.1 Flash
-            model: commandcode/deepseek/deepseek-v4.1-flash
+          - reviewer: Muse Spark 1.3
+            model: commandcode/meta/muse-spark-1.3-contributor
           - reviewer: GLM-5.3-Flash
             model: zai-custom/glm-5.3-flash
     permissions:

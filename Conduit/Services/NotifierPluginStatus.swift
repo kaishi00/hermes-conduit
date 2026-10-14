@@ -81,6 +81,19 @@ struct NotifierPluginStatus: Equatable {
     /// The first plugin version that reports `loaded_version`.
     static let runtimeReportingVersion = "0.24.0"
 
+    /// The plugin on the host is missing or older than one-tap updates
+    /// (0.24), so the first update after installing a new Conduit build is a
+    /// manual one. Not a 0.24+ on disk that the old process still serves:
+    /// that one only needs its restart.
+    var predatesOneTapUpdate: Bool {
+        guard runtime == nil else { return false }
+        switch state {
+        case .unknown: return false
+        case .predatesCapabilities: return true
+        case .reported(let version, _): return Self.isOlder(version, than: Self.runtimeReportingVersion)
+        }
+    }
+
     /// Worth offering an update: something Conduit uses is missing, or the
     /// plugin is older than this build's recommended version. A plugin that
     /// is already new enough on disk only needs its restart.
@@ -134,6 +147,15 @@ struct NotifierPluginStatus: Equatable {
     func mightSupport(_ capability: String) -> Bool {
         if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }
         return true
+    }
+
+    /// The plugin version whose /voice-tools serves the location tool.
+    static let locationVoiceVersion = "0.28.0"
+
+    /// Whether the running plugin answers live voice reads of the location.
+    /// Older ones serve /voice-tools with health only.
+    var servesLocationVoice: Bool {
+        reports("voice-tools") && !Self.isOlder(runningVersion, than: Self.locationVoiceVersion)
     }
 
     /// True only when the plugin reported this capability.

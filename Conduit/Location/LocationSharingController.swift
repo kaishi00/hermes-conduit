@@ -491,6 +491,8 @@ final class LocationSharingController: ObservableObject {
             case .talking: config.settings.talking = false
             case .background: config.settings.background = false
             }
+            // Sharing off: turning it on again asks each voice mode again.
+            if !config.settings.isOn { config.voiceReaders = nil }
         }
         if layer == .talking { voiceCallEnded() }
         reconfigureMonitors()
@@ -525,6 +527,8 @@ final class LocationSharingController: ObservableObject {
             voiceCallEnded()
         }
         await flush(settingsOnly: true)
+        // Resumed: a voice mode the user allowed may read again.
+        if date == nil { await prepareVoiceReads() }
     }
 
     /// Resumes a pause whose time has passed, so it doesn't linger, and
@@ -536,7 +540,53 @@ final class LocationSharingController: ObservableObject {
             config.settings.pausedUntil = nil
             if config.binding != nil { config.settingsPending = true }
         }
-        if send, config.binding != nil { Task { await flush(settingsOnly: true) } }
+        if send, config.binding != nil {
+            Task {
+                await flush(settingsOnly: true)
+                await prepareVoiceReads()
+            }
+        }
+    }
+
+    // MARK: Live voice calls
+
+    /// Whether a live call on `mode` may read the shared location
+    /// (Settings > Location, off by default: what it reads goes to the
+    /// mode's company). Never while sharing is paused.
+    func letsVoiceRead(_ mode: LiveVoiceModeName) -> Bool {
+        !configUnreadable && config.letsVoiceRead(mode.storageID, at: now())
+    }
+
+    /// Whether the switch for `mode` is on (a pause keeps it, but stops reads).
+    func allowsVoiceRead(_ mode: LiveVoiceModeName) -> Bool {
+        (config.voiceReaders ?? []).contains(mode.storageID)
+    }
+
+    /// Lets `mode` read the shared location on a call, or stops it.
+    func setVoiceRead(_ mode: LiveVoiceModeName, allowed: Bool) async {
+        guard readConfigIfNeeded(), config.binding != nil, settings.isOn || !allowed else { return }
+        save { $0.setVoiceRead(mode.storageID, allowed: allowed) }
+        if allowed { await prepareVoiceReads() }
+    }
+
+    /// This phone's key for a voice read of its own location; nil until a
+    /// send has agreed one that reads.
+    func voiceReadKey() -> LocationCrypto.SessionKey? {
+        guard readConfigIfNeeded(), config.binding != nil else { return nil }
+        return engine.voiceReadKey(deviceID: config.deviceID)
+    }
+
+    /// A key agreed before voice reads existed is set up again now (a send
+    /// does it), with a fresh position when sharing allows one now (the
+    /// background layer, or a call already running on the talking layer):
+    /// the host drops the one it had with the old key.
+    func prepareVoiceReads() async {
+        guard voiceReadKey() == nil, config.readsByVoice(at: now()) else { return }
+        if fixes.canLocate {
+            if await shareFix(source: .app) { return }
+            if callWatch != nil, await shareFix(source: .call) { return }
+        }
+        await flush(settingsOnly: true)
     }
 
     // MARK: Saved places

@@ -110,6 +110,16 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Talk to Conduit",
             systemImageName: "mic.fill"
         )
+        // Siri asks what to send, and speaks Hermes's answer.
+        AppShortcut(
+            intent: SendToHermesIntent(),
+            phrases: [
+                "Ask Hermes in \(.applicationName)",
+                "Send to Hermes in \(.applicationName)"
+            ],
+            shortTitle: "Ask Hermes",
+            systemImageName: "paperplane.fill"
+        )
     }
 }
 

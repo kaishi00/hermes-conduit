@@ -238100,6 +238100,4270 @@
         }
       }
     },
+    "Let %@ read your location?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deinen Standort lesen lassen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Permitir que %@ lea tu ubicación?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser %@ à lire ta position ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan %@ membaca lokasimu?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consentire a %@ di leggere la tua posizione?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に位置情報の読み取りを許可しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 위치를 읽도록 허용할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwolić %@ odczytywać Twoją lokalizację?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que o %@ leia sua localização?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ читать ваше местоположение?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konumunu okuyabilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 %@ 读取你的位置？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 %@ 讀取你的位置？"
+          }
+        }
+      }
+    },
+    "Let a live voice call read your location when you ask about it, straight from your Hermes host: the saved place you're at, your area and distances to your saved places, never coordinates. What it reads goes to the company that runs that voice mode, under its terms. Each read is listed under When Hermes read your location. Classic voice is Hermes itself and needs nothing here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass einen Live-Sprachanruf deinen Standort lesen, wenn du danach fragst, direkt von deinem Hermes-Host: den gespeicherten Ort, an dem du bist, deine Gegend und die Entfernungen zu deinen gespeicherten Orten, nie Koordinaten. Was er liest, geht an das Unternehmen, das diesen Sprachmodus betreibt, und unterliegt dessen Bedingungen. Jeder Zugriff erscheint unter „Wann Hermes deinen Standort gelesen hat“. Klassische Sprache ist Hermes selbst und braucht hier nichts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deja que una llamada de voz en vivo lea tu ubicación cuando preguntes por ella, directamente desde tu host de Hermes: el lugar guardado en el que estás, tu zona y las distancias a tus lugares guardados, nunca coordenadas. Lo que lee va a la empresa que gestiona ese modo de voz, bajo sus condiciones. Cada lectura aparece en «Cuándo leyó Hermes tu ubicación». La voz clásica es el propio Hermes y no necesita nada aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laisse un appel vocal en direct lire ta position quand tu la demandes, directement depuis ton hôte Hermes : le lieu enregistré où tu te trouves, ton secteur et les distances jusqu’à tes lieux enregistrés, jamais de coordonnées. Ce qu’il lit est envoyé à l’entreprise qui gère ce mode vocal, selon ses conditions. Chaque lecture figure sous « Quand Hermes a lu ta position ». La voix classique, c’est Hermes lui-même : rien à régler ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan panggilan suara langsung membaca lokasimu saat kamu menanyakannya, langsung dari host Hermes-mu: tempat tersimpan tempatmu berada, areamu, dan jarak ke tempat tersimpanmu, tidak pernah koordinat. Apa yang dibacanya dikirim ke perusahaan yang menjalankan mode suara itu, sesuai ketentuannya. Setiap pembacaan tercantum di Kapan Hermes membaca lokasimu. Suara klasik adalah Hermes sendiri dan tidak perlu apa pun di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a una chiamata vocale dal vivo di leggere la tua posizione quando lo chiedi, direttamente dal tuo host Hermes: il luogo salvato in cui ti trovi, la tua zona e le distanze dai tuoi luoghi salvati, mai coordinate. Ciò che legge va all’azienda che gestisce quella modalità vocale, secondo i suoi termini. Ogni lettura è elencata in Quando Hermes ha letto la tua posizione. La voce classica è Hermes stesso e qui non richiede nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋ねたときに、ライブ音声通話が Hermes ホストから直接あなたの位置情報を読み取れるようにします。読み取るのは今いる保存済みの場所、エリア、保存済みの場所までの距離で、座標は含みません。読み取った内容はその音声モードを運営する会社に送られ、その規約が適用されます。読み取りはすべて「Hermes が位置情報を読み取った時」に表示されます。クラシック音声は Hermes そのものなので、ここでの設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물어볼 때 실시간 음성 통화가 Hermes 호스트에서 바로 위치를 읽도록 허용합니다. 현재 있는 저장된 장소, 지역, 저장된 장소까지의 거리만 읽고 좌표는 읽지 않습니다. 읽은 내용은 해당 음성 모드를 운영하는 회사로 전송되며 그 약관이 적용됩니다. 각 읽기는 'Hermes가 위치를 읽은 시간'에 표시됩니다. 클래식 음성은 Hermes 자체이므로 여기서 설정할 필요가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól rozmowie głosowej na żywo odczytać Twoją lokalizację, gdy o nią zapytasz, prosto z Twojego hosta Hermes: zapisane miejsce, w którym jesteś, Twoją okolicę i odległości do zapisanych miejsc, nigdy współrzędne. To, co odczyta, trafia do firmy obsługującej ten tryb głosowy, na jej warunkach. Każdy odczyt jest widoczny w sekcji Kiedy Hermes odczytał Twoją lokalizację. Klasyczny głos to sam Hermes i nie wymaga tu niczego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixe uma chamada de voz ao vivo ler sua localização quando você perguntar, direto do seu host Hermes: o lugar salvo em que você está, sua região e as distâncias até seus lugares salvos, nunca coordenadas. O que ela lê vai para a empresa que opera esse modo de voz, sob os termos dela. Cada leitura aparece em Quando o Hermes leu sua localização. A voz clássica é o próprio Hermes e não precisa de nada aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите живому голосовому звонку читать ваше местоположение, когда вы о нём спрашиваете, прямо с вашего хоста Hermes: сохранённое место, где вы находитесь, ваш район и расстояния до сохранённых мест, но никогда не координаты. Прочитанное уходит компании, которая обслуживает этот голосовой режим, на её условиях. Каждое чтение отображается в разделе «Когда Hermes читал ваше местоположение». Классический голос — это сам Hermes, здесь ему ничего не нужно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorduğunda canlı sesli aramanın konumunu doğrudan Hermes sunucundan okumasına izin ver: bulunduğun kayıtlı yer, bölgen ve kayıtlı yerlerine olan mesafeler, asla koordinatlar değil. Okuduğu bilgiler o ses modunu çalıştıran şirkete, onun koşullarıyla gider. Her okuma, Hermes konumunu ne zaman okudu bölümünde listelenir. Klasik ses Hermes'in kendisidir ve burada hiçbir şeye ihtiyaç duymaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你问起时，让实时语音通话直接从你的 Hermes 主机读取你的位置：你所在的已保存地点、你所在的区域以及到已保存地点的距离，绝不包括坐标。读取的内容会发送给运营该语音模式的公司，并受其条款约束。每次读取都会列在“Hermes 读取你位置的时间”下。经典语音就是 Hermes 本身，此处无需设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你問起時，讓即時語音通話直接從你的 Hermes 主機讀取你的位置：你所在的已儲存地點、你所在的區域以及到已儲存地點的距離，絕不包括座標。讀取的內容會傳送給營運該語音模式的公司，並受其條款約束。每次讀取都會列在「Hermes 讀取你位置的時間」下。經典語音就是 Hermes 本身，這裡無需設定。"
+          }
+        }
+      }
+    },
+    "Nothing reads your location by voice while sharing is paused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solange die Freigabe pausiert ist, liest kein Sprachanruf deinen Standort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mientras compartir está en pausa, ninguna llamada de voz lee tu ubicación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tant que le partage est en pause, aucun appel vocal ne lit ta position."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selama berbagi dijeda, tidak ada panggilan suara yang membaca lokasimu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentre la condivisione è in pausa, nessuna chiamata vocale legge la tua posizione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有を一時停止している間は、音声通話が位置情報を読み取ることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유가 일시 정지된 동안에는 음성 통화가 위치를 읽지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy udostępnianie jest wstrzymane, żadna rozmowa głosowa nie odczytuje Twojej lokalizacji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enquanto o compartilhamento estiver pausado, nenhuma chamada de voz lê sua localização."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока обмен приостановлен, голосовые звонки не читают ваше местоположение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paylaşım duraklatıldığında hiçbir sesli arama konumunu okumaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享暂停期间，语音通话不会读取你的位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享暫停期間，語音通話不會讀取你的位置。"
+          }
+        }
+      }
+    },
+    "Send to Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An Hermes senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar a Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyer à Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim ke Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia a Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij do Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar ao Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправить Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'e gönder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送给 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送給 Hermes"
+          }
+        }
+      }
+    },
+    "Send text to your Hermes agent as a chat message. With Wait for Answer on, Hermes's reply comes back to the shortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Text als Chatnachricht an deinen Hermes-Agenten. Mit „Auf Antwort warten“ kommt die Antwort von Hermes an den Kurzbefehl zurück."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envía texto a tu agente Hermes como mensaje de chat. Con Esperar respuesta activado, la respuesta de Hermes vuelve al atajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoie du texte à votre agent Hermes comme message de discussion. Avec Attendre la réponse activé, la réponse de Hermes revient au raccourci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim teks ke agen Hermes Anda sebagai pesan obrolan. Dengan Tunggu Jawaban aktif, balasan Hermes kembali ke pintasan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia testo al tuo agente Hermes come messaggio di chat. Con Attendi risposta attivo, la risposta di Hermes torna al comando rapido."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをチャットメッセージとしてHermesエージェントに送信します。「回答を待つ」をオンにすると、Hermesの返答がショートカットに返されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "텍스트를 채팅 메시지로 Hermes 에이전트에 보냅니다. 답변 기다리기를 켜면 Hermes의 답장이 단축어로 돌아옵니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysyła tekst do agenta Hermes jako wiadomość czatu. Gdy opcja Czekaj na odpowiedź jest włączona, odpowiedź Hermesa wraca do skrótu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envia texto ao seu agente Hermes como mensagem de chat. Com Aguardar resposta ativado, a resposta do Hermes volta para o atalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляет текст агенту Hermes как сообщение в чат. Если включено «Ждать ответа», ответ Hermes вернётся в быструю команду."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metni Hermes ajanınıza sohbet mesajı olarak gönderir. Yanıtı Bekle açıkken Hermes'in yanıtı kestirmeye geri döner."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将文本作为聊天消息发送给你的 Hermes 智能体。打开“等待回答”后，Hermes 的回复会返回给快捷指令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將文字作為聊天訊息傳送給你的 Hermes 代理。開啟「等待回答」後，Hermes 的回覆會傳回給捷徑。"
+          }
+        }
+      }
+    },
+    "Message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachricht"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messaggio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomość"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensagem"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesaj"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息"
+          }
+        }
+      }
+    },
+    "What should Hermes get?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was soll Hermes bekommen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Qué le envío a Hermes?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Que faut-il envoyer à Hermes ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang perlu dikirim ke Hermes?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa devo inviare a Hermes?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに何を送りますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 무엇을 보낼까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co wysłać do Hermesa?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que devo enviar ao Hermes?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что отправить Hermes?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'e ne gönderilsin?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要发送什么给 Hermes？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要傳送什麼給 Hermes？"
+          }
+        }
+      }
+    },
+    "Wait for Answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Antwort warten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperar respuesta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendre la réponse"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tunggu Jawaban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendi risposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答を待つ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답변 기다리기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czekaj na odpowiedź"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguardar resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ждать ответа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtı Bekle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待回答"
+          }
+        }
+      }
+    },
+    "Chat Name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatname"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre del chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nom de la discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama Obrolan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャット名"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅 이름"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nazwa czatu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome do chat"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Название чата"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbet Adı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天名稱"
+          }
+        }
+      }
+    },
+    "Send ${message} to Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${message} an Hermes senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar ${message} a Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyer ${message} à Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim ${message} ke Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia ${message} a Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${message}をHermesに送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${message}을(를) Hermes에 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij ${message} do Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar ${message} ao Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправить ${message} Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${message} metnini Hermes'e gönder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将${message}发送给 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將${message}傳送給 Hermes"
+          }
+        }
+      }
+    },
+    "Sent to Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An Hermes gesendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviado a Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyé à Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terkirim ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inviato a Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに送信しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 보냈습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysłano do Hermesa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviado ao Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправлено Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'e gönderildi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发送给 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已傳送給 Hermes。"
+          }
+        }
+      }
+    },
+    "Hermes is still working on it. The answer will be in the chat in Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes arbeitet noch daran. Die Antwort steht dann im Chat in Conduit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sigue trabajando en ello. La respuesta estará en el chat de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes y travaille encore. La réponse sera dans la discussion dans Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes masih mengerjakannya. Jawabannya akan ada di obrolan di Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ci sta ancora lavorando. La risposta sarà nella chat in Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはまだ作業中です。回答はConduitのチャットに届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 아직 작업 중입니다. 답변은 Conduit의 채팅에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nadal nad tym pracuje. Odpowiedź pojawi się na czacie w Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes ainda está trabalhando nisso. A resposta vai aparecer no chat do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ещё работает над этим. Ответ появится в чате в Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hâlâ üzerinde çalışıyor. Yanıt Conduit'teki sohbette olacak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在处理。回答会出现在 Conduit 的聊天中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在處理。回答會出現在 Conduit 的聊天中。"
+          }
+        }
+      }
+    },
+    "Hermes needs your answer. Open the chat in Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes braucht deine Antwort. Öffne den Chat in Conduit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes necesita tu respuesta. Abre el chat en Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a besoin de votre réponse. Ouvrez la discussion dans Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes perlu jawaban Anda. Buka obrolannya di Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha bisogno della tua risposta. Apri la chat in Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがあなたの回答を待っています。Conduitでチャットを開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 답변을 기다리고 있습니다. Conduit에서 채팅을 여세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes potrzebuje Twojej odpowiedzi. Otwórz czat w Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes precisa da sua resposta. Abra o chat no Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ждёт вашего ответа. Откройте чат в Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yanıtınızı bekliyor. Sohbeti Conduit'te açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你的回答。请在 Conduit 中打开聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你的回答。請在 Conduit 中開啟聊天。"
+          }
+        }
+      }
+    },
+    "Hermes is busy in that chat, so it will read this when its current reply finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ist in diesem Chat beschäftigt und liest das, sobald die aktuelle Antwort fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes está ocupado en ese chat, así que lo leerá cuando termine la respuesta actual."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes est occupé dans cette discussion : il lira ceci une fois sa réponse en cours terminée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sedang sibuk di obrolan itu, jadi ia akan membacanya setelah balasan saat ini selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes è occupato in quella chat, quindi lo leggerà quando avrà finito la risposta in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはそのチャットで作業中のため、現在の返答が終わってから読みます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 그 채팅에서 작업 중이라 현재 답장이 끝나면 읽습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes jest zajęty na tym czacie, więc przeczyta to po zakończeniu bieżącej odpowiedzi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes está ocupado nesse chat, então vai ler isto quando terminar a resposta atual."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes занят в этом чате, поэтому прочитает это, когда закончит текущий ответ."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes o sohbette meşgul, bu yüzden mevcut yanıtı bitince bunu okuyacak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 正在该聊天中忙碌，会在当前回复结束后阅读这条内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 正在該聊天中忙碌，會在目前回覆結束後閱讀這則內容。"
+          }
+        }
+      }
+    },
+    "Hermes added this to the reply already running in that chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat das in die Antwort übernommen, die in diesem Chat bereits läuft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes añadió esto a la respuesta que ya estaba en curso en ese chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a ajouté ceci à la réponse déjà en cours dans cette discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes menambahkan ini ke balasan yang sedang berjalan di obrolan itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha aggiunto questo alla risposta già in corso in quella chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはこれを、そのチャットで進行中の返答に追加しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 내용을 그 채팅에서 진행 중인 답장에 추가했습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes dodał to do odpowiedzi, która już trwa na tym czacie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes adicionou isto à resposta que já estava em andamento nesse chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes добавил это к ответу, который уже идёт в этом чате."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bunu o sohbette zaten süren yanıta ekledi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已将这条内容加入该聊天中正在进行的回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已將這則內容加入該聊天中正在進行的回覆。"
+          }
+        }
+      }
+    },
+    "There's no text to send. Give Send to Hermes a message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt keinen Text zum Senden. Gib „An Hermes senden“ eine Nachricht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay texto que enviar. Dale un mensaje a Enviar a Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il n'y a pas de texte à envoyer. Donnez un message à Envoyer à Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada teks untuk dikirim. Berikan pesan ke Kirim ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non c'è testo da inviare. Dai un messaggio a Invia a Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信するテキストがありません。「Hermesに送信」にメッセージを渡してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보낼 텍스트가 없습니다. Hermes에 보내기에 메시지를 넣으세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak tekstu do wysłania. Podaj wiadomość akcji Wyślij do Hermesa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não há texto para enviar. Dê uma mensagem para Enviar ao Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет текста для отправки. Передайте сообщение действию «Отправить Hermes»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilecek metin yok. Hermes'e gönder eylemine bir mesaj verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可发送的文本。请给“发送给 Hermes”一条消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可傳送的文字。請給「傳送給 Hermes」一則訊息。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't reach Hermes. Open Conduit and check the connection." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte Hermes nicht erreichen. Öffne Conduit und prüfe die Verbindung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo conectar con Hermes. Abre Conduit y revisa la conexión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu joindre Hermes. Ouvrez Conduit et vérifiez la connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat menjangkau Hermes. Buka Conduit dan periksa koneksinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a raggiungere Hermes. Apri Conduit e controlla la connessione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitはHermesに接続できませんでした。Conduitを開いて接続を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 Hermes에 연결하지 못했습니다. Conduit을 열고 연결을 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie może połączyć się z Hermesem. Otwórz Conduit i sprawdź połączenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu falar com o Hermes. Abra o Conduit e verifique a conexão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог связаться с Hermes. Откройте Conduit и проверьте подключение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit Hermes'e ulaşamadı. Conduit'i açıp bağlantıyı kontrol edin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接 Hermes。请打开 Conduit 检查连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法連線到 Hermes。請開啟 Conduit 檢查連線。"
+          }
+        }
+      }
+    },
+    "Shortcut: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehl: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atajo: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccourci : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pintasan: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comando rapido: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ショートカット: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단축어: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skrót: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atalho: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Быстрая команда: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kestirme: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷指令：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捷徑：%@"
+          }
+        }
+      }
+    },
+    "Add people" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir personas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter des personnes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambah orang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi persone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "人を追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사람 추가"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj osoby"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar pessoas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить людей"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kişi ekle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加联系人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增聯絡人"
+          }
+        }
+      }
+    },
+    "Alarm" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarma"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarme"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アラーム"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알람"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarme"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильник"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闹钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鬧鐘"
+          }
+        }
+      }
+    },
+    "Alarms and timers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker und Timer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmas y temporizadores"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmes et minuteurs"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm dan timer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglie e timer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アラームとタイマー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알람 및 타이머"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmy i minutniki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmes e timers"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники и таймеры"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmlar ve zamanlayıcılar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闹钟和计时器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鬧鐘與計時器"
+          }
+        }
+      }
+    },
+    "Alarms and timers Hermes sets ring even in Silent mode or a Focus. People are shared only if you pick them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker und Timer, die Hermes stellt, klingeln auch im Lautlos-Modus oder in einem Fokus. Personen werden nur geteilt, wenn du sie auswählst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las alarmas y temporizadores que pone Hermes suenan incluso en modo silencio o con un modo de concentración. Las personas solo se comparten si las eliges."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les alarmes et minuteurs réglés par Hermes sonnent même en mode silencieux ou pendant un mode de concentration. Les personnes ne sont partagées que si vous les choisissez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm dan timer yang dipasang Hermes tetap berbunyi dalam mode Senyap atau Fokus. Orang hanya dibagikan jika Anda memilihnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le sveglie e i timer impostati da Hermes suonano anche in modalità silenziosa o con una Full immersion attiva. Le persone vengono condivise solo se le scegli tu."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが設定したアラームとタイマーは、消音モードや集中モード中でも鳴ります。人は、あなたが選んだ場合にだけ共有されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 설정한 알람과 타이머는 무음 모드나 집중 모드에서도 울립니다. 사람은 직접 선택한 경우에만 공유됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmy i minutniki ustawione przez Hermesa dzwonią nawet w trybie cichym lub w trybie skupienia. Osoby są udostępniane tylko wtedy, gdy je wybierzesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmes e timers definidos pelo Hermes tocam mesmo no modo silencioso ou com um Foco ativo. Pessoas só são compartilhadas se você as escolher."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники и таймеры, которые ставит Hermes, звонят даже в бесшумном режиме и в режиме фокусирования. Люди передаются, только если вы их выберете."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in kurduğu alarmlar ve zamanlayıcılar Sessiz modda veya bir Odak açıkken bile çalar. Kişiler yalnızca siz seçerseniz paylaşılır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 设置的闹钟和计时器即使在静音模式或专注模式下也会响铃。只有你选择的联系人才会被共享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 設定的鬧鐘與計時器即使在靜音模式或專注模式下也會響鈴。只有你選擇的聯絡人才會被分享。"
+          }
+        }
+      }
+    },
+    "Alarms from Hermes need iOS 26 or later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker von Hermes erfordern iOS 26 oder neuer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las alarmas de Hermes requieren iOS 26 o posterior."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les alarmes de Hermes nécessitent iOS 26 ou une version ultérieure."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm dari Hermes memerlukan iOS 26 atau yang lebih baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le sveglie di Hermes richiedono iOS 26 o versioni successive."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesからのアラームには iOS 26 以降が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 알람은 iOS 26 이상이 필요합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmy od Hermesa wymagają systemu iOS 26 lub nowszego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmes do Hermes exigem o iOS 26 ou posterior."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для будильников от Hermes нужна iOS 26 или новее."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'ten gelen alarmlar için iOS 26 veya üstü gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 Hermes 的闹钟需要 iOS 26 或更高版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來自 Hermes 的鬧鐘需要 iOS 26 或以上版本。"
+          }
+        }
+      }
+    },
+    "Cancel alarm" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar alarma"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler l’alarme"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batalkan alarm"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annulla sveglia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アラームを取り消す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알람 취소"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anuluj alarm"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar alarme"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отменить будильник"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmı iptal et"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消闹钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消鬧鐘"
+          }
+        }
+      }
+    },
+    "Conduit isn't allowed to set alarms. Allow it in the Settings app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit darf keine Wecker stellen. Erlaube es in der Einstellungen-App."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no tiene permiso para poner alarmas. Permítelo en la app Ajustes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n’est pas autorisé à régler des alarmes. Autorisez-le dans l’app Réglages."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak diizinkan memasang alarm. Izinkan di app Pengaturan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non ha il permesso di impostare sveglie. Consentilo nell’app Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはアラームを設定できません。設定アプリで許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에 알람 설정 권한이 없습니다. 설정 앱에서 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie ma uprawnień do ustawiania alarmów. Zezwól na to w aplikacji Ustawienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não tem permissão para definir alarmes. Permita no app Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не может ставить будильники. Разрешите это в приложении «Настройки»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'in alarm kurma izni yok. Ayarlar uygulamasından izin verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无权设置闹钟。请在“设置”App 中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無權設定鬧鐘。請在「設定」App 中允許。"
+          }
+        }
+      }
+    },
+    "Hermes set %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat %@ gestellt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes puso %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a réglé %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes memasang %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha impostato %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが%@を設定しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 %@을(를) 설정했습니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ustawił: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes definiu %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes поставил: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes %@ kurdu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已设置 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已設定 %@"
+          }
+        }
+      }
+    },
+    "Hermes wants to cancel an alarm" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes möchte einen Wecker löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes quiere cancelar una alarma"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes veut annuler une alarme"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ingin membatalkan alarm"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes vuole annullare una sveglia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがアラームを取り消そうとしています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 알람을 취소하려고 합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chce anulować alarm"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes quer cancelar um alarme"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes хочет отменить будильник"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir alarmı iptal etmek istiyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想取消一个闹钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想取消一個鬧鐘"
+          }
+        }
+      }
+    },
+    "Hermes wants to set an alarm" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes möchte einen Wecker stellen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes quiere poner una alarma"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes veut régler une alarme"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ingin memasang alarm"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes vuole impostare una sveglia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがアラームを設定しようとしています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 알람을 설정하려고 합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chce ustawić alarm"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes quer definir um alarme"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes хочет поставить будильник"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir alarm kurmak istiyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想设置一个闹钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想設定一個鬧鐘"
+          }
+        }
+      }
+    },
+    "Hermes wants to start a timer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes möchte einen Timer starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes quiere iniciar un temporizador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes veut lancer un minuteur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ingin memulai timer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes vuole avviare un timer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがタイマーを開始しようとしています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 타이머를 시작하려고 합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chce włączyć minutnik"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes quer iniciar um timer"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes хочет запустить таймер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir zamanlayıcı başlatmak istiyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想启动一个计时器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想啟動一個計時器"
+          }
+        }
+      }
+    },
+    "Let Hermes set alarms and timers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes darf Wecker und Timer stellen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que Hermes ponga alarmas y temporizadores"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser Hermes à régler des alarmes et minuteurs"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan Hermes memasang alarm dan timer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a Hermes di impostare sveglie e timer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesにアラームとタイマーの設定を許可"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 알람과 타이머를 설정하도록 허용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól Hermesowi ustawiać alarmy i minutniki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que o Hermes defina alarmes e timers"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить Hermes ставить будильники и таймеры"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in alarm ve zamanlayıcı kurmasına izin ver"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 Hermes 设置闹钟和计时器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 Hermes 設定鬧鐘與計時器"
+          }
+        }
+      }
+    },
+    "People" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personnes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "人"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사람"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Osoby"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pessoas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Люди"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kişiler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "联系人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聯絡人"
+          }
+        }
+      }
+    },
+    "Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die Personen aus, die Hermes kennen soll, und sag, wer sie für dich sind, etwa Ehefrau oder Chef, damit „schreib meiner Frau“ oder „Mamas Geburtstag“ einfach funktioniert. Hermes erhält Name, Telefonnummern, E-Mail-Adressen und Geburtstag. Conduit liest deine Kontakte nicht, nur die Personen, die du hier auswählst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige las personas que Hermes debe conocer y di quiénes son para ti, como esposa o jefe, para que «escríbele a mi esposa» o «el cumpleaños de mamá» funcionen sin más. Hermes recibe su nombre, teléfonos, correos y cumpleaños. Conduit no lee tus contactos: solo las personas que elijas aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez les personnes que Hermes doit connaître et indiquez qui elles sont pour vous, comme épouse ou patron, pour que « écris à ma femme » ou « l’anniversaire de maman » fonctionnent tout seuls. Hermes reçoit leur nom, leurs numéros, leurs adresses e-mail et leur date d’anniversaire. Conduit ne lit pas vos contacts : seulement les personnes choisies ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih orang yang perlu diketahui Hermes, dan sebutkan siapa mereka bagi Anda, misalnya istri atau atasan, agar \"kirim pesan ke istri saya\" atau \"ulang tahun Ibu\" langsung berhasil. Hermes mendapatkan nama, nomor telepon, alamat email, dan tanggal lahir mereka. Conduit tidak membaca kontak Anda: hanya orang yang Anda pilih di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli le persone che Hermes deve conoscere e indica chi sono per te, ad esempio moglie o capo, così «scrivi a mia moglie» o «il compleanno della mamma» funzionano subito. Hermes riceve nome, numeri di telefono, indirizzi email e compleanno. Conduit non legge i tuoi contatti: solo le persone che scegli qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに知っておいてほしい人を選び、妻や上司など、あなたとの関係を入力すると、「妻にメッセージして」「母の誕生日」がそのまま通じます。Hermesが受け取るのは名前、電話番号、メールアドレス、誕生日です。Conduitは連絡先を読み取りません。ここで選んだ人だけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 알아야 할 사람을 고르고 아내나 상사처럼 나와의 관계를 적어 두면 \"아내에게 문자 보내\"나 \"엄마 생일\"이 바로 통합니다. Hermes는 이름, 전화번호, 이메일 주소, 생일을 받습니다. Conduit는 연락처를 읽지 않으며, 여기서 고른 사람만 보냅니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz osoby, które Hermes ma znać, i wpisz, kim są dla ciebie, np. żona albo szef, aby „napisz do żony” czy „urodziny mamy” po prostu działały. Hermes dostaje ich imię i nazwisko, numery telefonów, adresy e-mail i datę urodzin. Conduit nie czyta twoich kontaktów, tylko osoby wybrane tutaj."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha as pessoas que o Hermes deve conhecer e diga quem elas são para você, como esposa ou chefe, para que \"mande mensagem para minha esposa\" ou \"aniversário da mamãe\" funcionem direto. O Hermes recebe nome, telefones, e-mails e aniversário. O Conduit não lê seus contatos: só as pessoas que você escolher aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите людей, которых должен знать Hermes, и укажите, кем они вам приходятся, например жена или начальник, чтобы «напиши жене» или «день рождения мамы» просто работали. Hermes получает имя, номера телефонов, адреса эл. почты и день рождения. Conduit не читает ваши контакты, только выбранных здесь людей."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in tanıması gereken kişileri seçin ve sizin için kim olduklarını yazın, örneğin eşim veya patronum; böylece \"eşime mesaj at\" ya da \"annemin doğum günü\" doğrudan çalışır. Hermes adlarını, telefon numaralarını, e-posta adreslerini ve doğum günlerini alır. Conduit kişilerinizi okumaz, yalnızca burada seçtiğiniz kişileri gönderir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 Hermes 需要认识的人，并注明他们和你的关系，例如妻子或老板，这样“给我妻子发消息”或“妈妈的生日”就能直接生效。Hermes 会收到他们的姓名、电话号码、电子邮件地址和生日。Conduit 不会读取你的通讯录，只发送你在这里选择的人。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇 Hermes 需要認識的人，並註明他們和你的關係，例如太太或老闆，這樣「傳訊息給我太太」或「媽媽的生日」就能直接生效。Hermes 會收到他們的姓名、電話號碼、電子郵件地址和生日。Conduit 不會讀取你的聯絡人，只傳送你在這裡選擇的人。"
+          }
+        }
+      }
+    },
+    "Set" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poner"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Régler"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustaw"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Definir"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поставить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kur"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定"
+          }
+        }
+      }
+    },
+    "Share the people you pick" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewählte Personen teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir las personas que elijas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager les personnes choisies"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bagikan orang yang Anda pilih"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi le persone che scegli"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだ人を共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 사람 공유"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępniaj wybrane osoby"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartilhar as pessoas escolhidas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Передавать выбранных людей"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçtiğiniz kişileri paylaşın"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享你选择的联系人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享你選擇的聯絡人"
+          }
+        }
+      }
+    },
+    "Start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lancer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włącz"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запустить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlat"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始"
+          }
+        }
+      }
+    },
+    "That alarm isn't on this iPhone any more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Wecker ist nicht mehr auf diesem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esa alarma ya no está en este iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette alarme n’est plus sur cet iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm itu sudah tidak ada di iPhone ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quella sveglia non è più su questo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのアラームはこのiPhoneにもうありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 알람은 이 iPhone에 더 이상 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tego alarmu nie ma już na tym iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse alarme não está mais neste iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этого будильника больше нет на этом iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu alarm artık bu iPhone'da yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 上已没有该闹钟。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 上已沒有該鬧鐘。"
+          }
+        }
+      }
+    },
+    "That alarm time has already passed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Weckzeit ist schon vorbei."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esa hora de alarma ya pasó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette heure d’alarme est déjà passée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waktu alarm itu sudah lewat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’orario di quella sveglia è già passato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのアラームの時刻はすでに過ぎています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 알람 시간은 이미 지났습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta godzina alarmu już minęła."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O horário desse alarme já passou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это время будильника уже прошло."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu alarm saati çoktan geçti."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该闹钟时间已经过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該鬧鐘時間已經過去。"
+          }
+        }
+      }
+    },
+    "They ring like the Clock app's, even in Silent mode or a Focus. Hermes asks each time unless new items go in without asking, and always asks before cancelling one. Hermes sees only the alarms it set." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie klingeln wie die der Uhr-App, auch im Lautlos-Modus oder in einem Fokus. Hermes fragt jedes Mal, außer neue Einträge kommen ohne Nachfrage hinzu, und fragt immer, bevor es einen löscht. Hermes sieht nur die Wecker, die es selbst gestellt hat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suenan como las de la app Reloj, incluso en modo silencio o con un modo de concentración. Hermes pregunta cada vez, salvo que los elementos nuevos se añadan sin preguntar, y siempre pregunta antes de cancelar una. Hermes solo ve las alarmas que puso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elles sonnent comme celles de l’app Horloge, même en mode silencieux ou pendant un mode de concentration. Hermes demande à chaque fois, sauf si les nouveaux éléments sont ajoutés sans demander, et demande toujours avant d’en annuler une. Hermes ne voit que les alarmes qu’il a réglées."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm berbunyi seperti di app Jam, bahkan dalam mode Senyap atau Fokus. Hermes bertanya setiap kali kecuali item baru ditambahkan tanpa bertanya, dan selalu bertanya sebelum membatalkannya. Hermes hanya melihat alarm yang dipasangnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suonano come quelle dell’app Orologio, anche in modalità silenziosa o con una Full immersion attiva. Hermes chiede ogni volta, a meno che i nuovi elementi vengano aggiunti senza chiedere, e chiede sempre prima di annullarne una. Hermes vede solo le sveglie che ha impostato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時計アプリのアラームと同じように、消音モードや集中モード中でも鳴ります。新しい項目を確認なしで追加する設定でない限り、Hermesは毎回確認し、取り消す前には必ず確認します。Hermesが見られるのは自分で設定したアラームだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시계 앱 알람처럼 무음 모드나 집중 모드에서도 울립니다. 새 항목을 묻지 않고 추가하도록 설정하지 않았다면 Hermes는 매번 묻고, 알람을 취소하기 전에는 항상 묻습니다. Hermes는 자신이 설정한 알람만 봅니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwonią jak alarmy w aplikacji Zegar, nawet w trybie cichym lub w trybie skupienia. Hermes pyta za każdym razem, chyba że nowe elementy są dodawane bez pytania, i zawsze pyta przed anulowaniem. Hermes widzi tylko alarmy, które sam ustawił."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eles tocam como os do app Relógio, mesmo no modo silencioso ou com um Foco ativo. O Hermes pergunta toda vez, a menos que novos itens entrem sem perguntar, e sempre pergunta antes de cancelar um. O Hermes vê só os alarmes que ele definiu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Они звонят как будильники приложения «Часы», даже в бесшумном режиме и в режиме фокусирования. Hermes спрашивает каждый раз, если новые элементы не добавляются без вопроса, и всегда спрашивает перед отменой. Hermes видит только будильники, которые поставил сам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat uygulamasındakiler gibi, Sessiz modda veya bir Odak açıkken bile çalarlar. Yeni öğeler sormadan eklenmiyorsa Hermes her seferinde sorar ve bir alarmı iptal etmeden önce her zaman sorar. Hermes yalnızca kendi kurduğu alarmları görür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它们像“时钟”App 的闹钟一样响铃，即使在静音模式或专注模式下也会响。除非新项目设为无需询问直接添加，否则 Hermes 每次都会询问，取消闹钟前也总会询问。Hermes 只能看到自己设置的闹钟。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它們像「時鐘」App 的鬧鐘一樣響鈴，即使在靜音模式或專注模式下也會響。除非新項目設為無需詢問直接加入，否則 Hermes 每次都會詢問，取消鬧鐘前也一定會詢問。Hermes 只能看到自己設定的鬧鐘。"
+          }
+        }
+      }
+    },
+    "Timer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temporizador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minuteur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タイマー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "타이머"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minutnik"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Таймер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamanlayıcı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "计时器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "計時器"
+          }
+        }
+      }
+    },
+    "Who they are to you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wer die Person für dich ist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quién es para ti"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qui c’est pour vous"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siapa dia bagi Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chi è per te"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたとの関係"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나와의 관계"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kim jest dla ciebie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quem é para você"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кем приходится вам"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sizin için kim"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你的关系"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你的關係"
+          }
+        }
+      }
+    },
+    "every day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "jeden Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "todos los días"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tous les jours"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "setiap hari"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ogni giorno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "毎日"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "매일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "codziennie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "todos os dias"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "каждый день"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "her gün"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天"
+          }
+        }
+      }
+    },
+    "weekdays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "werktags"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "entre semana"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "en semaine"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hari kerja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nei giorni feriali"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平日"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "평일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "w dni robocze"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dias úteis"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "по будням"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hafta içi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作日"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平日"
+          }
+        }
+      }
+    },
+    "weekends" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "am Wochenende"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "los fines de semana"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le week-end"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "akhir pekan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nel fine settimana"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "週末"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주말"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "w weekendy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fins de semana"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "по выходным"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hafta sonu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "周末"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "週末"
+          }
+        }
+      }
+    },
+    "Conduit ran out of time before it could send this. Nothing was sent; try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hatte keine Zeit mehr, das zu senden. Es wurde nichts gesendet; versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit se quedó sin tiempo antes de poder enviarlo. No se envió nada; inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a manqué de temps avant de pouvoir l’envoyer. Rien n’a été envoyé ; réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waktu Conduit habis sebelum sempat mengirimnya. Tidak ada yang terkirim; coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha esaurito il tempo prima di poterlo inviare. Non è stato inviato nulla; riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信する前に Conduit の時間切れになりました。何も送信されていません。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 보내기 전에 시간이 다 되었습니다. 아무것도 보내지 않았습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitowi zabrakło czasu, zanim zdążył to wysłać. Nic nie wysłano; spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit ficou sem tempo antes de conseguir enviar. Nada foi enviado; tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У Conduit закончилось время до отправки. Ничего не отправлено; попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bunu göndermeden önce süresi doldu. Hiçbir şey gönderilmedi; tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在发送前已超时。未发送任何内容，请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在傳送前已逾時。未傳送任何內容，請再試一次。"
+          }
+        }
+      }
+    },
+    "Relation to %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beziehung zu %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relación con %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lien avec %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hubungan dengan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relazione con %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@との関係"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@와(과)의 관계"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relacja z: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relação com %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кем приходится: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ile ilişki"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与%@的关系"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與%@的關係"
+          }
+        }
+      }
+    },
+    "Their nickname and company go too, when the contact has them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spitzname und Firma werden ebenfalls geteilt, wenn der Kontakt sie enthält."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También se comparten su apodo y su empresa, si el contacto los tiene."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son surnom et son entreprise sont aussi partagés, si le contact les indique."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama panggilan dan perusahaannya juga ikut, jika kontak memilikinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vengono condivisi anche soprannome e azienda, se il contatto li ha."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連絡先にあれば、ニックネームと会社名も共有されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연락처에 있으면 별명과 회사도 함께 공유됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pseudonim i firma też są udostępniane, jeśli kontakt je zawiera."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O apelido e a empresa também vão, se o contato os tiver."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прозвище и компания тоже передаются, если они есть в контакте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kişide varsa takma adı ve şirketi de paylaşılır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果联系人有昵称和公司，也会一并共享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果聯絡人有暱稱和公司，也會一併分享。"
+          }
+        }
+      }
+    },
+    "Alarms couldn't be reached just now. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wecker sind gerade nicht erreichbar. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo acceder a las alarmas ahora. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les alarmes sont inaccessibles pour le moment. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarm tidak bisa dijangkau saat ini. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al momento non è possibile accedere alle sveglie. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今はアラームにアクセスできません。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금은 알람에 접근할 수 없습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie można teraz uzyskać dostępu do alarmów. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar os alarmes agora. Tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Будильники сейчас недоступны. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alarmlara şu anda ulaşılamıyor. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂时无法访问闹钟，请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫時無法存取鬧鐘，請再試一次。"
+          }
+        }
+      }
+    },
+    "Update the plugin on the host this once" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin dieses eine Mal auf dem Host aktualisieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualiza el plugin en el host esta vez"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mettez à jour le plugin sur l’hôte cette fois"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin di host kali ini saja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin sull’host questa volta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今回だけホストでプラグインをアップデート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이번 한 번만 호스트에서 플러그인 업데이트"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę na hoście ten jeden raz"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualize o plugin no host desta vez"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновите плагин на хосте в этот раз"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eklentiyi bu seferlik ana makinede güncelleyin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这次请在主机上更新插件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這次請在主機上更新外掛程式"
+          }
+        }
+      }
+    },
+    "This dashboard's plugin (version %@) is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Plugin dieses Dashboards (Version %@) ist älter als Ein-Tipp-Updates. Führe die Schritte unter „Manuell erledigen“ einmal auf dem Host aus. Danach aktualisiert Conduit es für dich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de este panel (versión %@) es anterior a las actualizaciones con un toque. Ejecuta una vez en el host los pasos de «Hazlo manualmente». Después, Conduit lo actualizará por ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin de ce tableau de bord (version %@) est antérieur aux mises à jour en un geste. Exécutez une fois sur l’hôte les étapes de « Le faire manuellement ». Ensuite, Conduit le mettra à jour pour vous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin dasbor ini (versi %@) lebih lama dari pembaruan sekali ketuk. Jalankan langkah di Lakukan secara manual di host sekali. Setelah itu, Conduit memperbaruinya untuk Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di questa dashboard (versione %@) è precedente agli aggiornamenti con un tocco. Esegui una volta sull’host i passaggi in «Fallo manualmente». Dopo, Conduit lo aggiornerà per te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードのプラグイン（バージョン%@）はワンタップアップデートより前のものです。「手動で行う」の手順をホストで一度実行してください。以降はConduitがアップデートします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드의 플러그인(버전 %@)은 원탭 업데이트 이전 버전입니다. 호스트에서 '직접 하기'의 단계를 한 번 실행하세요. 그 후에는 Conduit가 업데이트합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka tego panelu (wersja %@) jest starsza niż aktualizacje jednym dotknięciem. Wykonaj raz na hoście kroki z sekcji „Zrób to ręcznie”. Potem Conduit zaktualizuje ją za Ciebie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin deste painel (versão %@) é anterior às atualizações com um toque. Execute uma vez no host os passos em “Fazer manualmente”. Depois disso, o Conduit o atualiza para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин этой панели (версия %@) старше обновлений одним касанием. Один раз выполните на хосте шаги из раздела «Сделать вручную». После этого Conduit будет обновлять его сам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panonun eklentisi (sürüm %@) tek dokunuşla güncellemelerden eski. Elle yapın altındaki adımları ana makinede bir kez çalıştırın. Bundan sonra Conduit onu sizin için günceller."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的插件（版本 %@）早于一键更新。请在主机上运行一次“手动操作”下的步骤。之后 Conduit 会为你更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板的外掛程式（版本 %@）早於一鍵更新。請在主機上執行一次「手動操作」下的步驟。之後 Conduit 會為你更新。"
+          }
+        }
+      }
+    },
+    "Hermes said: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes meldete: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes dijo: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a répondu : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes menjawab: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha risposto: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesの応答: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 응답: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes odpowiedział: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes respondeu: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ответ Hermes: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yanıtı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 回复：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 回覆：%@"
+          }
+        }
+      }
+    },
+    "This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Plugin dieses Dashboards fehlt oder ist älter als Ein-Tipp-Updates. Führe die Schritte unter „Manuell erledigen“ einmal auf dem Host aus. Danach aktualisiert Conduit es für dich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de este panel falta o es anterior a las actualizaciones con un toque. Ejecuta una vez en el host los pasos de «Hazlo manualmente». Después, Conduit lo actualizará por ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin de ce tableau de bord est absent ou antérieur aux mises à jour en un geste. Exécutez une fois sur l’hôte les étapes de « Le faire manuellement ». Ensuite, Conduit le mettra à jour pour vous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin dasbor ini tidak ada atau lebih lama dari pembaruan sekali ketuk. Jalankan langkah di Lakukan secara manual di host sekali. Setelah itu, Conduit memperbaruinya untuk Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di questa dashboard manca o è precedente agli aggiornamenti con un tocco. Esegui una volta sull’host i passaggi in «Fallo manualmente». Dopo, Conduit lo aggiornerà per te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードのプラグインがないか、ワンタップアップデートより前のものです。「手動で行う」の手順をホストで一度実行してください。以降はConduitがアップデートします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드의 플러그인이 없거나 원탭 업데이트 이전 버전입니다. 호스트에서 '직접 하기'의 단계를 한 번 실행하세요. 그 후에는 Conduit가 업데이트합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczki tego panelu brakuje lub jest starsza niż aktualizacje jednym dotknięciem. Wykonaj raz na hoście kroki z sekcji „Zrób to ręcznie”. Potem Conduit zaktualizuje ją za Ciebie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin deste painel não está instalado ou é anterior às atualizações com um toque. Execute uma vez no host os passos em “Fazer manualmente”. Depois disso, o Conduit o atualiza para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагина этой панели нет или он старше обновлений одним касанием. Один раз выполните на хосте шаги из раздела «Сделать вручную». После этого Conduit будет обновлять его сам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panonun eklentisi yok ya da tek dokunuşla güncellemelerden eski. Elle yapın altındaki adımları ana makinede bir kez çalıştırın. Bundan sonra Conduit onu sizin için günceller."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的插件缺失或早于一键更新。请在主机上运行一次“手动操作”下的步骤。之后 Conduit 会为你更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板的外掛程式缺少或早於一鍵更新。請在主機上執行一次「手動操作」下的步驟。之後 Conduit 會為你更新。"
+          }
+        }
+      }
+    },
+    "Show Steps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte zeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver pasos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voir les étapes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lihat Langkah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra passaggi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手順を表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단계 보기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokaż kroki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver passos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать шаги"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adımları Göster"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看步骤"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看步驟"
+          }
+        }
+      }
+    },
     "Too large to open on this phone" : {
       "localizations" : {
         "de" : {

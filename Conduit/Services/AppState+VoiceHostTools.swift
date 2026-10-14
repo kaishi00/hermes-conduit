@@ -2,12 +2,13 @@
 //  AppState+VoiceHostTools.swift
 //  Conduit
 //
-//  A live voice call reads the user's shared health data straight from the
-//  Hermes host, when the user lets that voice mode read it (Settings >
-//  Health, off by default: what it reads goes to the mode's company). Each
-//  read is sealed with this iPhone's own health key and answered only for
-//  this iPhone's data. The phone logs every read whose answer reached the
-//  call (what went to the mode's company), since it makes them all.
+//  A live voice call reads the user's shared health data and location
+//  straight from the Hermes host, when the user lets that voice mode read
+//  each one (Settings > Health, Settings > Location; off by default: what
+//  it reads goes to the mode's company). Each read is sealed with this
+//  iPhone's own key for that data and answered only for this iPhone's data.
+//  The phone logs every health read whose answer reached the call; the
+//  host's location read log lists location reads as the voice call's.
 //  (designs/voice-health-location.md)
 //
 
@@ -20,35 +21,54 @@ extension AppState {
     static let voiceToolsPath = "/api/plugins/conduit_push/voice-tools"
     static let voiceToolsLog = Logger(subsystem: "com.milim.relay", category: "voice-tools")
 
-    /// What a call on `mode` may use: the host's tools (health, the
-    /// calendar and phone status) each when the user lets `mode` read it and
-    /// its dashboard and profile are the ones in use, and the phone's own
+    /// The kinds of sealed host data (`VoiceHostTool.key`) a call on `mode`
+    /// may read now: each one the user lets `mode` read, shared with the
+    /// dashboard and profile in use.
+    func voiceReadableKeys(for mode: LiveVoiceModeName) -> Set<String> {
+        var keys: Set<String> = []
+        let health = healthSyncPreferences
+        if health.letsVoiceRead(mode), health.destination.map(isActiveDestination) == true {
+            keys.insert("health")
+        }
+        let location = LocationSharingController.shared
+        // An older plugin has no location tool: no key is set up for it.
+        if notifierPlugin.servesLocationVoice, location.letsVoiceRead(mode), let binding = location.binding,
+           activeDashboardID == binding.dashboardID, activeProfile == binding.profile {
+            keys.insert("location")
+        }
+        return keys
+    }
+
+    /// What a call on `mode` may use: the host's tools (health, location,
+    /// the calendar and phone status) each when the user lets `mode` read it
+    /// and its dashboard and profile are the ones in use, and the phone's own
     /// calendar tools. Starts a sync of each, so the call reads fresh data.
     /// `host` is nil when the host couldn't be asked (a reconnect then keeps
     /// what it had).
     func voiceHostTools(for mode: LiveVoiceModeName) async -> (host: [VoiceHostTool]?, local: [VoiceHostTool]) {
-        let health = healthSyncPreferences
-        let healthAllowed = health.letsVoiceRead(mode) && health.destination.map(isActiveDestination) == true
+        let keys = voiceReadableKeys(for: mode)
         let phone = phoneSync.preferences
         let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map(isActiveDestination) == true
         let local = phoneAllowed
             ? PhoneVoiceTools.tools(for: phone, access: phoneSync.calendarSource.eventAccess,
-                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized)
+                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized,
+                                    alarmsAuthorized: phoneSync.alarmSource.authorized)
             : []
-        guard healthAllowed || phoneAllowed else { return ([], local) }
+        guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".
         guard notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return (nil, local) }
         // Not waited on: the call starts now and reads what has arrived by
         // the time it asks. A key from before voice reads is replaced here.
-        if healthAllowed, !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
+        if keys.contains("health"), !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
+        if keys.contains("location") { Task { await LocationSharingController.shared.prepareVoiceReads() } }
         if phoneAllowed, !phoneSync.isSyncing { Task { await runPhoneSync(reason: .voiceCall) } }
         do {
             let response = try await bridge.requestJSON(
                 path: DashboardPath.withProfile(Self.voiceToolsPath, profile: activeProfile),
                 method: "GET", body: nil, timeoutMilliseconds: 5_000)
             let host = VoiceHostTool.tools(from: response).filter { tool in
-                (tool.key == "health" && healthAllowed) || (tool.key == "phone" && phoneAllowed)
+                keys.contains(tool.key) || (tool.key == "phone" && phoneAllowed)
             }
             return (host, local)
         } catch {
@@ -64,7 +84,7 @@ extension AppState {
     /// One call for the running call. What the model hears back.
     func callVoiceHostTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
         switch tool.key {
-        case "health": return await callHealthVoiceTool(tool, arguments: arguments, mode: mode)
+        case "health", "location": return await callSealedReadTool(tool, arguments: arguments, mode: mode)
         case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode)
         default: return ["error": "That isn't available on this call."]
         }
@@ -83,7 +103,11 @@ extension AppState {
                 // Reported in the background: the call hears the outcome now.
                 Task { await self.runPhoneSync(reason: .answered) }
             }
-            if result["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            if result["error"] == nil {
+                Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
+                // Hermes' alarm list catches up with the one just set.
+                if tool.name == PhoneVoiceTools.alarmTool { Task { await self.runPhoneSync(reason: .answered) } }
+            }
             return result
         }
         guard let bridge = dashboardTicketBridge else {
@@ -116,6 +140,8 @@ extension AppState {
         let action: String
         if tool.name == PhoneVoiceTools.addTool {
             action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
+        } else if tool.name == PhoneVoiceTools.alarmTool {
+            action = (arguments["kind"] as? String).map { "set \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.changesTool {
             action = "changes \(arguments["action"] as? String ?? "")"
         } else {
@@ -124,31 +150,53 @@ extension AppState {
         HealthVoiceReadLog.record(mode: mode, action: action, key: HealthVoiceReadLog.phoneStorageKey)
     }
 
-    /// One sealed health read for the running call.
-    private func callHealthVoiceTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
+    /// One sealed health or location read for the running call.
+    private func callSealedReadTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?) async -> [String: String] {
         // Checked again at each read: the user may have turned it off mid-call.
-        let preferences = healthSyncPreferences
-        guard let mode, preferences.letsVoiceRead(mode),
-              let destination = preferences.destination, activeDashboardID == destination.dashboardID,
-              activeProfile == destination.profile, let bridge = dashboardTicketBridge else {
-            return ["error": "The user hasn't let this voice call read their health data, or it isn't reachable now."]
+        guard let mode, voiceReadableKeys(for: mode).contains(tool.key), let bridge = dashboardTicketBridge else {
+            return ["error": tool.key == "location"
+                ? "The user hasn't let this voice call read their location, or it isn't reachable now."
+                : "The user hasn't let this voice call read their health data, or it isn't reachable now."]
         }
+        switch tool.key {
+        case "health":
+            return await callHealthVoiceTool(tool, arguments: arguments, mode: mode, bridge: bridge)
+        case "location":
+            return await callLocationVoiceTool(tool, arguments: arguments, mode: mode, bridge: bridge)
+        default:
+            return ["error": "That isn't available on this call."]
+        }
+    }
+
+    /// The request's JSON (`call_id`, `args`, `provider`), or nil when the
+    /// arguments aren't JSON.
+    private func voiceRequestJSON(callID: String, arguments: [String: Any], mode: LiveVoiceModeName) throws -> Data? {
+        let request: [String: Any] = ["call_id": callID, "args": arguments, "provider": mode.storageID]
+        // JSONSerialization raises, rather than throws, on anything else.
+        guard JSONSerialization.isValidJSONObject(request) else { return nil }
+        return try JSONSerialization.data(withJSONObject: request)
+    }
+
+    private func voiceCallPath() -> String {
+        DashboardPath.withProfile("\(Self.voiceToolsPath)/call", profile: activeProfile)
+    }
+
+    private func callHealthVoiceTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName,
+                                     bridge: DashboardTicketBridge) async -> [String: String] {
         guard let readKey = healthSync.voiceReadKey() else {
             return ["error": "Health data isn't ready for voice yet; it will be after the next sync."]
         }
         let deviceID = readKey.deviceID
         let key = readKey.key
-        let callID = HealthSyncCrypto.newCallID()
+        let callID = VoiceReadSeal.newCallID()
         do {
-            let request: [String: Any] = ["call_id": callID, "args": arguments, "provider": mode.storageID]
-            // JSONSerialization raises, rather than throws, on anything else.
-            guard JSONSerialization.isValidJSONObject(request) else { return ["error": "Those arguments aren't valid."] }
-            let plaintext = try JSONSerialization.data(withJSONObject: request)
+            guard let plaintext = try voiceRequestJSON(callID: callID, arguments: arguments, mode: mode) else {
+                return ["error": "Those arguments aren't valid."]
+            }
             let envelope = try HealthSyncCrypto.voiceRequest(tool: tool.name, plaintext: plaintext, key: key,
                                                              deviceID: deviceID, callID: callID)
-            let response = try await bridge.requestJSON(
-                path: DashboardPath.withProfile("\(Self.voiceToolsPath)/call", profile: destination.profile),
-                method: "POST", body: envelope, timeoutMilliseconds: 12_000)
+            let response = try await bridge.requestJSON(path: voiceCallPath(), method: "POST", body: envelope,
+                                                        timeoutMilliseconds: 12_000)
             let result = try HealthSyncCrypto.openVoiceAnswer(response, tool: tool.name, key: key,
                                                                 deviceID: deviceID, callID: callID)
             HealthVoiceReadLog.record(mode: mode, action: arguments["action"] as? String ?? "")
@@ -158,6 +206,35 @@ extension AppState {
             // The detail stays in the log: it can name the host, and the
             // model's company would get it.
             return ["error": "The health data couldn't be read just now."]
+        }
+    }
+
+    private func callLocationVoiceTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName,
+                                       bridge: DashboardTicketBridge) async -> [String: String] {
+        let controller = LocationSharingController.shared
+        guard let key = controller.voiceReadKey() else {
+            Task { await controller.prepareVoiceReads() }
+            return ["error": "The location isn't ready for voice yet; ask again in a moment."]
+        }
+        let callID = VoiceReadSeal.newCallID()
+        do {
+            guard let plaintext = try voiceRequestJSON(callID: callID, arguments: arguments, mode: mode) else {
+                return ["error": "Those arguments aren't valid."]
+            }
+            let envelope = try LocationCrypto.voiceRequest(tool: tool.name, plaintext: plaintext, key: key, callID: callID)
+            let response = try await bridge.requestJSON(path: voiceCallPath(), method: "POST", body: envelope,
+                                                        timeoutMilliseconds: 12_000)
+            let result = try LocationCrypto.openVoiceAnswer(response, tool: tool.name, key: key, callID: callID)
+            return VoiceHostTool.modelResult(result)
+        } catch {
+            Self.voiceToolsLog.info("Voice location read failed: \(LocationSyncEngine.describe(error), privacy: .public)")
+            if let bridgeError = error as? DashboardTicketBridgeError, case .http(let status, let detail) = bridgeError,
+               status == 409, LocationSyncEngine.needsNewKey(detail) {
+                // The host forgot this phone's key (a wipe): the next send
+                // agrees a new one.
+                Task { await controller.flush(settingsOnly: true) }
+            }
+            return ["error": "The location couldn't be read just now."]
         }
     }
 

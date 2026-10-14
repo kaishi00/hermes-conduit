@@ -976,7 +976,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     func callHostTool(_ tool: VoiceHostTool, arguments: [String: Any]) async -> [String: String] {
-        await runHostTool?(tool, arguments) ?? ["error": "That isn't available on this call."]
+        // Only a tool this call was given: its runner checks that tool's
+        // consent, so another one must not reach it.
+        guard hostTools.contains(where: { $0.name == tool.name && $0.key == tool.key }), let runHostTool else {
+            return ["error": "That isn't available on this call."]
+        }
+        return await runHostTool(tool, arguments)
     }
 
     /// Looks up the user's earlier chats for the running call. A query that

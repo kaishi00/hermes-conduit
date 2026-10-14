@@ -165,6 +165,10 @@ struct ConduitPluginSettingsDetail: View {
         }
         .navigationTitle(Text(AppLocalization.string("Conduit plugin")))
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall(status))
+        // The one-time manual update: its steps open by themselves.
+        .onChange(of: status.needsManualUpdate(after: update), initial: true) { _, needed in
+            if needed { showsCommands = true }
+        }
         // Asked again on every visit and dashboard switch.
         .task(id: appState.activeDashboardID) {
             checking = true
@@ -271,7 +275,7 @@ struct NotifierPluginUpdateStatusView: View {
 
     var body: some View {
         Group {
-            if let row = Self.row(for: appState.activeNotifierPluginUpdate) {
+            if let row = Self.row(for: appState.activeNotifierPluginUpdate, plugin: appState.notifierPlugin) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         if let symbol = row.symbol {
@@ -318,7 +322,9 @@ struct NotifierPluginUpdateStatusView: View {
             }
         }
         .onChange(of: appState.activeNotifierPluginUpdate) { previous, state in
-            guard let row = Self.row(for: state), row.title != Self.row(for: previous)?.title else { return }
+            let before = Self.row(for: previous, plugin: appState.notifierPlugin)
+            guard let row = Self.row(for: state, plugin: appState.notifierPlugin),
+                  row.title != before?.title || row.detail != before?.detail else { return }
             AccessibilityNotification.Announcement(row.title).post()
         }
     }
@@ -331,9 +337,16 @@ struct NotifierPluginUpdateStatusView: View {
         var tint: Color = .secondary
     }
 
+    /// `plugin` is the dashboard's plugin as last reported: an update that
+    /// fails or can't run on a plugin older than one-tap updates gets the
+    /// one-time manual step, not a bare error.
     @MainActor
-    static func row(for state: NotifierPluginUpdateState) -> Row? {
+    static func row(for state: NotifierPluginUpdateState, plugin: NotifierPluginStatus) -> Row? {
         switch state {
+        case .failed(let detail) where plugin.predatesOneTapUpdate:
+            return firstManualUpdateRow(plugin: plugin, hermesDetail: detail)
+        case .unsupported where plugin.predatesOneTapUpdate:
+            return firstManualUpdateRow(plugin: plugin, hermesDetail: nil)
         case .idle:
             return nil
         case .updating(let step):
@@ -367,6 +380,20 @@ struct NotifierPluginUpdateStatusView: View {
                 tint: .orange
             )
         }
+    }
+
+    @MainActor
+    private static func firstManualUpdateRow(plugin: NotifierPluginStatus, hermesDetail: String?) -> Row {
+        let why = plugin.version.map {
+            AppLocalization.string("This dashboard's plugin (version \($0)) is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
+        } ?? AppLocalization.string("This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
+        let detail = hermesDetail.flatMap { $0.isEmpty ? nil : AppLocalization.string("Hermes said: \($0)") }
+        return Row(
+            title: AppLocalization.string("Update the plugin on the host this once"),
+            detail: [why, detail].compactMap { $0 }.joined(separator: "\n\n"),
+            symbol: "terminal",
+            tint: .orange
+        )
     }
 
     @MainActor
@@ -414,8 +441,8 @@ struct NotifierPluginUpdateBanner: View {
 
     private var banner: some View {
         let update = appState.activeNotifierPluginUpdate
-        let row = NotifierPluginUpdateStatusView.row(for: update)
         let status = appState.notifierPlugin
+        let row = NotifierPluginUpdateStatusView.row(for: update, plugin: status)
         // Updated on the host already: only the restart is left.
         let restartOnly = status.restartPending && !status.updateAvailable
         let offer = restartOnly
@@ -439,6 +466,15 @@ struct NotifierPluginUpdateBanner: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if status.needsManualUpdate(after: update) {
+                Button { appState.settingsLinkRequest = .plugin } label: {
+                    Text(AppLocalization.string("Show Steps"))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("pluginUpdate.showSteps")
+            }
             if update == .idle {
                 Button { confirming = true } label: {
                     Text(restartOnly ? AppLocalization.string("Finish Update") : AppLocalization.string("Update"))
@@ -479,6 +515,17 @@ struct NotifierPluginUpdateBanner: View {
             guard case .updated = update, !UIAccessibility.isVoiceOverRunning else { return }
             try? await Task.sleep(for: .seconds(8))
             if !Task.isCancelled, appState.activeNotifierPluginUpdate == update { appState.dismissNotifierPluginUpdateOutcome() }
+        }
+    }
+}
+
+extension NotifierPluginStatus {
+    /// The update ended in the one-time manual update: it failed or couldn't
+    /// run on a plugin older than one-tap updates.
+    func needsManualUpdate(after update: NotifierPluginUpdateState) -> Bool {
+        switch update {
+        case .failed, .unsupported: return predatesOneTapUpdate
+        default: return false
         }
     }
 }

@@ -98,6 +98,8 @@ struct LocationSettingsPage: View {
     /// Rules whose delete is on its way: their trash button is disabled.
     @State private var deletingRules: Set<String> = []
     @State private var hostUnreachable = false
+    /// The voice mode waiting for the user's yes before it may read the location.
+    @State private var askingVoiceMode: LiveVoiceModeName?
 
     private var settings: LocationSharingSettings { controller.settings }
     private var pluginServesLocation: Bool { appState.notifierPlugin.reports(LocationSharingController.capability) }
@@ -112,6 +114,12 @@ struct LocationSettingsPage: View {
                 placesSection
                 if settings.isOn { pauseSection }
                 retentionSection
+            }
+            // Kept while a mode is allowed, even on an older plugin, so it can
+            // still be turned off.
+            if settings.isOn, controller.binding != nil,
+               appState.notifierPlugin.servesLocationVoice || !(controller.config.voiceReaders ?? []).isEmpty {
+                voiceSection
             }
             if controller.binding != nil {
                 readsSection
@@ -153,6 +161,17 @@ struct LocationSettingsPage: View {
             } locate: {
                 await controller.fixes.currentFix(accuracy: kCLLocationAccuracyNearestTenMeters, maxAge: 30)
             }
+        }
+        .confirmationDialog(
+            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your location?")) } ?? Text(verbatim: ""),
+            isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
+            titleVisibility: .visible,
+            presenting: askingVoiceMode
+        ) { mode in
+            Button("Allow") { setVoiceRead(mode, allowed: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: { mode in
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
         }
         .confirmationDialog("Delete location data on the host?", isPresented: $showsWipe, titleVisibility: .visible) {
             Button("Delete this iPhone's location data", role: .destructive) { wipe(everything: false) }
@@ -430,6 +449,47 @@ struct LocationSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: Live voice calls
+
+    /// Which live voice modes may read the shared location on a call. Each
+    /// is its own yes: what it reads goes to that mode's company.
+    private var voiceSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+            ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
+                Toggle(isOn: voiceReadBinding(mode)) {
+                    Text(verbatim: "\(mode.displayName) (\(mode.company))")
+                }
+                .accessibilityIdentifier("settings.location.voice.\(mode.storageID)")
+            }
+            if controller.isPaused() {
+                Text("Nothing reads your location by voice while sharing is paused.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Text("Let a live voice call read your location when you ask about it, straight from your Hermes host: the saved place you're at, your area and distances to your saved places, never coordinates. What it reads goes to the company that runs that voice mode, under its terms. Each read is listed under When Hermes read your location. Classic voice is Hermes itself and needs nothing here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func voiceReadBinding(_ mode: LiveVoiceModeName) -> Binding<Bool> {
+        Binding(
+            get: { controller.allowsVoiceRead(mode) },
+            set: { on in
+                if on {
+                    askingVoiceMode = mode
+                } else {
+                    setVoiceRead(mode, allowed: false)
+                }
+            }
+        )
+    }
+
+    private func setVoiceRead(_ mode: LiveVoiceModeName, allowed: Bool) {
+        Haptics.selection()
+        Task { await controller.setVoiceRead(mode, allowed: allowed) }
     }
 
     // MARK: From the host

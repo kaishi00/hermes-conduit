@@ -32,6 +32,8 @@ struct PhoneSyncState: Codable, Equatable {
     var statusHash: String?
     var statusSentAt: Date?
     var focusHash: String?
+    var alarmsHash: String?
+    var contactsHash: String?
     var lastFullSync: Date?
     var lastSync: Date?
     var lastAttempt: Date?
@@ -54,6 +56,8 @@ struct PhoneSyncState: Codable, Equatable {
         statusHash = nil
         statusSentAt = nil
         focusHash = nil
+        alarmsHash = nil
+        contactsHash = nil
         lastFullSync = nil
         fingerprint = nil
     }
@@ -133,6 +137,8 @@ struct PhoneChangePrompt: Identifiable, Equatable {
     var change: PhoneChange
     /// The calendar or list it goes to, by name.
     var calendarTitle: String?
+    /// The alarm a cancellation is about, by name and time.
+    var alarmTitle: String?
     var id: String { change.id }
 }
 
@@ -144,6 +150,8 @@ struct PhoneAutoAdded: Identifiable, Equatable {
     var title: String
     var calendarTitle: String?
     var isEvent: Bool
+    /// An alarm or timer: Undo cancels it.
+    var isAlarm = false
 }
 
 @MainActor
@@ -168,9 +176,12 @@ final class PhoneSyncEngine: ObservableObject {
     @Published private(set) var prompts: [PhoneChangePrompt] = []
     /// The latest addition made without asking, until the banner goes.
     @Published var autoAdded: PhoneAutoAdded?
+    /// The people the user picked for Hermes.
+    @Published private(set) var people: [PhonePerson]
 
     let calendarSource: PhoneCalendarSource
     let statusSource: PhoneStatusSource
+    let alarmSource: PhoneAlarmSource
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -192,6 +203,7 @@ final class PhoneSyncEngine: ObservableObject {
     init(
         calendarSource: PhoneCalendarSource,
         statusSource: PhoneStatusSource,
+        alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -201,6 +213,7 @@ final class PhoneSyncEngine: ObservableObject {
     ) {
         self.calendarSource = calendarSource
         self.statusSource = statusSource
+        self.alarmSource = alarmSource
         self.store = store
         self.keys = keys
         self.defaults = defaults
@@ -208,6 +221,7 @@ final class PhoneSyncEngine: ObservableObject {
         self.now = now
         self.deviceName = deviceName
         preferences = PhoneSyncPreferences.load(from: defaults)
+        people = PhonePeopleStore.load(from: defaults)
         if let state = store.loadIfReadable() {
             self.state = state
             saved = state
@@ -220,6 +234,12 @@ final class PhoneSyncEngine: ObservableObject {
     func savePreferences(_ preferences: PhoneSyncPreferences) {
         preferences.save(to: defaults)
         self.preferences = preferences
+    }
+
+    func savePeople(_ people: [PhonePerson]) {
+        let kept = Array(people.prefix(PhonePerson.maximum))
+        PhonePeopleStore.save(kept, to: defaults)
+        self.people = kept
     }
 
     /// Runs a pass, or joins the one already running and runs once more
@@ -410,13 +430,16 @@ final class PhoneSyncEngine: ObservableObject {
             "sent_at": PhoneDates.format(currentNow),
             "time_zone": TimeZone.current.identifier,
             "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
-                                             remindersAuthorized: calendarSource.remindersAuthorized),
+                                             remindersAuthorized: calendarSource.remindersAuthorized,
+                                             alarmsAuthorized: alarmSource.authorized),
         ]
         var newEventHashes = state.eventHashes
         var newReminderHashes = state.reminderHashes
         var newCalendarsHash = state.calendarsHash
         var newStatusHash = state.statusHash
         var newFocusHash = state.focusHash
+        var newAlarmsHash = state.alarmsHash
+        var newContactsHash = state.contactsHash
         var statusSent = false
 
         let readsEvents = preferences.calendar == .full && calendarSource.eventAccess == .full
@@ -493,6 +516,29 @@ final class PhoneSyncEngine: ObservableObject {
         } else if !preferences.focus {
             newFocusHash = nil
         }
+        // Alarms and people go whole whenever they change; the host forgets
+        // them when they're no longer shared.
+        if preferences.alarms, alarmSource.authorized {
+            // An unreadable AlarmKit keeps what the host has until the next pass.
+            let alarms = alarmSource.alarms(now: currentNow, calendar: calendar)
+            let hash = alarms.map { Self.hash($0) } ?? state.alarmsHash
+            if let alarms, full || hash != state.alarmsHash {
+                batch["alarms"] = alarms
+                newAlarmsHash = hash
+            }
+        } else {
+            newAlarmsHash = nil
+        }
+        if preferences.contacts {
+            let contacts = people.map(\.json)
+            let hash = Self.hash(contacts)
+            if full || hash != state.contactsHash {
+                batch["contacts"] = contacts
+                newContactsHash = hash
+            }
+        } else {
+            newContactsHash = nil
+        }
 
         let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         batch["batch_id"] = batchID
@@ -504,6 +550,8 @@ final class PhoneSyncEngine: ObservableObject {
         state.calendarsHash = newCalendarsHash
         state.statusHash = newStatusHash
         state.focusHash = newFocusHash
+        state.alarmsHash = newAlarmsHash
+        state.contactsHash = newContactsHash
         if statusSent { state.statusSentAt = currentNow }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
@@ -516,7 +564,7 @@ final class PhoneSyncEngine: ObservableObject {
     /// emails go with full calendar access; "details" with full access or
     /// reminders (it also covers reminder notes).
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
-                                             remindersAuthorized: Bool) -> [String: Any] {
+                                             remindersAuthorized: Bool, alarmsAuthorized: Bool = false) -> [String: Any] {
         var sharing = preferences.sharingJSON
         let calendar: PhoneCalendarAccess
         switch (preferences.calendar, access) {
@@ -529,6 +577,7 @@ final class PhoneSyncEngine: ObservableObject {
         let reminders = preferences.reminders && remindersAuthorized
         sharing["reminders"] = reminders
         if calendar != .full, !reminders { sharing["details"] = false }
+        sharing["alarms"] = preferences.alarms && alarmsAuthorized
         return sharing
     }
 
@@ -610,12 +659,11 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(known) { state.unreported.append(known) }
                 continue
             }
-            if change.auto, change.kind.isAddition, preferences.autoAdd {
+            if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
             } else {
-                fresh.append(PhoneChangePrompt(change: change,
-                                               calendarTitle: calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID,
-                                                                                            forEvents: change.kind.isEvent)))
+                fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
+                                               alarmTitle: alarmTitle(for: change)))
             }
         }
         prompts = fresh
@@ -632,9 +680,27 @@ final class PhoneSyncEngine: ObservableObject {
         }
     }
 
+    private func calendarTitle(for change: PhoneChange) -> String? {
+        guard !change.kind.isAlarm else { return nil }
+        return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
+    }
+
+    private func alarmTitle(for change: PhoneChange) -> String? {
+        guard change.kind == .cancelAlarm,
+              let alarm = alarmSource.alarms(now: now(), calendar: calendar)?.first(where: { ($0["id"] as? String)?.lowercased() == change.alarmID?.lowercased() })
+        else { return nil }
+        let ring = (alarm["fires_at"] as? String).flatMap(PhoneDates.parse)?.formatted(date: .abbreviated, time: .shortened)
+        let parts = [alarm["label"] as? String, ring].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private func applyNow(_ change: PhoneChange, auto: Bool) async {
         guard state.answered[change.id] == nil, applying.insert(change.id).inserted else { return }
         defer { applying.remove(change.id) }
+        if change.kind.isAlarm {
+            await applyAlarm(change, auto: auto)
+            return
+        }
         do {
             let itemID = try await calendarSource.apply(change, window: window)
             record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: itemID))
@@ -653,6 +719,21 @@ final class PhoneSyncEngine: ObservableObject {
                                            calendarTitle: calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID,
                                                                                        forEvents: change.kind.isEvent),
                                            isEvent: change.kind.isEvent)
+            }
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
+            if !auto { lastError = Self.describe(error) }
+        }
+    }
+
+    private func applyAlarm(_ change: PhoneChange, auto: Bool) async {
+        do {
+            let alarmID = try await alarmSource.apply(change, now: now())
+            record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: alarmID))
+            if auto {
+                autoAdded = PhoneAutoAdded(changeID: change.id, itemID: alarmID,
+                                           title: PhoneChangeWording.alarmSummary(change.fields, kind: change.kind),
+                                           calendarTitle: nil, isEvent: false, isAlarm: true)
             }
         } catch {
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
@@ -700,8 +781,12 @@ final class PhoneSyncEngine: ObservableObject {
     /// away (no card: they said so out loud). The next upload sends it. Like
     /// `voiceRead`, the caller checks the voice mode may use it.
     func addFromVoice(_ change: PhoneChange) async throws -> String? {
-        guard change.kind.isAddition else { throw NotAnAddition() }
+        guard change.kind.addsWithoutAsking else { throw NotAnAddition() }
         guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
+        if change.kind.isAlarm {
+            guard preferences.alarms else { throw VoiceNotReady() }
+            return try await alarmSource.apply(change, now: now())
+        }
         let itemID = try await calendarSource.apply(change, window: window)
         if let itemID {
             if change.kind.isEvent {
@@ -718,6 +803,10 @@ final class PhoneSyncEngine: ObservableObject {
     func undo(_ added: PhoneAutoAdded) async {
         if autoAdded == added { autoAdded = nil }
         do {
+            if added.isAlarm {
+                try alarmSource.cancel(id: added.itemID)
+                return
+            }
             try await calendarSource.removeAdded(itemID: added.itemID, isEvent: added.isEvent, window: window)
         } catch {
             lastError = Self.describe(error)

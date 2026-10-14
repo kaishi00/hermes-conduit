@@ -72,14 +72,32 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var window: PhoneCalendarWindow = .default
     /// Calendars and reminder lists the user left out, by EventKit id.
     var hiddenCalendars: Set<String> = []
+    /// Stored optional so preferences saved before them still decode; read
+    /// `alarms` and `contacts`.
+    var alarmsChoice: Bool?
+    var contactsChoice: Bool?
     /// Live voice modes the user lets read what's shared on a call, answer
     /// Hermes' changes and add events and reminders
     /// (`LiveVoiceModeName.storageID`). Optional so preferences saved before
     /// it still decode; nil is none.
     var voiceReaders: [String]?
 
+    /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
+    /// They ring through Silent and Focus, so it's its own choice.
+    var alarms: Bool {
+        get { alarmsChoice ?? false }
+        set { alarmsChoice = newValue ? true : nil }
+    }
+
+    /// The people the user picked in Conduit go to Hermes (no address-book
+    /// access: they're chosen one by one).
+    var contacts: Bool {
+        get { contactsChoice ?? false }
+        set { contactsChoice = newValue ? true : nil }
+    }
+
     var isOn: Bool { destination != nil && sharesAnything }
-    var sharesAnything: Bool { calendar != .off || reminders || status || focus }
+    var sharesAnything: Bool { calendar != .off || reminders || status || focus || alarms || contacts }
 
     /// Whether a live call on `mode` may use the calendar and phone.
     func letsVoiceUse(_ mode: LiveVoiceModeName) -> Bool {
@@ -117,6 +135,8 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "status": status,
             "focus": focus,
             "auto_add": autoAdd,
+            "alarms": alarms,
+            "contacts": contacts,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]
@@ -212,9 +232,17 @@ struct PhoneChange: Identifiable, Equatable {
         case addReminder = "add_reminder"
         case updateReminder = "update_reminder"
         case completeReminder = "complete_reminder"
+        case setAlarm = "set_alarm"
+        case setTimer = "set_timer"
+        case cancelAlarm = "cancel_alarm"
 
+        /// A new calendar event or reminder.
         var isAddition: Bool { self == .addEvent || self == .addReminder }
         var isEvent: Bool { self == .addEvent || self == .updateEvent || self == .deleteEvent }
+        var isAlarm: Bool { self == .setAlarm || self == .setTimer || self == .cancelAlarm }
+        /// What "Add without asking" lets in: new items, never changes or
+        /// cancellations.
+        var addsWithoutAsking: Bool { isAddition || self == .setAlarm || self == .setTimer }
     }
 
     var id: String
@@ -224,6 +252,7 @@ struct PhoneChange: Identifiable, Equatable {
     var sessionTitle: String?
     var eventID: String?
     var reminderID: String?
+    var alarmID: String?
     /// "this" or "future" for a recurring event.
     var span: String?
     var fields: PhoneChangeFields
@@ -240,6 +269,7 @@ struct PhoneChange: Identifiable, Equatable {
         let target = json["target"] as? [String: Any]
         eventID = target?["event_id"] as? String
         reminderID = target?["reminder_id"] as? String
+        alarmID = target?["alarm_id"] as? String
         let fieldsJSON = json["fields"] as? [String: Any] ?? [:]
         span = (fieldsJSON["span"] as? String) ?? (target?["span"] as? String)
         fields = PhoneChangeFields(json: fieldsJSON)
@@ -253,6 +283,12 @@ struct PhoneChange: Identifiable, Equatable {
             guard fields.title != nil, fields.start != nil else { return nil }
         case .addReminder:
             guard fields.title != nil else { return nil }
+        case .setAlarm:
+            guard fields.at != nil || fields.time != nil else { return nil }
+        case .setTimer:
+            guard let seconds = fields.seconds, (5...86_400).contains(seconds) else { return nil }
+        case .cancelAlarm:
+            guard alarmID != nil else { return nil }
         }
     }
 }
@@ -276,6 +312,18 @@ struct PhoneChangeFields: Equatable {
     var listID: String?
     var completed: Bool?
     var locationAlarmName: String?
+    /// An alarm's or timer's name.
+    var label: String?
+    /// A one-off alarm's time.
+    var at: Date?
+    /// A clock-time alarm, `HH:MM` local, as hour and minute.
+    var time: PhoneClockTime?
+    /// The weekdays a clock-time alarm repeats on, `mon`…`sun`.
+    var repeats: [String]?
+    /// A timer's length.
+    var seconds: Int?
+
+    static let weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
     init(json: [String: Any]) {
         title = (json["title"] as? String).map { String($0.prefix(200)) }
@@ -294,7 +342,30 @@ struct PhoneChangeFields: Equatable {
         listID = json["list_id"] as? String
         completed = json["completed"] as? Bool
         locationAlarmName = (json["location_alarm"] as? [String: Any])?["name"] as? String
+        label = (json["label"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        at = (json["at"] as? String).flatMap(PhoneDates.parse)
+        time = (json["time"] as? String).flatMap(Self.clockTime)
+        let days = (json["repeats"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() }
+        repeats = days.map { list in Self.weekdays.filter { list.contains($0) } }.flatMap { $0.isEmpty ? nil : $0 }
+        seconds = (json["seconds"] as? NSNumber)?.intValue
     }
+
+    /// `HH:MM` on a 24-hour clock.
+    static func clockTime(_ text: String) -> PhoneClockTime? {
+        let parts = text.split(separator: ":")
+        guard parts.count == 2, parts.allSatisfy({ $0.count == 2 }), let hour = Int(parts[0]), let minute = Int(parts[1]),
+              (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        return PhoneClockTime(hour: hour, minute: minute)
+    }
+}
+
+/// A time of day on the phone's clock.
+struct PhoneClockTime: Equatable, Codable {
+    var hour: Int
+    var minute: Int
+
+    var text: String { String(format: "%02d:%02d", hour, minute) }
 }
 
 /// What a Focus filter told Conduit, kept for the next upload. Written by
