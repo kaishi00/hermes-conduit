@@ -13734,6 +13734,9 @@ final class AppState: ObservableObject {
         scenePhaseTask?.cancel()
         scenePhaseTask = nil
         cancelOwnedAutomaticOperations()
+        // The cancelled attempt's finish no longer matches and says
+        // nothing, so a waiting widget hears it here.
+        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private func finishScenePhaseAttempt(id: UUID) {
