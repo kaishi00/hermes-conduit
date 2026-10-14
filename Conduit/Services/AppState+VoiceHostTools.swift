@@ -96,8 +96,10 @@ extension AppState {
             ) { path, method, body in
                 try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 12_000)
             }
-            Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
-            return VoiceHostTool.modelResult(result)
+            let answer = VoiceHostTool.modelResult(result)
+            // Logged only when the answer reaches the call.
+            if answer["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            return answer
         } catch is PhoneSyncEngine.VoiceNotReady {
             return ["error": "The calendar isn't ready for voice yet; it will be after the next sync."]
         } catch {
@@ -113,7 +115,7 @@ extension AppState {
     private static func recordPhoneVoiceUse(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName) {
         let action: String
         if tool.name == PhoneVoiceTools.addTool {
-            action = "add \(arguments["kind"] as? String ?? "")"
+            action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.changesTool {
             action = "changes \(arguments["action"] as? String ?? "")"
         } else {
