@@ -18618,6 +18618,13 @@ final class AppState: ObservableObject {
                         optimisticUserRowID: userMessage.id,
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
                     )
+                    // The new turn's progress on the Lock Screen (#605).
+                    LiveTurnActivities.shared.turnStarted(
+                        sessionIDs: submissionSessionIDs,
+                        primaryID: sessionId,
+                        title: activeSessionTitle,
+                        profile: activeProfile
+                    )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
                     // but `_enqueue_prompt` may drop an in-flight self-duplicate
@@ -23957,6 +23964,7 @@ final class AppState: ObservableObject {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
+        LiveTurnActivities.shared.observe(event, sessionID: streamSessionId)
         if let signal = ResponseHapticPolicy.signal(for: event) {
             applyResponseHapticSignal(signal)
         }

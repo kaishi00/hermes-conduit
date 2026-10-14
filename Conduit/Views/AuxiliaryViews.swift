@@ -2136,6 +2136,7 @@ private struct NotificationsSettingsDetail: View {
     @State private var relayDraftInvalid = false
     @State private var pairing = false
     @State private var pairingError: String?
+    @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2212,6 +2213,29 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
+            }
+
+            // #605: a running turn on the Lock Screen and in the Dynamic
+            // Island. Updated by Conduit while it runs; in the background
+            // only through the relay, so it needs notifications on.
+            ConduitSettingsSection(title: AppLocalization.string("Lock Screen"), symbol: "lock.iphone", tint: .conduitAccent) {
+                Toggle(isOn: Binding(
+                    get: { liveActivitiesEnabled },
+                    set: { value in
+                        Haptics.selection()
+                        liveActivitiesEnabled = value
+                        if !value { LiveTurnActivities.shared.endAll() }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show progress on the Lock Screen")
+                        Text("While Hermes works on a message you sent: what it's doing, how long it has run, its tools and context. Keeps updating in the background when notifications are on.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(.conduitAccent)
+                .accessibilityIdentifier("notifications.live-activities")
             }
 
             if notifications.isEnabled {

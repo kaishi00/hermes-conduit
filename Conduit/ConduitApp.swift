@@ -44,6 +44,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if PhoneSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumePhoneSyncAtLaunch()
             }
+            // Lock Screen progress of a turn sent before a relaunch (#605):
+            // the chat's stream can still update and end it.
+            LiveTurnActivities.shared.adoptExisting()
         }
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()

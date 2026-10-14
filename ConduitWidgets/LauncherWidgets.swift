@@ -37,6 +37,7 @@ struct ConduitWidgets: WidgetBundle {
     var body: some Widget {
         NativeLauncherWidget()
         CharacterLauncherWidget()
+        HermesTurnLiveActivity()
     }
 }
 
