@@ -110,8 +110,9 @@ enum HealthSyncCrypto {
     // MARK: Voice reads
 
     /// `direction` is "request" or "answer".
-    static func voiceAAD(direction: String, kid: String, deviceID: String, callID: String) -> Data {
-        Data([aadTag, "voice-\(direction)", "kid=\(kid)", "dev=\(deviceID)", "call=\(callID)"].joined(separator: "\n").utf8)
+    static func voiceAAD(direction: String, tool: String, kid: String, deviceID: String, callID: String) -> Data {
+        Data([aadTag, "voice-\(direction)", "tool=\(tool)", "kid=\(kid)", "dev=\(deviceID)", "call=\(callID)"]
+            .joined(separator: "\n").utf8)
     }
 
     /// A fresh id for one voice read; the answer is bound to it.
@@ -134,7 +135,7 @@ enum HealthSyncCrypto {
             plaintext,
             using: SymmetricKey(data: requestKey),
             nonce: nonce,
-            authenticating: voiceAAD(direction: "request", kid: key.kid, deviceID: deviceID, callID: callID)
+            authenticating: voiceAAD(direction: "request", tool: tool, kid: key.kid, deviceID: deviceID, callID: callID)
         )
         return [
             "v": 1,
@@ -148,8 +149,9 @@ enum HealthSyncCrypto {
     }
 
     /// The opened answer's JSON (`call_id`, `result`), checked against the
-    /// call it answers.
-    static func openVoiceAnswer(_ response: [String: Any], key: SessionKey, deviceID: String, callID: String) throws -> Any {
+    /// tool and call it answers.
+    static func openVoiceAnswer(_ response: [String: Any], tool: String, key: SessionKey,
+                                deviceID: String, callID: String) throws -> Any {
         guard let answerKey = key.voiceAnswerKey else { throw Failure.noVoiceKey }
         guard let nonceText = response["nonce"] as? String, let nonceData = NotificationE2E.base64URLDecoded(nonceText),
               let sealedText = response["ct"] as? String, let sealed = NotificationE2E.base64URLDecoded(sealedText),
@@ -161,7 +163,7 @@ enum HealthSyncCrypto {
         let plaintext = try ChaChaPoly.open(
             box,
             using: SymmetricKey(data: answerKey),
-            authenticating: voiceAAD(direction: "answer", kid: key.kid, deviceID: deviceID, callID: callID)
+            authenticating: voiceAAD(direction: "answer", tool: tool, kid: key.kid, deviceID: deviceID, callID: callID)
         )
         guard let object = try JSONSerialization.jsonObject(with: plaintext) as? [String: Any],
               object["call_id"] as? String == callID, let result = object["result"] else {

@@ -46,7 +46,7 @@ extension AppState {
         let preferences = healthSyncPreferences
         guard let mode, tool.key == "health", preferences.letsVoiceRead(mode),
               let destination = preferences.destination, activeDashboardID == destination.dashboardID,
-              let bridge = dashboardTicketBridge else {
+              activeProfile == destination.profile, let bridge = dashboardTicketBridge else {
             return ["error": "The user hasn't let this voice call read their health data, or it isn't reachable now."]
         }
         guard let readKey = healthSync.voiceReadKey() else {
@@ -65,12 +65,15 @@ extension AppState {
             let response = try await bridge.requestJSON(
                 path: DashboardPath.withProfile("\(Self.voiceToolsPath)/call", profile: destination.profile),
                 method: "POST", body: envelope, timeoutMilliseconds: 12_000)
-            let result = try HealthSyncCrypto.openVoiceAnswer(response, key: key, deviceID: deviceID, callID: callID)
+            let result = try HealthSyncCrypto.openVoiceAnswer(response, tool: tool.name, key: key,
+                                                                deviceID: deviceID, callID: callID)
             HealthVoiceReadLog.record(mode: mode, action: arguments["action"] as? String ?? "")
             return VoiceHostTool.modelResult(result)
         } catch {
             Self.voiceToolsLog.info("Voice read failed: \(HealthSyncEngine.describe(error), privacy: .public)")
-            return ["error": "The health data couldn't be read just now (\(HealthSyncEngine.describe(error)))."]
+            // The detail stays in the log: it can name the host, and the
+            // model's company would get it.
+            return ["error": "The health data couldn't be read just now."]
         }
     }
 

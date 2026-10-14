@@ -170,9 +170,12 @@ struct VoiceHostTool {
             guard trimmed.lowercased().hasPrefix(prefix.lowercased()) else { continue }
             let rest = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !rest.isEmpty else { return (tool, [:]) }
-            // The object may be followed by words; read up to its last brace.
-            let json = rest.lastIndex(of: "}").map { String(rest[...$0]) } ?? rest
-            let object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
+            // The object may be followed by words: the shortest prefix that
+            // ends at a brace and parses is the object.
+            let braces = rest.indices.filter { rest[$0] == "}" }
+            let object = braces.lazy.compactMap {
+                (try? JSONSerialization.jsonObject(with: Data(rest[...$0].utf8))) as? [String: Any]
+            }.first
             return (tool, object ?? [:])
         }
         return nil

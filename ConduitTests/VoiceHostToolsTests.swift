@@ -17,8 +17,8 @@ import XCTest
 extension HermesVoiceGatewayTimeoutTests {
     // The notifier's tests/health_vector.json ("voice"): both sides must agree.
     private static let voiceVectorRequest = #"{"call_id":"call-vector-1","args":{"action":"overview"},"provider":"gemini-live"}"#
-    private static let voiceVectorRequestCT = "HOx6f_7ddA8a8iswArmIJZGmkwuvcfCORA-xeOn3bOc75bgMukljmfXlpEnHSm6mVtLV5db9Zkvc8apgFzDIx1szPaRCtamr7X5X1aCMzb-sR0i0EiJzzRGo1xAVs4Ccbw"
-    private static let voiceVectorAnswerCT = "iSaeOMxHomD21JmxF3ktQ1HratzeT8PVbQjVxW7Bu_koLR0XzCHdqVA1wCEaVyNh27JAYKvhPykSSTwho94EXA"
+    private static let voiceVectorRequestCT = "HOx6f_7ddA8a8iswArmIJZGmkwuvcfCORA-xeOn3bOc75bgMukljmfXlpEnHSm6mVtLV5db9Zkvc8apgFzDIx1szPaRCtamr7X5X1aCMzb-sEG9UjFnnlI90rha6NRCnNw"
+    private static let voiceVectorAnswerCT = "iSaeOMxHomD21JmxF3ktQ1HratzeT8PVbQjVxW7Bu_koLR0XzCHdqVA1wCEaVyNhRq6OmpB4hdU3oTe5Z6AD7w"
 
     func testVoiceSealingMatchesTheNotifierVector() throws {
         let raw = try XCTUnwrap(NotificationE2E.base64URLDecoded("ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"))
@@ -40,10 +40,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(envelope["tool"] as? String, "conduit_health")
 
         let answer = ["nonce": "AAAAAAAAAAAAAAAA", "ct": Self.voiceVectorAnswerCT]
-        let result = try HealthSyncCrypto.openVoiceAnswer(answer, key: key, deviceID: "device-vector-1", callID: "call-vector-1")
+        let result = try HealthSyncCrypto.openVoiceAnswer(answer, tool: "conduit_health", key: key,
+                                                          deviceID: "device-vector-1", callID: "call-vector-1")
         XCTAssertEqual((result as? [String: Any])?["ok"] as? Bool, true)
-        XCTAssertThrowsError(try HealthSyncCrypto.openVoiceAnswer(answer, key: key, deviceID: "device-vector-1", callID: "call-other"),
+        XCTAssertThrowsError(try HealthSyncCrypto.openVoiceAnswer(answer, tool: "conduit_health", key: key,
+                                                                  deviceID: "device-vector-1", callID: "call-other"),
                              "An answer is bound to its call")
+        XCTAssertThrowsError(try HealthSyncCrypto.openVoiceAnswer(answer, tool: "conduit_location", key: key,
+                                                                  deviceID: "device-vector-1", callID: "call-vector-1"),
+                             "and to its tool")
 
         // A key saved before voice reads decodes, and reads nothing.
         let old = try JSONDecoder().decode(HealthSyncCrypto.SessionKey.self, from: Data(#"{"kid":"k","key":"AAAA"}"#.utf8))
@@ -85,6 +90,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(delegated["action"] as? String, "daily")
         XCTAssertEqual(delegated["metrics"] as? [String], ["steps"])
         XCTAssertNil(VoiceHostTool.marked(in: "check my health please", tools: [tool]))
+        let trailing = try XCTUnwrap(VoiceHostTool.marked(in: #"Health: {"action": "sleep"} then say {hi}"#, tools: [tool]))
+        XCTAssertEqual(trailing.arguments["action"] as? String, "sleep", "Words after the object, braces included, are left out")
         XCTAssertTrue(VoiceHostTool.gptLiveRules([tool]).contains("Health:"))
     }
 
