@@ -632,7 +632,10 @@ final class AppState: ObservableObject {
             }
         )
     }()
-    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive }
+    /// A widget action waits out the return-to-app refresh: that refresh
+    /// can drop a socket that died in the background and restore the last
+    /// chat, which would fail a new chat or take over the screen it opened.
+    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive && scenePhaseAttemptID == nil }
     var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
@@ -1451,6 +1454,13 @@ final class AppState: ObservableObject {
     /// A Settings page a link asked for (`conduit://settings/calls`):
     /// MainView opens Settings there and clears it.
     @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
+    /// Bumped when something that opens a chat needs Settings out of the
+    /// way (a widget's New Chat or Talk); MainView owns the sheet.
+    @Published private(set) var settingsDismissRequest: UInt64 = 0
+    /// Also asked while Settings is only queued behind a closing drawer.
+    func requestSettingsDismissal() {
+        settingsDismissRequest &+= 1
+    }
     @Published var errorMessage: String?
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
@@ -1754,7 +1764,7 @@ final class AppState: ObservableObject {
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: .geminiLive) } ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
@@ -2130,7 +2140,7 @@ final class AppState: ObservableObject {
                     )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                        + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2158,7 +2168,7 @@ final class AppState: ObservableObject {
                 )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
-                    + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                    + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
                     + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2347,11 +2357,12 @@ final class AppState: ObservableObject {
     }
 
     /// What the next Grok Live call starts with, read when it starts and
-    /// dropped when it closes: the host's memory and persona, whether its
-    /// web search answers lookups, and the voice its config names.
+    /// dropped when it closes: the host's memory and persona, and the voice
+    /// its config names.
     private var grokLivePersonality: String?
     private var grokLiveMemoryContext: GeminiLiveMemoryContext?
-    private var grokLiveSearchSource: GeminiLiveSearchSource = .none
+    /// Grok looks things up with xAI's own search, never the host's (#598).
+    private let grokLiveSearchSource: GeminiLiveSearchSource = .grok
     private var grokLiveVoice: String?
 
     /// Grok Live's relay socket and status on the Hermes host (the
@@ -2389,12 +2400,13 @@ final class AppState: ObservableObject {
     lazy var grokLiveController: GeminiLiveConversationController = {
         grokLiveControllerCreated = true
         let client = grokLiveClient
-        // Memory, persona and web search come from the host routes Gemini Live reads.
+        // Memory and persona come from the host routes Gemini Live reads;
+        // web search is xAI's own (#598).
         let hostContext = geminiLiveTokenClient
         let audio = makeLiveVoiceAudio(outputSampleRate: GrokLiveProtocol.outputSampleRate)
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
-                let search = self?.grokLiveSearchSource ?? GeminiLiveSearchSource.none
+                let search = GeminiLiveSearchSource.grok
                 let memory = self?.grokLiveMemoryContext
                 // Built a step at a time: one long `+` chain of optionals is
                 // slow for the type checker.
@@ -2408,13 +2420,14 @@ final class AppState: ObservableObject {
                 instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
                 instructions += self?.liveHermesCall?.instructionBlock(delegation: false) ?? ""
                 instructions += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
+                instructions += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 instructions += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                 instructions += self?.liveVoiceStyle.instructions ?? ""
                 return GrokLiveSession(
                     client: client,
                     instructions: instructions,
                     functions: GeminiLiveToolBridge.declarations(
-                        webSearch: search == .hermes,
+                        webSearch: false,
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
@@ -2429,7 +2442,6 @@ final class AppState: ObservableObject {
                 let wantsMemory = self.grokLiveMemoryEnabled
                 let wantsPersonality = self.grokLivePersonalityEnabled
                 // The host calls run together, as Gemini Live's do.
-                async let search = hostContext.webSearchAvailable()
                 async let memory = wantsMemory ? hostContext.memoryContext() : nil
                 async let personality = wantsPersonality ? hostContext.personality() : nil
                 async let hostTools: Void = self.prepareVoiceHostTools(for: .grokLive)
@@ -2439,7 +2451,6 @@ final class AppState: ObservableObject {
                 guard case .available(let model, let voice, _) = status else {
                     throw GrokLiveClientError.unavailable(status)
                 }
-                self.grokLiveSearchSource = await search ? .hermes : .none
                 self.grokLiveMemoryContext = await memory
                 self.grokLivePersonality = await personality
                 await hostTools
@@ -2480,6 +2491,9 @@ final class AppState: ObservableObject {
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
+            // Grok's start_job answers at once: a job's result has to be
+            // read from its chat for the call to hear it (#599).
+            voiceBackgroundJobSupervisor.liveCallReadsReplies = true
             beginVoiceCallRecording(engine: .grokLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             Task { await grokLiveController.start() }
@@ -2504,6 +2518,7 @@ final class AppState: ObservableObject {
         } else {
             voiceBackgroundJobSupervisor.detachLiveThread()
         }
+        voiceBackgroundJobSupervisor.liveCallReadsReplies = true
         beginVoiceCallRecording(engine: .grokLive)
         await grokLiveController.start()
     }
@@ -2520,6 +2535,7 @@ final class AppState: ObservableObject {
             // Its work lets go of the call too (#449).
             finishHermesCallbacks(engine: .grokLive)
             dropGrokLiveHostContext()
+            voiceBackgroundJobSupervisor.liveCallReadsReplies = false
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
             if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
@@ -2534,6 +2550,7 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         voiceBackgroundJobSupervisor.detachLiveThread()
         dropGrokLiveHostContext()
+        voiceBackgroundJobSupervisor.liveCallReadsReplies = false
         if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
     }
 
@@ -2551,6 +2568,7 @@ final class AppState: ObservableObject {
         // to close, but its host text still goes at the boundary.
         guard showGrokLiveSheet || minimisedLiveVoice == .grokLive || isGrokLiveActive else {
             dropGrokLiveHostContext()
+            voiceBackgroundJobSupervisor.liveCallReadsReplies = false
             // Its recording still closes, so the call is saved, and its
             // work lets go of the call (#449).
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
@@ -5250,6 +5268,13 @@ final class AppState: ObservableObject {
             }
         }
         return stored
+    }
+
+    /// Closes a call transcript and outdates its fetch still in flight, so
+    /// it can't come back over whatever opens next.
+    func dismissChatCallTranscript() {
+        chatCallTranscriptRequest = nil
+        chatCallTranscript = nil
     }
 
     /// Opens the saved transcript behind a chat's voice call card. Looked up
@@ -13727,16 +13752,21 @@ final class AppState: ObservableObject {
     }
 
     private func cancelScenePhaseAttempt() {
+        let hadAttempt = scenePhaseAttemptID != nil
         scenePhaseAttemptID = nil
         scenePhaseTask?.cancel()
         scenePhaseTask = nil
         cancelOwnedAutomaticOperations()
+        // The cancelled attempt's finish no longer matches and says
+        // nothing, so a waiting widget hears it here.
+        if hadAttempt, widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private func finishScenePhaseAttempt(id: UUID) {
         guard scenePhaseAttemptID == id else { return }
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
+        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private var turnStateLogValue: String {
@@ -26260,7 +26290,6 @@ final class AppState: ObservableObject {
         let hostContext = geminiLiveTokenClient
         let wantsMemory = grokLiveMemoryEnabled
         let wantsPersonality = grokLivePersonalityEnabled
-        async let searchLookup = hostContext.webSearchAvailable()
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
@@ -26269,7 +26298,8 @@ final class AppState: ObservableObject {
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
-        let search: GeminiLiveSearchSource = await searchLookup ? .hermes : .none
+        // xAI's own search (#598), as on the phone.
+        let search = GeminiLiveSearchSource.grok
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
@@ -26299,7 +26329,7 @@ final class AppState: ObservableObject {
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
-                webSearch: search == .hermes,
+                webSearch: false,
                 memoryRecall: memory?.canRecall == true,
                 chats: true
             ),

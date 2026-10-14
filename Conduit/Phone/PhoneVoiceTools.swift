@@ -38,6 +38,27 @@ enum PhoneVoiceTools {
         return tools
     }
 
+    /// For a call whose mode the user hasn't let use what they share with
+    /// Hermes: where that's turned on, so the model says so instead of
+    /// quietly sending every calendar question to Hermes. Empty otherwise.
+    /// Not UI copy, so not localized.
+    static func settingHint(for preferences: PhoneSyncPreferences, mode: LiveVoiceModeName) -> String {
+        guard preferences.isOn, !preferences.letsVoiceUse(mode),
+              preferences.calendar != .off || preferences.reminders || preferences.alarms || preferences.contacts
+        else { return "" }
+        let shared = [preferences.calendar != .off ? "their calendar" : nil, preferences.reminders ? "their reminders" : nil,
+                      preferences.alarms ? "their alarms" : nil, preferences.contacts ? "the people they picked" : nil]
+            .compactMap { $0 }
+        guard let last = shared.last else { return "" }
+        let list = shared.count > 1 ? shared.dropLast().joined(separator: ", ") + " and " + last : last
+        // "the people they picked" alone is plural too.
+        let (them, those) = shared.count > 1 || preferences.contacts ? ("these", "those") : ("it", "that")
+        return "\n\nThe user shares \(list) with Hermes, but hasn't let this call use \(them) directly. "
+            + "When they ask about \(those), you can still ask Hermes. The first time in this call, also tell them in "
+            + "a sentence that they can let \(mode.displayName) use \(them) directly, which is faster, under Live "
+            + "voice calls in Conduit's Settings, Calendar & phone."
+    }
+
     private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                 remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
         (preferences.calendar != .off && access != .off, preferences.reminders && remindersAuthorized)

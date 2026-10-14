@@ -345,6 +345,9 @@ struct HealthVoiceReadLog: Codable, Equatable {
 
     static let storageKey = "conduit.healthSync.voiceReads.v1"
     static let phoneStorageKey = "conduit.phoneSync.voiceReads.v1"
+    /// Live voice calls' maps lookups (MapsVoiceTool), listed in Settings >
+    /// Location beside the host's reads.
+    static let locationStorageKey = "conduit.location.voiceReads.v1"
     static let keptFor: TimeInterval = 7 * 24 * 3600
     static let maximumEntries = 200
 

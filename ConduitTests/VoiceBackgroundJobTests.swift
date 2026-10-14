@@ -485,6 +485,25 @@ extension VoiceConversationControllerTests {
         }
     }
 
+    /// #599: a phone Grok Live call's start_job answers at once, so the
+    /// call hears the job's reply as a Watch call does.
+    func testAGrokLiveCallHearsTheReplyOfAJobThePollSettled() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.liveCallReadsReplies = true
+        fake.threadReply = "It's 9:41 PM on the Hermes host."
+        _ = await supervisor.startJob(instructions: "what time is it on the host")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "It's 9:41 PM on the Hermes host.")
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the call hears the result, not \"Open it in Conduit\"")
+        }
+        XCTAssertTrue(prompt.contains("9:41 PM"))
+    }
+
     func testAPhoneCallsPollLeavesASettledJobsReplyInItsChat() async {
         let (supervisor, fake) = makeSupervisor()
         fake.threadReply = "The server is fine."

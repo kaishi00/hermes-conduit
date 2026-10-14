@@ -510,6 +510,14 @@ final class LocationSharingController: ObservableObject {
         await flush(settingsOnly: true)
     }
 
+    /// "Keep maps lookups on this iPhone": the host then never looks up
+    /// places or routes itself.
+    func setMapsHost(_ allowed: Bool) async {
+        guard settings.mapsHost != allowed else { return }
+        save { $0.settings.mapsHost = allowed }
+        await flush(settingsOnly: true)
+    }
+
     func setRetention(_ days: Int) async {
         guard LocationSharingSettings.retentionChoices.contains(days) else { return }
         save { $0.settings.retentionDays = days }

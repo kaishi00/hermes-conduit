@@ -476,6 +476,8 @@ struct GPTLiveVoice: Equatable, Identifiable {
 enum GeminiLiveSearchSource: Equatable {
     case hermes
     case google
+    /// Grok Live's own web_search and x_search, run by xAI (#598).
+    case grok
     case none
 }
 

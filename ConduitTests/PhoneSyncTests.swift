@@ -296,6 +296,35 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
     }
 
+    // MARK: Voice mode setting hint
+
+    func testVoiceModeNotAllowedIsToldWhereToAllowIt() {
+        var preferences = phonePreferences()
+        let hint = PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive)
+        XCTAssertTrue(hint.contains("GPT-Live"), "Names the mode the user would allow")
+        XCTAssertTrue(hint.contains("Calendar & phone"), "Names where it's turned on")
+        XCTAssertTrue(hint.contains("shares their calendar and their reminders with Hermes"), hint)
+        var alarmsOnly = PhoneSyncPreferences()
+        alarmsOnly.alarms = true
+        alarmsOnly.destination = preferences.destination
+        let alarmsHint = PhoneVoiceTools.settingHint(for: alarmsOnly, mode: .gptLive)
+        XCTAssertTrue(alarmsHint.contains("shares their alarms with Hermes, but hasn't let this call use it"), alarmsHint)
+        XCTAssertFalse(alarmsHint.contains("calendar"), "Only what's shared is named")
+        var peopleOnly = PhoneSyncPreferences()
+        peopleOnly.contacts = true
+        peopleOnly.destination = preferences.destination
+        let peopleHint = PhoneVoiceTools.settingHint(for: peopleOnly, mode: .gptLive)
+        XCTAssertTrue(peopleHint.contains("shares the people they picked with Hermes"), peopleHint)
+        preferences.setVoiceUse(.gptLive, allowed: true)
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .gptLive), "", "An allowed mode has the tools instead")
+        XCTAssertFalse(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive).isEmpty, "Each mode is its own consent")
+        var statusOnly = PhoneSyncPreferences(status: true, focus: true)
+        statusOnly.destination = preferences.destination
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: statusOnly, mode: .geminiLive), "", "Only phone status: no calendar to point at")
+        preferences.destination = nil
+        XCTAssertEqual(PhoneVoiceTools.settingHint(for: preferences, mode: .geminiLive), "", "Nothing shared, nothing to point at")
+    }
+
     // MARK: Alarms, timers and people (plugin 0.30.0)
 
     func testPhoneAlarmChangesNeedWhatTheyAct() throws {

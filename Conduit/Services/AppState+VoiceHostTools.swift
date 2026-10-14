@@ -49,11 +49,14 @@ extension AppState {
         let keys = voiceReadableKeys(for: mode)
         let phone = phoneSync.preferences
         let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map(isActiveDestination) == true
-        let local = phoneAllowed
+        let phoneTools = phoneAllowed
             ? PhoneVoiceTools.tools(for: phone, access: phoneSync.calendarSource.eventAccess,
                                     remindersAuthorized: phoneSync.calendarSource.remindersAuthorized,
                                     alarmsAuthorized: phoneSync.alarmSource.authorized)
             : []
+        // Maps run on this iPhone's MapKit for every live mode; "me" and
+        // saved places check the mode's location consent at each call.
+        let local = phoneTools + [MapsVoiceTool.tool]
         guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".
@@ -77,6 +80,14 @@ extension AppState {
         }
     }
 
+    /// The briefing line for a call on `mode` that the user hasn't let use
+    /// the calendar and phone they share on this dashboard.
+    func phoneVoiceSettingHint(for mode: LiveVoiceModeName) -> String {
+        let phone = phoneSync.preferences
+        guard phone.destination.map(isActiveDestination) == true else { return "" }
+        return PhoneVoiceTools.settingHint(for: phone, mode: mode)
+    }
+
     private func isActiveDestination(_ destination: HealthSyncDestination) -> Bool {
         activeDashboardID == destination.dashboardID && activeProfile == destination.profile
     }
@@ -86,6 +97,13 @@ extension AppState {
         switch tool.key {
         case "health", "location": return await callSealedReadTool(tool, arguments: arguments, mode: mode)
         case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode)
+        case MapsVoiceTool.key:
+            guard let mode, tool.name == MapsVoiceTool.name else { return ["error": "That isn't available on this call."] }
+            let location = LocationSharingController.shared
+            // Like the sealed location read: "me" and saved places only on a
+            // call with the dashboard and profile the location is shared with.
+            let sharedHere = location.binding.map { activeDashboardID == $0.dashboardID && activeProfile == $0.profile } ?? false
+            return await MapsVoiceTool.run(arguments, mode: mode, controller: location, sharedHere: sharedHere)
         default: return ["error": "That isn't available on this call."]
         }
     }
@@ -260,14 +278,14 @@ extension AppState {
         guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
         // The host couldn't be asked: the same mode keeps its host tools
         // (each read still checks consent); another mode's were cleared above.
-        let host = fetched.host ?? supervisor.hostTools.filter { $0.key != PhoneVoiceTools.key }
+        let host = fetched.host ?? supervisor.hostTools.filter { $0.key != PhoneVoiceTools.key && $0.key != MapsVoiceTool.key }
         supervisor.hostToolsMode = mode
         supervisor.hostTools = host + fetched.local
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]
         }
-        supervisor.hostToolsWatch = fetched.local.isEmpty ? nil : watchPhoneChanges(for: mode)
+        supervisor.hostToolsWatch = fetched.local.contains { $0.key == PhoneVoiceTools.key } ? watchPhoneChanges(for: mode) : nil
     }
 
     /// Tells the running call about each change Hermes asks for while it

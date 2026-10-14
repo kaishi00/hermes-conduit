@@ -24,6 +24,10 @@ enum LocationCrypto {
     static let ingestInfo = Data("conduit-location-v1 ingest device-to-host".utf8)
     static let voiceRequestInfo = Data("conduit-location-v1 voice device-to-host".utf8)
     static let voiceAnswerInfo = Data("conduit-location-v1 voice host-to-device".utf8)
+    /// Maps requests the host asks this iPhone to answer with MapKit
+    /// (designs/maps-v1-contract.md section 2): one key per direction.
+    static let mapsRequestInfo = Data("conduit-location-v1 maps host-to-device".utf8)
+    static let mapsAnswerInfo = Data("conduit-location-v1 maps device-to-host".utf8)
     static let kidLabel = Data("conduit-location-kid\n".utf8)
     static let aadTag = "conduit-location/1"
 
@@ -43,8 +47,13 @@ enum LocationCrypto {
         /// voice reads existed.
         var voiceRequestKey: Data?
         var voiceAnswerKey: Data?
+        /// Maps requests (host to device) and answers (device to host).
+        /// Nil in a key agreed before maps existed.
+        var mapsRequestKey: Data?
+        var mapsAnswerKey: Data?
 
         var readsByVoice: Bool { voiceRequestKey != nil && voiceAnswerKey != nil }
+        var answersMaps: Bool { mapsRequestKey != nil && mapsAnswerKey != nil }
     }
 
     static func keyID(devicePublic: Data, hostPublic: Data) -> String {
@@ -74,7 +83,8 @@ enum LocationCrypto {
             return symmetric.withUnsafeBytes { Data($0) }
         }
         return SessionKey(kid: kid, key: derived(ingestInfo), deviceID: deviceID,
-                          voiceRequestKey: derived(voiceRequestInfo), voiceAnswerKey: derived(voiceAnswerInfo))
+                          voiceRequestKey: derived(voiceRequestInfo), voiceAnswerKey: derived(voiceAnswerInfo),
+                          mapsRequestKey: derived(mapsRequestInfo), mapsAnswerKey: derived(mapsAnswerInfo))
     }
 
     static func aad(kid: String, deviceID: String, batchID: String) -> Data {

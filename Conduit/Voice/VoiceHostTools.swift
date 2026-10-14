@@ -125,6 +125,10 @@ struct VoiceHostTool {
             case ("object", let object as [String: Any]): return object
             case ("string", let number as NSNumber) where CFGetTypeID(number) != CFBooleanGetTypeID():
                 return number.stringValue
+            // A phone-local string that may also be a list (the maps tool's
+            // `to`, marked "list"): GPT-Live sends the list itself.
+            case ("string", let list as [Any]) where (property["list"] as? Bool) == true:
+                return list
             default: return nil
             }
         }

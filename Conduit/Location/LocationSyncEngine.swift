@@ -262,7 +262,9 @@ final class LocationSyncEngine: ObservableObject {
         defer { store.save(state) }
         do {
             let voice = config.readsByVoice(at: now())
-            var key = try await ensureKey(deviceID: config.deviceID, voice: voice, request: request)
+            // Maps requests reach this iPhone only through background sharing.
+            let maps = config.settings.background
+            var key = try await ensureKey(deviceID: config.deviceID, voice: voice, maps: maps, request: request)
             if state.placesDigest != LocationPrecisionRules.placesDigest(config.places) { batch.places = config.places }
             var answer: [String: Any]
             do {
@@ -272,7 +274,7 @@ final class LocationSyncEngine: ObservableObject {
                 // phone's key (a wipe, a new store). Agree a new one, once.
                 Self.log.info("Location ingest answered 409 \(detail, privacy: .public); agreeing the key again")
                 clearKey()
-                key = try await ensureKey(deviceID: config.deviceID, voice: voice, request: request)
+                key = try await ensureKey(deviceID: config.deviceID, voice: voice, maps: maps, request: request)
                 batch.places = config.places
                 answer = try await post(batch, key: key, request: request)
             }
@@ -373,10 +375,12 @@ final class LocationSyncEngine: ObservableObject {
     /// `voice` (a live voice mode may read the location), a key agreed
     /// before voice reads existed is set up again, once: the host then drops
     /// the latest position it had from this phone, and the next fix
-    /// replaces it.
-    private func ensureKey(deviceID: String, voice: Bool, request: Request) async throws -> LocationCrypto.SessionKey {
+    /// replaces it. With `maps` (background sharing, through which the host
+    /// asks this iPhone for maps lookups), a key agreed before maps existed
+    /// is set up again the same way, once.
+    private func ensureKey(deviceID: String, voice: Bool, maps: Bool, request: Request) async throws -> LocationCrypto.SessionKey {
         for key in [keys.load(), unsavedKey].compactMap({ $0 }) where key.deviceID == deviceID {
-            if !voice || key.readsByVoice { return key }
+            if (!voice || key.readsByVoice) && (!maps || key.answersMaps) { return key }
         }
         let devicePrivate = Curve25519.KeyAgreement.PrivateKey()
         let answer: [String: Any]

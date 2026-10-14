@@ -937,7 +937,7 @@ extension VoiceConversationControllerTests {
     func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() throws {
         let gpt = GPTLiveConversationController.briefing(personality: "Judge Hermes")
         // Grok Live is built from Gemini Live's instructions (AppState.grokLiveController).
-        let gemini: [GeminiLiveSearchSource] = [.google, .hermes, .none]
+        let gemini: [GeminiLiveSearchSource] = [.google, .hermes, .grok, .none]
         var engines: [(String, String)] = gemini.map { search in
             ("Gemini and Grok (\(search))", GeminiLiveConversationController.instructions(search: search, personality: "Judge Hermes"))
         }
