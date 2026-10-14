@@ -147,8 +147,8 @@ final class HermesNativeCalls: NSObject {
         /// The ring it shares with the Apple Watch, when it rings there too.
         var ring: HermesRing? = nil
         /// This phone already told the relay to stop the Watch ringing (in
-        /// the car): answering or ending here settles nothing more, while a
-        /// Watch that answered first still finds this call by its ring.
+        /// the car). Answering or ending here still settles: a decline the
+        /// relay never got is settled then, and a repeat is only refused.
         var watchStopped = false
         /// Telling the relay this phone answered it.
         var settling: Task<HermesRingSettleResult, Never>? = nil
@@ -428,7 +428,7 @@ final class HermesNativeCalls: NSObject {
         let id = action.callUUID
         // The Apple Watch stops ringing (Conduit is running the call, so no
         // background time is needed).
-        if let ring = calls[id]?.ring, calls[id]?.watchStopped == false {
+        if let ring = calls[id]?.ring {
             calls[id]?.settling = Task { await HermesRingSettler.settle(ring, by: .phone, outcome: .answered) }
         }
         calls[id]?.work = Task { await self.connect(id) }
@@ -738,7 +738,7 @@ final class HermesNativeCalls: NSObject {
         call.work?.cancel()
         action.fulfill()
         // Declined here: the Apple Watch stops ringing too.
-        if !call.answered, !call.watchStopped, let ring = call.ring { settleRing(ring, outcome: .declined) }
+        if !call.answered, let ring = call.ring { settleRing(ring, outcome: .declined) }
         if call.answered {
             endVoice(of: call.target)
         } else {
