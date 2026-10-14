@@ -428,6 +428,8 @@ final class PushNotificationService: ObservableObject {
 
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published private(set) var isWorking = false
+    /// A pairing with a host is running (the button or the automatic one).
+    @Published private(set) var isPairing = false
     @Published private(set) var lastError: String?
     @Published private(set) var pairingCode: String?
     @Published private(set) var pairingExpiry: String?
@@ -1028,7 +1030,7 @@ final class PushNotificationService: ObservableObject {
     func enable() async {
         // The Enable button is disabled while working, but a second tap can
         // land before that state reaches the view.
-        guard !isWorking else { return }
+        guard !isWorking, !isPairing else { return }
         lastError = nil
         relayNotice = nil
         preferences.enabled = true
@@ -1051,8 +1053,10 @@ final class PushNotificationService: ObservableObject {
         // Same one-operation-at-a-time rule as enable(), so a revoke never
         // interleaves with an in-flight registration. A tap that lands
         // mid-operation is dropped rather than queued; the button is
-        // disabled while working, so this only catches the race window.
-        guard !isWorking else { return }
+        // disabled while working or pairing, so this only catches the race
+        // window. Not mid-pairing: the plugin would claim for a revoked
+        // installation.
+        guard !isWorking, !isPairing else { return }
         lastError = nil
         relayNotice = nil
         isWorking = true
@@ -1077,6 +1081,13 @@ final class PushNotificationService: ObservableObject {
     func applyRelayChange() async {
         // One move at a time: overlapping moves would each register, and
         // all but the last installation would be orphaned on the new relay.
+        guard !isWorking else { return }
+        // A pairing in flight claims for the current installation; the move
+        // waits for it rather than being dropped.
+        while isPairing {
+            try? await Task.sleep(for: .milliseconds(200))
+            if Task.isCancelled { return }
+        }
         guard !isWorking else { return }
         // A failure against the previous relay no longer describes the
         // current setup, whether or not there is a registration to move.
@@ -1158,8 +1169,8 @@ final class PushNotificationService: ObservableObject {
     /// Conduit just never creates new ones.)
     func createPairingCode(dashboardID: UUID) async {
         // Not mid-move: a code created against the old relay would be
-        // cleared (and useless) once the move lands.
-        guard !isWorking else { return }
+        // cleared (and useless) once the move lands. Not mid-pairing either.
+        guard !isWorking, !isPairing else { return }
         pairingCode = nil
         pairingExpiry = nil
         lastError = nil
@@ -1170,25 +1181,86 @@ final class PushNotificationService: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            var request = authorizedRequest(
-                url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)/pairings"),
-                credential: registration.credential
-            )
-            request.httpMethod = "POST"
-            // Bind the pairing to the dashboard (#148): the relay persists
-            // this UUID at claim time, and every later push derived from that
-            // gateway credential is stamped with it. Older relays ignore the
-            // body, which keeps pre-dashboard relays working.
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(PairingCreateRequest(dashboardID: dashboardID.uuidString))
-            let (data, response) = try await URLSession.shared.data(for: request)
-            try validate(response: response, data: data)
-            let pairing = try JSONDecoder().decode(PairingResponse.self, from: data)
+            let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
             pairingCode = pairing.pairingCode
             pairingExpiry = pairing.expiresAt
         } catch {
             lastError = UserFacingError.message(for: error)
         }
+    }
+
+    /// A new one-time pairing code from the relay, bound to `dashboardID`.
+    private func requestPairingCode(registration: StoredRegistration, dashboardID: UUID) async throws -> PairingResponse {
+        var request = authorizedRequest(
+            url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)/pairings"),
+            credential: registration.credential
+        )
+        request.httpMethod = "POST"
+        // Bind the pairing to the dashboard (#148): the relay persists
+        // this UUID at claim time, and every later push derived from that
+        // gateway credential is stamped with it. Older relays ignore the
+        // body, which keeps pre-dashboard relays working.
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(PairingCreateRequest(dashboardID: dashboardID.uuidString))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(PairingResponse.self, from: data)
+    }
+
+    /// This iPhone's relay installation, which a profile's pairing names.
+    var installationID: String? { registration?.installationID }
+
+    static let pairPath = "/api/plugins/conduit_push/pair"
+
+    /// Who a profile's notifications go to, from the plugin's
+    /// `GET /e2e?profile=` answer.
+    enum ProfilePairing: Equatable {
+        case unpaired
+        case thisDevice
+        /// Another iPhone, or this one before it re-registered.
+        case otherDevice
+    }
+
+    static func profilePairing(status: [String: Any], installationID: String) -> ProfilePairing {
+        guard status["paired"] as? Bool == true else { return .unpaired }
+        return status["installation_id"] as? String == installationID ? .thisDevice : .otherDevice
+    }
+
+    /// Pairs `profile` on the dashboard's host without a code to type
+    /// (plugin 0.24+): a new code from the relay goes to the plugin over
+    /// the signed-in dashboard connection, and the plugin claims it, the
+    /// same claim `hermes conduit-push pair` makes. `request` reaches that
+    /// dashboard.
+    func pairProfile(
+        _ profile: String,
+        dashboardID: UUID,
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async throws {
+        // Not mid-move: a code from the old relay is useless once the move lands.
+        guard !isWorking, !isPairing, let registration else { throw DashboardTicketBridgeError.notReady }
+        // One pairing at a time: the button and the automatic one can't
+        // overlap. Its own flag, so the notifications switch doesn't read
+        // "Updating" meanwhile.
+        isPairing = true
+        defer { isPairing = false }
+        // The relay the code is minted at is the one the host claims it at,
+        // even if a relay move lands meanwhile.
+        let relay = relayURL
+        let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
+        guard self.registration?.installationID == registration.installationID else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
+        let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
+        // Notifications turned off or moved meanwhile: that installation is
+        // gone, so its pairing is nothing to confirm or refresh.
+        guard self.registration?.installationID == registration.installationID else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
+        }
+        await refreshMeta()
     }
 
     func didReceiveDeviceToken(_ tokenData: Data) {

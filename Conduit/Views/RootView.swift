@@ -93,7 +93,11 @@ struct MainView: View {
         sidebarLayoutContent
         // Changes Hermes asked for or just made (AgentSettings.swift).
         .overlay(alignment: .top) {
-            AgentSettingsBanner(sync: appState.agentSettings)
+            VStack(spacing: 0) {
+                AgentSettingsBanner(sync: appState.agentSettings)
+                // A newer Conduit plugin for this dashboard's host.
+                NotifierPluginUpdateBanner()
+            }
         }
         .sheet(isPresented: $appState.showModelPicker) {
             ModelPickerView()
@@ -271,7 +275,7 @@ struct MainView: View {
         // Settings opens at its start.
         switch page {
         case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
-        case .voice: settingsOpensAt = page
+        case .voice, .plugin: settingsOpensAt = page
         case .health: settingsOpensAt = appState.showsHealthSettings ? page : nil
         case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
         }
