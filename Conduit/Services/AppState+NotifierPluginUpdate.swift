@@ -127,7 +127,9 @@ extension AppState {
               let installationID = notifications.installationID,
               let dashboardID = activeDashboardID else { return }
         let profile = activeProfile
-        let attempt = "\(dashboardID.uuidString)|\(profile)"
+        // Per installation too: notifications turned off and on again are a
+        // new installation that hasn't paired.
+        let attempt = "\(dashboardID.uuidString)|\(profile)|\(installationID)"
         // Taken before the first await, so refreshes running side by side
         // check (and pair) once.
         guard automaticPairingAttempts.insert(attempt).inserted else { return }
