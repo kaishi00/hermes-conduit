@@ -172,7 +172,8 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
         callManager.delegate = self
         callManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         callManager.distanceFilter = Self.callMoveDistance
-        callManager.pausesLocationUpdatesAutomatically = true
+        // A pause wouldn't resume on its own; the call ends the updates.
+        callManager.pausesLocationUpdatesAutomatically = false
         callManager.startUpdatingLocation()
         self.callManager = callManager
     }
