@@ -296,9 +296,157 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
     }
 
+    // MARK: Alarms, timers and people (plugin 0.30.0)
+
+    func testPhoneAlarmChangesNeedWhatTheyAct() throws {
+        let weekly = try XCTUnwrap(PhoneChange(json: ["id": "ch_a", "kind": "set_alarm", "auto": true,
+                                                      "fields": ["label": "Wake up", "time": "06:30",
+                                                                 "repeats": ["fri", "MON", "tue", "wed", "thu", "sun?"]]]))
+        XCTAssertEqual(weekly.fields.time, PhoneClockTime(hour: 6, minute: 30))
+        XCTAssertEqual(weekly.fields.repeats, ["mon", "tue", "wed", "thu", "fri"], "Known days, in week order")
+        XCTAssertTrue(weekly.kind.addsWithoutAsking)
+        XCTAssertNil(PhoneChange(json: ["id": "ch_b", "kind": "set_alarm", "fields": ["time": "6:30"]]), "HH:MM only")
+        XCTAssertNil(PhoneChange(json: ["id": "ch_c", "kind": "set_alarm", "fields": ["label": "No time"]]))
+        XCTAssertNil(PhoneChange(json: ["id": "ch_d", "kind": "set_timer", "fields": ["seconds": 2]]))
+        XCTAssertNotNil(PhoneChange(json: ["id": "ch_e", "kind": "set_timer", "fields": ["seconds": 600]]))
+        XCTAssertNil(PhoneChange(json: ["id": "ch_f", "kind": "cancel_alarm", "fields": [String: Any]()]), "A cancellation names its alarm")
+        let cancel = try XCTUnwrap(PhoneChange(json: ["id": "ch_g", "kind": "cancel_alarm", "target": ["alarm_id": "a1"]]))
+        XCTAssertEqual(cancel.alarmID, "a1")
+        XCTAssertFalse(cancel.kind.addsWithoutAsking, "Cancelling always asks")
+        XCTAssertTrue(PhoneChangeWording.isRemoval(cancel.kind))
+
+        XCTAssertTrue(PhoneChangeWording.alarmSummary(weekly.fields, kind: .setAlarm).hasPrefix("Wake up · "))
+        XCTAssertEqual(PhoneChangeWording.days(["mon", "tue", "wed", "thu", "fri"]), "weekdays")
+        XCTAssertEqual(PhoneChangeWording.days(["sat", "sun"]), "weekends")
+        XCTAssertNil(PhoneChangeWording.days(nil))
+    }
+
+    func testPhoneAlarmNextRingFollowsItsDays() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        // Wednesday 15 October 2025, 12:00 UTC.
+        let now = Date(timeIntervalSince1970: 1_760_529_600)
+        let time = PhoneClockTime(hour: 6, minute: 30)
+        let once = try XCTUnwrap(PhoneAlarmSources.nextRing(time, repeats: nil, after: now, calendar: calendar))
+        XCTAssertEqual(once, Date(timeIntervalSince1970: 1_760_509_800 + 86_400), "Tomorrow, the time having passed today")
+        let monday = try XCTUnwrap(PhoneAlarmSources.nextRing(time, repeats: ["mon"], after: now, calendar: calendar))
+        XCTAssertEqual(calendar.component(.weekday, from: monday), 2)
+        let soonest = try XCTUnwrap(PhoneAlarmSources.nextRing(time, repeats: ["mon", "fri"], after: now, calendar: calendar))
+        XCTAssertEqual(calendar.component(.weekday, from: soonest), 6, "Friday comes before Monday")
+    }
+
+    func testPhoneAlarmsAndPeopleSyncAndApply() async throws {
+        let source = FakePhoneCalendarSource()
+        let alarms = FakePhoneAlarmSource()
+        alarms.list = [["id": "a_old", "kind": "alarm", "label": "Gym", "fires_at": "2026-10-15T06:00:00Z"]]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, alarms: alarms)
+        var preferences = phonePreferences()
+        preferences.alarms = true
+        preferences.contacts = true
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        engine.savePeople([PhonePerson(id: "p_1", name: "Sam Lee", relation: "wife",
+                                       phones: [.init(number: "+44 7700 900123", label: "mobile")], birthday: "--04-12")])
+
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let sharing = try XCTUnwrap(host.batches.last?["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["alarms"] as? Bool, true)
+        XCTAssertEqual(sharing["contacts"] as? Bool, true)
+        XCTAssertEqual((host.batches.last?["alarms"] as? [[String: Any]])?.map { $0["id"] as? String }, ["a_old"])
+        let people = try XCTUnwrap(host.batches.last?["contacts"] as? [[String: Any]])
+        XCTAssertEqual(people.first?["relation"] as? String, "wife")
+        XCTAssertEqual(people.first?["birthday"] as? String, "--04-12")
+
+        // Nothing changed: neither list goes again.
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(host.batches.last?["alarms"])
+        XCTAssertNil(host.batches.last?["contacts"])
+
+        // A timer goes straight in with "Add without asking"; a cancellation asks.
+        host.changes = [
+            ["id": "ch_timer", "kind": "set_timer", "auto": true, "fields": ["label": "Pasta", "seconds": 600]],
+            ["id": "ch_cancel", "kind": "cancel_alarm", "auto": false, "target": ["alarm_id": "a_old"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(alarms.applied.map(\.id), ["ch_timer"])
+        XCTAssertTrue(source.applied.isEmpty, "Alarms never reach the calendar")
+        XCTAssertEqual(engine.autoAdded?.isAlarm, true)
+        let prompt = try XCTUnwrap(engine.prompts.first)
+        XCTAssertEqual(prompt.id, "ch_cancel")
+        XCTAssertNil(prompt.calendarTitle)
+        XCTAssertTrue(prompt.alarmTitle?.hasPrefix("Gym · ") == true)
+
+        await engine.answer(prompt, approve: true)
+        XCTAssertEqual(alarms.cancelled, ["a_old"])
+        // Undo takes the timer back.
+        await engine.undo(try XCTUnwrap(engine.autoAdded))
+        XCTAssertEqual(alarms.cancelled, ["a_old", "alarm_1"])
+        host.changes = []
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.reported.first { $0["id"] as? String == "ch_timer" }?["item_id"] as? String, "alarm_1")
+        XCTAssertEqual((host.batches.last?["alarms"] as? [[String: Any]])?.count, 0, "Both gone from the phone")
+
+        // Turned off: the host is told, and nothing more goes.
+        preferences.alarms = false
+        preferences.contacts = false
+        engine.savePreferences(preferences)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let off = try XCTUnwrap(host.batches.last?["sharing"] as? [String: Any])
+        XCTAssertEqual(off["alarms"] as? Bool, false)
+        XCTAssertEqual(off["contacts"] as? Bool, false)
+        XCTAssertNil(host.batches.last?["contacts"])
+    }
+
+    func testPhonePeoplePickedAgainKeepTheirRelation() {
+        let picked = [PhonePerson(id: "p_1", name: "Sam Lee (new)"), PhonePerson(id: "p_2", name: "Alex")]
+        let people = PhonePeopleStore.merging(picked, into: [PhonePerson(id: "p_1", name: "Sam Lee", relation: "wife")])
+        XCTAssertEqual(people.map(\.name), ["Sam Lee (new)", "Alex"])
+        XCTAssertEqual(people.first?.relation, "wife")
+        let long = PhonePerson(id: "p_3", name: "Kim", relation: String(repeating: "x", count: 60))
+        XCTAssertEqual((long.json["relation"] as? String)?.count, PhonePerson.relationLength)
+        XCTAssertNil(PhonePerson(id: "p_4", name: "Lee", relation: "  ").json["relation"])
+        XCTAssertEqual(PhonePerson.birthday(DateComponents(year: 1990, month: 4, day: 12)), "1990-04-12")
+        XCTAssertEqual(PhonePerson.birthday(DateComponents(month: 4, day: 12)), "--04-12")
+        XCTAssertEqual(PhonePerson.id(forContact: "ABC"), PhonePerson.id(forContact: "ABC"))
+        XCTAssertNotEqual(PhonePerson.id(forContact: "ABC"), PhonePerson.id(forContact: "ABD"))
+        XCTAssertEqual(PhonePerson.plainNumber("+44\u{00A0}7700\u{2011}900123 "), "+44 7700-900123")
+        XCTAssertTrue(PhonePerson.isDialable("+44 7700-900123"))
+        XCTAssertFalse(PhonePerson.isDialable("1-800-FLOWERS"), "The host takes only dialling signs")
+        XCTAssertFalse(PhonePerson.isDialable("--- ..."))
+    }
+
+    func testPhoneVoiceCallsSetAlarmsAndTimers() async throws {
+        let alarms = FakePhoneAlarmSource()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), alarms: alarms)
+        var preferences = phonePreferences()
+        preferences.alarms = true
+        engine.savePreferences(preferences)
+        XCTAssertFalse(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true).map(\.name)
+            .contains(PhoneVoiceTools.alarmTool), "Not without AlarmKit access")
+        let tool = try XCTUnwrap(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true,
+                                                       alarmsAuthorized: true).last)
+        XCTAssertEqual(tool.name, PhoneVoiceTools.alarmTool)
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { _, _ in }
+
+        let timer = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 10, "label": "Pasta"],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(timer["result"], timer["error"] ?? "")
+        XCTAssertEqual(alarms.applied.last?.fields.seconds, 600)
+        let alarm = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "6:45", "days": ["sat", "sun"]],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(alarm["result"], alarm["error"] ?? "")
+        XCTAssertEqual(alarms.applied.last?.fields.time, PhoneClockTime(hour: 6, minute: 45))
+        XCTAssertEqual(alarms.applied.last?.fields.repeats, ["sat", "sun"])
+        let bad = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0], engine: engine, answer: answer)
+        XCTAssertNotNil(bad["error"])
+        XCTAssertEqual(alarms.applied.count, 2)
+    }
+
     // MARK: Helpers
 
-    private func makePhoneEngine(source: FakePhoneCalendarSource) -> PhoneSyncEngine {
+    private func makePhoneEngine(source: FakePhoneCalendarSource,
+                                 alarms: PhoneAlarmSource = FakePhoneAlarmSource()) -> PhoneSyncEngine {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let defaults = UserDefaults(suiteName: "phone-sync-\(UUID().uuidString)")!
@@ -308,7 +456,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let keys = PhoneSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
-        return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(),
+        return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(), alarmSource: alarms,
                                store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                keys: keys, defaults: defaults, calendar: calendar,
                                now: { Date(timeIntervalSince1970: 1_760_400_000) })
@@ -323,6 +471,27 @@ extension HermesVoiceGatewayTimeoutTests {
     private func phoneEvent(_ id: String, _ title: String) -> [String: Any] {
         ["id": id, "calendar_id": "c_1", "title": title, "start": "2026-10-15T09:00:00Z", "end": "2026-10-15T10:00:00Z",
          "all_day": false]
+    }
+}
+
+private final class FakePhoneAlarmSource: PhoneAlarmSource {
+    var isSupported: Bool { true }
+    var authorized = true
+    var list: [[String: Any]] = []
+    private(set) var applied: [PhoneChange] = []
+    private(set) var cancelled: [String] = []
+
+    func requestAccess() async throws {}
+    func alarms(now: Date, calendar: Calendar) -> [[String: Any]] { list }
+    func apply(_ change: PhoneChange, now: Date) async throws -> String {
+        applied.append(change)
+        let id = "alarm_\(applied.count)"
+        list.append(["id": id, "kind": change.kind == .setTimer ? "timer" : "alarm"])
+        return id
+    }
+    func cancel(id: String) throws {
+        cancelled.append(id)
+        list.removeAll { $0["id"] as? String == id }
     }
 }
 

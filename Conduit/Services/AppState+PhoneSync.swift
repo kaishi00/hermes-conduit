@@ -33,6 +33,9 @@ enum PhoneSyncReason: String {
 
 extension AppState {
     static let phoneSyncCapability = "phone-sync"
+    /// Plugin 0.30.0: alarms and timers, and picked people.
+    static let phoneAlarmsCapability = "phone-alarms"
+    static let phoneContactsCapability = "phone-contacts"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -102,6 +105,7 @@ extension AppState {
         Self.phoneUpdateGeneration += 1
         try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         if choices.status { await phoneSync.statusSource.requestMotionAccess() }
+        if choices.alarms { try await phoneSync.alarmSource.requestAccess() }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }
@@ -130,6 +134,7 @@ extension AppState {
             try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         }
         if choices.status, !current.status { await phoneSync.statusSource.requestMotionAccess() }
+        if choices.alarms, !current.alarms { try await phoneSync.alarmSource.requestAccess() }
         // A newer change, or turning sharing off, came in while iOS asked.
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices

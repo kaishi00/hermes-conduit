@@ -18,6 +18,7 @@ import Foundation
 enum PhoneVoiceTools {
     static let changesTool = "phone_changes"
     static let addTool = "phone_add"
+    static let alarmTool = "phone_alarm"
     /// What seals them: nothing, they never leave the phone.
     static let key = "local"
 
@@ -25,7 +26,7 @@ enum PhoneVoiceTools {
     /// can ask for one), adding when events or reminders can be written,
     /// both by the user's choice and by what iOS still allows.
     static func tools(for preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
-                      remindersAuthorized: Bool) -> [VoiceHostTool] {
+                      remindersAuthorized: Bool, alarmsAuthorized: Bool = false) -> [VoiceHostTool] {
         guard preferences.isOn else { return [] }
         var tools = [changes]
         let allowed = addable(preferences, access: access, remindersAuthorized: remindersAuthorized)
@@ -33,6 +34,7 @@ enum PhoneVoiceTools {
             tools.append(add(events: allowed.events, reminders: allowed.reminders,
                              calendarsVisible: access == .full))
         }
+        if preferences.alarms, alarmsAuthorized { tools.append(alarm) }
         return tools
     }
 
@@ -93,6 +95,28 @@ enum PhoneVoiceTools {
         )
     }
 
+    private static let alarm = VoiceHostTool(
+        name: alarmTool,
+        description: "Sets an alarm or starts a timer on the user's iPhone at once; it rings even in Silent mode. "
+            + "Only when the user asked for it in this call: say back what you'll set (the time and days, or how long, "
+            + "and its name if any) and set it once they agree, then confirm in a few words. To cancel one, send "
+            + "the request to Hermes instead.",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "kind": ["type": "string", "enum": ["alarm", "timer"]],
+                "time": ["type": "string", "description": "alarm: the local time on a 24-hour clock, like 06:30."],
+                "date": ["type": "string", "description": "alarm: the day for a one-off alarm, like 2026-10-16; the next 'time' when left out."],
+                "days": ["type": "array", "items": ["type": "string", "enum": PhoneChangeFields.weekdays],
+                         "description": "alarm: the weekdays it repeats on; leave out for once."],
+                "minutes": ["type": "number", "description": "timer: how long, in minutes (fractions allowed)."],
+                "label": ["type": "string", "description": "A short name, like Pasta or Wake up."],
+            ],
+            "required": ["kind"],
+        ],
+        key: key
+    )
+
     // MARK: Running them
 
     /// One call of a local tool. What the model hears back.
@@ -103,6 +127,8 @@ enum PhoneVoiceTools {
             return await runChanges(arguments, engine: engine, answer: answer)
         case addTool:
             return await runAdd(arguments, engine: engine)
+        case alarmTool:
+            return await runAlarm(arguments, engine: engine)
         default:
             return ["error": "That isn't available on this call."]
         }
@@ -198,6 +224,56 @@ enum PhoneVoiceTools {
         }
     }
 
+    private static func runAlarm(_ arguments: [String: Any], engine: PhoneSyncEngine) async -> [String: String] {
+        guard engine.preferences.alarms, engine.alarmSource.authorized else {
+            return ["error": "The user doesn't let Hermes set alarms. They can turn it on in Conduit's Settings."]
+        }
+        var fields: [String: Any] = [:]
+        if let label = (arguments["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+            fields["label"] = label
+        }
+        let kind: String
+        switch arguments["kind"] as? String ?? "" {
+        case "timer":
+            guard let minutes = (arguments["minutes"] as? NSNumber)?.doubleValue, minutes > 0 else {
+                return ["error": "A timer needs minutes, like 10."]
+            }
+            let seconds = Int((minutes * 60).rounded())
+            guard (5...86_400).contains(seconds) else { return ["error": "A timer runs from 5 seconds to 24 hours."] }
+            fields["seconds"] = seconds
+            kind = "set_timer"
+        case "alarm":
+            guard let timeText = (arguments["time"] as? String)?.trimmingCharacters(in: .whitespaces),
+                  let time = PhoneChangeFields.clockTime(timeText.count == 4 ? "0" + timeText : timeText) else {
+                return ["error": "An alarm needs a time like 06:30."]
+            }
+            let days = (arguments["days"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() } ?? []
+            if let date = (arguments["date"] as? String).flatMap(localTime), date.isDate, days.isEmpty {
+                guard let at = localTime(date.text + "T" + time.text).flatMap({ PhoneDates.parse($0.text) }) else {
+                    return ["error": "That date and time couldn't be read."]
+                }
+                guard at > Date() else { return ["error": "That time has already passed. Ask which day."] }
+                fields["at"] = PhoneDates.format(at)
+            } else {
+                fields["time"] = time.text
+                if !days.isEmpty { fields["repeats"] = days }
+            }
+            kind = "set_alarm"
+        default:
+            return ["error": "kind is alarm or timer."]
+        }
+        let id = "voice_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        guard let change = PhoneChange(json: ["id": id, "kind": kind, "fields": fields]) else {
+            return ["error": "That couldn't be set; check the time."]
+        }
+        do {
+            _ = try await engine.addFromVoice(change)
+            return ["result": "Set on the phone: \(PhoneChangeWording.alarmSummary(change.fields, kind: change.kind)). Confirm it to the user in a few words."]
+        } catch {
+            return ["error": "It couldn't be set: \(PhoneSyncEngine.describe(error))"]
+        }
+    }
+
     // MARK: Wording for the model
 
     /// A waiting change as the model hears it.
@@ -211,6 +287,12 @@ enum PhoneVoiceTools {
         if let due = change.fields.dueText { entry["due"] = due }
         if let calendar = prompt.calendarTitle { entry["calendar"] = calendar }
         if let location = change.fields.location { entry["location"] = location }
+        if let label = change.fields.label { entry["label"] = label }
+        if let at = change.fields.at { entry["at"] = PhoneDates.format(at) }
+        if let time = change.fields.time { entry["time"] = time.text }
+        if let repeats = change.fields.repeats { entry["repeats"] = repeats }
+        if let seconds = change.fields.seconds { entry["seconds"] = seconds }
+        if let alarm = prompt.alarmTitle { entry["alarm"] = alarm }
         if let reason = change.reason { entry["reason"] = reason }
         return entry
     }

@@ -51,7 +51,8 @@ extension AppState {
         let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map(isActiveDestination) == true
         let local = phoneAllowed
             ? PhoneVoiceTools.tools(for: phone, access: phoneSync.calendarSource.eventAccess,
-                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized)
+                                    remindersAuthorized: phoneSync.calendarSource.remindersAuthorized,
+                                    alarmsAuthorized: phoneSync.alarmSource.authorized)
             : []
         guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
@@ -102,7 +103,11 @@ extension AppState {
                 // Reported in the background: the call hears the outcome now.
                 Task { await self.runPhoneSync(reason: .answered) }
             }
-            if result["error"] == nil { Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode) }
+            if result["error"] == nil {
+                Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
+                // Hermes' alarm list catches up with the one just set.
+                if tool.name == PhoneVoiceTools.alarmTool { Task { await self.runPhoneSync(reason: .answered) } }
+            }
             return result
         }
         guard let bridge = dashboardTicketBridge else {
@@ -135,6 +140,8 @@ extension AppState {
         let action: String
         if tool.name == PhoneVoiceTools.addTool {
             action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
+        } else if tool.name == PhoneVoiceTools.alarmTool {
+            action = (arguments["kind"] as? String).map { "set \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.changesTool {
             action = "changes \(arguments["action"] as? String ?? "")"
         } else {

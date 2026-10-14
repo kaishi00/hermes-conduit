@@ -30,6 +30,13 @@ struct PhoneSettingsPage: View {
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
+    /// An older plugin takes no alarms or people: their switches wait for it.
+    private var showsAlarms: Bool {
+        engine.alarmSource.isSupported && (appState.notifierPlugin.reports(AppState.phoneAlarmsCapability) || choices.alarms)
+    }
+    private var showsPeople: Bool {
+        appState.notifierPlugin.reports(AppState.phoneContactsCapability) || choices.contacts
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -49,6 +56,8 @@ struct PhoneSettingsPage: View {
                 calendarSection
                 changesSection
                 phoneSection
+                if showsAlarms { alarmsSection }
+                if showsPeople { peopleSection }
                 if preferences.isOn { voiceSection }
                 actionSection
             }
@@ -203,6 +212,64 @@ struct PhoneSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: Alarms and people
+
+    private var alarmsSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Alarms and timers"), symbol: "alarm", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.alarms)) {
+                Label("Let Hermes set alarms and timers", systemImage: "alarm")
+            }
+            .accessibilityIdentifier("settings.phone.alarms")
+            Text("They ring like the Clock app's, even in Silent mode or a Focus. Hermes asks each time unless new items go in without asking, and always asks before cancelling one. Hermes sees only the alarms it set.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var peopleSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.contacts)) {
+                Label("Share the people you pick", systemImage: "person.2")
+            }
+            .accessibilityIdentifier("settings.phone.contacts")
+            Text("Pick the people Hermes should know, and say who they are to you, such as wife or boss, so \"text my wife\" or \"Mum's birthday\" just works. Hermes gets their name, phone numbers, email addresses and birthday. Conduit doesn't read your contacts: only the people you pick here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if choices.contacts {
+                ForEach(engine.people) { person in
+                    PhonePersonRow(person: person) { relation in
+                        var people = engine.people
+                        guard let index = people.firstIndex(where: { $0.id == person.id }) else { return }
+                        people[index].relation = relation.isEmpty ? nil : String(relation.prefix(PhonePerson.relationLength))
+                        engine.savePeople(people)
+                        syncPeople()
+                    } remove: {
+                        Haptics.selection()
+                        engine.savePeople(engine.people.filter { $0.id != person.id })
+                        syncPeople()
+                    }
+                }
+                Button {
+                    Haptics.selection()
+                    PhoneContactPicker.present { contacts in
+                        let picked = contacts.compactMap { PhonePerson(contact: $0) }
+                        engine.savePeople(PhonePeopleStore.merging(picked, into: engine.people))
+                        syncPeople()
+                    }
+                } label: {
+                    Label("Add people", systemImage: "person.badge.plus")
+                }
+                .disabled(engine.people.count >= PhonePerson.maximum)
+                .accessibilityIdentifier("settings.phone.contacts.add")
+            }
+        }
+    }
+
+    private func syncPeople() {
+        guard preferences.isOn, preferences.contacts else { return }
+        Task { await appState.runPhoneSync(reason: .manual) }
     }
 
     // MARK: Voice
@@ -404,6 +471,44 @@ struct PhoneSettingsPage: View {
     }
 }
 
+/// One picked person in Settings: who they are to the user, editable.
+struct PhonePersonRow: View {
+    let person: PhonePerson
+    let save: (String) -> Void
+    let remove: () -> Void
+    @State private var relation = ""
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(person.name)
+                    .font(.subheadline)
+                TextField("Who they are to you", text: $relation)
+                    .font(.caption)
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.done)
+                    .onSubmit { save(relation.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            }
+            Spacer(minLength: 4)
+            Button(role: .destructive, action: remove) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(AppLocalization.string("Remove \(person.name)")))
+        }
+        .onAppear { relation = person.relation ?? "" }
+        .onChange(of: relation) { _, value in
+            // No longer than the host keeps.
+            if value.count > PhonePerson.relationLength { relation = String(value.prefix(PhonePerson.relationLength)) }
+        }
+        .onDisappear {
+            let typed = relation.trimmingCharacters(in: .whitespacesAndNewlines)
+            if typed != (person.relation ?? "") { save(typed) }
+        }
+    }
+}
+
 /// What the user agrees to before anything leaves the phone (App Review 5.1.2(i)).
 struct PhoneSharingConsentSheet: View {
     let profile: String
@@ -425,6 +530,7 @@ struct PhoneSharingConsentSheet: View {
                     Label("Your agent reads it when you ask, or when a task you set up needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
                     Label("Events can include other people's names. Notes, attendees and email addresses stay on this iPhone unless you turn them on.", systemImage: "person.2")
                     Label("Hermes can only ask for calendar changes. You approve each one unless you choose to let new items in without asking, and changes or deletions always ask.", systemImage: "hand.raised")
+                    Label("Alarms and timers Hermes sets ring even in Silent mode or a Focus. People are shared only if you pick them.", systemImage: "alarm")
                     Label("You can turn sharing off at any time in Settings > Calendar & phone and delete what was sent from the host.", systemImage: "calendar.badge.minus")
                 }
                 .font(.subheadline)
@@ -466,11 +572,48 @@ enum PhoneChangeWording {
             return change.fields.completed == false
                 ? AppLocalization.string("Hermes wants to reopen a reminder")
                 : AppLocalization.string("Hermes wants to mark a reminder done")
+        case .setAlarm: return AppLocalization.string("Hermes wants to set an alarm")
+        case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
+        case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
         }
+    }
+
+    /// An alarm or timer in a line: "Wake up · 06:30 weekdays", "Pasta · 10 min".
+    static func alarmSummary(_ fields: PhoneChangeFields, kind: PhoneChange.Kind) -> String {
+        var parts: [String] = []
+        if let label = fields.label { parts.append(label) }
+        if kind == .setTimer, let seconds = fields.seconds {
+            parts.append(Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated)))
+        } else if let at = fields.at {
+            parts.append(at.formatted(date: .abbreviated, time: .shortened))
+        } else if let time = fields.time {
+            let clock = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: Date())
+                .map { $0.formatted(date: .omitted, time: .shortened) } ?? time.text
+            parts.append([clock, days(fields.repeats)].compactMap { $0 }.joined(separator: " "))
+        }
+        if parts.isEmpty {
+            parts.append(kind == .setTimer ? AppLocalization.string("Timer") : AppLocalization.string("Alarm"))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The days a repeating alarm rings, in words.
+    static func days(_ repeats: [String]?) -> String? {
+        guard let repeats, !repeats.isEmpty else { return nil }
+        let set = Set(repeats)
+        if set.count == 7 { return AppLocalization.string("every day") }
+        if set == ["mon", "tue", "wed", "thu", "fri"] { return AppLocalization.string("weekdays") }
+        if set == ["sat", "sun"] { return AppLocalization.string("weekends") }
+        let symbols = Calendar.current.shortWeekdaySymbols
+        return PhoneChangeFields.weekdays.enumerated().compactMap { index, day in
+            // shortWeekdaySymbols starts on Sunday.
+            set.contains(day) ? symbols[(index + 1) % 7] : nil
+        }.joined(separator: ", ")
     }
 
     /// The item's title and time, as far as the change says.
     static func detail(_ change: PhoneChange) -> String {
+        if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
         var parts: [String] = []
         if let title = change.fields.title, !title.isEmpty { parts.append(title) }
         let allDay = change.fields.allDay ?? false
@@ -497,7 +640,21 @@ enum PhoneChangeWording {
         case .deleteEvent: return AppLocalization.string("Delete")
         case .completeReminder: return AppLocalization.string("Mark done")
         case .updateEvent, .updateReminder: return AppLocalization.string("Change")
+        case .setAlarm: return AppLocalization.string("Set")
+        case .setTimer: return AppLocalization.string("Start")
+        case .cancelAlarm: return AppLocalization.string("Cancel alarm")
         }
+    }
+
+    static func symbol(_ kind: PhoneChange.Kind) -> String {
+        if kind == .setTimer { return "timer" }
+        if kind.isAlarm { return "alarm" }
+        return kind.isEvent ? "calendar.badge.plus" : "checklist"
+    }
+
+    /// Changes whose approve button is the red one.
+    static func isRemoval(_ kind: PhoneChange.Kind) -> Bool {
+        kind == .deleteEvent || kind == .cancelAlarm
     }
 }
 
@@ -510,9 +667,9 @@ struct PhoneChangeCard: View {
     var body: some View {
         let change = prompt.change
         VStack(alignment: .leading, spacing: 10) {
-            Label(PhoneChangeWording.headline(change), systemImage: change.kind.isEvent ? "calendar.badge.plus" : "checklist")
+            Label(PhoneChangeWording.headline(change), systemImage: PhoneChangeWording.symbol(change.kind))
                 .font(.subheadline.weight(.semibold))
-            let detail = PhoneChangeWording.detail(change)
+            let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change)
             if !detail.isEmpty {
                 Text(detail)
                     .font(.subheadline)
@@ -538,7 +695,7 @@ struct PhoneChangeCard: View {
                 }
                 .conduitGlassControl(cornerRadius: 14, tint: .secondary.opacity(0.15), prominent: false)
                 .accessibilityIdentifier("phone.change.dismiss")
-                Button(role: change.kind == .deleteEvent ? .destructive : nil) {
+                Button(role: PhoneChangeWording.isRemoval(change.kind) ? .destructive : nil) {
                     Haptics.success()
                     answer(true)
                 } label: {
@@ -547,7 +704,7 @@ struct PhoneChangeCard: View {
                         .frame(minHeight: 40)
                         .foregroundStyle(Color.white)
                 }
-                .conduitGlassControl(cornerRadius: 14, tint: change.kind == .deleteEvent ? .red : .conduitAccent, prominent: true)
+                .conduitGlassControl(cornerRadius: 14, tint: PhoneChangeWording.isRemoval(change.kind) ? .red : .conduitAccent, prominent: true)
                 .accessibilityIdentifier("phone.change.approve")
             }
             if waiting > 1 {
@@ -579,10 +736,11 @@ struct PhoneAutoAddedBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: added.isEvent ? "calendar.badge.checkmark" : "checklist.checked")
+            Image(systemName: added.isAlarm ? "alarm" : added.isEvent ? "calendar.badge.checkmark" : "checklist.checked")
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)") }
+                Text(added.isAlarm ? AppLocalization.string("Hermes set \(added.title)")
+                     : added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)") }
                      ?? AppLocalization.string("Hermes added \(added.title)"))
                     .font(.subheadline)
                     .lineLimit(2)

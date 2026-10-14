@@ -1157,6 +1157,95 @@
           }
         }
       }
+    },
+    "NSAlarmKitUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du Hermes Wecker und Timer stellen lässt, stellt Conduit die, um die dein Agent bittet, nachdem du zugestimmt hast, außer du hast Hinzufügen ohne Nachfrage gewählt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you let Hermes set alarms and timers, Conduit sets the ones your agent asks for, after you approve them unless you chose to add without asking."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si permites que Hermes ponga alarmas y temporizadores, Conduit pone los que pide tu agente después de que los apruebes, salvo que hayas elegido añadir sin preguntar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si vous autorisez Hermes à régler des alarmes et minuteurs, Conduit règle ceux que votre agent demande, après votre accord, sauf si vous avez choisi d’ajouter sans demander."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika Anda mengizinkan Hermes memasang alarm dan timer, Conduit memasang yang diminta agen Anda setelah Anda menyetujuinya, kecuali Anda memilih menambahkan tanpa bertanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se consenti a Hermes di impostare sveglie e timer, Conduit imposta quelli richiesti dal tuo agente dopo la tua approvazione, a meno che tu abbia scelto di aggiungere senza chiedere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesにアラームとタイマーの設定を許可すると、エージェントが求めたものをあなたの承認後にConduitが設定します（確認なしで追加する設定の場合を除く）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 알람과 타이머를 설정하도록 허용하면, 묻지 않고 추가하도록 설정하지 않은 한 에이전트가 요청한 알람을 승인 후 Conduit가 설정합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy pozwolisz Hermesowi ustawiać alarmy i minutniki, Conduit ustawia te, o które prosi twój agent, po twojej zgodzie, chyba że wybrano dodawanie bez pytania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando você permite que o Hermes defina alarmes e timers, o Conduit define os que seu agente pedir, depois que você aprovar, a menos que tenha escolhido adicionar sem perguntar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если вы разрешите Hermes ставить будильники и таймеры, Conduit будет ставить те, что попросит ваш агент, после вашего одобрения, если вы не выбрали добавление без вопроса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in alarm ve zamanlayıcı kurmasına izin verdiğinizde Conduit, sormadan eklemeyi seçmediyseniz, ajanınızın istediklerini onayınızdan sonra kurar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你允许 Hermes 设置闹钟和计时器时，Conduit 会在你批准后设置你的代理请求的闹钟，除非你选择了无需询问直接添加。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你允許 Hermes 設定鬧鐘與計時器時，Conduit 會在你核准後設定你的代理要求的鬧鐘，除非你選擇了無需詢問直接加入。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
