@@ -26,8 +26,8 @@ enum LocationSettingsText {
     static func precisionSummary(_ precision: LocationPrecision) -> String {
         switch precision {
         case .places: return AppLocalization.string("Hermes hears only which of your saved places you're at, and your iPhone's time zone.")
-        case .area: return AppLocalization.string("Your neighbourhood and city, and a position to about 1 km.")
-        case .precise: return AppLocalization.string("Your position as your iPhone measures it.")
+        case .area: return AppLocalization.string("Your neighbourhood and city, a position to about 1 km, and distances to your saved places.")
+        case .precise: return AppLocalization.string("Your position as your iPhone measures it, and distances to your saved places.")
         }
     }
 
@@ -123,6 +123,7 @@ struct LocationSettingsPage: View {
         .task {
             // Once per appearance, not on every body re-evaluation.
             controller.readConfigIfNeeded()
+            controller.retryConfigSave()
             appState.activateLocationSharing()
             controller.refreshAuthorization()
             controller.clearExpiredPause()
@@ -180,6 +181,11 @@ struct LocationSettingsPage: View {
                 Text("Update the Conduit plugin on your Hermes host to share your location.")
                     .font(.caption)
                     .foregroundStyle(.orange)
+            }
+            if controller.configSaveFailed {
+                Text("Couldn't save your location settings on this iPhone. Your changes apply while Conduit is open, and Conduit tries saving them again when you next change something or open the app.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
             if controller.configUnreadable {
                 Text("Conduit can't read its location settings right now. Unlock your iPhone and open this page again. If this keeps happening, start over: your saved places and choices are reset.")
@@ -638,7 +644,7 @@ struct LocationSharingConsentSheet: View {
                     Text("Share your location with Hermes?")
                         .font(.title2.weight(.semibold))
                     Label(AppLocalization.string("Conduit sends your location, at the detail you choose, to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
-                    Label("Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time.", systemImage: "clock")
+                    Label("Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time. At Area and Precise, so are distances to your saved places, except private ones.", systemImage: "clock")
                     Label("Your agent reads it when you ask, or when a task or place rule needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms.", systemImage: "sparkles")
                     if isHermesCloud {
                         Label("This Hermes runs on Hermes Cloud, so Nous Research hosts what Conduit sends.", systemImage: "cloud")

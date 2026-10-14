@@ -419,6 +419,32 @@ final class E2ESeenStore {
         withFileLock { insertLocked(key, namespace: namespace, now: now) }
     }
 
+    /// Claims `key` for work that may not finish (an extension iOS can kill
+    /// outright). False while it's answered, or claimed less than `ttl` ago;
+    /// a claim nobody marked answered ages out, so a redelivery can try.
+    func claim(_ key: String, namespace: String, ttl: TimeInterval, now: Date = Date()) -> Bool {
+        withFileLock {
+            var entries = load()
+            if entries["\(namespace)-answered:\(key)"] != nil { return false }
+            let entry = "\(namespace):\(key)"
+            if let claimed = entries[entry], now.timeIntervalSince1970 - claimed < ttl { return false }
+            let cutoff = now.timeIntervalSince1970 - Self.retention
+            entries = entries.filter { $0.value >= cutoff }
+            entries[entry] = now.timeIntervalSince1970
+            store(entries)
+            return true
+        }
+    }
+
+    /// The claimed work is done: `key` stays a replay from now on.
+    func markAnswered(_ key: String, namespace: String, now: Date = Date()) {
+        withFileLock {
+            var entries = load()
+            entries["\(namespace)-answered:\(key)"] = now.timeIntervalSince1970
+            store(entries)
+        }
+    }
+
     /// Forgets `key` in `namespace`, so a delivery whose work failed can be
     /// tried again when it's redelivered.
     func remove(_ key: String, namespace: String) {

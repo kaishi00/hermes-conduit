@@ -221726,170 +221726,6 @@
         }
       }
     },
-    "Your neighbourhood and city, and a position to about 1 km." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Gegend und Stadt und ein Standort auf etwa 1 km genau."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu barrio y ciudad, y una posición con precisión de 1 km aproximadamente."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Votre quartier et votre ville, et une position à environ 1 km près."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lingkungan dan kotamu, serta posisi hingga sekitar 1 km."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il tuo quartiere e la tua città, e una posizione precisa a circa 1 km."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "地域と市区町村、および約1kmの精度の位置。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "동네와 도시, 그리고 약 1km 정확도의 위치."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Twoja okolica i miasto oraz pozycja z dokładnością do około 1 km."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seu bairro e sua cidade, e uma posição com precisão de cerca de 1 km."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ваш район и город, а также позиция с точностью около 1 км."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mahallen ve şehrin, ayrıca yaklaşık 1 km hassasiyetinde bir konum."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你所在的街区和城市，以及精确到约 1 公里的位置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你所在的街區和城市，以及精確到約 1 公里的位置。"
-          }
-        }
-      }
-    },
-    "Your position as your iPhone measures it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Standort, wie dein iPhone ihn misst."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu posición tal como la mide tu iPhone."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Votre position telle que votre iPhone la mesure."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Posisimu sebagaimana diukur iPhone-mu."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La tua posizione come la misura il tuo iPhone."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhoneが測定したとおりの位置。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone이 측정한 그대로의 위치."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Twoja pozycja taka, jak mierzy ją iPhone."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sua posição como o seu iPhone a mede."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ваша позиция в том виде, как её измеряет iPhone."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone'unun ölçtüğü şekliyle konumun."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone 测得的你的位置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone 測得的你的位置。"
-          }
-        }
-      }
-    },
     "A saved place" : {
       "localizations" : {
         "de" : {
@@ -223038,84 +222874,330 @@
         }
       }
     },
-    "Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time." : {
+    "Couldn't save your location settings on this iPhone. Your changes apply while Conduit is open, and Conduit tries saving them again when you next change something or open the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Zeitzone deines iPhone wird immer mitgesendet, bei jeder Genauigkeit, damit Hermes deine Ortszeit kennt."
+            "value" : "Deine Standorteinstellungen konnten auf diesem iPhone nicht gesichert werden. Deine Änderungen gelten, solange Conduit geöffnet ist, und Conduit versucht erneut zu sichern, wenn du das nächste Mal etwas änderst oder die App öffnest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La zona horaria de tu iPhone siempre se envía también, con cualquier nivel de detalle, para que Hermes sepa tu hora local."
+            "value" : "No se pudieron guardar tus ajustes de ubicación en este iPhone. Tus cambios se aplican mientras Conduit esté abierta, y Conduit volverá a intentar guardarlos cuando cambies algo o abras la app."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le fuseau horaire de votre iPhone est toujours envoyé aussi, quel que soit le niveau de détail, pour que Hermes connaisse votre heure locale."
+            "value" : "Impossible d'enregistrer vos réglages de position sur cet iPhone. Vos modifications s'appliquent tant que Conduit est ouverte, et Conduit réessaiera de les enregistrer à votre prochaine modification ou à la prochaine ouverture de l'app."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zona waktu iPhone-mu juga selalu dikirim, di setiap tingkat detail, agar Hermes tahu waktu setempatmu."
+            "value" : "Pengaturan lokasimu tidak dapat disimpan di iPhone ini. Perubahanmu berlaku selama Conduit terbuka, dan Conduit mencoba menyimpannya lagi saat kamu mengubah sesuatu atau membuka app berikutnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il fuso orario del tuo iPhone viene sempre inviato, a qualsiasi livello di dettaglio, così Hermes conosce la tua ora locale."
+            "value" : "Impossibile salvare le impostazioni di posizione su questo iPhone. Le modifiche valgono finché Conduit è aperta, e Conduit riproverà a salvarle alla prossima modifica o alla prossima apertura dell'app."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "どの詳細度でも、iPhoneのタイムゾーンは常に送信されます。Hermesが現地時刻を把握できるようにするためです。"
+            "value" : "このiPhoneに位置情報の設定を保存できませんでした。変更はConduitを開いている間は有効です。次に何かを変更したときやAppを開いたときに、Conduitが再度保存を試みます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhone의 시간대는 어떤 상세도에서든 항상 함께 전송되어 Hermes가 현지 시간을 알 수 있습니다."
+            "value" : "이 iPhone에 위치 설정을 저장할 수 없습니다. 변경 사항은 Conduit가 열려 있는 동안 적용되며, 다음에 무언가를 변경하거나 앱을 열 때 Conduit가 다시 저장을 시도합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Strefa czasowa twojego iPhone’a jest zawsze wysyłana, przy każdej dokładności, aby Hermes znał twój czas lokalny."
+            "value" : "Nie udało się zapisać ustawień lokalizacji na tym iPhonie. Zmiany obowiązują, dopóki Conduit jest otwarty, a Conduit spróbuje zapisać je ponownie przy następnej zmianie lub otwarciu aplikacji."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O fuso horário do seu iPhone também é sempre enviado, em qualquer nível de detalhe, para o Hermes saber sua hora local."
+            "value" : "Não foi possível salvar os ajustes de localização neste iPhone. Suas alterações valem enquanto o Conduit está aberto, e o Conduit tenta salvá-las de novo quando você mudar algo ou abrir o app."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Часовой пояс вашего iPhone всегда отправляется тоже, при любой точности, чтобы Hermes знал ваше местное время."
+            "value" : "Не удалось сохранить настройки геопозиции на этом iPhone. Изменения действуют, пока Conduit открыт, и Conduit попробует сохранить их снова, когда вы что-то измените или откроете приложение."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhone'unun saat dilimi her ayrıntı düzeyinde her zaman gönderilir; böylece Hermes yerel saatini bilir."
+            "value" : "Konum ayarların bu iPhone'a kaydedilemedi. Değişikliklerin Conduit açıkken geçerli olur; bir dahaki değişiklikte veya uygulamayı açtığında Conduit kaydetmeyi yeniden dener."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无论选择哪种详细程度，你 iPhone 的时区都会一并发送，以便 Hermes 知道你的当地时间。"
+            "value" : "无法在这台 iPhone 上保存你的位置设置。你的更改在 Conduit 打开期间有效，下次你更改设置或打开 App 时，Conduit 会再次尝试保存。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無論選擇哪種詳細程度，你 iPhone 的時區都會一併傳送，讓 Hermes 知道你的當地時間。"
+            "value" : "無法在這部 iPhone 上儲存你的位置設定。你的更改在 Conduit 開啟期間有效，下次你更改設定或開啟 App 時，Conduit 會再次嘗試儲存。"
+          }
+        }
+      }
+    },
+    "Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time. At Area and Precise, so are distances to your saved places, except private ones." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zeitzone deines iPhone wird immer mitgesendet, bei jeder Genauigkeit, damit Hermes deine Ortszeit kennt. Bei „Gegend“ und „Genau“ auch die Entfernungen zu deinen gespeicherten Orten, außer zu privaten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La zona horaria de tu iPhone siempre se envía también, con cualquier nivel de detalle, para que Hermes sepa tu hora local. Con Zona y Precisa, también las distancias a tus lugares guardados, salvo los privados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le fuseau horaire de votre iPhone est toujours envoyé aussi, quel que soit le niveau de détail, pour que Hermes connaisse votre heure locale. Avec « Zone » et « Précise », les distances à vos lieux enregistrés le sont aussi, sauf pour les lieux privés."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zona waktu iPhone-mu juga selalu dikirim, di setiap tingkat detail, agar Hermes tahu waktu setempatmu. Pada Area dan Akurat, jarak ke tempat tersimpanmu juga dikirim, kecuali tempat pribadi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il fuso orario del tuo iPhone viene sempre inviato, a qualsiasi livello di dettaglio, così Hermes conosce la tua ora locale. Con Zona e Precisa vengono inviate anche le distanze dai tuoi luoghi salvati, tranne quelli privati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どの詳細度でも、iPhoneのタイムゾーンは常に送信されます。Hermesが現地時刻を把握できるようにするためです。「エリア」と「正確」では、保存した場所（プライベートな場所を除く）までの距離も送信されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 시간대는 어떤 상세도에서든 항상 함께 전송되어 Hermes가 현지 시간을 알 수 있습니다. ‘지역’과 ‘정확한 위치’에서는 비공개 장소를 제외한 저장된 장소까지의 거리도 전송됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strefa czasowa twojego iPhone’a jest zawsze wysyłana, przy każdej dokładności, aby Hermes znał twój czas lokalny. Przy dokładności Okolica i Dokładna wysyłane są też odległości do zapisanych miejsc, z wyjątkiem prywatnych."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O fuso horário do seu iPhone também é sempre enviado, em qualquer nível de detalhe, para o Hermes saber sua hora local. Em Área e Precisa, as distâncias até seus locais salvos também são enviadas, exceto as dos privados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часовой пояс вашего iPhone всегда отправляется тоже, при любой точности, чтобы Hermes знал ваше местное время. При точности «Район» и «Точная» отправляются и расстояния до сохранённых мест, кроме приватных."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unun saat dilimi her ayrıntı düzeyinde her zaman gönderilir; böylece Hermes yerel saatini bilir. Bölge ve Kesin düzeyinde, özel yerler hariç kayıtlı yerlerine olan mesafeler de gönderilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论选择哪种详细程度，你 iPhone 的时区都会一并发送，以便 Hermes 知道你的当地时间。在“区域”和“精确”下，还会发送到你已保存地点（私密地点除外）的距离。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論選擇哪種詳細程度，你 iPhone 的時區都會一併傳送，讓 Hermes 知道你的當地時間。在「區域」和「精確」下，也會傳送到你已儲存地點（私人地點除外）的距離。"
+          }
+        }
+      }
+    },
+    "Your neighbourhood and city, a position to about 1 km, and distances to your saved places." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Gegend und Stadt, ein Standort auf etwa 1 km genau und die Entfernungen zu deinen gespeicherten Orten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu barrio y ciudad, una posición con precisión de 1 km aproximadamente y las distancias a tus lugares guardados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre quartier et votre ville, une position à environ 1 km près et les distances à vos lieux enregistrés."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lingkungan dan kotamu, posisi hingga sekitar 1 km, dan jarak ke tempat tersimpanmu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo quartiere e la tua città, una posizione con una precisione di circa 1 km e le distanze dai tuoi luoghi salvati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "地域と市区町村、約1kmの精度の位置、保存した場所までの距離。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "동네와 도시, 약 1km 정확도의 위치, 그리고 저장된 장소까지의 거리."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja okolica i miasto, pozycja z dokładnością do około 1 km oraz odległości do zapisanych miejsc."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu bairro e sua cidade, uma posição com precisão de cerca de 1 km e as distâncias até seus locais salvos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш район и город, позиция с точностью около 1 км и расстояния до сохранённых мест."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mahallen ve şehrin, yaklaşık 1 km hassasiyetinde bir konum ve kayıtlı yerlerine olan mesafeler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你所在的街区和城市、精确到约 1 公里的位置，以及到你已保存地点的距离。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你所在的街區和城市、精確到約 1 公里的位置，以及到你已儲存地點的距離。"
+          }
+        }
+      }
+    },
+    "Your position as your iPhone measures it, and distances to your saved places." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Standort, wie dein iPhone ihn misst, und die Entfernungen zu deinen gespeicherten Orten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu posición tal como la mide tu iPhone, y las distancias a tus lugares guardados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre position telle que votre iPhone la mesure, et les distances à vos lieux enregistrés."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posisimu sebagaimana diukur iPhone-mu, dan jarak ke tempat tersimpanmu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua posizione così come la misura il tuo iPhone, e le distanze dai tuoi luoghi salvati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneが測定したとおりの位置と、保存した場所までの距離。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone이 측정한 그대로의 위치와 저장된 장소까지의 거리."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja pozycja taka, jak mierzy ją iPhone, oraz odległości do zapisanych miejsc."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua posição como o iPhone mede, e as distâncias até seus locais salvos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваша позиция в том виде, как её измеряет iPhone, и расстояния до сохранённых мест."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unun ölçtüğü şekliyle konumun ve kayıtlı yerlerine olan mesafeler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 测得的你的位置，以及到你已保存地点的距离。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 測得的你的位置，以及到你已儲存地點的距離。"
           }
         }
       }

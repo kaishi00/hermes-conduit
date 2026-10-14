@@ -57,6 +57,9 @@ final class LocationSharingController: ObservableObject {
     /// Nothing is taken, sent or saved over it until it reads again or the
     /// user starts over in Settings > Location.
     @Published private(set) var configUnreadable = false
+    /// The last change couldn't be written to config.json. It's in effect
+    /// in the app; the extension and the next launch don't see it yet.
+    @Published private(set) var configSaveFailed = false
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
     @Published private(set) var approximate = false
     @Published private(set) var isSending = false
@@ -137,10 +140,26 @@ final class LocationSharingController: ObservableObject {
             LocationSyncEngine.log.error("Location config unreadable; not saving a change over it")
             return
         }
+        // Applied in memory either way: turning sharing off or pausing it
+        // takes effect in the app even if the file can't be written now.
         change(&config)
-        if !LocationSharedStore.saveConfig(config) {
+        writeConfig()
+    }
+
+    /// Writes the config; on failure Settings > Location says so, and the
+    /// next change or coming to the foreground tries again.
+    private func writeConfig() {
+        if LocationSharedStore.saveConfig(config) {
+            configSaveFailed = false
+        } else {
             LocationSyncEngine.log.error("Couldn't write the location config")
+            configSaveFailed = true
         }
+    }
+
+    func retryConfigSave() {
+        guard configSaveFailed, !configUnreadable else { return }
+        writeConfig()
     }
 
     /// Settings > Location's way out of a config file that stays unreadable
@@ -150,9 +169,7 @@ final class LocationSharingController: ObservableObject {
         let deviceID = LocationSharedStore.salvageDeviceID()
         config = deviceID.map { LocationSharedConfig(deviceID: $0) } ?? LocationSharedConfig()
         configUnreadable = false
-        if !LocationSharedStore.saveConfig(config) {
-            LocationSyncEngine.log.error("Couldn't write the location config")
-        }
+        writeConfig()
         unsent = LocationUnsent()
         saveUnsent()
         voiceCallEnded()
@@ -180,6 +197,8 @@ final class LocationSharingController: ObservableObject {
     func appBecameActive() {
         guard readConfigIfNeeded() else { return }
         refreshAuthorization()
+        retryConfigSave()
+        clearExpiredPause(send: false)
         // Not only while sharing is on: a change to off or paused that
         // didn't reach the host is the one that matters most.
         guard config.binding != nil else { return }
@@ -357,7 +376,8 @@ final class LocationSharingController: ObservableObject {
     private func sendNow(settingsOnly: Bool) async -> Bool {
         guard readConfigIfNeeded(), let binding = config.binding else { return false }
         let at = now()
-        // What a layer turned off or a pause no longer allows stays unsent.
+        // What a layer turned off or a pause no longer allows is dropped,
+        // not held for later.
         if let fix = unsent.fix, !settings.shares(fix.source, at: at) { unsent.fix = nil }
         if !settings.shares(.place, at: at) { unsent.events = [] }
         saveUnsent()
@@ -477,8 +497,16 @@ final class LocationSharingController: ObservableObject {
     }
 
     /// Resumes a pause whose time has passed, so it doesn't linger.
-    func clearExpiredPause() {
-        if let until = settings.pausedUntil, until <= now() { save { $0.settings.pausedUntil = nil } }
+    /// Resumes a pause whose time has passed, so it doesn't linger, and
+    /// tells the host (pending until it's reachable). `send: false` leaves
+    /// the sending to the caller.
+    func clearExpiredPause(send: Bool = true) {
+        guard let until = settings.pausedUntil, until <= now() else { return }
+        save { config in
+            config.settings.pausedUntil = nil
+            if config.binding != nil { config.settingsPending = true }
+        }
+        if send, config.binding != nil { Task { await flush(settingsOnly: true) } }
     }
 
     // MARK: Saved places

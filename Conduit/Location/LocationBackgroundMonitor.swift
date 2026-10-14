@@ -13,6 +13,7 @@
 //
 
 import CoreLocation
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -83,7 +84,9 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
     // MARK: Saved places
 
     private func syncPlaces(_ places: [LocationSavedPlace]) async {
-        let digest = places.map { "\($0.id)@\($0.latitude),\($0.longitude),\($0.radius)" }.joined(separator: ";")
+        // Only a hash goes in UserDefaults (which is backed up): the saved
+        // places' coordinates stay in the backup-excluded config.json.
+        let digest = Self.monitoredDigest(places)
         if places.isEmpty, monitor == nil, UserDefaults.standard.string(forKey: Self.monitoredDigestKey) == nil { return }
         let monitor = await placesMonitor()
         if UserDefaults.standard.string(forKey: Self.monitoredDigestKey) != digest {
@@ -100,6 +103,14 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
                 UserDefaults.standard.set(digest, forKey: Self.monitoredDigestKey)
             }
         }
+    }
+
+    /// SHA-256 of what the monitor watches, to tell when it changed.
+    nonisolated static func monitoredDigest(_ places: [LocationSavedPlace]) -> String {
+        let plain = places.prefix(LocationSavedPlace.maxCount)
+            .map { "\($0.id)@\($0.latitude),\($0.longitude),\($0.radius)" }
+            .joined(separator: ";")
+        return SHA256.hash(data: Data(plain.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     /// The one monitor, opened by name so a background relaunch gets the

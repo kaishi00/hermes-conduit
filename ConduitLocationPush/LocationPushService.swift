@@ -24,7 +24,9 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     private var work: Task<Void, Never>?
     /// The locate claimed in the replay store and not answered yet:
     /// released if the extension finishes or is stopped without posting.
+    /// If iOS kills the extension outright the claim ages out instead.
     private var pendingReplayKey: String?
+    private static let claimLifetime: TimeInterval = 120
 
     // The whole answer has to fit iOS's budget for this extension.
     private static let fixTimeout: TimeInterval = 6
@@ -39,7 +41,14 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             await self?.answer(userInfo)
             self?.finish()
         }
-        lock.withLock { work = task }
+        // Installed only while the push is still open: if iOS stopped the
+        // extension in between, finish already ran and the task just stops.
+        let installed: Bool = lock.withLock {
+            guard self.completion != nil else { return false }
+            work = task
+            return true
+        }
+        if !installed { task.cancel() }
     }
 
     func serviceExtensionWillTerminate() {
@@ -86,9 +95,11 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
               let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date())
         else { return }
         // A second delivery of the same request is answered once. The key
-        // is claimed now (a concurrent delivery stops here) and released if
-        // the answer doesn't reach the host, so a redelivery can try again.
-        guard E2ESeenStore.shared.insert(request.replayKey, namespace: "locate") else { return }
+        // is claimed now (a concurrent delivery stops here), marked answered
+        // after the post, and released if the answer doesn't reach the
+        // host; a claim left by a killed extension ages out after
+        // `claimLifetime`. Either way a redelivery can try again.
+        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else { return }
         lock.withLock { pendingReplayKey = request.replayKey }
 
         let precision = config.settings.backgroundPrecision
@@ -101,6 +112,9 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         var batch = LocationBatch(sentAt: Date(), settings: config.settings)
         batch.approximateOnly = approximate || config.approximateOnly
         batch.knownPlaces = config.places
+        // The same place list the app sends, so the host's stays current.
+        // (No coordinates: names, kinds and ids only.)
+        batch.places = config.places
         batch.fix = LocationFixRecord(source: .locate, raw: LocationRawFix(location), area: area)
         batch.locateID = request.id
         guard let body = try? LocationIngest.body(batch, key: key), !Task.isCancelled else { return }
@@ -114,6 +128,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             )
             // Answered: a redelivery of this locate stays a replay.
             lock.withLock { pendingReplayKey = nil }
+            E2ESeenStore.shared.markAnswered(request.replayKey, namespace: "locate")
         } catch {
             // Nothing else to do from here: the app sends when it next runs.
         }

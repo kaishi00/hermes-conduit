@@ -430,6 +430,32 @@ extension NotificationE2ETests {
 
     // MARK: On-demand locate
 
+    func testALocateClaimAgesOutUnlessAnswered() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let store = E2ESeenStore(url: folder.appendingPathComponent("seen.json"))
+        let start = LocationFixtures.at
+        XCTAssertTrue(store.claim("r1", namespace: "locate", ttl: 120, now: start))
+        // Claimed and not answered: held for a while, then free again.
+        XCTAssertFalse(store.claim("r1", namespace: "locate", ttl: 120, now: start.addingTimeInterval(60)))
+        XCTAssertTrue(store.claim("r1", namespace: "locate", ttl: 120, now: start.addingTimeInterval(121)))
+        // Answered: a replay for good.
+        store.markAnswered("r1", namespace: "locate", now: start.addingTimeInterval(122))
+        XCTAssertFalse(store.claim("r1", namespace: "locate", ttl: 120, now: start.addingTimeInterval(400)))
+        // Released after a failed post: free at once.
+        XCTAssertTrue(store.claim("r2", namespace: "locate", ttl: 120, now: start))
+        store.remove("r2", namespace: "locate")
+        XCTAssertTrue(store.claim("r2", namespace: "locate", ttl: 120, now: start.addingTimeInterval(1)))
+    }
+
+    func testTheMonitoredPlacesDigestHoldsNoCoordinates() {
+        let digest = LocationBackgroundMonitor.monitoredDigest([LocationFixtures.home, LocationFixtures.work])
+        XCTAssertEqual(digest.count, 64)
+        XCTAssertFalse(digest.contains("51.5"))
+        XCTAssertNotEqual(digest, LocationBackgroundMonitor.monitoredDigest([LocationFixtures.home]))
+    }
+
     func testAPlaintextLocateIsAnsweredOnlyForTheBoundProfileWhileSharing() throws {
         let payload: [AnyHashable: Any] = [
             "aps": [String: Any](),
