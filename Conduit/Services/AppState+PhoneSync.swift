@@ -98,6 +98,7 @@ extension AppState {
         if let error = await finishPhoneDeletionLeftOnHost(), PhoneSyncPendingDeletion.owed(on: dashboardID) != nil {
             throw error
         }
+        Self.phoneUpdateGeneration += 1
         try await phoneSync.calendarSource.requestAccess(calendar: choices.calendar, reminders: choices.reminders)
         if choices.status { await phoneSync.statusSource.requestMotionAccess() }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
@@ -131,7 +132,9 @@ extension AppState {
         var preferences = choices
         preferences.destination = destination
         guard preferences.sharesAnything else {
-            await turnOffPhoneSync(deleteFromHost: false)
+            // Nothing left shared is the narrowest sharing: like any other
+            // narrowing, what the host holds goes too.
+            await turnOffPhoneSync(deleteFromHost: true)
             return
         }
         phoneSync.savePreferences(preferences)
@@ -143,6 +146,7 @@ extension AppState {
     /// connect to that dashboard deletes it.
     @discardableResult
     func turnOffPhoneSync(deleteFromHost: Bool) async -> Bool {
+        Self.phoneUpdateGeneration += 1
         let destination = phoneSync.preferences.destination
         let deviceID = phoneSync.readStateIfNeeded() ? phoneSync.state.deviceID : nil
         var request: PhoneSyncEngine.Request?
