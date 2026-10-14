@@ -511,8 +511,9 @@ final class PhoneSyncEngine: ObservableObject {
     private func exchange(key: PhoneSyncCrypto.SessionKey, request: Request) async throws {
         let callID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let reporting = state.unreported
-        let request: [String: Any] = ["call_id": callID, "results": reporting.map(\.json)]
-        let plaintext = try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys])
+        let results: [[String: Any]] = reporting.map { $0.json }
+        let payload: [String: Any] = ["call_id": callID, "results": results]
+        let plaintext = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let body = try PhoneSyncCrypto.exchangeEnvelope(plaintext: plaintext, op: "changes", key: key,
                                                         deviceID: state.deviceID, callID: callID)
         let answer = try await request("\(Self.base)/exchange", "POST", body)
