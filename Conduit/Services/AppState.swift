@@ -632,7 +632,10 @@ final class AppState: ObservableObject {
             }
         )
     }()
-    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive }
+    /// A widget action waits out the return-to-app refresh: that refresh
+    /// can drop a socket that died in the background and restore the last
+    /// chat, which would fail a new chat or take over the screen it opened.
+    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive && scenePhaseAttemptID == nil }
     var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
@@ -13737,6 +13740,7 @@ final class AppState: ObservableObject {
         guard scenePhaseAttemptID == id else { return }
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
+        widgetLaunchCoordinator.readinessChanged()
     }
 
     private var turnStateLogValue: String {

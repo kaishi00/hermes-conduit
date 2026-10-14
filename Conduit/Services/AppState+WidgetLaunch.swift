@@ -88,6 +88,7 @@ extension AppState {
               activeProfile == workspace.profile else {
             return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
         }
+        revealChatForWidgetLaunch()
         switch link.action {
         case .open:
             return .handled
@@ -106,5 +107,19 @@ extension AppState {
         case .talk:
             return await openWidgetVoice(workspace: workspace, lease: lease)
         }
+    }
+
+    /// The chat a widget opens has to be what's on screen. The Sessions
+    /// drawer (left open, or put up as the return surface before the link
+    /// arrived) and the chat's own sheets would otherwise cover the new or
+    /// resumed chat, and Talk's call screen would open over a list.
+    private func revealChatForWidgetLaunch() {
+        dismissSidebarDrawer()
+        showModelPicker = false
+        showContextSheet = false
+        showWorkspaceSheet = false
+        showGatewaySheet = false
+        showAgentsSheet = false
+        chatCallTranscript = nil
     }
 }

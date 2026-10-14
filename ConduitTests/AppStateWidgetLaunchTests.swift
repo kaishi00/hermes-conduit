@@ -748,6 +748,34 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, "cold-talk-create-2")
     }
 
+    func testWidgetNewChatClosesTheSessionsDrawerAndSheetsOverTheChat() async throws {
+        let suite = "AppStateWidgetLaunchTests.reveal-chat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c1")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.widgetSessionCreatorOverride = { _, _ in ("widget-reveal", "widget-reveal", "default") }
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.widgetSettledCatalogOwner = workspace
+        _ = appState.handleScenePhase(.active)
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        // Left open when the app went away, or put up as the Sessions
+        // return surface before the widget's link arrived.
+        appState.showSidebar = true
+        appState.showModelPicker = true
+        let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+
+        appState.widgetLaunchCoordinator.receive(newChat)
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "widget-reveal")
+        XCTAssertFalse(appState.showSidebar, "the new chat must not open behind the Sessions drawer")
+        XCTAssertFalse(appState.showModelPicker)
+    }
+
     private func session(_ id: String, profile: String? = "default") -> SessionSummary {
         SessionSummary(
             id: id,

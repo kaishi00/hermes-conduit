@@ -84,6 +84,10 @@ final class WidgetLaunchCoordinator {
         let deadline: Duration
         var stage: Stage = .prepare
         var inFlight = false
+        /// Readiness changed while a step was running. That step read the
+        /// state before the change, so a step that defers runs once more
+        /// instead of waiting for a signal that already came.
+        var readinessChangedInFlight = false
         var task: Task<Void, Never>?
         var expiryTask: Task<Void, Never>?
 
@@ -174,6 +178,7 @@ final class WidgetLaunchCoordinator {
             expire(request)
             return
         }
+        if request.inFlight { request.readinessChangedInFlight = true }
         advance(request)
     }
 
@@ -217,6 +222,7 @@ final class WidgetLaunchCoordinator {
         let lease = lease(for: request)
         guard lease.isCurrent else { expire(request); return }
         request.inFlight = true
+        request.readinessChangedInFlight = false
         request.task = Task { @MainActor [weak self, weak request] in
             guard let self, let request else { return }
             let outcome: WidgetLaunchOutcome
@@ -227,8 +233,7 @@ final class WidgetLaunchCoordinator {
                 case .handled:
                     request.stage = .perform
                 case .deferred:
-                    request.inFlight = false
-                    request.task = nil
+                    self.settleDeferred(request)
                     return
                 case .failed:
                     self.terminate(request, outcome: outcome)
@@ -240,12 +245,19 @@ final class WidgetLaunchCoordinator {
             guard self.isCurrent(request), lease.isCurrent else { return }
             switch performed {
             case .deferred:
-                request.inFlight = false
-                request.task = nil
+                self.settleDeferred(request)
             case .handled, .failed:
                 self.terminate(request, outcome: performed)
             }
         }
+    }
+
+    private func settleDeferred(_ request: Request) {
+        request.inFlight = false
+        request.task = nil
+        guard request.readinessChangedInFlight else { return }
+        request.readinessChangedInFlight = false
+        advance(request)
     }
 
     private func isCurrent(_ request: Request) -> Bool {

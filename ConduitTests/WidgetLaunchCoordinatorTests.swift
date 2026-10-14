@@ -147,6 +147,39 @@ final class WidgetLaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(performCount, 1)
     }
 
+    func testReadinessChangeDuringDeferringStepIsNotLost() async throws {
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        let entered = AsyncLaunchGate()
+        let release = AsyncLaunchGate()
+        let finished = AsyncLaunchGate()
+        var prepareCount = 0
+        var performCount = 0
+        let coordinator = WidgetLaunchCoordinator(
+            now: { .zero },
+            prepare: { _, _ in
+                prepareCount += 1
+                if prepareCount == 1 {
+                    // Reads stale state, then suspends while readiness changes.
+                    await entered.signal()
+                    await release.wait()
+                    return .deferred
+                }
+                return .handled
+            },
+            perform: { _, _ in performCount += 1; return .handled },
+            finish: { _ in Task { await finished.signal() } }
+        )
+
+        coordinator.receive(link)
+        await entered.wait()
+        coordinator.readinessChanged()
+        await release.signal()
+        await finished.wait()
+
+        XCTAssertEqual(prepareCount, 2, "the readiness signal that arrived mid-step re-runs the deferred step")
+        XCTAssertEqual(performCount, 1)
+    }
+
     func testDeferredSameLinkRetapStartsFreshRequestAndDeadline() async throws {
         let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
         let firstDeferred = AsyncLaunchGate()
