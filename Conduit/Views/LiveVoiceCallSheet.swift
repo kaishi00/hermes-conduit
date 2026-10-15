@@ -57,6 +57,10 @@ struct LiveVoiceCallSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
     @State private var showsTranscript = false
+    /// V2 draws the call as level bars and large captions instead of the orb.
+    @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
+    @ScaledMetric(relativeTo: .title) private var currentLineSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .title3) private var previousLineSize: CGFloat = 19
     @State private var selection: Selection?
     /// The job chat to open once the result sheet has gone, so the call
     /// sheet isn't dismissed while its child is still animating out.
@@ -90,6 +94,8 @@ struct LiveVoiceCallSheet: View {
                 header
                 if showsTranscript {
                     transcriptList
+                } else if usesV2 {
+                    v2Stage
                 } else if dynamicTypeSize >= .xxLarge {
                     // Large text can outgrow a small screen.
                     ScrollView { stage }
@@ -124,6 +130,11 @@ struct LiveVoiceCallSheet: View {
         }
         .onReceive(jobs.$screenCards) { cards in
             showNewScreenCard(cards)
+        }
+        // VoiceOver hears the call change state (listening, speaking,
+        // muted), not every status word in between.
+        .onChange(of: phase) { _, _ in
+            AccessibilityNotification.Announcement(statusText).post()
         }
     }
 
@@ -186,13 +197,23 @@ struct LiveVoiceCallSheet: View {
             .accessibilityLabel(isMinimisable ? Text("Minimise call") : Text("Close"))
 
             VStack(spacing: 2) {
-                Text(verbatim: title)
-                    .font(.headline)
-                    .lineLimit(1)
+                if usesV2 {
+                    V2CallHeaderTitle(
+                        jobs: jobs,
+                        engine: title,
+                        profile: appState.profileDisplayName(appState.activeProfile)
+                    )
+                } else {
+                    Text(verbatim: title)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
                 if let billingBadge {
                     LiveVoiceBillingBadge(billing: billingBadge)
                 }
-                LiveVoiceCallThreadLabel(jobs: jobs)
+                if !usesV2 {
+                    LiveVoiceCallThreadLabel(jobs: jobs)
+                }
             }
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
@@ -239,6 +260,63 @@ struct LiveVoiceCallSheet: View {
             captions
         }
         .transition(.opacity)
+    }
+
+    /// V2: the last two lines large at the top, thirty level bars in the
+    /// call's colour over a breathing glow, and the state under them.
+    private var v2Stage: some View {
+        VStack(spacing: 0) {
+            v2Captions
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+            Spacer(minLength: 16)
+            V2CallLevelBars(phase: phase)
+                .frame(height: 96)
+                .padding(.horizontal, 28)
+                .accessibilityHidden(true)
+            VStack(spacing: 6) {
+                Text(statusText)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                if let note {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 16)
+            LiveVoiceQuickHint(jobs: jobs)
+                .padding(.horizontal, 24)
+            LiveVoiceCallJobStrip(jobs: jobs, onSelectJob: selectJob, onSelectScreen: selectScreen)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+        }
+        .transition(.opacity)
+    }
+
+    /// The line before at 19 pt, faded; the line being said at 28 pt.
+    private var v2Captions: some View {
+        let lines = Self.captionLines(from: transcript)
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(lines.enumerated()), id: \.element.id) { index, entry in
+                let isLatest = index == lines.count - 1
+                Text(entry.text)
+                    .font(isLatest ? .system(size: currentLineSize, weight: .semibold) : .system(size: previousLineSize))
+                    .foregroundStyle(Color.primary.opacity(isLatest ? 1 : 0.42))
+                    .lineLimit(isLatest ? 5 : 2)
+                    .truncationMode(.head)
+                    .minimumScaleFactor(0.6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(label(for: entry))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .bottomLeading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: lines.map(\.id))
     }
 
     private var captions: some View {
@@ -743,5 +821,122 @@ struct LiveVoiceOrb: View {
         }
         .opacity(motion.opacity)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: phase)
+    }
+}
+
+/// V2's call header: the chat the call works in (or "Voice call"), and
+/// under it the profile, the engine and how long the call has run.
+struct V2CallHeaderTitle: View {
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+    let engine: String
+    let profile: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(verbatim: jobs.liveThread?.title ?? AppLocalization.string("Voice call"))
+                .font(.headline)
+                .lineLimit(1)
+            // Ticks once a second while the call runs; nothing redraws
+            // before it starts or after it ends.
+            TimelineView(.animation(minimumInterval: 1, paused: jobs.liveCallStartedAt == nil)) { context in
+                Text(verbatim: subtitle(at: context.date))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func subtitle(at now: Date) -> String {
+        var parts = [profile, engine]
+        if let started = jobs.liveCallStartedAt {
+            parts.append(Self.clock(max(0, now.timeIntervalSince(started))))
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// 0:12, 4:05, 1:02:09.
+    static func clock(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
+            : String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+/// V2's call level: thirty thin bars over a soft glow, coloured by state
+/// (blue listening, gold speaking, grey muted, red failed). No engine feeds
+/// a common audio level, so the bars move with the phase, like the orb did.
+/// They hold still under Reduce Motion, with the orb's motion setting off,
+/// and when the phone runs hot.
+struct V2CallLevelBars: View {
+    let phase: LiveVoiceCallPhase
+    /// Five for the minimised bar's small version.
+    var barCount = 30
+    var glows = true
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(LiveVoiceOrbPower.preferenceKey) private var motionEnabled = true
+    @ObservedObject private var power = DevicePowerState.shared
+
+    private var tint: Color {
+        switch phase {
+        case .connecting, .listening: return .conduitAura
+        case .speaking: return .conduitAccent
+        case .idle, .muted, .ending: return Color(.systemGray)
+        case .failed: return .red
+        }
+    }
+
+    private var moves: Bool {
+        let motion = LiveVoiceOrb.motion(for: phase)
+        return motion.amplitude > 0 && LiveVoiceOrbPower.animates(
+            requested: true,
+            enabled: motionEnabled,
+            reduceMotion: reduceMotion,
+            thermalState: power.thermalState
+        )
+    }
+
+    var body: some View {
+        let motion = LiveVoiceOrb.motion(for: phase)
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !moves)) { context in
+            let t = moves ? context.date.timeIntervalSinceReferenceDate : 0
+            GeometryReader { proxy in
+                let breath = moves ? 0.5 + 0.5 * sin(t * 1.3) : 0.5
+                ZStack {
+                    if glows {
+                        Ellipse()
+                            .fill(tint.opacity(0.18 + 0.14 * breath))
+                            .blur(radius: 28)
+                            .frame(width: proxy.size.width * 0.9, height: proxy.size.height * 0.8)
+                    }
+                    HStack(alignment: .center, spacing: barCount > 10 ? 3 : 2) {
+                        ForEach(0..<barCount, id: \.self) { index in
+                            Capsule()
+                                .fill(tint)
+                                .frame(height: proxy.size.height * level(index, time: t, motion: motion))
+                        }
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+        }
+        .opacity(motion.opacity)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: phase)
+    }
+
+    /// A bar's height, 0...1: an arch across the row (taller in the
+    /// middle) that ripples faster and higher while the assistant speaks.
+    private func level(_ index: Int, time: TimeInterval, motion: LiveVoiceOrb.Motion) -> CGFloat {
+        let position = Double(index) / Double(max(1, barCount - 1))
+        let arch = 0.25 + 0.5 * sin(position * .pi)
+        guard moves else { return CGFloat(phase == .muted || phase == .idle ? 0.08 : arch * 0.6) }
+        let swing = motion.amplitude * 8
+        let ripple = 0.6 * sin(time * motion.speed * 2 + position * 9) + 0.4 * sin(time * motion.speed * 3.1 + position * 23)
+        return CGFloat(max(0.06, min(1, arch + ripple * swing * arch)))
     }
 }

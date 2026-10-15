@@ -444,6 +444,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
+    /// When the running call began, for the call screen's clock.
+    @Published private(set) var liveCallStartedAt: Date?
     /// What live calls put on screen, newest last.
     @Published private(set) var screenCards: [VoiceScreenCard] = []
     /// Whether the running call holds each new request for the user's OK
@@ -498,6 +500,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if callbackCallID != nil { finishCallbacks() }
         let callID = UUID()
         liveCallID = callID
+        liveCallStartedAt = Date()
         self.asksBeforeSending = asksBeforeSending
         callbackCallID = callID
         callbackLater = .none
@@ -1810,6 +1813,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         noticesInFlight.removeAll()
         liveThread = nil
         liveCallID = nil
+        liveCallStartedAt = nil
         callOpening = nil
         // Watches the host holds lapse there and call as usual.
         callbackCallID = nil

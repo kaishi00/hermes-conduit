@@ -642,6 +642,13 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: Array(lines.prefix(1))).map(\.text), ["one"])
     }
 
+    func testTheV2CallClockShowsMinutesThenHours() {
+        XCTAssertEqual(V2CallHeaderTitle.clock(0), "0:00")
+        XCTAssertEqual(V2CallHeaderTitle.clock(12.9), "0:12")
+        XCTAssertEqual(V2CallHeaderTitle.clock(245), "4:05")
+        XCTAssertEqual(V2CallHeaderTitle.clock(3729), "1:02:09")
+    }
+
     func testTheDictateButtonStartsStopsAndCallsOffAStart() {
         XCTAssertEqual(ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: true), .start)
         XCTAssertEqual(
