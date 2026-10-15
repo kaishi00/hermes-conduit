@@ -14,7 +14,7 @@
 import SwiftUI
 
 /// The shell's four destinations, plus the voice button's slot.
-enum V2Tab: String, CaseIterable, Identifiable, Hashable {
+enum V2Tab: String, Identifiable, Hashable {
     case chats
     case tasks
     case bots

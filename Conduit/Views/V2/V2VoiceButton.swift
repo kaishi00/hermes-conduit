@@ -24,6 +24,8 @@ struct V2VoiceButton: View {
     /// Picks of iOS 26's voice tab slot under this button, which act as a tap.
     var slotPicks = 0
     @EnvironmentObject private var appState: AppState
+    /// A start in flight: a second tap doesn't make a second chat or call.
+    @State private var isStarting = false
 
     static let diameter: CGFloat = 56
 
@@ -34,7 +36,7 @@ struct V2VoiceButton: View {
     private var needsSetup: Bool { !appState.showsComposerVoiceButton }
 
     private var canAct: Bool {
-        returnsToCall || needsSetup || (appState.canStartPhoneVoiceConversation && !appState.isVoiceInUse)
+        returnsToCall || needsSetup || (!isStarting && appState.canStartPhoneVoiceConversation && !appState.isVoiceInUse)
     }
 
     /// The three most recently active conversations of this profile.
@@ -124,11 +126,14 @@ struct V2VoiceButton: View {
             appState.settingsLinkRequest = .voice
             return
         }
+        guard !isStarting else { return }
+        isStarting = true
         switch context {
         case .home:
             // A call of its own, like the old drawer's New voice call. Its
             // screen covers the tabs; the list stays where it was.
             Task {
+                defer { isStarting = false }
                 _ = await appState.openVoiceConversation(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: true, source: .newCall)
                 )
@@ -137,6 +142,7 @@ struct V2VoiceButton: View {
             // A new chat in the project's folder, then voice in it.
             let previous = appState.activeSessionId
             Task {
+                defer { isStarting = false }
                 await appState.createNewSession(cwd: project.primaryPath)
                 guard appState.activeSessionId != previous else { return }
                 _ = await appState.openVoiceConversation(
@@ -148,8 +154,11 @@ struct V2VoiceButton: View {
 
     /// Opens a recent conversation and talks in it.
     private func talk(in sessionID: String) {
+        guard !isStarting else { return }
         Haptics.medium()
+        isStarting = true
         Task {
+            defer { isStarting = false }
             guard await appState.openSession(sessionID) else { return }
             _ = await appState.openVoiceConversation(
                 PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
