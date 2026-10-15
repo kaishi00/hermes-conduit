@@ -317,4 +317,10 @@ extension ChatReadStateTests {
         _ = try await appState.sendSessionMutation("abc", body: ["pinned": false], profile: "default", using: olderHost)
         XCTAssertEqual(methods, ["GET", "PATCH", "PATCH"])
     }
+
+    func testOnlyAFrameworkNotFoundMeansNoSnapshotRoute() {
+        XCTAssertTrue(SessionMutationIdentity.isMissingRoute(#"{"detail":"Not Found"}"#))
+        XCTAssertFalse(SessionMutationIdentity.isMissingRoute("not_found"))
+        XCTAssertFalse(SessionMutationIdentity.isMissingRoute("Session not found"))
+    }
 }

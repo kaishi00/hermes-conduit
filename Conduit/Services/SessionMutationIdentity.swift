@@ -49,6 +49,13 @@ enum SessionMutationIdentity {
         return retryableConflicts.contains(where: { detail.localizedCaseInsensitiveContains($0) })
     }
 
+    /// A 404 that means the host has no snapshot route (the framework's bare
+    /// "Not Found"), not that this one session is gone (Hermes' not_found).
+    static func isMissingRoute(_ detail: String) -> Bool {
+        let lowered = detail.lowercased()
+        return lowered.contains("not found") && !lowered.contains("session")
+    }
+
     /// Hermes' session-write conflicts, retried once or shown as "busy".
     static let retryableConflicts = ["revision_conflict", "stale_generation", "mutation_identity_required"]
 

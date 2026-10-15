@@ -15242,17 +15242,19 @@ final class AppState: ObservableObject {
         _ sessionID: String,
         body: [String: Any]?,
         profile: String,
+        host: String? = nil,
         using request: @escaping (String, String, [String: Any]?) async throws -> [String: Any]
     ) async throws -> [String: Any] {
         let path = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))", profile: profile)
         let snapshotPath = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))/mutation-snapshot", profile: profile)
-        let routeKey = "\(dashboardTicketBridge?.baseURL ?? "")|\(profile)"
+        let routeKey = "\(host ?? dashboardTicketBridge?.baseURL ?? "")|\(profile)"
         let attempt: () async throws -> [String: Any] = {
             var snapshot: [String: Any] = [:]
             if !self.hostsWithoutMutationSnapshot.contains(routeKey) {
                 do {
                     snapshot = try await request(snapshotPath, "GET", nil)
-                } catch DashboardTicketBridgeError.http(status: 404, detail: _) {
+                } catch DashboardTicketBridgeError.http(status: 404, detail: let detail)
+                            where SessionMutationIdentity.isMissingRoute(detail) {
                     self.hostsWithoutMutationSnapshot.insert(routeKey)
                 } catch {
                     // A failed read sends the bare write; a refusal retries.
@@ -15282,7 +15284,7 @@ final class AppState: ObservableObject {
         profile: String,
         bridge: DashboardTicketBridge
     ) async throws -> [String: Any] {
-        try await sendSessionMutation(sessionID, body: body, profile: profile) { path, method, body in
+        try await sendSessionMutation(sessionID, body: body, profile: profile, host: bridge.baseURL) { path, method, body in
             try await bridge.requestJSON(path: path, method: method, body: body)
         }
     }
