@@ -1466,6 +1466,8 @@ private struct ChatReturnBehaviorSettings: View {
     let persistSurface: (ChatReturnSurface) -> Void
     @State private var behavior: ChatResumeBehavior
     @State private var surface: ChatReturnSurface
+    /// V2 always opens on the Chats list, so it has no "Open to" choice.
+    @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
 
     init(
         initialBehavior: ChatResumeBehavior,
@@ -1488,24 +1490,26 @@ private struct ChatReturnBehaviorSettings: View {
             Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Open to")
-                    .font(.subheadline.weight(.semibold))
-                Picker("Open to", selection: Binding(get: { surface }, set: chooseSurface)) {
-                    ForEach(ChatReturnSurface.allCases, id: \.self) { choice in
-                        Text(choice.title).tag(choice)
+            if !usesV2 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Open to")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("Open to", selection: Binding(get: { surface }, set: chooseSurface)) {
+                        ForEach(ChatReturnSurface.allCases, id: \.self) { choice in
+                            Text(choice.title).tag(choice)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityHint(
-                    surface == .sessions
-                        ? AppLocalization.string("Conduit opens to the session list. Used if you dismiss it without choosing another conversation.")
-                        : AppLocalization.string("Conduit opens to your conversation.")
-                )
-                if surface == .sessions {
-                    Text("Used if you dismiss the session list without choosing another conversation.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    .pickerStyle(.segmented)
+                    .accessibilityHint(
+                        surface == .sessions
+                            ? AppLocalization.string("Conduit opens to the session list. Used if you dismiss it without choosing another conversation.")
+                            : AppLocalization.string("Conduit opens to your conversation.")
+                    )
+                    if surface == .sessions {
+                        Text("Used if you dismiss the session list without choosing another conversation.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 8) {

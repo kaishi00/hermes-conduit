@@ -115,11 +115,10 @@ struct V2Shell: View {
     /// top bar), so the voice button acts as if tapped.
     @State private var voiceSlotPicks = 0
 
-    /// The return setting picks the first screen: the last chat, or the
-    /// sessions list (a notification or widget about to open a chat opens it
-    /// itself). The chat starts in the Chats path rather than being pushed
-    /// once the shell is up: a push during the launch's first layout, even
-    /// without animation, left the app never idle.
+    /// The app opens on the Chats list. A caller that wants a chat first
+    /// seeds it here rather than pushing it once the shell is up: a push
+    /// during the launch's first layout, even without animation, left the
+    /// app never idle.
     init(opensConversation: Bool = false) {
         _chatsPath = State(initialValue: opensConversation ? [.conversation] : [])
     }

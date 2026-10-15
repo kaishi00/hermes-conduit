@@ -8,8 +8,8 @@
 import XCTest
 
 extension XCUIApplication {
-    /// V2 opens the last conversation at launch with the tab bar hidden; Back
-    /// returns to Chats, where the tab bar and the profile strip live.
+    /// V2 opens on Chats, where the tab bar and the profile strip live; if a
+    /// conversation is showing instead, Back returns there.
     func returnToV2Tabs(revealing element: XCUIElement) {
         if element.waitForExistence(timeout: 5) { return }
         let candidates = [

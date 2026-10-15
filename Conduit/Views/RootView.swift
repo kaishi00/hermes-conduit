@@ -319,8 +319,9 @@ struct MainView: View {
     @ViewBuilder
     private var sidebarLayoutContent: some View {
         if useV2Shell {
-            V2Shell(opensConversation: appState.chatReturnSurface == .conversation
-                && !appState.hasPendingExplicitNavigation)
+            // V2 always opens on the Chats list (Eric, 2026-10-15); a chat
+            // a notification or widget opens is pushed over it.
+            V2Shell()
         } else if isPersistentSidebarActive {
             HStack(spacing: 0) {
                 SidebarView(
