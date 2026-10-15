@@ -22606,6 +22606,8 @@ final class AppState: ObservableObject {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
                   self.client === client else { return }
+            // A view's load cancelled by leaving it didn't fail.
+            if error is CancellationError || Task.isCancelled { return }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
                 return

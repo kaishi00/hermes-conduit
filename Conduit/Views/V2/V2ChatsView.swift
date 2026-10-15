@@ -838,7 +838,7 @@ struct V2ChatsView: View {
 
             // Before the gateway connects the list hasn't loaded yet, which
             // isn't "no projects".
-            if (appState.projectsLoading || !appState.isConnected) && displayedProjects.isEmpty {
+            if (appState.projectsLoading || !appState.isConnected) && displayedProjects.isEmpty && !isSearching {
                 ProgressView(AppLocalization.string("Loading projects…"))
                     .frame(maxWidth: .infinity, minHeight: 140)
                     .listRowBackground(Color.clear)
