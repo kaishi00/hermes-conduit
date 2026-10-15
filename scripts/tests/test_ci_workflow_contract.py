@@ -161,12 +161,21 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn("head_ref", text, f"{job}: a PR's build must never be saved")
             self.assertIn(saver, text, job)
             self.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, job)
+            # The key still names the image, and the image-specific prefix is
+            # tried before the any-image one.
+            self.assertIn("key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}", text, job)
+            self.assertIn("restore-keys: |\n"
+                          "            ${{ steps.cache-key.outputs.prefix }}-\n"
+                          "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", text, job)
         with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
             build = fh.read()
         self.assertIn("ci-normalize-mtimes.py", build)
         self.assertIn("IgnoreFileSystemDeviceInodeChanges", build)
         self.assertIn('[ "${GITHUB_ACTIONS:-}" = "true" ]', build,
                       "never restamp a developer checkout or change their Xcode defaults")
+        self.assertIn('[ -d "$DERIVED_DATA_PATH/SourcePackages/checkouts" ] || return 0', build,
+                      "-skipPackageUpdates only when the restored cache holds the checkout")
+        self.assertIn('${package_flag:+"$package_flag"}', build)
 
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()

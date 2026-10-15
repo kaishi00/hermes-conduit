@@ -184,17 +184,19 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # The workflow always sets UNIT_BATCH_SIZE; the default exists so a
         # future edit that forgets it degrades to the shipped batch size,
         # not to `set -u` and not to an unbounded invocation.
-        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 72))
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 92))
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertEqual(len(self._invocations()), 3, "72 classes / 35 per batch")
-        self.assertIn("batches of at most 35", proc.stdout)
+        self.assertEqual(len(self._invocations()), 3, "92 classes / at most 45 per batch")
+        self.assertIn("in 3 batch(es) of at most 31 (cap 45)", proc.stdout)
 
-    def test_unit_smoke_keeps_the_remainder_batch(self):
+    def test_unit_smoke_splits_the_remainder_evenly(self):
+        # Every invocation pays the same fixed cost, so the fewest batches the
+        # cap allows, of even size, instead of full batches and a small rest.
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 20),
                               UNIT_BATCH_SIZE=8)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         sized = [i.count("-only-testing:ConduitTests/") for i in self._invocations()]
-        self.assertEqual(sized, [8, 8, 4], sized)
+        self.assertEqual(sized, [7, 7, 6], sized)
 
     def test_unit_smoke_runs_a_single_class_in_one_batch(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES="OnlyOneTests",
@@ -236,7 +238,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
                               UNIT_BATCH_SIZE="08")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(len(self._invocations()), 1)
-        self.assertIn("batches of at most 8", proc.stdout)
+        self.assertIn("batch(es) of at most 8 (cap 8)", proc.stdout)
 
     # --- UI smoke: one invocation, same guards ------------------------------
 

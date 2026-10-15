@@ -6,7 +6,7 @@ into TIMELINE ("<elapsed seconds> <line count>" per line). A stretch where the
 count does not move is time xcodebuild spent without finishing anything:
 resolving packages, computing the build graph, waiting on the simulator
 service, or one long task. Each stretch is printed with the log line it
-followed, longest first.
+followed and the line that ended it, longest first.
 
 Usage: ci-build-quiet-stretches.py TIMELINE LOG [--top N] [--min-seconds S]
 """
@@ -43,16 +43,21 @@ def quiet_stretches(samples):
     return stretches
 
 
+def _line(log_lines, number, missing):
+    """Line `number` (1-based) of the log, shortened, or `missing`."""
+    if number < 1 or number > len(log_lines):
+        return missing
+    return log_lines[number - 1].strip()[:140] or "(blank line)"
+
+
 def describe(stretches, log_lines, top=6, min_seconds=10):
     rows = []
     for seconds, start, count in sorted(stretches, key=lambda s: -s[0])[:top]:
         if seconds < min_seconds:
             break
-        if count == 0 or count > len(log_lines):
-            after = "(no output yet)"
-        else:
-            after = log_lines[count - 1].strip()[:140] or "(blank line)"
-        rows.append(f"{seconds}s from {start}s, after: {after}")
+        after = _line(log_lines, count, "(no output yet)")
+        following = _line(log_lines, count + 1, "(end of log)")
+        rows.append(f"{seconds}s from {start}s, after: {after}, next: {following}")
     return rows
 
 

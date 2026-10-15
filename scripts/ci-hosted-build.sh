@@ -9,17 +9,28 @@ mkdir -p ci-lane
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
 export DERIVED_DATA_PATH
 
-bash "$SCRIPT_DIR/ci-prepare-smoke.sh" > ci-lane/prepare.log 2>&1 &
+step_start=$(date +%s)
+rm -f ci-lane/prepare.end
+( rc=0
+  bash "$SCRIPT_DIR/ci-prepare-smoke.sh" || rc=$?
+  date +%s > ci-lane/prepare.end
+  exit "$rc" ) > ci-lane/prepare.log 2>&1 &
 prepare_pid=$!
 
 build_rc=0
 bash "$SCRIPT_DIR/ci-build-for-testing.sh" || build_rc=$?
+build_s=$(( $(date +%s) - step_start ))
 
 prepare_rc=0
 wait "$prepare_pid" || prepare_rc=$?
 echo "::group::simulator preparation (ran during the build)"
 cat ci-lane/prepare.log || true
 echo "::endgroup::"
+# Which side of the pair the step waited on: once builds are incremental, the
+# simulator boot can be the longer one.
+if prepare_end=$(cat ci-lane/prepare.end 2>/dev/null) && [ -n "$prepare_end" ]; then
+  echo "::notice title=Build ${build_s}s and simulator $(( prepare_end - step_start ))s (side by side)::the step took $(( $(date +%s) - step_start ))s"
+fi
 
 if [ "$build_rc" -ne 0 ]; then
   echo "::error::build-for-testing failed (exit $build_rc)"

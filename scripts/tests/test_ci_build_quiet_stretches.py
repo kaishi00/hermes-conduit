@@ -19,9 +19,9 @@ class QuietStretchTests(unittest.TestCase):
         log = ["Resolve Package Graph", "Computing build graph", "Ld Conduit"]
         stretches = [(12, 0, 0), (95, 12, 2), (30, 107, 3), (4, 137, 3)]
         self.assertEqual(
-            ["95s from 12s, after: Computing build graph",
-             "30s from 107s, after: Ld Conduit",
-             "12s from 0s, after: (no output yet)"],
+            ["95s from 12s, after: Computing build graph, next: Ld Conduit",
+             "30s from 107s, after: Ld Conduit, next: (end of log)",
+             "12s from 0s, after: (no output yet), next: Resolve Package Graph"],
             quiet.describe(stretches, log))
 
     def test_end_to_end_skips_malformed_samples(self):
@@ -37,7 +37,7 @@ class QuietStretchTests(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 quiet.main([str(timeline), str(log)])
             rows = out.getvalue().splitlines()
-            self.assertEqual(["30s from 2s, after: first"], rows)
+            self.assertEqual(["30s from 2s, after: first, next: second"], rows)
 
 
 if __name__ == "__main__":

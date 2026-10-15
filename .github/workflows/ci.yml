@@ -21,8 +21,9 @@ name: CI
 #   unit       (macos)   one job per unit shard. Each job builds its own test
 #                        products while its simulator boots in the background,
 #                        then runs its classes as sequential xcodebuild batches
-#                        of at most $UNIT_BATCH_SIZE classes, continuing past a
-#                        failed batch so one failure never hides the rest.
+#                        (as few as $UNIT_BATCH_SIZE allows, split evenly),
+#                        continuing past a failed batch so one failure never
+#                        hides the rest.
 #   ui-smoke   (macos)   the curated UI classes, one invocation, same build.
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
 #
@@ -202,9 +203,9 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Pick the build cache
-        # DerivedData from the newest main build of the same project, Xcode
-        # and runner image, so ci-build-for-testing.sh recompiles only what
-        # changed since. A new Xcode or runner image starts clean.
+        # DerivedData from the newest main build of the same project and
+        # Xcode (the same runner image preferred), so ci-build-for-testing.sh
+        # recompiles only what changed since. A new Xcode starts clean.
         id: cache-key
         env:
           SPEC: project-tests.yml
@@ -217,6 +218,7 @@ jobs:
           echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
 
       - name: Restore the build cache
         id: cache
@@ -226,7 +228,11 @@ jobs:
             ci-derived-data
             !ci-derived-data/Logs
           key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.cache-key.outputs.prefix }}-
+          # Same runner image first; while GitHub rolls out a new image, any
+          # build from the same Xcode (a mismatch only rebuilds more).
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -249,11 +255,14 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's unit classes
-        # The shard's classes run as SEQUENTIAL batches of at most
-        # $UNIT_BATCH_SIZE classes, each a fresh xcodebuild on the same booted
-        # simulator. A failing batch does not stop the shard: every batch runs,
-        # the failed ones are listed, and the job fails at the end. No native
-        # flake retry - a genuine assertion must fail the run.
+        # The shard's classes run as SEQUENTIAL batches, each a fresh
+        # xcodebuild on the same booted simulator: the fewest batches of at
+        # most $UNIT_BATCH_SIZE classes, split evenly. Each invocation spends
+        # 40-100 s before its first test (2026-10-15), so a small leftover
+        # batch is mostly overhead. A failing batch does not stop the shard:
+        # every batch runs, the failed ones are listed, and the job fails at
+        # the end. No native flake retry - a genuine assertion must fail the
+        # run.
         #
         # -test-timeouts-enabled bounds a hung test: XCTest kills it after the
         # allowance and reports it, instead of the job burning its ceiling.
@@ -264,7 +273,7 @@ jobs:
         # runs to the job ceiling and reads as "cancelled".
         env:
           UNIT_CLASSES: "${{ matrix.classes }}"
-          UNIT_BATCH_SIZE: "35"
+          UNIT_BATCH_SIZE: "45"
           UNIT_TEST_ALLOWANCE_S: "180"
         run: |
           set -euo pipefail
@@ -281,7 +290,7 @@ jobs:
           IFS=',' read -r -a CLASSES <<< "$UNIT_CLASSES"
           # Default only when UNSET: an explicitly empty value is malformed, not
           # a request for the default.
-          UNIT_BATCH_SIZE="${UNIT_BATCH_SIZE-35}"
+          UNIT_BATCH_SIZE="${UNIT_BATCH_SIZE-45}"
           case "$UNIT_BATCH_SIZE" in
             ''|*[!0-9]*)
               echo "::error::UNIT_BATCH_SIZE must be a positive integer, got '$UNIT_BATCH_SIZE'"
@@ -294,7 +303,9 @@ jobs:
             exit 1
           fi
           UNIT_BATCH_SIZE=$((10#$UNIT_BATCH_SIZE))
-          echo "unit shard: ${#CLASSES[@]} classes, batches of at most $UNIT_BATCH_SIZE"
+          batches=$(( (${#CLASSES[@]} + UNIT_BATCH_SIZE - 1) / UNIT_BATCH_SIZE ))
+          per_batch=$(( (${#CLASSES[@]} + batches - 1) / batches ))
+          echo "unit shard: ${#CLASSES[@]} classes in $batches batch(es) of at most $per_batch (cap $UNIT_BATCH_SIZE)"
           printf '### Unit shard classes (%s)\n\n`%s`\n' "${#CLASSES[@]}" "$UNIT_CLASSES" \
             >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
@@ -330,7 +341,7 @@ jobs:
           group=()
           for cls in "${CLASSES[@]}"; do
             group+=("$cls")
-            if [ "${#group[@]}" -ge "$UNIT_BATCH_SIZE" ]; then
+            if [ "${#group[@]}" -ge "$per_batch" ]; then
               batch=$((batch + 1))
               run_batch "$batch" "${group[@]}"
               group=()
@@ -382,9 +393,9 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Pick the build cache
-        # DerivedData from the newest main build of the same project, Xcode
-        # and runner image, so ci-build-for-testing.sh recompiles only what
-        # changed since. A new Xcode or runner image starts clean.
+        # DerivedData from the newest main build of the same project and
+        # Xcode (the same runner image preferred), so ci-build-for-testing.sh
+        # recompiles only what changed since. A new Xcode starts clean.
         id: cache-key
         env:
           SPEC: ${{ needs.plan.outputs.ui-spec }}
@@ -397,6 +408,7 @@ jobs:
           echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
 
       - name: Restore the build cache
         id: cache
@@ -406,7 +418,11 @@ jobs:
             ci-derived-data
             !ci-derived-data/Logs
           key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.cache-key.outputs.prefix }}-
+          # Same runner image first; while GitHub rolls out a new image, any
+          # build from the same Xcode (a mismatch only rebuilds more).
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
 
       - name: Install xcodegen
         run: brew install xcodegen

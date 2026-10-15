@@ -79,7 +79,26 @@ if [ -d "$DERIVED_DATA_PATH/Build/Intermediates.noindex" ]; then
 fi
 echo "build-for-testing: $build_kind build"
 
+# Resolving the WebRTC package took 116 of a 139 s incremental build
+# (2026-10-15), with its checkout already in the restored DerivedData. With
+# a checkout present, -skipPackageUpdates resolves from it instead of the
+# network. A new pinned version the checkout lacks fails the build, and the
+# clean retry below resolves it from scratch.
+skip_package_updates() {
+  [ -d "$DERIVED_DATA_PATH/SourcePackages/checkouts" ] || return 0
+  local usage
+  usage=$(xcodebuild -help 2>&1 || true)
+  case "$usage" in
+    *-skipPackageUpdates*) echo "-skipPackageUpdates" ;;
+  esac
+}
+
 run_build() {
+  local package_flag
+  package_flag=$(skip_package_updates)
+  if [ -n "$package_flag" ]; then
+    echo "build-for-testing: resolving packages from the restored checkout ($package_flag)"
+  fi
   run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   build-for-testing \
   -project "$PROJECT" \
@@ -87,6 +106,7 @@ run_build() {
   -destination "$DESTINATION" \
   -configuration Debug \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  ${package_flag:+"$package_flag"} \
   -enableCodeCoverage NO \
   -showBuildTimingSummary \
   COMPILER_INDEX_STORE_ENABLE=NO \

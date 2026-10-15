@@ -45,36 +45,52 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   its DerivedData to the Actions cache after the tests (unit shard 1 the
   app-only build, UI smoke the full app), keyed by project kind, Xcode build
   and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`). Every test job
-  restores the newest matching entry before building, so a PR recompiles only
+  restores the newest matching entry before building (from the same runner
+  image if there is one, otherwise from any image with the same Xcode build,
+  which happens while GitHub rolls out a new image), so a PR recompiles only
   what it changed. Xcode trusts a restored build only when each input's file
   info matches exactly, and a fresh checkout stamps every file with the clone
   time, so `ci-build-for-testing.sh` first gives every tracked file (and the
   generated project) a timestamp derived from its content
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
-  no error in a source file is retried once from scratch. A new Xcode or
-  runner image misses the cache and builds clean; the nightly never restores
-  one.
+  no error in a source file is retried once from scratch. A new Xcode build
+  misses the cache and builds clean; the nightly never restores one.
+- **Packages from the restored checkout.** With nothing to compile, the first
+  incremental builds still took 139-304 s, and 116-199 s of that sat on
+  "Resolve Package Graph" for WebRTC, the only package. When the restored
+  DerivedData holds the package checkout, the build passes
+  `-skipPackageUpdates` and resolves from it. A new pinned version fails that
+  build, and the clean retry resolves it from the network.
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
-  large module type-checked on one core. `-showBuildTimingSummary` posts the
-  slowest build phases as a notice on each job.
+  large module type-checked on one core.
 
-Unit shards run their classes as sequential `test-without-building` batches of
-at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
-batch does not stop the shard: every batch runs, and the job fails at the end
-listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
+Each build posts two notices on its job: the slowest build phases from
+`-showBuildTimingSummary` (with the cache it restored), and the longest
+stretches where the build log stopped growing, with the lines around each
+(`ci-build-quiet-stretches.py`). The second shows time the first cannot:
+package resolution, build planning, waiting on the simulator service.
+
+Unit shards run their classes as sequential `test-without-building` batches on
+the one booted simulator: the fewest batches of at most `UNIT_BATCH_SIZE` (45)
+classes, split evenly, so a shard of about 78 classes runs as two batches of
+about 39. A failing batch does not stop the shard: every batch runs, and the
+job fails at the end listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
 kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
 480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
 246s), so a hung launch or idle-wait stall ends and the targeted retry still
 runs inside the job timeout.
 
-Why 35 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
+Why 45 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
 Since then the hosted hangs we have traced were test bugs, for example the
 scene-phase fixtures fixed in #272/#273 and the dropped fake-socket frames
-fixed in #274. Every invocation costs minutes of fixed hosted overhead, so
-fewer, larger batches are what make the full suite affordable per PR. If a
-stall reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
+fixed in #274. Every invocation has a fixed hosted cost, so fewer, larger
+batches are what make the full suite affordable per PR: measured 2026-10-15
+(#629), an invocation spends 40-60 s before its first test, and the first one
+on a fresh simulator about 100 s. With a cap of 35 each shard ran a third
+batch of 7-9 classes, one of them 39 s for 0.8 s of tests. If a stall
+reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
 
 ### Budget
 
