@@ -249801,6 +249801,88 @@
           }
         }
       }
+    },
+    "Hermes only lets the computer it runs on change this older chat. Change it there instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lässt diesen älteren Chat nur auf dem Computer ändern, auf dem es läuft. Ändere ihn dort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes solo permite cambiar este chat antiguo desde el ordenador donde se ejecuta. Cámbialo allí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne permet de modifier cette ancienne conversation que depuis l'ordinateur où il tourne. Modifiez-la là-bas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hanya mengizinkan komputer tempatnya berjalan untuk mengubah obrolan lama ini. Ubah di sana."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes consente di modificare questa chat meno recente solo dal computer su cui è in esecuzione. Modificala lì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この古いチャットは、Hermes が動いているコンピュータからしか変更できません。そちらで変更してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 이전 채팅은 Hermes가 실행 중인 컴퓨터에서만 변경할 수 있습니다. 그곳에서 변경하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes pozwala zmienić ten starszy czat tylko na komputerze, na którym działa. Zmień go tam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes só permite alterar esta conversa antiga no computador onde ele roda. Altere-a lá."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes разрешает менять этот старый чат только на компьютере, где он запущен. Измените его там."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu eski sohbetin yalnızca çalıştığı bilgisayardan değiştirilmesine izin veriyor. Orada değiştirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只允许在其运行的电脑上更改这个较早的聊天。请在那里更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 只允許在其執行的電腦上更改這個較早的聊天。請在那裡更改。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

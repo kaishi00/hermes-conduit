@@ -57,10 +57,16 @@ struct SessionPinSync: Equatable {
     /// profile → pin ids the host took from this phone's uploads. Covers
     /// pins the listing doesn't show (an old chat past the first page).
     private(set) var uploaded: [String: Set<String>] = [:]
+    /// "host\u{1F}profile\u{1F}pin id" for chats Hermes won't let this phone
+    /// change (old local history only the computer running Hermes may
+    /// claim). Their pins live on the phone alone, and listings leave them
+    /// be (persisted).
+    private(set) var phoneOnly: Set<String>
     private var writeGeneration: UInt64 = 0
 
-    init(adopted: Set<String> = []) {
+    init(adopted: Set<String> = [], phoneOnly: Set<String> = []) {
         self.adopted = adopted
+        self.phoneOnly = phoneOnly
     }
 
     /// The id a pin is stored under: the compression lineage root, so
@@ -95,6 +101,24 @@ struct SessionPinSync: Equatable {
         host != nil && host == self.host && supportedProfiles.contains(profile)
     }
 
+    /// Whether this chat's pin stays on the phone because Hermes refused it.
+    func isPhoneOnly(pinID: String, profile: String) -> Bool {
+        guard let host else { return false }
+        return phoneOnly.contains(Self.phoneOnlyKey(host: host, profile: profile, pinID: pinID))
+    }
+
+    /// Hermes refused a pin write for this chat: keep its pin on the phone,
+    /// as the person set it, and stop sending or adopting it.
+    mutating func keepOnPhone(pinID: String, profile: String) {
+        guard let host else { return }
+        phoneOnly.insert(Self.phoneOnlyKey(host: host, profile: profile, pinID: pinID))
+        pendingWrites[Self.key(profile, pinID)] = nil
+    }
+
+    private static func phoneOnlyKey(host: String, profile: String, pinID: String) -> String {
+        key(key(host, profile), pinID)
+    }
+
     func isAdopted(profile: String) -> Bool {
         guard let host else { return false }
         return adopted.contains(Self.key(host, profile))
@@ -126,7 +150,8 @@ struct SessionPinSync: Equatable {
             let id = Self.pinID(for: session)
             let ids = Self.pinIDs(for: session)
             listedIDs.formUnion(ids)
-            guard handled.insert(id).inserted else { continue }
+            guard handled.insert(id).inserted,
+                  !phoneOnly.contains(Self.phoneOnlyKey(host: host, profile: profile, pinID: id)) else { continue }
             let local = pins.contains { ids.contains($0) }
             let hostPinned = session.isPinned == true
             let writeKey = Self.key(profile, id)
@@ -152,6 +177,7 @@ struct SessionPinSync: Equatable {
             // Pins on chats this listing doesn't show go up too, so adopting
             // the host can't drop them when they show up later.
             for id in pins where !listedIDs.contains(id) && !sent.contains(id)
+                && !phoneOnly.contains(Self.phoneOnlyKey(host: host, profile: profile, pinID: id))
                 && pendingWrites[Self.key(profile, id)] == nil && !uploads.contains(where: { $0.pinID == id }) {
                 uploads.append(Upload(pinID: id, hostID: id))
             }
@@ -199,6 +225,10 @@ struct SessionPinSync: Equatable {
     mutating func forget(profile: String) {
         supportedProfiles.remove(profile)
         adopted = adopted.filter { !$0.hasSuffix(Self.key("", profile)) }
+        phoneOnly = phoneOnly.filter { entry in
+            let parts = entry.split(separator: "\u{1F}", omittingEmptySubsequences: false)
+            return parts.count < 2 || parts[1] != profile
+        }
         uploaded[profile] = nil
         let profilePrefix = Self.key(profile, "")
         pendingWrites = pendingWrites.filter { !$0.key.hasPrefix(profilePrefix) }
@@ -209,6 +239,7 @@ struct SessionPinSync: Equatable {
         host = nil
         supportedProfiles = []
         adopted = []
+        phoneOnly = []
         pendingWrites = [:]
         uploaded = [:]
     }

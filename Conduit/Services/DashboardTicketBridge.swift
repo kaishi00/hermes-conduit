@@ -299,6 +299,8 @@ enum DashboardTicketBridgeError: LocalizedError {
                 return HermesError.timeoutMessage
             }
             return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
+        case 403 where SessionMutationIdentity.isRefusalDetail(trimmed):
+            return AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
         case 401, 403:
             if trimmed == signInRefreshedDetail { return trimmed }
             return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
@@ -1118,11 +1120,15 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         }
 
         let status = payload["status"] as? Int ?? 0
-        if status == 401 || status == 403 {
+        let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
+        // Hermes' session writes answer 403 for a chat this sign-in may not
+        // change (old local history only its own computer may claim). That
+        // is a verdict on the chat, not an expired sign-in: signing in again
+        // can't change it.
+        if status == 401 || (status == 403 && !SessionMutationIdentity.isRefusalDetail(detail)) {
             continuation.resume(throwing: DashboardTicketBridgeError.signInRequired)
             return
         }
-        let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
         // The injected fetch throws exactly one sentinel for a response that
         // outgrew the safe bound (content-length or streamed bytes). It
         // arrives here as a status-0 failure like every other JS-level

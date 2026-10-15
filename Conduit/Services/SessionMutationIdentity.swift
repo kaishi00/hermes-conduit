@@ -56,6 +56,22 @@ enum SessionMutationIdentity {
         return lowered.contains("not found") && !lowered.contains("session")
     }
 
+    /// Hermes refused the write outright: this sign-in may not change the
+    /// chat (`permission_denied`, e.g. old local history only a native
+    /// Hermes client may claim) or the chat belongs to another profile's
+    /// store (`profile_mismatch`). Retrying or signing in again won't help.
+    static func isRefusal(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(status: 403, detail: let detail) = error else { return false }
+        return isRefusalDetail(detail)
+    }
+
+    static func isRefusalDetail(_ detail: String) -> Bool {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return refusals.contains { trimmed.caseInsensitiveCompare($0) == .orderedSame }
+    }
+
+    static let refusals = ["permission_denied", "profile_mismatch"]
+
     /// Hermes' session-write conflicts, retried once or shown as "busy".
     static let retryableConflicts = ["revision_conflict", "stale_generation", "mutation_identity_required"]
 

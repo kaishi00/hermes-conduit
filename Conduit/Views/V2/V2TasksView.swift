@@ -147,8 +147,8 @@ struct V2ScheduledList: View {
                     }
                     // A "Jobs" header only when it separates the jobs from
                     // pins; otherwise the section starts without a gap.
-                    // Both shapes share one identity, so a first pin or last
-                    // unpin doesn't rebuild the rows.
+                    // Both shapes carry one identity, but a first pin or last
+                    // unpin still swaps the section between them.
                     if pinned.isEmpty || others.isEmpty {
                         Section {
                             ForEach(others) { row($0, pinned: false) }
