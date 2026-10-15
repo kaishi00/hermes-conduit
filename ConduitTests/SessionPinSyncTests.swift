@@ -168,3 +168,48 @@ extension ChatReadStateTests {
         XCTAssertNil(sessions.first { $0.id == "c" }?.isPinned)
     }
 }
+
+// MARK: - Session mutation identity
+
+/// Hermes main refuses a session PATCH or DELETE without a request id and
+/// the row's revision (409 mutation_identity_required).
+extension ChatReadStateTests {
+    func testSessionMutationIdentityReadsTheSnapshotRevision() throws {
+        let snapshot: [String: Any] = [
+            "session_id": "abc", "exists": true,
+            "runtime_revision": NSNumber(value: 7), "runtime_generation": NSNumber(value: 2)
+        ]
+        let fields = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: snapshot, requestID: "req-1"))
+        XCTAssertEqual(fields["request_id"] as? String, "req-1")
+        XCTAssertEqual(fields["expected_revision"] as? Int, 7)
+        XCTAssertEqual(fields["expected_generation"] as? Int, 2)
+    }
+
+    func testSessionMutationIdentityKeepsARevisionOfZeroOrOne() throws {
+        let zero = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: 0), "runtime_generation": NSNull()], requestID: "r"))
+        XCTAssertEqual(zero["expected_revision"] as? Int, 0)
+        XCTAssertNil(zero["expected_generation"])
+        let one = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: 1)], requestID: "r"))
+        XCTAssertEqual(one["expected_revision"] as? Int, 1)
+    }
+
+    func testSessionMutationIdentityIsAbsentForAnOlderHost() {
+        XCTAssertNil(SessionMutationIdentity.fields(snapshot: [:]))
+        XCTAssertNil(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: true)]))
+    }
+
+    func testSessionMutationIdentityGoesInADeleteQuery() {
+        let path = SessionMutationIdentity.path(
+            "/api/sessions/abc?profile=work",
+            adding: ["request_id": "r-1", "expected_revision": 3]
+        )
+        XCTAssertEqual(path, "/api/sessions/abc?profile=work&expected_revision=3&request_id=r-1")
+        XCTAssertEqual(SessionMutationIdentity.path("/api/sessions/abc", adding: ["expected_revision": 3]), "/api/sessions/abc?expected_revision=3")
+    }
+
+    func testSessionMutationRetriesOnlyAStaleRevision() {
+        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "revision_mismatch")))
+        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "session_busy")))
+        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 404, detail: "not_found")))
+    }
+}

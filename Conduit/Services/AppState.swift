@@ -4184,11 +4184,7 @@ final class AppState: ObservableObject {
 
     /// Writes Hermes' pin flag, which Desktop shows and changes too.
     private func sendHostPin(_ hostID: String, pinned: Bool, profile: String, using bridge: DashboardTicketBridge) async throws {
-        _ = try await bridge.requestJSON(
-            path: dashboardPath("/api/sessions/\(encodedSessionID(hostID))", profile: profile),
-            method: "PATCH",
-            body: DashboardPath.bodyWithProfile(["pinned": pinned], profile: profile)
-        )
+        try await sendSessionMutation(hostID, body: ["pinned": pinned], profile: profile, bridge: bridge)
     }
 
     /// Whether a chat was started as a Voice background job (session-list
@@ -6270,13 +6266,14 @@ final class AppState: ObservableObject {
         var generation: UInt64 = 0
         updateChatReadState { generation = $0.recordServerWrite(session, profile: profile, unread: unread) }
         let writtenGeneration = generation
-        let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
         return { [weak self] in
             do {
-                _ = try await dashboardTicketBridge.requestJSON(
-                    path: path,
-                    method: "PATCH",
-                    body: DashboardPath.bodyWithProfile(["unread": unread], profile: profile)
+                guard let self else { return }
+                try await self.sendSessionMutation(
+                    session.id,
+                    body: ["unread": unread],
+                    profile: profile,
+                    bridge: dashboardTicketBridge
                 )
             } catch {
                 self?.updateChatReadState {
@@ -15046,12 +15043,11 @@ final class AppState: ObservableObject {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         do {
-            let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
-            let body = DashboardPath.bodyWithProfile(["archived": archived], profile: profile)
+            let body: [String: Any] = ["archived": archived]
             if let widgetSessionMutationRequestOverride {
-                _ = try await widgetSessionMutationRequestOverride(path, "PATCH", body)
+                try await sendSessionMutation(session.id, body: body, profile: profile, using: widgetSessionMutationRequestOverride)
             } else if let dashboardTicketBridge {
-                _ = try await dashboardTicketBridge.requestJSON(path: path, method: "PATCH", body: body)
+                try await sendSessionMutation(session.id, body: body, profile: profile, bridge: dashboardTicketBridge)
             } else {
                 return false
             }
@@ -15145,13 +15141,11 @@ final class AppState: ObservableObject {
                           !runtimeRenameExpected || self.client === activeClient else {
                         throw SessionRenameOperation.ContextChanged()
                     }
-                    _ = try await dashboardTicketBridge.requestJSON(
-                        path: self.dashboardPath(
-                            "/api/sessions/\(self.encodedSessionID(sessionID))",
-                            profile: profile
-                        ),
-                        method: "PATCH",
-                        body: DashboardPath.bodyWithProfile(["title": title], profile: profile)
+                    try await self.sendSessionMutation(
+                        sessionID,
+                        body: ["title": title],
+                        profile: profile,
+                        bridge: dashboardTicketBridge
                     )
                 }
             )
@@ -15188,10 +15182,7 @@ final class AppState: ObservableObject {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         do {
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile),
-                method: "DELETE"
-            )
+            try await sendSessionMutation(session.id, body: nil, profile: profile, bridge: dashboardTicketBridge)
             guard profile == activeProfile else { return false }
             let deletedSessionIDs = Set([session.id] + session.alternateIds)
             sessionYoloStore.clearOverride(
@@ -15237,6 +15228,48 @@ final class AppState: ObservableObject {
 
     private func encodedSessionID(_ sessionID: String) -> String {
         sessionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionID
+    }
+
+    /// A session PATCH (with `body`) or DELETE (`body` nil) carrying Hermes'
+    /// mutation identity when the host has one (SessionMutationIdentity).
+    /// A write that lost a race with another change gets one retry.
+    @discardableResult
+    func sendSessionMutation(
+        _ sessionID: String,
+        body: [String: Any]?,
+        profile: String,
+        using request: @escaping (String, String, [String: Any]?) async throws -> [String: Any]
+    ) async throws -> [String: Any] {
+        let path = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))", profile: profile)
+        let snapshotPath = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))/mutation-snapshot", profile: profile)
+        let attempt: () async throws -> [String: Any] = {
+            let snapshot = (try? await request(snapshotPath, "GET", nil)) ?? [:]
+            let identity = SessionMutationIdentity.fields(snapshot: snapshot)
+            if var body {
+                if let identity { body.merge(identity) { _, new in new } }
+                return try await request(path, "PATCH", DashboardPath.bodyWithProfile(body, profile: profile))
+            }
+            let deletePath = identity.map { SessionMutationIdentity.path(path, adding: $0) } ?? path
+            return try await request(deletePath, "DELETE", nil)
+        }
+        do {
+            return try await attempt()
+        } catch let error where SessionMutationIdentity.isStaleRevision(error) {
+            return try await attempt()
+        }
+    }
+
+    /// `sendSessionMutation` over the dashboard bridge.
+    @discardableResult
+    func sendSessionMutation(
+        _ sessionID: String,
+        body: [String: Any]?,
+        profile: String,
+        bridge: DashboardTicketBridge
+    ) async throws -> [String: Any] {
+        try await sendSessionMutation(sessionID, body: body, profile: profile) { path, method, body in
+            try await bridge.requestJSON(path: path, method: method, body: body)
+        }
     }
 
     private func sessionMatches(_ lhs: SessionSummary, _ rhs: SessionSummary) -> Bool {

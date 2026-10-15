@@ -75,58 +75,140 @@ struct V2TasksView: View {
     }
 }
 
-/// The scheduled jobs: active ones first, each with its schedule, next run
-/// and an on/off switch (Pause / Resume). Tapping a job opens its detail
-/// with Run now and its run history.
+/// The scheduled jobs: pinned ones first, then active ones, each with its
+/// schedule, next run and an on/off switch (Pause / Resume). Tapping a job
+/// opens its detail with Run now and its run history; touch and hold or a
+/// swipe gives the same actions as a chat row (Pin, Run now, Pause/Resume).
 struct V2ScheduledList: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedJob: CronJob?
+    /// Pinned jobs, per profile: "profile\tjobID" lines. Kept on the phone;
+    /// Hermes has no pin for a job.
+    @AppStorage("conduit.v2.pinnedCronJobs") private var pinnedRaw = ""
 
     private var jobs: [CronJob] {
         CronJobFilter.visibleJobs(appState.cronJobs, filter: .all, query: "")
     }
 
+    private func pinKey(_ job: CronJob) -> String {
+        "\(appState.activeProfile)\t\(job.id)"
+    }
+
+    private var pinKeys: [String] {
+        pinnedRaw.split(separator: "\n").map(String.init)
+    }
+
+    private func isPinned(_ job: CronJob) -> Bool {
+        pinKeys.contains(pinKey(job))
+    }
+
+    private func togglePin(_ job: CronJob) {
+        Haptics.light()
+        let key = pinKey(job)
+        var keys = pinKeys
+        if keys.contains(key) {
+            keys.removeAll { $0 == key }
+        } else {
+            keys.append(key)
+        }
+        pinnedRaw = keys.joined(separator: "\n")
+    }
+
     var body: some View {
-        ScrollView {
-            if jobs.isEmpty && !appState.cronJobsLoading {
+        let all = jobs
+        // In the order they were pinned.
+        let pinned = pinKeys.compactMap { key in all.first { pinKey($0) == key } }
+        let others = all.filter { !isPinned($0) }
+        Group {
+            if all.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
-                ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
-                    .padding(.top, 60)
-            } else if jobs.isEmpty {
+                ScrollView {
+                    ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
+                        .padding(.top, 60)
+                }
+            } else if all.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 140)
+                    .frame(maxHeight: .infinity, alignment: .top)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    // One glass card holds the jobs, hairlines between them.
-                    VStack(spacing: 0) {
-                        ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
-                            row(job)
-                            if index < jobs.count - 1 {
-                                Rectangle()
-                                    .fill(Color.primary.opacity(0.1))
-                                    .frame(height: 0.5)
-                            }
+                List {
+                    if !pinned.isEmpty {
+                        Section {
+                            ForEach(pinned) { row($0) }
+                        } header: {
+                            sectionHeader(AppLocalization.string("Pinned"))
                         }
                     }
-                    .conduitGlassSurface(cornerRadius: 24)
-
-                    Text("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
+                    Section {
+                        ForEach(others) { row($0) }
+                    } header: {
+                        if !pinned.isEmpty {
+                            sectionHeader(AppLocalization.string("Jobs"))
+                        }
+                    } footer: {
+                        Text("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 1)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: pinnedRaw)
             }
         }
-        .scrollContentBackground(.hidden)
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private func actions(_ job: CronJob) -> some View {
+        Button {
+            togglePin(job)
+        } label: {
+            Label(
+                isPinned(job) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                systemImage: isPinned(job) ? "pin.slash" : "pin"
+            )
+        }
+        if !job.isFinished {
+            Button {
+                Haptics.medium()
+                Task { _ = await appState.performCronAction(.trigger, for: job) }
+            } label: {
+                Label(AppLocalization.string("Run now"), systemImage: "play.fill")
+            }
+            .disabled(appState.cronJobActionID != nil)
+            Button {
+                Haptics.selection()
+                Task { _ = await appState.performCronAction(job.enabled ? .pause : .resume, for: job) }
+            } label: {
+                Label(
+                    job.enabled ? AppLocalization.string("Pause") : AppLocalization.string("Resume"),
+                    systemImage: job.enabled ? "pause" : "play"
+                )
+            }
+            .disabled(appState.cronJobActionID != nil)
+        }
+        Button {
+            selectedJob = job
+        } label: {
+            Label(AppLocalization.string("Details"), systemImage: "info.circle")
         }
     }
 
@@ -137,10 +219,18 @@ struct V2ScheduledList: View {
                 selectedJob = job
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(job.displayName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        if isPinned(job) {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Color.conduitAccent)
+                                .accessibilityLabel(AppLocalization.string("Pinned"))
+                        }
+                        Text(job.displayName)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
                     Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
                         .font(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
@@ -161,7 +251,7 @@ struct V2ScheduledList: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(AppLocalization.string("Opens the job's details and run history"))
+            .accessibilityHint(AppLocalization.string("Opens the job's details and run history. Touch and hold for more actions."))
 
             if !job.isFinished {
                 Toggle(isOn: Binding(
@@ -179,9 +269,44 @@ struct V2ScheduledList: View {
                 .disabled(appState.cronJobActionID != nil)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.vertical, 4)
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .listRowBackground(Color.primary.opacity(0.06))
+        .contextMenu { actions(job) }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                togglePin(job)
+            } label: {
+                Label(
+                    isPinned(job) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                    systemImage: isPinned(job) ? "pin.slash" : "pin"
+                )
+            }
+            .tint(.conduitAccent)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if !job.isFinished {
+                Button {
+                    Haptics.medium()
+                    Task { _ = await appState.performCronAction(.trigger, for: job) }
+                } label: {
+                    Label(AppLocalization.string("Run now"), systemImage: "play.fill")
+                }
+                .tint(.conduitScheduled)
+                .disabled(appState.cronJobActionID != nil)
+                Button {
+                    Haptics.selection()
+                    Task { _ = await appState.performCronAction(job.enabled ? .pause : .resume, for: job) }
+                } label: {
+                    Label(
+                        job.enabled ? AppLocalization.string("Pause") : AppLocalization.string("Resume"),
+                        systemImage: job.enabled ? "pause" : "play"
+                    )
+                }
+                .tint(.orange)
+                .disabled(appState.cronJobActionID != nil)
+            }
+        }
     }
 
     /// "Next run in 3 hours", the job's state when it won't run again.
