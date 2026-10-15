@@ -116,7 +116,10 @@ struct V2ScheduledList: View {
     var body: some View {
         let all = jobs
         // In the order they were pinned.
-        let pinned = pinKeys.compactMap { key in all.first { pinKey($0) == key } }
+        var seen = Set<String>()
+        let pinned = pinKeys.compactMap { key in
+            seen.insert(key).inserted ? all.first { pinKey($0) == key } : nil
+        }
         // Parsed once per pass; each row is told whether it is pinned.
         let pins = Set(pinKeys)
         let others = all.filter { !pins.contains(pinKey($0)) }

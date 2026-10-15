@@ -641,6 +641,10 @@ final class AppState: ObservableObject {
     /// chat, which would fail a new chat or take over the screen it opened.
     var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive && scenePhaseAttemptID == nil }
     var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
+    /// "host|profile" whose Hermes answered 404 for the mutation snapshot
+    /// (older than the route): its writes skip the read until a write is
+    /// refused for missing identity, which clears the mark.
+    private var hostsWithoutMutationSnapshot: Set<String> = []
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
         didSet {
@@ -15242,8 +15246,18 @@ final class AppState: ObservableObject {
     ) async throws -> [String: Any] {
         let path = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))", profile: profile)
         let snapshotPath = dashboardPath("/api/sessions/\(encodedSessionID(sessionID))/mutation-snapshot", profile: profile)
+        let routeKey = "\(dashboardTicketBridge?.baseURL ?? "")|\(profile)"
         let attempt: () async throws -> [String: Any] = {
-            let snapshot = (try? await request(snapshotPath, "GET", nil)) ?? [:]
+            var snapshot: [String: Any] = [:]
+            if !self.hostsWithoutMutationSnapshot.contains(routeKey) {
+                do {
+                    snapshot = try await request(snapshotPath, "GET", nil)
+                } catch DashboardTicketBridgeError.http(status: 404, detail: _) {
+                    self.hostsWithoutMutationSnapshot.insert(routeKey)
+                } catch {
+                    // A failed read sends the bare write; a refusal retries.
+                }
+            }
             let identity = SessionMutationIdentity.fields(snapshot: snapshot)
             if var body {
                 if let identity { body.merge(identity) { _, new in new } }
@@ -15255,6 +15269,7 @@ final class AppState: ObservableObject {
         do {
             return try await attempt()
         } catch let error where SessionMutationIdentity.warrantsRetry(error) {
+            hostsWithoutMutationSnapshot.remove(routeKey)
             return try await attempt()
         }
     }

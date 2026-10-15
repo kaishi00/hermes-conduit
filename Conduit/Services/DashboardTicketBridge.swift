@@ -307,7 +307,7 @@ enum DashboardTicketBridgeError: LocalizedError {
             return AppLocalization.string("Your Hermes server doesn't support this yet. Update Hermes, then try again.")
         case 408, 504, 524:
             return HermesError.timeoutMessage
-        case 409 where (SessionMutationIdentity.retryableConflicts + ["session_busy"]).contains(where: { trimmed.contains($0) }):
+        case 409 where (SessionMutationIdentity.retryableConflicts + ["session_busy"]).contains(where: { trimmed.localizedCaseInsensitiveContains($0) }):
             // A session write that still conflicted after its one retry.
             return AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
         case 429:

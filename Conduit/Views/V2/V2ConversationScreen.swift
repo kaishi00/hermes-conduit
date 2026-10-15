@@ -117,6 +117,7 @@ struct V2ConversationScreen: View {
                         V2ConnectionLine()
                     }
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnecting)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {

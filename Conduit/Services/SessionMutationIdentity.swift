@@ -56,6 +56,6 @@ enum SessionMutationIdentity {
         // JSON booleans arrive as NSNumber too; a revision is never one.
         guard let number = value as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        return number.intValue
+        return Int(exactly: number.int64Value)
     }
 }

@@ -303,4 +303,18 @@ extension ChatReadStateTests {
             XCTAssertEqual(writes, 1)
         }
     }
+
+    @MainActor
+    func testSessionWritesSkipTheSnapshotOnAnOlderHost() async throws {
+        let appState = mutationAppState()
+        var methods: [String] = []
+        let olderHost: (String, String, [String: Any]?) async throws -> [String: Any] = { _, method, _ in
+            methods.append(method)
+            if method == "GET" { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
+            return [:]
+        }
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": true], profile: "default", using: olderHost)
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": false], profile: "default", using: olderHost)
+        XCTAssertEqual(methods, ["GET", "PATCH", "PATCH"])
+    }
 }
