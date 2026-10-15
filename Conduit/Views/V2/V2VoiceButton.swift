@@ -1,0 +1,191 @@
+//
+//  V2VoiceButton.swift
+//  Conduit
+//
+//  V2's voice button: a gold circle beside the tab bar on every tab and
+//  project page. A tap starts voice where the user is (a new call, or a
+//  new chat in the open project's folder); touch and hold on a tab lists
+//  the three most recent conversations to talk in instead. While a call is
+//  minimised the button brings it back, its bars moving.
+//
+
+import SwiftUI
+
+/// Where the voice button sits, which decides what a tap starts.
+enum V2VoiceContext: Equatable {
+    /// Chats, Tasks, Bots and Settings: a new call in the current profile.
+    case home
+    /// A project's page: a new chat in that project's folder, in voice.
+    case project(ProjectSummary)
+}
+
+struct V2VoiceButton: View {
+    let context: V2VoiceContext
+    /// Picks of iOS 26's voice tab slot under this button, which act as a tap.
+    var slotPicks = 0
+    @EnvironmentObject private var appState: AppState
+
+    static let diameter: CGFloat = 56
+
+    /// A minimised call: the button is the way back to it.
+    private var returnsToCall: Bool { appState.minimisedLiveVoice != nil }
+    private var callIsLive: Bool { returnsToCall || appState.isVoiceInUse }
+    /// Voice is off for this profile: the button opens its setup instead.
+    private var needsSetup: Bool { !appState.showsComposerVoiceButton }
+
+    private var canAct: Bool {
+        returnsToCall || needsSetup || (appState.canStartPhoneVoiceConversation && !appState.isVoiceInUse)
+    }
+
+    /// The three most recently active conversations of this profile.
+    private var recentSessions: [SessionSummary] {
+        let sorted = appState.activeProfileSessions.sorted {
+            ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0)
+        }
+        return Array(sorted.prefix(3))
+    }
+
+    private var showsRecentMenu: Bool {
+        context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
+    }
+
+    private var label: String {
+        if returnsToCall { return AppLocalization.string("Return to call") }
+        if needsSetup { return AppLocalization.string("Set up voice") }
+        switch context {
+        case .home: return AppLocalization.string("New voice call")
+        case .project: return AppLocalization.string("Talk in this project")
+        }
+    }
+
+    private var hint: String? {
+        if !canAct { return appState.phoneVoiceUnavailableReason }
+        return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations") : nil
+    }
+
+    var body: some View {
+        Group {
+            if showsRecentMenu {
+                Menu {
+                    Button {
+                        tap()
+                    } label: {
+                        Label("New voice call", systemImage: "waveform")
+                    }
+                    Section("Recent") {
+                        ForEach(recentSessions) { session in
+                            Button {
+                                talk(in: session.id)
+                            } label: {
+                                Label(session.title, systemImage: "bubble.left")
+                            }
+                        }
+                    }
+                } label: {
+                    face
+                } primaryAction: {
+                    tap()
+                }
+                .menuIndicator(.hidden)
+            } else {
+                Button(action: tap) { face }
+                    .buttonStyle(PressableButtonStyle())
+            }
+        }
+        .disabled(!canAct)
+        .onChange(of: slotPicks) { _, _ in
+            if canAct { tap() }
+        }
+        .accessibilityLabel(label)
+        .accessibilityHint(hint ?? "")
+        .accessibilityAddTraits(callIsLive ? .updatesFrequently : [])
+        .accessibilityShowsLargeContentViewer {
+            Label(label, systemImage: "waveform")
+        }
+    }
+
+    private var face: some View {
+        V2VoiceBars(isLive: callIsLive)
+            .frame(width: Self.diameter, height: Self.diameter)
+            .background(Color.conduitAccent, in: Circle())
+            .opacity(canAct ? 1 : 0.55)
+            .contentShape(Circle())
+    }
+
+    // MARK: - Actions
+
+    private func tap() {
+        Haptics.medium()
+        if returnsToCall {
+            appState.restoreMinimisedLiveVoice()
+            return
+        }
+        if needsSetup {
+            appState.settingsLinkRequest = .voice
+            return
+        }
+        switch context {
+        case .home:
+            // A call of its own, like the old drawer's New voice call. Its
+            // screen covers the tabs; the list stays where it was.
+            Task {
+                _ = await appState.openVoiceConversation(
+                    PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: true, source: .newCall)
+                )
+            }
+        case .project(let project):
+            // A new chat in the project's folder, then voice in it.
+            let previous = appState.activeSessionId
+            Task {
+                await appState.createNewSession(cwd: project.primaryPath)
+                guard appState.activeSessionId != previous else { return }
+                _ = await appState.openVoiceConversation(
+                    PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
+                )
+            }
+        }
+    }
+
+    /// Opens a recent conversation and talks in it.
+    private func talk(in sessionID: String) {
+        Haptics.medium()
+        Task {
+            guard await appState.openSession(sessionID) else { return }
+            _ = await appState.openVoiceConversation(
+                PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
+            )
+        }
+    }
+}
+
+/// The button's glyph: five dark bars, swaying while a call is live. They
+/// stand still without a call (nothing redraws, so the app can idle) and
+/// under Reduce Motion.
+struct V2VoiceBars: View {
+    let isLive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let restingHeights: [CGFloat] = [0.34, 0.62, 0.9, 0.62, 0.34]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: !isLive || reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<5, id: \.self) { index in
+                    Capsule()
+                        .fill(Color.black.opacity(0.82))
+                        .frame(width: 3.5, height: 22 * height(index, time: time))
+                }
+            }
+            .frame(height: 22)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func height(_ index: Int, time: TimeInterval) -> CGFloat {
+        let resting = Self.restingHeights[index]
+        guard isLive, !reduceMotion else { return resting }
+        let wave = sin(time * 6 + Double(index) * 1.1)
+        return max(0.22, min(1, resting + CGFloat(wave) * 0.3))
+    }
+}
