@@ -147,12 +147,15 @@ struct V2ScheduledList: View {
                     }
                     // A "Jobs" header only when it separates the jobs from
                     // pins; otherwise the section starts without a gap.
+                    // Both shapes share one identity, so a first pin or last
+                    // unpin doesn't rebuild the rows.
                     if pinned.isEmpty || others.isEmpty {
                         Section {
                             ForEach(others) { row($0, pinned: false) }
                         } footer: {
                             listFooter
                         }
+                        .id("jobs")
                     } else {
                         Section {
                             ForEach(others) { row($0, pinned: false) }
@@ -161,6 +164,7 @@ struct V2ScheduledList: View {
                         } footer: {
                             listFooter
                         }
+                        .id("jobs")
                     }
                 }
                 .listStyle(.insetGrouped)

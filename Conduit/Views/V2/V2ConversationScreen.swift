@@ -195,6 +195,7 @@ private struct V2ConnectionLine: View {
 /// actions, with the gateway's state as a dot on the button and its
 /// diagnostics one item away.
 private struct V2ConversationMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
@@ -251,6 +252,7 @@ private struct V2ConversationMenu: View {
                 }
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isChatRefreshing)
+            .accessibilityHidden(true)
             .frame(width: 40, height: 40)
             .overlay(alignment: .topTrailing) {
                 Circle()

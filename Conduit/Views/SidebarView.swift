@@ -1315,6 +1315,7 @@ private extension View {
 /// offer the same menu. Rename and Delete need a host-owned sheet or alert,
 /// so the host supplies those two actions.
 struct SessionActionMenuItems: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -1376,6 +1377,7 @@ struct SessionActionMenuItems: View {
 /// Mark as read / Mark as unread for one conversation (#454). Writes Hermes'
 /// shared read flag too, so Hermes Desktop follows.
 struct ReadStateToggleButton: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     /// What the toggle addresses (#556): a parent displays its children's
@@ -1477,6 +1479,7 @@ enum SessionStatusFilter: String, CaseIterable, Identifiable {
 /// The session row's "Move to Project" submenu. Hidden when the gateway has
 /// no projects capability or no project with a folder to move into.
 struct MoveToProjectMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -1544,6 +1547,7 @@ private struct ProjectRow: View {
 }
 
 private struct ProjectSessionsSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let project: ProjectSummary
@@ -1712,6 +1716,7 @@ private struct ProjectSessionsSheet: View {
 }
 
 struct ProjectCreateSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
