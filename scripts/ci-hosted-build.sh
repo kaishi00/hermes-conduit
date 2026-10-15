@@ -33,8 +33,12 @@ cat ci-lane/prepare.log || true
 echo "::endgroup::"
 # Which side of the pair the step waited on: once builds are incremental, the
 # simulator boot can be the longer one.
+# A failed side says so here too, so the notice never reads as a healthy run.
 if prepare_end=$(cat ci-lane/prepare.end 2>/dev/null) && [ -n "$prepare_end" ]; then
-  echo "::notice title=Build ${build_s}s and simulator $(( prepare_end - step_start ))s (side by side)::the step took $(( $(date +%s) - step_start ))s"
+  outcome=""
+  if [ "$build_rc" -ne 0 ]; then outcome="$outcome; the build failed (exit $build_rc)"; fi
+  if [ "$prepare_rc" -ne 0 ]; then outcome="$outcome; simulator preparation failed (exit $prepare_rc)"; fi
+  echo "::notice title=Build ${build_s}s and simulator $(( prepare_end - step_start ))s (side by side)::the step took $(( $(date +%s) - step_start ))s$outcome"
 fi
 
 if [ "$build_rc" -ne 0 ]; then

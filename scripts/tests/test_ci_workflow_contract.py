@@ -123,6 +123,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(generic, build.index("wait_for_destination_device"),
                         "without BUILD_DESTINATION the build still waits for its device")
         self.assertIn("-resolvePackageDependencies", build)
+        self.assertIn("(side by side)::the step took $(( $(date +%s) - step_start ))s$outcome", hosted,
+                      "the timing notice names a failed build or preparation")
         self.assertLess(build.index("resolve_packages\nfi"), build.index("start_sampler\n\nstarted_at"),
                         "package resolution is timed before the build's own timeline starts")
 

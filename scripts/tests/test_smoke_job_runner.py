@@ -233,6 +233,8 @@ class SmokeJobRunnerTests(unittest.TestCase):
             "Test Case '-[ConduitTests.Unit0Tests testB]' passed (0.001 seconds).",
             "Failing tests:",
             "\tUnit0Tests.testA()",
+            "",
+            "** TEST EXECUTE FAILED **",
         ])
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 4),
                               UNIT_BATCH_SIZE=2, STUB_FAIL_FIRST_N=1,
@@ -241,12 +243,13 @@ class SmokeJobRunnerTests(unittest.TestCase):
         notes = [line for line in proc.stdout.splitlines()
                  if line.startswith("::error title=unit batch 1 failures::")]
         self.assertEqual(len(notes), 1, proc.stdout)
+        # xcodebuild's complete list first, then the messages.
         self.assertEqual(notes[0].split("::", 2)[2].split("%0A"), [
+            "Failing tests:",
+            "\tUnit0Tests.testA()",
             "/w/ConduitTests/Unit0Tests.swift:12: error: -[ConduitTests.Unit0Tests testA] :"
             " XCTAssertEqual failed: (\"100%25\") is not equal to (\"0%25\")",
             "Test Case '-[ConduitTests.Unit0Tests testA]' failed (0.010 seconds).",
-            "Failing tests:",
-            "\tUnit0Tests.testA()",
         ])
         self.assertNotIn("unit batch 2 failures", proc.stdout)
         self.assertIn("Test Case '-[ConduitTests.Unit0Tests testB]' passed", proc.stdout,
