@@ -836,18 +836,20 @@ struct V2ChatsView: View {
                 }
             }
 
-            if appState.projectsLoading && displayedProjects.isEmpty {
-                ProgressView("Loading projects…")
+            // Before the gateway connects the list hasn't loaded yet, which
+            // isn't "no projects".
+            if (appState.projectsLoading || !appState.isConnected) && displayedProjects.isEmpty {
+                ProgressView(AppLocalization.string("Loading projects…"))
                     .frame(maxWidth: .infinity, minHeight: 140)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !isSearching && appState.projectsLoadFailed {
                 ContentUnavailableView {
-                    Label("Couldn’t Load Projects", systemImage: "exclamationmark.triangle")
+                    Label(AppLocalization.string("Couldn’t Load Projects"), systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text("Hermes didn’t answer. Pull down or try again.")
+                    Text(AppLocalization.string("Hermes didn’t answer. Pull down or try again."))
                 } actions: {
-                    Button("Try Again") {
+                    Button(AppLocalization.string("Try Again")) {
                         Task { await appState.refreshProjects() }
                     }
                 }
