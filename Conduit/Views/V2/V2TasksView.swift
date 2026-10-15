@@ -148,7 +148,7 @@ struct V2ScheduledList: View {
                             sectionHeader(AppLocalization.string("Jobs"))
                         }
                     } footer: {
-                        Text("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule.")
+                        Text(AppLocalization.string("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.top, 6)

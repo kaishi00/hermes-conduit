@@ -208,7 +208,9 @@ extension ChatReadStateTests {
     }
 
     func testSessionMutationRetriesOnlyAStaleRevision() {
-        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "revision_mismatch")))
+        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "revision_conflict")))
+        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: #"{"detail":"stale_generation"}"#)))
+        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "mutation_identity_required")))
         XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "session_busy")))
         XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 404, detail: "not_found")))
     }

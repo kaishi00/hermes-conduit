@@ -29,18 +29,24 @@ enum SessionMutationIdentity {
         let query = fields.keys.sorted().compactMap { key -> String? in
             guard let value = fields[key] else { return nil }
             let text = "\(value)"
-            guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+            guard let encoded = text.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) else { return nil }
             return "\(key)=\(encoded)"
         }
         guard !query.isEmpty else { return path }
         return path + (path.contains("?") ? "&" : "?") + query.joined(separator: "&")
     }
 
+    /// Unreserved characters only, so a value can never carry & = + or ?.
+    private static let queryValueAllowed = CharacterSet(charactersIn:
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
     /// A conflict worth one retry with a fresh snapshot: the row moved on
-    /// between the snapshot and the write.
+    /// between the snapshot and the write (Hermes' revision_conflict, or
+    /// stale_generation when a turn started in between).
     static func isStaleRevision(_ error: Error) -> Bool {
         guard case DashboardTicketBridgeError.http(status: 409, detail: let detail) = error else { return false }
-        return !detail.localizedCaseInsensitiveContains("session_busy")
+        return detail.localizedCaseInsensitiveContains("revision_conflict")
+            || detail.localizedCaseInsensitiveContains("stale_generation")
     }
 
     private static func integer(_ value: Any?) -> Int? {

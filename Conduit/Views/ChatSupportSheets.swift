@@ -49,7 +49,7 @@ struct GatewayDiagnosticsSheet: View {
                     Image(systemName: "restart")
                 }
                 .disabled(!appState.canRestartGateway)
-                .accessibilityLabel("Restart Gateway")
+                .accessibilityLabel(AppLocalization.string("Restart Gateway"))
                 .accessibilityIdentifier("gateway.restart")
                 Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
                     if appState.gatewayDiagnosticsLoading {
@@ -58,7 +58,7 @@ struct GatewayDiagnosticsSheet: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-                .accessibilityLabel("Refresh gateway diagnostics")
+                .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
             }
         }
         .gatewayRestartConfirmation(isPresented: $confirmingRestart)
@@ -85,7 +85,7 @@ struct GatewayDiagnosticsSheet: View {
             GatewayRestartStatusView()
             if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
-                    Label("Retry connection", systemImage: "arrow.clockwise")
+                    Label(AppLocalization.string("Retry connection"), systemImage: "arrow.clockwise")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
