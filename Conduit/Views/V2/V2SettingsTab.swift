@@ -34,7 +34,11 @@ struct V2SettingsTab: View {
         // shows; a switch from the top bar starts the home page over.
         .onChange(of: appState.activeProfile) { _, _ in snapshot = appState.makeSettingsSnapshot() }
         .onChange(of: appState.isConnected) { _, _ in snapshot = appState.makeSettingsSnapshot() }
-        .onDisappear {
+        // Leaving the tab is the old sheet's dismiss: voice settings the
+        // user changed take effect. Hidden capsule tabs stay mounted, so
+        // this follows the tab's active state rather than onDisappear.
+        .onChange(of: shell.isTabActive) { _, active in
+            guard !active else { return }
             Task { await appState.refreshVoiceCapabilities() }
         }
     }
