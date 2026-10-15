@@ -618,14 +618,14 @@ struct SessionList: View {
                             Haptics.selection()
                             DispatchQueue.main.async { projectPendingRename = project }
                         } label: {
-                            Label("Rename…", systemImage: "pencil")
+                            Label(AppLocalization.string("Rename…"), systemImage: "pencil")
                         }
                         .disabled(appState.isProjectMutationInFlight)
                         Button(role: .destructive) {
                             Haptics.warning()
                             projectPendingDeletion = project
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label(AppLocalization.string("Delete"), systemImage: "trash")
                         }
                         .disabled(appState.isProjectMutationInFlight)
                     }
@@ -635,14 +635,14 @@ struct SessionList: View {
                                 Haptics.warning()
                                 projectPendingDeletion = project
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label(AppLocalization.string("Delete"), systemImage: "trash")
                             }
                             .disabled(appState.isProjectMutationInFlight)
                             Button {
                                 Haptics.selection()
                                 DispatchQueue.main.async { projectPendingRename = project }
                             } label: {
-                                Label("Rename…", systemImage: "pencil")
+                                Label(AppLocalization.string("Rename…"), systemImage: "pencil")
                             }
                             .tint(.conduitAccent)
                             .disabled(appState.isProjectMutationInFlight)
@@ -894,7 +894,7 @@ struct SessionList: View {
                         Haptics.mutationCompleted(await appState.archiveSession(session))
                     }
                 } label: {
-                    Label("Archive", systemImage: "archivebox")
+                    Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                 }
                 .tint(.orange)
                 .disabled(appState.isSessionMutationInFlight(session))
@@ -903,7 +903,7 @@ struct SessionList: View {
                     Haptics.warning()
                     sessionPendingDeletion = session
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(AppLocalization.string("Delete"), systemImage: "trash")
                 }
                 .disabled(appState.isSessionMutationInFlight(session))
             }
@@ -1334,7 +1334,7 @@ struct SessionActionMenuItems: View {
             // isn't presented in the same update as the menu's dismissal.
             DispatchQueue.main.async { onRename() }
         } label: {
-            Label("Rename…", systemImage: "pencil")
+            Label(AppLocalization.string("Rename…"), systemImage: "pencil")
         }
         .disabled(appState.isSessionMutationInFlight(session))
 
@@ -1359,7 +1359,7 @@ struct SessionActionMenuItems: View {
                 if archived { onChanged() }
             }
         } label: {
-            Label("Archive", systemImage: "archivebox")
+            Label(AppLocalization.string("Archive"), systemImage: "archivebox")
         }
         .disabled(appState.isSessionMutationInFlight(session))
 
@@ -1367,7 +1367,7 @@ struct SessionActionMenuItems: View {
             Haptics.warning()
             onDelete()
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(AppLocalization.string("Delete"), systemImage: "trash")
         }
         .disabled(appState.isSessionMutationInFlight(session))
     }
@@ -1624,7 +1624,7 @@ private struct ProjectSessionsSheet: View {
                                                 if archived { reloadDetail() }
                                             }
                                         } label: {
-                                            Label("Archive", systemImage: "archivebox")
+                                            Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                                         }
                                         .tint(.orange)
                                         .disabled(appState.isSessionMutationInFlight(session))
@@ -1633,7 +1633,7 @@ private struct ProjectSessionsSheet: View {
                                             Haptics.warning()
                                             sessionPendingDeletion = session
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label(AppLocalization.string("Delete"), systemImage: "trash")
                                         }
                                         .disabled(appState.isSessionMutationInFlight(session))
                                     }

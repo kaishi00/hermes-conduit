@@ -145,17 +145,22 @@ struct V2ScheduledList: View {
                             sectionHeader(AppLocalization.string("Pinned"))
                         }
                     }
-                    Section {
-                        ForEach(others) { row($0, pinned: false) }
-                    } header: {
-                        if !pinned.isEmpty {
-                            sectionHeader(AppLocalization.string("Jobs"))
+                    // Headerless when nothing is pinned, so the list starts
+                    // at the same height as any other.
+                    if pinned.isEmpty {
+                        Section {
+                            ForEach(others) { row($0, pinned: false) }
+                        } footer: {
+                            listFooter
                         }
-                    } footer: {
-                        Text(AppLocalization.string("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule."))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 6)
+                    } else {
+                        Section {
+                            ForEach(others) { row($0, pinned: false) }
+                        } header: {
+                            sectionHeader(AppLocalization.string("Jobs"))
+                        } footer: {
+                            listFooter
+                        }
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -170,6 +175,13 @@ struct V2ScheduledList: View {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
         }
+    }
+
+    private var listFooter: some View {
+        Text(AppLocalization.string("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule."))
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
     }
 
     private func sectionHeader(_ title: String) -> some View {

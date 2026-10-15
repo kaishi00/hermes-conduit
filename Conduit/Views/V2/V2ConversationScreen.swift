@@ -238,16 +238,20 @@ private struct V2ConversationMenu: View {
                 }
             }
         } label: {
-            Group {
+            // The two glyphs crossfade in one fixed frame, so the dot stays put.
+            ZStack {
                 if appState.isChatRefreshing {
                     ProgressView()
                         .controlSize(.small)
+                        .transition(.opacity)
                 } else {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.primary)
+                        .transition(.opacity)
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: appState.isChatRefreshing)
             .frame(width: 40, height: 40)
             .overlay(alignment: .topTrailing) {
                 Circle()
