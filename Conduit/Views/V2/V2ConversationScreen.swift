@@ -58,6 +58,7 @@ struct V2ConversationScreen: View {
                     .environment(\.v2ComposerRests, true)
             }
         }
+        .modifier(V2SoftTopEdge())
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
@@ -113,30 +114,15 @@ struct V2ConversationScreen: View {
                             .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
                             .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
                         }
+                        V2ConnectionLine()
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await appState.refreshActiveSession() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .rotationEffect(.degrees(appState.isChatRefreshing ? 360 : 0))
-                            .animation(
-                                appState.isChatRefreshing
-                                    ? .linear(duration: 0.75).repeatForever(autoreverses: false)
-                                    : .default,
-                                value: appState.isChatRefreshing
-                            )
-                            .frame(width: 40, height: 40)
-                    }
-                    .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
-                    .disabled(!appState.isConnected || appState.isChatRefreshing)
-                    .accessibilityLabel(AppLocalization.string("Refresh conversation"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                ConnectionStatusIndicator()
+                V2ConversationMenu(
+                    onRename: { chatTitlePendingRename = $0 },
+                    onDelete: { chatTitlePendingDeletion = $0 }
+                )
             }
         }
         .sheet(item: $chatTitlePendingRename) { session in
@@ -156,6 +142,130 @@ struct V2ConversationScreen: View {
             Button("Cancel", role: .cancel) { chatTitlePendingDeletion = nil }
         } message: {
             Text("This permanently deletes the conversation and cannot be undone.")
+        }
+    }
+}
+
+/// The transcript fades out under the header instead of ending at a line:
+/// iOS 26's soft scroll edge, and before it a fading material behind the bar.
+private struct V2SoftTopEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content.overlay(alignment: .top) {
+                // Zero height at the top of the content: ignoring the safe
+                // area grows it up over exactly the navigation bar.
+                V2ScrollEdgeBackground()
+                    .frame(height: 0)
+            }
+        }
+    }
+}
+
+/// Shown under the title only while the gateway isn't connected, so the
+/// header stays quiet when all is well.
+private struct V2ConnectionLine: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        if !appState.isConnected {
+            let connecting = appState.isConnecting
+            HStack(spacing: 4) {
+                Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
+                    .font(.caption2.weight(.bold))
+                Text(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(connecting ? Color.orange : Color.red)
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+/// The header's one trailing control: refresh and the conversation's own
+/// actions, with the gateway's state as a dot on the button and its
+/// diagnostics one item away.
+private struct V2ConversationMenu: View {
+    @EnvironmentObject private var appState: AppState
+    let onRename: (SessionSummary) -> Void
+    let onDelete: (SessionSummary) -> Void
+
+    private var statusColor: Color {
+        if appState.isConnected { return .green }
+        return appState.isConnecting ? .orange : .red
+    }
+
+    private var statusWord: String {
+        if appState.isConnected { return AppLocalization.string("Connected") }
+        return appState.isConnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
+    }
+
+    var body: some View {
+        Menu {
+            // An open room has its own actions in its header.
+            if appState.activeRoomSurface == nil {
+                Button {
+                    Task { await appState.refreshActiveSession() }
+                } label: {
+                    Label("Refresh conversation", systemImage: "arrow.clockwise")
+                }
+                .disabled(!appState.isConnected || appState.isChatRefreshing)
+                if let session = appState.activeChatSessionSummary {
+                    Section {
+                        SessionActionMenuItems(
+                            session: session,
+                            onRename: { onRename(session) },
+                            onDelete: { onDelete(session) }
+                        )
+                    }
+                }
+            }
+            Section(statusWord) {
+                Button {
+                    Task { await appState.loadGatewayDiagnostics() }
+                } label: {
+                    Label("Gateway", systemImage: "antenna.radiowaves.left.and.right")
+                }
+            }
+        } label: {
+            Group {
+                if appState.isChatRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .overlay(alignment: .topTrailing) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 7, height: 7)
+                    .offset(x: -8, y: 8)
+            }
+            .modifier(V2PreGlassToolbarControl())
+        }
+        .menuIndicator(.hidden)
+        .accessibilityLabel(AppLocalization.string("Conversation options"))
+        .accessibilityValue(statusWord)
+        .accessibilityIdentifier("conversation.menu")
+    }
+}
+
+/// iOS 26 draws toolbar items on its own glass; earlier versions get the
+/// app's glass circle so the control still reads as a button.
+private struct V2PreGlassToolbarControl: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
         }
     }
 }

@@ -28,6 +28,9 @@ struct ChatView: View {
     /// V2: the composer is expanded, which hides the minimised call's bar.
     @State private var composerExpanded = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
+    /// V2: the composer floats over the transcript, which scrolls on under
+    /// it and fades, instead of ending at a hard edge above it.
+    @Environment(\.v2ComposerRests) private var composerFloats
     /// Owns the viewport: follows the latest message, holds the reader's
     /// place while browsing, restores saved positions. It reads and sets the
     /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
@@ -175,6 +178,21 @@ struct ChatView: View {
         }
     }
 
+    /// The minimised call bar and the composer, below the transcript.
+    @ViewBuilder
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
+            // A live call swiped down keeps running; its bar sits here
+            // (in V2, not while the composer is expanded).
+            if !composerExpanded {
+                MinimisedLiveVoiceBar()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // Composer + control bar
+            ComposerBar()
+        }
+    }
+
     private var renderedScrollScope: ChatRenderedScrollScope? {
         viewportInputs.renderedScrollScope
     }
@@ -229,14 +247,15 @@ struct ChatView: View {
                 }
             }
 
-            // A live call swiped down keeps running; its bar sits here
-            // (in V2, not while the composer is expanded).
-            if !composerExpanded {
-                MinimisedLiveVoiceBar()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            if !composerFloats {
+                bottomBar
             }
-            // Composer + control bar
-            ComposerBar()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if composerFloats {
+                bottomBar
+                    .background { V2ScrollEdgeBackground(edge: .bottom) }
+            }
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             // In step with the voice button retreating beside it.

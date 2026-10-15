@@ -44,9 +44,12 @@ extension V2TopBar where Trailing == EmptyView {
     }
 }
 
-/// The soft edge content scrolls under: a material that fades out
-/// downward, so the bar reads without a hard line.
+/// The soft edge content scrolls under: a material that fades out away
+/// from the screen edge, so the bar reads without a hard line.
 struct V2ScrollEdgeBackground: View {
+    /// The screen edge the bar sits on.
+    var edge: VerticalEdge = .top
+
     var body: some View {
         Rectangle()
             .fill(.ultraThinMaterial)
@@ -57,11 +60,11 @@ struct V2ScrollEdgeBackground: View {
                         .init(color: .black.opacity(0.85), location: 0.55),
                         .init(color: .clear, location: 1)
                     ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                    startPoint: edge == .top ? .top : .bottom,
+                    endPoint: edge == .top ? .bottom : .top
                 )
             }
-            .ignoresSafeArea(edges: .top)
+            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }

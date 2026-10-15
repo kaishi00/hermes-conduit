@@ -2078,6 +2078,17 @@ private struct GatewaySettingsDetail: View {
                 GatewayRestartStatusView()
                 Text("Reconnect only reconnects Conduit. Restart Gateway restarts Hermes' gateway on your host.")
                     .font(.footnote).foregroundStyle(.secondary)
+                // The gateway's state, connectors, last connection and logs,
+                // which the chat header used to open.
+                NavigationLink {
+                    GatewayDiagnosticsSheet(embedded: true)
+                } label: {
+                    Label("Diagnostics & logs", systemImage: "doc.text.magnifyingglass")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: 44)
+                }
+                .disabled(snapshot.server == nil)
+                .accessibilityIdentifier("settings.gateway.diagnostics")
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
