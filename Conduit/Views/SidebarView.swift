@@ -277,7 +277,7 @@ struct SessionList: View {
                     .accessibilityShowsLargeContentViewer {
                         Label(AppLocalization.string("New voice call"), systemImage: "waveform")
                     }
-                    .accessibilityLabel("New voice call")
+                    .accessibilityLabel(AppLocalization.string("New voice call"))
                     .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
                 }
 
@@ -1562,7 +1562,7 @@ private struct ProjectSessionsSheet: View {
                 ConduitBackdrop()
                 List {
                     if isLoading {
-                        ProgressView("Loading conversations…")
+                        ProgressView(AppLocalization.string("Loading conversations…"))
                             .frame(maxWidth: .infinity, minHeight: 140)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
@@ -1570,10 +1570,10 @@ private struct ProjectSessionsSheet: View {
                         ContentUnavailableView {
                             Label(AppLocalization.string("No Conversations"), systemImage: "tray")
                         } description: {
-                            Text("This project does not have any conversations yet.")
+                            Text(AppLocalization.string("This project does not have any conversations yet."))
                         } actions: {
                             if newConversationPath != nil {
-                                Button("New conversation", action: startNewConversation)
+                                Button(AppLocalization.string("New conversation"), action: startNewConversation)
                                     .buttonStyle(.borderedProminent)
                             }
                         }
@@ -1601,7 +1601,7 @@ private struct ProjectSessionsSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityHint("Swipe or touch and hold for conversation actions.")
+                                    .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
                                     .contextMenu {
                                         SessionActionMenuItems(
                                             session: session,

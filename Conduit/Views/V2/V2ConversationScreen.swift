@@ -242,14 +242,13 @@ private struct V2ConversationMenu: View {
         } label: {
             // The two glyphs crossfade in one fixed frame, so the dot stays put.
             ZStack {
-                if appState.isChatRefreshing {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.primary)
-                }
+                ProgressView()
+                    .controlSize(.small)
+                    .opacity(appState.isChatRefreshing ? 1 : 0)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                    .opacity(appState.isChatRefreshing ? 0 : 1)
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isChatRefreshing)
             .accessibilityHidden(true)
