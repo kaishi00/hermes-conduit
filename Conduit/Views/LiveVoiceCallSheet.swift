@@ -311,7 +311,7 @@ struct LiveVoiceCallSheet: View {
         return VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(lines.enumerated()), id: \.element.id) { index, entry in
                 let isLatest = index == lines.count - 1
-                Text(entry.text)
+                Text(verbatim: entry.text)
                     .font(isLatest ? .system(size: currentLineSize, weight: .semibold) : .system(size: previousLineSize))
                     .foregroundStyle(Color.primary.opacity(isLatest ? 1 : 0.42))
                     .lineLimit(isLatest ? 5 : 2)

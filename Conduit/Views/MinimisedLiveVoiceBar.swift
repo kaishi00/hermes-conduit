@@ -202,6 +202,9 @@ private struct LiveVoiceBarRow: View {
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
+                                    // VoiceOver reads the state without the
+                                    // ticking time, so the label holds still.
+                                    .accessibilityLabel(Text(verbatim: status))
                             }
                         } else {
                             Text(status)

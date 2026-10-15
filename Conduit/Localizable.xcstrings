@@ -248407,6 +248407,88 @@
           }
         }
       }
+    },
+    "Reconnect to Hermes to start voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde dich wieder mit Hermes, um Sprache zu starten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vuelve a conectarte a Hermes para iniciar la voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconnectez-vous à Hermes pour lancer la voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sambungkan ulang ke Hermes untuk memulai suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riconnettiti a Hermes per avviare la voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声を始めるにはHermesに再接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성을 시작하려면 Hermes에 다시 연결하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz się ponownie z Hermes, aby uruchomić głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconecte-se ao Hermes para iniciar a voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переподключитесь к Hermes, чтобы начать голос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi başlatmak için Hermes'e yeniden bağlanın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新连接 Hermes 以开始语音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新連線 Hermes 以開始語音。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

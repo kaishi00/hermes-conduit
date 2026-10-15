@@ -78,7 +78,11 @@ struct V2VoiceButton: View {
                             Button {
                                 talk(in: session.id)
                             } label: {
-                                Label(session.title, systemImage: "bubble.left")
+                                Label {
+                                    Text(verbatim: session.title)
+                                } icon: {
+                                    Image(systemName: "bubble.left")
+                                }
                             }
                         }
                     }
@@ -132,23 +136,32 @@ struct V2VoiceButton: View {
         case .home:
             // A call of its own, like the old drawer's New voice call. Its
             // screen covers the tabs; the list stays where it was.
-            Task {
+            Task { @MainActor in
                 defer { isStarting = false }
-                _ = await appState.openVoiceConversation(
+                await startVoice(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: true, source: .newCall)
                 )
             }
         case .project(let project):
             // A new chat in the project's folder, then voice in it.
             let previous = appState.activeSessionId
-            Task {
+            Task { @MainActor in
                 defer { isStarting = false }
                 await appState.createNewSession(cwd: project.primaryPath)
                 guard appState.activeSessionId != previous else { return }
-                _ = await appState.openVoiceConversation(
+                await startVoice(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
                 )
             }
+        }
+    }
+
+    /// Starts voice, and says so when it couldn't (the connection dropped
+    /// between showing the button and the tap).
+    private func startVoice(_ intent: PendingVoiceIntent) async {
+        let started = await appState.openVoiceConversation(intent)
+        if !started, !appState.isConnected {
+            appState.errorMessage = AppLocalization.string("Reconnect to Hermes to start voice.")
         }
     }
 
@@ -157,10 +170,10 @@ struct V2VoiceButton: View {
         guard !isStarting else { return }
         Haptics.medium()
         isStarting = true
-        Task {
+        Task { @MainActor in
             defer { isStarting = false }
             guard await appState.openSession(sessionID) else { return }
-            _ = await appState.openVoiceConversation(
+            await startVoice(
                 PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
             )
         }
