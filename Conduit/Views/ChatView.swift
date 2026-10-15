@@ -233,6 +233,7 @@ struct ChatView: View {
             // (in V2, not while the composer is expanded).
             if !composerExpanded {
                 MinimisedLiveVoiceBar()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             // Composer + control bar
             ComposerBar()

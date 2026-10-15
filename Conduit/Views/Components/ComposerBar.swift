@@ -1007,6 +1007,7 @@ struct ComposerBar: View {
                 .frame(width: Self.controlSize, height: Self.controlSize)
                 .contentShape(Self.controlHitShape)
         }
+        .accessibilityLabel(Text("Attach"))
         .disabled(!appState.composerIsEnabled || appState.isBusy)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
     }
