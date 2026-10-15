@@ -70,6 +70,12 @@ struct ComposerBar: View {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
+    /// V2's conversation: rest as a slim bar until the composer is used.
+    @Environment(\.v2ComposerRests) private var restsWhenIdle
+    /// Kept expanded a moment after use ends, so a tap on a control (which
+    /// can take focus from the field) doesn't collapse it under the finger.
+    @State private var holdsExpanded = false
+    @State private var collapseTask: Task<Void, Never>?
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
@@ -310,9 +316,26 @@ struct ComposerBar: View {
                 composerContent
             }
         }
-        .padding(.horizontal, 14)
+        // Resting, the voice button keeps its spot on the trailing side.
+        .padding(.leading, rests ? 16 : (restsWhenIdle ? 12 : 14))
+        .padding(.trailing, rests ? 84 : (restsWhenIdle ? 12 : 14))
         .padding(.top, 8)
         .padding(.bottom, 10)
+        .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
+        .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !rests)
+        .onChange(of: composerInUse, initial: true) { _, inUse in
+            guard restsWhenIdle else { return }
+            composerUseChanged(inUse)
+        }
+        // One photo picker for both attach buttons (resting and expanded),
+        // so it survives the composer expanding under it.
+        .photosPicker(
+            isPresented: $showAttachmentMenu,
+            selection: $photoItems,
+            maxSelectionCount: Self.photoPickerSelectionLimit,
+            selectionBehavior: .ordered,
+            matching: .any(of: [.images, .videos])
+        )
         .onChange(of: text) { _, newValue in
             let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
             suppressNextTextChangeSuggestions = false
@@ -477,11 +500,23 @@ struct ComposerBar: View {
 
             // The field spans the card; every control sits in the row
             // below it, so a long draft wraps across the full width (#335).
-            composerField
-                .padding(.horizontal, 6)
-                .padding(.top, 6)
+            // Resting (V2), attach sits beside the field and the row waits.
+            HStack(spacing: 2) {
+                if rests {
+                    attachmentButton
+                        .padding(.leading, 6)
+                        .transition(.opacity)
+                }
+                composerField
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, rests ? 6 : 0)
+            .padding(.top, rests ? 0 : 6)
 
-            controlsRow
+            if !rests {
+                controlsRow
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .background(composerFoundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay {
@@ -612,6 +647,40 @@ struct ComposerBar: View {
 
     private var showsFullEditorButton: Bool {
         Self.showsFullEditorButton(measuredHeight: composerTextHeight)
+    }
+
+    /// Anything that needs the full composer: focus, a draft, an
+    /// attachment, a reply, dictation, a running turn's Stop, a notice, or a
+    /// control's sheet.
+    private var composerInUse: Bool {
+        let hasDraft = isFocused || hasText || !attachments.isEmpty || pendingScreenshot != nil
+            || replyReference != nil || isShowingFullEditor
+        let isDictating = dictation.isDictating || dictation.isStarting || dictation.isTranscribing
+        // Stop, steer and interrupt live in the controls row.
+        let turnControl = action == .stop || action == .steer || action == .interrupt
+        let hasNotice = !appState.composerIsEnabled || appState.isCompressingActiveSession
+            || appState.activeChatTakeover != nil || composerErrorMessage != nil
+        let pickerUp = showAttachmentMenu || showDocumentPicker || showCamera
+        let sheetUp = appState.showModelPicker || appState.showContextSheet || appState.showAgentsSheet
+        return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp
+    }
+
+    /// V2's resting composer: attach and the placeholder in a slim bar.
+    private var rests: Bool {
+        restsWhenIdle && !composerInUse && !holdsExpanded
+    }
+
+    private func composerUseChanged(_ inUse: Bool) {
+        collapseTask?.cancel()
+        if inUse {
+            holdsExpanded = true
+            return
+        }
+        collapseTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { holdsExpanded = false }
+        }
     }
 
     /// Attach, model and session status on the left; dictate and the
@@ -936,13 +1005,6 @@ struct ComposerBar: View {
         }
         .disabled(!appState.composerIsEnabled || appState.isBusy)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
-        .photosPicker(
-            isPresented: $showAttachmentMenu,
-            selection: $photoItems,
-            maxSelectionCount: Self.photoPickerSelectionLimit,
-            selectionBehavior: .ordered,
-            matching: .any(of: [.images, .videos])
-        )
     }
 
     /// What the single trailing slot of the input row holds.

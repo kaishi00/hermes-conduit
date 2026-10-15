@@ -11,8 +11,32 @@
 
 import SwiftUI
 
+private struct V2ComposerRestsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// V2's conversation: the composer rests as a slim bar beside the voice
+    /// button and expands while it is in use.
+    var v2ComposerRests: Bool {
+        get { self[V2ComposerRestsKey.self] }
+        set { self[V2ComposerRestsKey.self] = newValue }
+    }
+}
+
+/// Whether a resting composer has expanded, so the voice button beside it
+/// can step aside and the minimised call bar hide.
+struct V2ComposerExpandedKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var composerExpanded = false
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
 
@@ -31,6 +55,25 @@ struct V2ConversationScreen: View {
                     .id(appState.activeRoomSurface?.room.roomID)
             } else {
                 ChatView()
+                    .environment(\.v2ComposerRests, true)
+            }
+        }
+        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
+            composerExpanded = expanded
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if appState.activeRoomSurface == nil {
+                // Beside the resting composer; it slides aside, shrinks and
+                // fades while the composer is expanded.
+                V2VoiceButton(context: .conversation)
+                    .scaleEffect(composerExpanded && !reduceMotion ? 0.4 : 1)
+                    .offset(x: composerExpanded && !reduceMotion ? 30 : 0)
+                    .opacity(composerExpanded ? 0 : 1)
+                    .allowsHitTesting(!composerExpanded)
+                    .accessibilityHidden(composerExpanded)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 10)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: composerExpanded)
             }
         }
         .navigationTitle("")

@@ -17,6 +17,8 @@ enum V2VoiceContext: Equatable {
     case home
     /// A project's page: a new chat in that project's folder, in voice.
     case project(ProjectSummary)
+    /// The open conversation: voice in it (a Bot Chat calls its bot).
+    case conversation
 }
 
 struct V2VoiceButton: View {
@@ -35,7 +37,13 @@ struct V2VoiceButton: View {
     private var needsSetup: Bool { !appState.showsComposerVoiceButton }
 
     private var canAct: Bool {
-        returnsToCall || needsSetup || (!isStarting && appState.canStartPhoneVoiceConversation && !appState.isVoiceInUse)
+        if returnsToCall || needsSetup { return true }
+        guard !isStarting, appState.canStartPhoneVoiceConversation, !appState.isVoiceInUse else { return false }
+        // In a chat, like the composer's voice button: not mid-sync or busy.
+        if context == .conversation {
+            return appState.composerIsEnabled && !appState.isBusy
+        }
+        return true
     }
 
     /// The three most recently active conversations of this profile.
@@ -56,6 +64,11 @@ struct V2VoiceButton: View {
         switch context {
         case .home: return AppLocalization.string("New voice call")
         case .project: return AppLocalization.string("Talk in this project")
+        case .conversation:
+            if let bot = appState.activeBotChatProfile {
+                return AppLocalization.string("Call \(appState.profileDisplayName(bot))")
+            }
+            return AppLocalization.string("Talk in this conversation")
         }
     }
 
@@ -140,6 +153,14 @@ struct V2VoiceButton: View {
                 defer { isStarting = false }
                 await startVoice(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: true, source: .newCall)
+                )
+            }
+        case .conversation:
+            // Voice in the open chat, as the composer's voice button does.
+            Task {
+                defer { isStarting = false }
+                _ = await appState.openVoiceConversation(
+                    PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
                 )
             }
         case .project(let project):

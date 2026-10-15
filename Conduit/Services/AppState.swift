@@ -16403,6 +16403,11 @@ final class AppState: ObservableObject {
     }
     #endif
 
+    /// The bot whose chat is open, if the open conversation is a Bot Chat.
+    var activeBotChatProfile: String? {
+        activeSessionId.flatMap(botConversationProfile(for:))
+    }
+
     /// The bot profile an in-flight or active conversation belongs to, when
     /// that conversation is a canonical Bot Chat. Nil for ordinary sessions —
     /// the ordinary dashboard scope applies.

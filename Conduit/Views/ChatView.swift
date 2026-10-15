@@ -25,6 +25,8 @@ private struct OptionalAccessibilityHint: ViewModifier {
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
+    /// V2: the composer is expanded, which hides the minimised call's bar.
+    @State private var composerExpanded = false
     /// Owns the viewport: follows the latest message, holds the reader's
     /// place while browsing, restores saved positions. It reads and sets the
     /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
@@ -226,10 +228,16 @@ struct ChatView: View {
                 }
             }
 
-            // A live call swiped down keeps running; its bar sits here.
-            MinimisedLiveVoiceBar()
+            // A live call swiped down keeps running; its bar sits here
+            // (in V2, not while the composer is expanded).
+            if !composerExpanded {
+                MinimisedLiveVoiceBar()
+            }
             // Composer + control bar
             ComposerBar()
+        }
+        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
+            composerExpanded = expanded
         }
         .environment(\.chatTextSize, chatTextSize)
         // Gateway videos, audio and documents open from a download (#569).
