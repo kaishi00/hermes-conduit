@@ -131,9 +131,11 @@ struct V2ScheduledList: View {
                         .padding(.top, 60)
                 }
             } else if all.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 140)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                // In a scroll view so pull to refresh still works while loading.
+                ScrollView {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 140)
+                }
             } else {
                 List {
                     if !pinned.isEmpty {
