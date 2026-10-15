@@ -119,6 +119,8 @@ struct V2ChatsView: View {
     @AppStorage("conduit.v2.sessionFilter") private var filterRaw = "all"
     /// Expanded parents, remembered per parent across launches.
     @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
+    /// Parsed once per change of the store, not once per parent row.
+    @State private var expansionCache = V2NestExpansionCache()
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
@@ -548,10 +550,7 @@ struct V2ChatsView: View {
     private var expansionPrefix: String { appState.activeProfile + "\t" }
 
     private var expandedNestIDs: Set<String> {
-        let prefix = expansionPrefix
-        return Set(expandedNestsRaw.split(separator: "\n").compactMap { line in
-            line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
-        })
+        expansionCache.ids(in: expandedNestsRaw, prefix: expansionPrefix)
     }
 
     private func setExpanded(_ key: String, _ expanded: Bool) {
@@ -1089,5 +1088,23 @@ struct V2ProjectTile: View {
             .background(color.opacity(0.16), in: shape)
             .overlay(shape.strokeBorder(color.opacity(0.35), lineWidth: 1))
             .accessibilityHidden(true)
+    }
+}
+
+/// The expanded nest keys of one profile, parsed from the stored lines only
+/// when those lines or the profile change.
+final class V2NestExpansionCache {
+    private var raw: String?
+    private var prefix: String?
+    private var cached: Set<String> = []
+
+    func ids(in raw: String, prefix: String) -> Set<String> {
+        if raw == self.raw, prefix == self.prefix { return cached }
+        self.raw = raw
+        self.prefix = prefix
+        cached = Set(raw.split(separator: "\n").compactMap { line in
+            line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
+        })
+        return cached
     }
 }

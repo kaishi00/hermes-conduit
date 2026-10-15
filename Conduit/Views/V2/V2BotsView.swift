@@ -27,7 +27,7 @@ struct V2BotsView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 10) {
-                Text("Bots")
+                Text(V2Tab.bots.title)
                     .font(.title2.weight(.bold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)

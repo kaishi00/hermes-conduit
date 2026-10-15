@@ -238,12 +238,8 @@ final class ProfilePickerUITests: XCTestCase {
             app.navigationBars.buttons["BackButton"],
             app.navigationBars.buttons["Back"]
         ]
-        if let back = candidates.first(where: { $0.exists }) {
-            back.tap()
-        } else {
-            let first = app.navigationBars.buttons.element(boundBy: 0)
-            if first.exists { first.tap() }
-        }
+        // Named Back only: a room's first bar button is Leave.
+        candidates.first(where: { $0.exists })?.tap()
     }
 
     /// The seeded profile that is not the active one: the card only selects when

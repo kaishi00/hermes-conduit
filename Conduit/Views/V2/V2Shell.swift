@@ -151,11 +151,15 @@ struct V2Shell: View {
             }
             // Leaving a group room from its own toolbar ends that screen.
             .onChange(of: appState.activeRoomSurface?.room.roomID) { old, new in
-                // Whichever tab holds the room's screen, even one that isn't
-                // showing, drops it so it doesn't come back on return.
-                guard old != nil, new == nil else { return }
-                if chatsPath.last == .conversation { chatsPath.removeLast() }
-                if botsPath.last == .conversation { botsPath.removeLast() }
+                // Leaving: whichever tab holds the room's screen, even one
+                // that isn't showing, drops it so it doesn't come back.
+                if old != nil, new == nil {
+                    if chatsPath.last == .conversation { chatsPath.removeLast() }
+                    if botsPath.last == .conversation { botsPath.removeLast() }
+                } else if new != nil, !conversationVisible, !appState.isVoiceCallScreenPresented {
+                    // A room opened without a row tap (just created) shows.
+                    openConversation()
+                }
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
