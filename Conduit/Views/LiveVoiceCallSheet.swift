@@ -842,6 +842,9 @@ struct V2CallHeaderTitle: View {
             Text(verbatim: jobs.liveThread?.title ?? AppLocalization.string("Voice call"))
                 .font(.headline)
                 .lineLimit(1)
+                // The subtitle is hidden below; VoiceOver still hears the
+                // profile and engine, just not the ticking clock.
+                .accessibilityValue(Text(verbatim: [profile, engine].filter { !$0.isEmpty }.joined(separator: ", ")))
             // Ticks once a second while the call runs; nothing redraws
             // before it starts or after it ends.
             TimelineView(.animation(minimumInterval: 1, paused: jobs.liveCallStartedAt == nil)) { context in
