@@ -93,6 +93,12 @@ extension DashboardTicketBridge {
             )
         }
         if http.statusCode == 401 || http.statusCode == 403 {
+            // Hermes' refusal of a session write is a verdict on the chat,
+            // not an expired sign-in (as in the page's response handler).
+            if http.statusCode == 403, data.count <= maxResponseBytes,
+               let detail = Self.errorDetail(data), SessionMutationIdentity.isRefusalDetail(detail) {
+                throw DashboardTicketBridgeError.http(status: 403, detail: detail)
+            }
             throw DashboardTicketBridgeError.signInRequired
         }
         guard data.count <= maxResponseBytes else {
@@ -101,7 +107,7 @@ extension DashboardTicketBridge {
         let value = data.isEmpty ? nil : try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard (200...299).contains(http.statusCode) else {
             let object = value as? [String: Any]
-            let detail = (object?["error"] ?? object?["message"] ?? object?["detail"]) as? String
+            let detail = Self.errorDetail(object)
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
                 detail: detail ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
@@ -113,6 +119,15 @@ extension DashboardTicketBridge {
         if let array = value as? [Any] { return ["_array": array] }
         if data.isEmpty { return [:] }
         return ["value": value ?? String(decoding: data, as: UTF8.self)]
+    }
+
+    /// The error text a failed response carries, as the page reads it.
+    private static func errorDetail(_ object: [String: Any]?) -> String? {
+        (object?["error"] ?? object?["message"] ?? object?["detail"]) as? String
+    }
+
+    private static func errorDetail(_ data: Data) -> String? {
+        errorDetail(try? JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
     /// The response, or `URLError(.timedOut)` once `deadline` passes in
