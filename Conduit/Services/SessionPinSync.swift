@@ -123,8 +123,8 @@ struct SessionPinSync: Equatable {
         return true
     }
 
-    /// The chat's phone-only pin is gone (unpinned, archived or deleted), so
-    /// a later pin asks Hermes again. Returns whether it was phone-only.
+    /// A deliberate re-pin asks Hermes again, and a deleted chat needs no
+    /// mark, so its mark goes. Returns whether it was phone-only.
     @discardableResult
     mutating func clearPhoneOnly(pinID: String, profile: String) -> Bool {
         guard let host else { return false }

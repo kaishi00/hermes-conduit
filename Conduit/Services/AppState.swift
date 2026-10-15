@@ -4136,10 +4136,20 @@ final class AppState: ObservableObject {
     }
 
     /// Hermes refused to pin this chat for this sign-in, so its pin stays
-    /// on the phone instead of flipping back.
-    private func keepPinOnPhone(_ pinID: String, profile: String, generation: UInt64) {
+    /// on the phone instead of flipping back. A listing that landed while
+    /// a slow refusal was in flight may already have flipped it; the
+    /// refused write's value is put back.
+    private func keepPinOnPhone(_ pinID: String, profile: String, generation: UInt64, pinned: Bool) {
         guard sessionPinSync.keepOnPhone(pinID: pinID, profile: profile, generation: generation) else { return }
         persistHostPinSyncState()
+        let pins = pinnedSessionIDsByProfile[profile] ?? []
+        if pinned, !pins.contains(pinID) {
+            storePins(pins + [pinID], profile: profile)
+            publishWidgetSnapshot()
+        } else if !pinned, pins.contains(pinID) {
+            storePins(pins.filter { $0 != pinID }, profile: profile)
+            publishWidgetSnapshot()
+        }
     }
 
     /// The phone's pins are gone, so no host owns them any more: the next
@@ -4172,7 +4182,7 @@ final class AppState: ObservableObject {
                 } catch let error where SessionMutationIdentity.isRefusal(error) {
                     sessionCatalogLog.notice("Pin upload kept on phone: \(String(describing: error), privacy: .public)")
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
-                    self.keepPinOnPhone(upload.pinID, profile: profile, generation: generation)
+                    self.keepPinOnPhone(upload.pinID, profile: profile, generation: generation, pinned: true)
                 } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
                     // The chat is gone from the host; so is its pin.
                     guard self.sessionPinSync.host == bridge.baseURL,
@@ -6001,7 +6011,7 @@ final class AppState: ObservableObject {
                 // the phone only.
                 sessionCatalogLog.notice("Pin kept on phone: \(String(describing: error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL else { return }
-                self.keepPinOnPhone(pinID, profile: profile, generation: generation)
+                self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned)
             } catch {
                 // The pin flips back rather than claim a change Hermes
                 // didn't take.
@@ -6333,7 +6343,12 @@ final class AppState: ObservableObject {
         pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
         let pinID = pinID(for: session)
-        // A phone-only chat keeps its mark, so listings leave the removal be.
+        if !unpinOnHost, sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile) {
+            // Deleted: nothing left for the mark to protect.
+            persistHostPinSyncState()
+        }
+        // An archived phone-only chat keeps its mark, so listings leave the
+        // removal be.
         guard unpinOnHost, wasPinned, let bridge = dashboardTicketBridge,
               sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL),
               !sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) else { return }
@@ -6345,7 +6360,7 @@ final class AppState: ObservableObject {
             } catch let error where SessionMutationIdentity.isRefusal(error) {
                 sessionCatalogLog.notice("Pin clear kept on phone: \(String(describing: error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL else { return }
-                self.keepPinOnPhone(pinID, profile: profile, generation: generation)
+                self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: false)
             } catch {
                 sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
             }
