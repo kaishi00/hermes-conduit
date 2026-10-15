@@ -172,51 +172,6 @@ final class ProfilePickerUITests: XCTestCase {
         )
     }
 
-    /// Diagnostic for the V2 shell (temporary): launching on the sessions
-    /// list, with no conversation pushed at cold launch, must leave the app
-    /// idle with the profile strip showing.
-    func testV2LaunchOnSessionsListShowsProfileStrip() throws {
-        let app = XCUIApplication()
-        app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
-        app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
-        app.launchArguments += ["-conduit.chatReturnSurface.v1", "sessions"]
-        app.launch()
-        XCTAssertTrue(
-            app.buttons[Identity.workspace].waitForExistence(timeout: 20),
-            "Profile strip did not appear. Tree:\n\(app.debugDescription)"
-        )
-    }
-
-    // TEMPORARY (PR #617): remove with the V2 launch-stall diagnostics.
-    /// The chat slides in 2 s after launch: does an animated push after
-    /// launch settle? A stalled app times out the query below.
-    func testV2DiagPushHalfSecondAfterLaunchSettles() {
-        let app = XCUIApplication()
-        app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
-        app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
-        app.launchArguments += ["-conduit.v2.diag.pushAfterHalfSecond", "YES"]
-        var started = Date()
-        app.launch()
-        XCTAssertLessThan(Date().timeIntervalSince(started), 45, "Launch never went idle")
-        Thread.sleep(forTimeInterval: 2)
-        started = Date()
-        _ = app.navigationBars.firstMatch.waitForExistence(timeout: 10)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 20, "The app never settled after the chat slid in")
-    }
-
-    func testV2DiagAnimatedPushAfterLaunchSettles() {
-        let app = XCUIApplication()
-        app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
-        app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
-        app.launchArguments += ["-conduit.v2.diag.deferPush", "YES"]
-        app.launch()
-        Thread.sleep(forTimeInterval: 4)
-        let started = Date()
-        _ = app.navigationBars.firstMatch.waitForExistence(timeout: 10)
-        let elapsed = Date().timeIntervalSince(started)
-        XCTAssertLessThan(elapsed, 20, "The app never settled after the chat slid in (\(Int(elapsed)) s)")
-    }
-
     // MARK: - Helpers
 
     /// Launches the remembered-connected stub with the seeded profile roster.
@@ -233,7 +188,7 @@ final class ProfilePickerUITests: XCTestCase {
     private func openProfilePicker(_ app: XCUIApplication) {
         // The profile strip's selected chip opens the profile manager.
         let workspace = app.buttons[Identity.workspace]
-        returnToTabs(app, revealing: workspace)
+        app.returnToV2Tabs(revealing: workspace)
         XCTAssertTrue(workspace.waitForExistence(timeout: 10), "Profile strip did not appear. Tree:\n\(app.debugDescription)")
         workspace.tap()
 
@@ -241,19 +196,6 @@ final class ProfilePickerUITests: XCTestCase {
             app.staticTexts[Identity.pickerTitle].waitForExistence(timeout: 10),
             "Profile picker did not appear. Tree:\n\(app.debugDescription)"
         )
-    }
-
-    /// V2 opens the last conversation at launch with the tab bar hidden; Back
-    /// returns to Chats, where the tab bar and the profile strip live.
-    private func returnToTabs(_ app: XCUIApplication, revealing element: XCUIElement) {
-        if element.waitForExistence(timeout: 5) { return }
-        let candidates = [
-            app.navigationBars.buttons["Chats"],
-            app.navigationBars.buttons["BackButton"],
-            app.navigationBars.buttons["Back"]
-        ]
-        // Named Back only: a room's first bar button is Leave.
-        candidates.first(where: { $0.exists })?.tap()
     }
 
     /// The seeded profile that is not the active one: the card only selects when

@@ -29,8 +29,6 @@ struct V2ConversationScreen: View {
                 // Keyed by room: another room starts with its own draft.
                 GroupChatView()
                     .id(appState.activeRoomSurface?.room.roomID)
-            } else if V2Diagnostics.on("plainConversation") {
-                Color.clear
             } else {
                 ChatView()
             }
@@ -38,13 +36,13 @@ struct V2ConversationScreen: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar(V2Diagnostics.on("keepTabBar") ? .automatic : .hidden, for: .tabBar)
+        .toolbar(.hidden, for: .tabBar)
         // An open room supplies its own leading Leave button, which also
         // ends this screen; a second leading control would be ambiguous.
         .navigationBarBackButtonHidden(appState.activeRoomSurface != nil)
         .toolbar {
             // Session-only controls: an open room owns the title and actions.
-            if appState.activeRoomSurface == nil, !V2Diagnostics.on("noToolbar") {
+            if appState.activeRoomSurface == nil {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
                         ChatTitleControl(

@@ -77,19 +77,6 @@ struct V2ShellContext {
     var isTabActive = true
 }
 
-/// TEMPORARY (PR #617): Debug-only switches that turn single V2 pieces off
-/// so hosted UI smoke can find what keeps the app from going idle with a
-/// conversation open. Removed with the fix.
-enum V2Diagnostics {
-    static func on(_ name: String) -> Bool {
-        #if DEBUG
-        return UserDefaults.standard.bool(forKey: "conduit.v2.diag.\(name)")
-        #else
-        return false
-        #endif
-    }
-}
-
 private struct V2ShellContextKey: EnvironmentKey {
     static let defaultValue = V2ShellContext()
 }
@@ -118,9 +105,10 @@ struct V2Shell: View {
     @State private var settingsLink: ConduitAppLink.SettingsLink?
 
     /// The return setting picks the first screen: the last chat, or the
-    /// sessions list. The chat starts in the Chats path rather than being
-    /// pushed once the shell is up: a push during the launch's first layout
-    /// left the app never idle (UI smoke on PR #617).
+    /// sessions list (a notification or widget about to open a chat opens it
+    /// itself). The chat starts in the Chats path rather than being pushed
+    /// once the shell is up: a push during the launch's first layout, even
+    /// without animation, left the app never idle.
     init(opensConversation: Bool = false) {
         _chatsPath = State(initialValue: opensConversation ? [.conversation] : [])
     }
@@ -190,20 +178,6 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
-            .task {
-                // The return setting picks the first screen: the last chat,
-                // or the sessions list. A notification or widget that is
-                // about to open a chat opens it itself.
-                guard appState.chatReturnSurface == .conversation,
-                      !appState.hasPendingExplicitNavigation else { return }
-                if V2Diagnostics.on("deferPush") {
-                    try? await Task.sleep(for: .seconds(2))
-                    openConversation()
-                } else if V2Diagnostics.on("pushAfterHalfSecond") {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    openConversation()
-                }
-            }
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
                 appState.showSidebar = false
@@ -212,7 +186,7 @@ struct V2Shell: View {
 
     @ViewBuilder
     private var tabs: some View {
-        if #available(iOS 26.0, *), !V2Diagnostics.on("capsuleTabs") {
+        if #available(iOS 26.0, *) {
             nativeTabs
         } else {
             capsuleTabs
@@ -242,12 +216,7 @@ struct V2Shell: View {
             }
         }
         .tint(.conduitAccent)
-        .tabBarMinimizeBehavior(minimizeBehavior)
-    }
-
-    @available(iOS 26.0, *)
-    private var minimizeBehavior: TabBarMinimizeBehavior {
-        V2Diagnostics.on("noMinimize") ? .never : .onScrollDown
+        .tabBarMinimizeBehavior(.onScrollDown)
     }
 
     /// iOS 17 and 18: the same four tabs over a custom glass capsule.
@@ -278,9 +247,7 @@ struct V2Shell: View {
         switch tab {
         case .chats:
             NavigationStack(path: $chatsPath) {
-                Group {
-                    if V2Diagnostics.on("plainRoot") { Color.clear } else { V2ChatsView() }
-                }
+                V2ChatsView()
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .tasks:

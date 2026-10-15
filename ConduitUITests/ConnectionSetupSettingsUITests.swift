@@ -181,22 +181,9 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // Settings is a tab: a tab bar button on iOS 26, a capsule bar button
         // before it; both are buttons.
         let tab = app.buttons["Settings"].firstMatch
-        returnToTabs(app, revealing: tab)
+        app.returnToV2Tabs(revealing: tab)
         XCTAssertTrue(tab.waitForExistence(timeout: 10), "Tab bar did not appear. Tree:\n\(app.debugDescription)")
         tab.tap()
-    }
-
-    /// V2 opens the last conversation at launch with the tab bar hidden; Back
-    /// returns to Chats, where the tab bar and the profile strip live.
-    private func returnToTabs(_ app: XCUIApplication, revealing element: XCUIElement) {
-        if element.waitForExistence(timeout: 5) { return }
-        let candidates = [
-            app.navigationBars.buttons["Chats"],
-            app.navigationBars.buttons["BackButton"],
-            app.navigationBars.buttons["Back"]
-        ]
-        // Named Back only: a room's first bar button is Leave.
-        candidates.first(where: { $0.exists })?.tap()
     }
 
     /// The address preview is a single `Text` element, which XCTest exposes
