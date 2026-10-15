@@ -249227,6 +249227,88 @@
           }
         }
       }
+    },
+    "Couldn't open the chat to edit it. Hermes knows you want changes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat zum Bearbeiten ließ sich nicht öffnen. Hermes weiß, dass du Änderungen möchtest."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo abrir el chat para editarlo. Hermes sabe que quieres cambios."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’ouvrir la discussion pour la modifier. Hermes sait que vous voulez des changements."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat membuka obrolan untuk mengeditnya. Hermes tahu Anda ingin perubahan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile aprire la chat per modificarla. Hermes sa che vuoi delle modifiche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編集するためにチャットを開けませんでした。変更したいことは Hermes に伝わっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "편집할 채팅을 열 수 없습니다. 변경을 원한다는 것은 Hermes에 전달되었습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się otworzyć czatu do edycji. Hermes wie, że chcesz zmian."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível abrir a conversa para editar. O Hermes sabe que você quer mudanças."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось открыть чат для правки. Hermes знает, что вы хотите изменений."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Düzenlemek için sohbet açılamadı. Hermes değişiklik istediğinizi biliyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开聊天进行编辑。Hermes 已知道你想修改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟聊天進行編輯。Hermes 已知道你想修改。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

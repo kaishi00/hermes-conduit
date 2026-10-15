@@ -83,7 +83,8 @@ struct PresentedConfirm: Identifiable, Equatable {
             // around it, nothing else.
             guard said.count <= wanted.count + 2, let start = Self.range(of: wanted, in: said) else { return false }
             let extra = Array(said[..<start]) + Array(said[(start + wanted.count)...])
-            return extra.allSatisfy { leads.contains($0) }
+            // A lead word in any language the call's own yes check knows.
+            return extra.allSatisfy { leads.contains($0) || VoiceCallDecisionOutcome.isYes($0) }
         }
     }
 
@@ -132,6 +133,12 @@ final class PresentedScreensSync: ObservableObject {
     private var syncing = false
     private var syncAgain = false
     private var scope: String?
+    /// The newest caller's request, so a coalesced round uses the current
+    /// host and profile rather than the first caller's.
+    private var latest: (profile: String, installationID: String, isCurrent: @MainActor () -> Bool, request: Request)?
+    /// The user's last turn in the call when each confirmation appeared:
+    /// words from before it was on screen can't confirm it.
+    private(set) var userTurnWhenShown: [String: UUID] = [:]
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
@@ -143,12 +150,14 @@ final class PresentedScreensSync: ObservableObject {
     }
 
     func sync(scope: String, profile: String, installationID: String,
-              isCurrent: @MainActor () -> Bool = { true }, request: Request) async {
+              isCurrent: @escaping @MainActor () -> Bool = { true }, request: @escaping Request) async {
         if self.scope != scope {
             // Another host or profile: its confirmations aren't this one's.
             self.scope = scope
             prompts = []
+            userTurnWhenShown = [:]
         }
+        latest = (profile, installationID, isCurrent, request)
         if syncing {
             syncAgain = true
             return
@@ -159,8 +168,16 @@ final class PresentedScreensSync: ObservableObject {
         repeat {
             syncAgain = false
             rounds += 1
-            await syncOnce(scope: scope, profile: profile, installationID: installationID, isCurrent: isCurrent, request: request)
+            guard let current = self.scope, let next = latest else { return }
+            await syncOnce(scope: current, profile: next.profile, installationID: next.installationID,
+                           isCurrent: next.isCurrent, request: next.request)
         } while syncAgain && rounds < 3
+    }
+
+    /// Notes the user's last call turn as a confirmation goes on screen.
+    func noteShown(_ promptID: String, userTurn: UUID?) {
+        guard userTurnWhenShown[promptID] == nil, let userTurn else { return }
+        userTurnWhenShown[promptID] = userTurn
     }
 
     private func syncOnce(scope: String, profile: String, installationID: String,
@@ -186,6 +203,8 @@ final class PresentedScreensSync: ObservableObject {
         prompts = (response["prompts"] as? [Any] ?? [])
             .compactMap(PresentedConfirm.init(json:))
             .filter { !answered.contains($0.id) && !$0.isExpired() }
+        let listed = Set(prompts.map(\.id))
+        userTurnWhenShown = userTurnWhenShown.filter { listed.contains($0.key) }
     }
 
     /// Records the user's answer and takes the confirmation off screen; the
@@ -201,7 +220,9 @@ final class PresentedScreensSync: ObservableObject {
     /// Leaving a host or profile: nothing of its stays on screen.
     func leave() {
         scope = nil
+        latest = nil
         prompts = []
+        userTurnWhenShown = [:]
     }
 
     private func results(for scope: String) -> [[String: Any]] {
@@ -241,6 +262,8 @@ enum PresentVoiceTool {
         key: key
     )
 
+    private static let alreadyAnswered = ["error": "Already answered on the screen; nothing to do."]
+
     static func describe(_ prompt: PresentedConfirm) -> [String: Any] {
         var entry: [String: Any] = ["id": prompt.id, "title": prompt.title, "preview": String(prompt.preview.prefix(600)),
                                     "action": prompt.actionLabel]
@@ -255,11 +278,11 @@ enum PresentVoiceTool {
         return "[Hermes put a confirmation on the user's screen: \(details). At the next natural pause, tell the user in a sentence what it will do and ask whether to go ahead; then call \(name) with confirm or decline and its id. Don't interrupt the user for it.]"
     }
 
-    /// One call. `lastUserWords` are the user's most recent words in the
-    /// call, which a confirm needs to be a yes.
+    /// One call. `lastUserTurn` is the user's most recent turn in the call,
+    /// which a confirm needs to be a yes said after the confirmation appeared.
     static func run(
         _ arguments: [String: Any], sync: PresentedScreensSync,
-        lastUserWords: @escaping @MainActor () -> String,
+        lastUserTurn: @escaping @MainActor () -> (id: UUID?, text: String),
         answer: @MainActor (PresentedConfirm, PresentedConfirmOutcome) async -> Void
     ) async -> [String: String] {
         let action = arguments["action"] as? String ?? "list"
@@ -275,16 +298,28 @@ enum PresentVoiceTool {
         switch action {
         case "confirm":
             // Their words reach Conduit a moment after the model heard them.
+            let shownAfter = sync.userTurnWhenShown[prompt.id]
             let deadline = ContinuousClock.now + .seconds(2)
-            while !prompt.isConfirmed(by: lastUserWords()) {
+            func stillWaiting() -> Bool { sync.prompts.contains { $0.id == prompt.id } }
+            func saidYes() -> Bool {
+                let turn = lastUserTurn()
+                // A turn from before the panel appeared answers something else.
+                if let shownAfter, turn.id == shownAfter { return false }
+                return prompt.isConfirmed(by: turn.text)
+            }
+            while !saidYes() {
+                guard stillWaiting() else { return alreadyAnswered }
                 guard ContinuousClock.now < deadline else {
                     return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
                 }
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return ["error": "Not confirmed."] }
             }
+            // Tapped while their words arrived: the tap stands.
+            guard stillWaiting() else { return alreadyAnswered }
             await answer(prompt, .confirmed)
             return ["result": "Confirmed. Hermes goes ahead."]
         case "decline":
+            guard sync.prompts.contains(where: { $0.id == prompt.id }) else { return alreadyAnswered }
             await answer(prompt, .declined)
             return ["result": "Declined. Hermes won't do it."]
         default:

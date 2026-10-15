@@ -43,7 +43,13 @@ extension AppState {
         Task { await syncPresentedScreens() }
         if let session = prompt.sessionID {
             dismissSidebarDrawer()
-            guard await openSession(session) else { return }
+            guard await openSession(session) else {
+                // Hermes already knows; say why the draft didn't appear.
+                if errorMessage == nil {
+                    errorMessage = AppLocalization.string("Couldn't open the chat to edit it. Hermes knows you want changes.")
+                }
+                return
+            }
         }
         prefillComposer(Self.plainText(fromMarkdown: prompt.preview))
     }
@@ -54,8 +60,8 @@ extension AppState {
         return String(attributed.characters)
     }
 
-    /// What the user last said in the running live call.
-    func liveCallLastUserWords() -> String {
+    /// The user's last turn in the running live call.
+    func liveCallLastUserTurn() -> (id: UUID?, text: String) {
         let transcript: [VoiceConversationTranscriptEntry]
         if isGeminiLiveActive {
             transcript = geminiLiveController.transcript
@@ -64,9 +70,10 @@ extension AppState {
         } else if isGPTLiveActive {
             transcript = gptLiveController.transcript
         } else {
-            return ""
+            return (nil, "")
         }
-        return transcript.last(where: { $0.speaker == .user })?.text ?? ""
+        let turn = transcript.last(where: { $0.speaker == .user })
+        return (turn?.id, turn?.text ?? "")
     }
 
     /// The live call's confirmation tool, when the host serves them.
@@ -77,7 +84,7 @@ extension AppState {
     func callPresentVoiceTool(_ arguments: [String: Any]) async -> [String: String] {
         await PresentVoiceTool.run(
             arguments, sync: presentedScreens,
-            lastUserWords: { [weak self] in self?.liveCallLastUserWords() ?? "" }
+            lastUserTurn: { [weak self] in self?.liveCallLastUserTurn() ?? (nil, "") }
         ) { prompt, outcome in
             presentedScreens.answer(prompt, outcome: outcome, via: .voice)
             // Reported in the background: the call hears the outcome now.
@@ -89,6 +96,8 @@ extension AppState {
     /// runs, so the user can answer it out loud.
     func watchPresentedConfirms(for mode: LiveVoiceModeName) -> AnyCancellable {
         var known = Set(presentedScreens.prompts.map(\.id))
+        let turnAtStart = liveCallLastUserTurn().id
+        for id in known { presentedScreens.noteShown(id, userTurn: turnAtStart) }
         return presentedScreens.$prompts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] prompts in
@@ -96,6 +105,8 @@ extension AppState {
                 let supervisor = self.voiceBackgroundJobSupervisor
                 let fresh = prompts.filter { !known.contains($0.id) }
                 known = Set(prompts.map(\.id))
+                let turn = self.liveCallLastUserTurn().id
+                for prompt in fresh { self.presentedScreens.noteShown(prompt.id, userTurn: turn) }
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
                       self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive else { return }
                 for prompt in fresh { supervisor.notePhoneChange(PresentVoiceTool.note(for: prompt)) }

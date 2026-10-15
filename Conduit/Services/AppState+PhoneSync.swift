@@ -221,9 +221,12 @@ extension AppState {
     @discardableResult
     func handlePhoneChangesPush(_ userInfo: [AnyHashable: Any]) async -> PhoneSyncEngine.Outcome? {
         guard Self.isPhoneChangesPush(userInfo) else { return nil }
-        // The same wake carries confirmations Hermes asks to present.
-        await syncPresentedScreens()
-        return await runPhoneSync(reason: .push)
+        // The same wake carries confirmations Hermes asks to present,
+        // exchanged alongside the phone sync rather than ahead of it.
+        async let presented: Void = syncPresentedScreens()
+        let outcome = await runPhoneSync(reason: .push)
+        await presented
+        return outcome
     }
 
     nonisolated static func isPhoneChangesPush(_ userInfo: [AnyHashable: Any]) -> Bool {
