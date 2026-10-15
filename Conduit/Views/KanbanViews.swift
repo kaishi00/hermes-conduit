@@ -1968,6 +1968,7 @@ private struct KanbanCardView: View {
                             Label(presentation.displayName, systemImage: presentation.systemImage)
                         }
                         .disabled(true)
+                        .accessibilityLabel(Text(presentation.displayName))
                         .accessibilityHint("Current lane")
                     }
                     Section {
