@@ -342,13 +342,11 @@ jobs:
         # Main's builds only (PRs restore the newest of them), one job per
         # project kind: shard 1 saves the app-only build. After the tests, so a
         # test failure still saves a good build.
-        # TEMPORARY (#629): this PR saves too, to measure a second run against
-        # the first; the head_ref clause goes before merge.
         if: >-
           always() && steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'
           && matrix.shard == 1
-          && (github.event_name == 'push' || github.head_ref == 'v2-redesign-eye4lb')
+          && github.event_name == 'push'
         uses: actions/cache/save@v5
         with:
           path: |
@@ -506,13 +504,11 @@ jobs:
         # Main's builds only (PRs restore the newest of them), one job per
         # project kind: UI smoke saves the full app. After the tests, so a
         # test failure still saves a good build.
-        # TEMPORARY (#629): this PR saves too, to measure a second run against
-        # the first; the head_ref clause goes before merge.
         if: >-
           always() && steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'
           && steps.cache-key.outputs.kind == 'full'
-          && (github.event_name == 'push' || github.head_ref == 'v2-redesign-eye4lb')
+          && github.event_name == 'push'
         uses: actions/cache/save@v5
         with:
           path: |

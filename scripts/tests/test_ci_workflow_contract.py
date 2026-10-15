@@ -154,7 +154,8 @@ class WorkflowContractTests(unittest.TestCase):
                             text.index("bash scripts/ci-hosted-build.sh"), job)
             self.assertIn("id: build", text, job)
             self.assertIn("steps.build.outcome == 'success'", text, job)
-            self.assertIn("github.event_name == 'push'", text, job)
+            self.assertIn("&& github.event_name == 'push'\n", text, job)
+            self.assertNotIn("head_ref", text, f"{job}: a PR's build must never be saved")
             self.assertIn(saver, text, job)
             self.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, job)
         with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:

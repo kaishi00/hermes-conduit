@@ -146,7 +146,7 @@ if [ -n "$timing" ]; then
   echo "$timing"
   echo "::endgroup::"
   dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
-  echo "::notice title=Build ${duration}s ($build_kind; DerivedData ${dd_size:-?}), slowest phases::$(printf '%s' "$timing" | sed 's/%/%25/g' | tr '\n' ';' | sed 's/;/%0A/g')"
+  echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf '%s\n' "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
 fi
