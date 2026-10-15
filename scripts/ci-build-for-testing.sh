@@ -54,10 +54,30 @@ fi
 # and whole-module type-checks it on one core.
 # -showBuildTimingSummary prints where the time went; the slowest phases are
 # echoed after the build and posted as a notice on the job.
-started_at=$(now_iso)
-start=$(date +%s)
-status=0
-run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
+#
+# Incremental builds from a restored cache (2026-10-15): ci.yml restores the
+# newest main build's DerivedData, so only what changed since recompiles.
+# Xcode reuses a result only when its inputs' file info matches exactly, and a
+# fresh runner gives every file a new inode and the checkout time. So the
+# sources get content-derived timestamps (ci-normalize-mtimes.py), and XCBuild
+# is told to ignore device and inode changes, the setting Apple suggests for
+# CI caches. A failed incremental build with no error in a source file is
+# retried once from scratch, in case the cache itself is the problem.
+# Hosted runners only: on a developer Mac both would touch the checkout and
+# the user's Xcode settings.
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  python3 "$SCRIPT_DIR/ci-normalize-mtimes.py" --repo-root . --generated "$PROJECT"
+  defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
+  export IgnoreFileSystemDeviceInodeChanges=1
+fi
+build_kind="clean"
+if [ -d "$DERIVED_DATA_PATH/Build/Intermediates.noindex" ]; then
+  build_kind="incremental"
+fi
+echo "build-for-testing: $build_kind build"
+
+run_build() {
+  run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   build-for-testing \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -72,7 +92,22 @@ run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGNING_ALLOWED=NO \
   DEVELOPMENT_TEAM="" \
-  PROVISIONING_PROFILE_SPECIFIER="" || status=$?
+  PROVISIONING_PROFILE_SPECIFIER=""
+}
+
+started_at=$(now_iso)
+start=$(date +%s)
+status=0
+run_build || status=$?
+if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incremental" ] \
+  && ! grep -qE "^$PWD/[^:]+:[0-9]+:[0-9]+: error:" "$LOG_DIR/build.log"; then
+  echo "::warning::the incremental build failed (exit $status) with no error in a source file; retrying from scratch"
+  mv "$LOG_DIR/build.log" "$LOG_DIR/build-incremental.log"
+  rm -rf "$DERIVED_DATA_PATH"
+  build_kind="clean retry"
+  status=0
+  run_build || status=$?
+fi
 finished_at=$(now_iso)
 duration=$(( $(date +%s) - start ))
 
@@ -100,7 +135,8 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-echo "build-for-testing ok in "${duration}"s"
+echo "build-for-testing ok in ${duration}s ($build_kind)"
+du -sh "$DERIVED_DATA_PATH"/* "$DERIVED_DATA_PATH"/Build/* 2>/dev/null || true
 # The notice is readable from the job's annotations, where a long test log
 # would bury the build step's output.
 timing=$(sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" | grep -E '\| *[0-9.]+ seconds' \
@@ -109,7 +145,8 @@ if [ -n "$timing" ]; then
   echo "::group::build timing summary"
   echo "$timing"
   echo "::endgroup::"
-  echo "::notice title=Build ${duration}s, slowest phases::$(printf '%s' "$timing" | tr '\n' ';' | sed 's/;/%0A/g')"
+  dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
+  echo "::notice title=Build ${duration}s ($build_kind; DerivedData ${dd_size:-?}), slowest phases::$(printf '%s' "$timing" | sed 's/%/%25/g' | tr '\n' ';' | sed 's/;/%0A/g')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
 fi

@@ -136,6 +136,34 @@ class WorkflowContractTests(unittest.TestCase):
                        "ConduitWidgets", "ConduitLocationPush"):
             self.assertIn(f"- target: {target}", spec)
 
+    def test_test_jobs_build_incrementally_from_main_builds(self):
+        """Each test job restores the newest main build's DerivedData before
+        building, and one job per project kind saves its own: only on pushes
+        to main, only after a successful build, with the same path list (a
+        different list is a different cache)."""
+        cache_path = ("          path: |\n"
+                      "            ci-derived-data\n"
+                      "            !ci-derived-data/Logs\n")
+        for job, saver in (("unit", "matrix.shard == 1"),
+                           ("ui-smoke", "steps.cache-key.outputs.kind == 'full'")):
+            text = self._job_text(job)
+            self.assertIn("uses: actions/cache/restore@v5", text, job)
+            self.assertIn("uses: actions/cache/save@v5", text, job)
+            self.assertEqual(2, text.count(cache_path), job)
+            self.assertLess(text.index("actions/cache/restore@v5"),
+                            text.index("bash scripts/ci-hosted-build.sh"), job)
+            self.assertIn("id: build", text, job)
+            self.assertIn("steps.build.outcome == 'success'", text, job)
+            self.assertIn("github.event_name == 'push'", text, job)
+            self.assertIn(saver, text, job)
+            self.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, job)
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        self.assertIn("ci-normalize-mtimes.py", build)
+        self.assertIn("IgnoreFileSystemDeviceInodeChanges", build)
+        self.assertIn('[ "${GITHUB_ACTIONS:-}" = "true" ]', build,
+                      "never restamp a developer checkout or change their Xcode defaults")
+
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()
         self.assertFalse(
@@ -208,8 +236,9 @@ class WorkflowContractTests(unittest.TestCase):
         text = self._workflow_text()
         self.assertNotIn("fromJSON(needs.plan.outputs.matrix)", text)
         self.assertNotIn("fromJSON(needs.plan.outputs.ui-matrix)", text)
-        self.assertNotIn("actions/cache/restore", text,
-                         "the timing-history cache is gone with its job")
+        # The only cache left is the build cache (DerivedData); the
+        # timing-history cache is gone with its job.
+        self.assertNotIn("timing-history", text)
         for obsolete in ("report:", "timing-history-update:", "unit-smoke:"):
             self.assertFalse(
                 any(line.startswith("  ") and line.strip() == obsolete

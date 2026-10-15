@@ -197,6 +197,31 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Pick the build cache
+        # DerivedData from the newest main build of the same project, Xcode
+        # and runner image, so ci-build-for-testing.sh recompiles only what
+        # changed since. A new Xcode or runner image starts clean.
+        id: cache-key
+        env:
+          SPEC: project-tests.yml
+        run: |
+          set -euo pipefail
+          kind=full
+          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "prefix=dd-v1-$kind-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: ${{ steps.cache-key.outputs.prefix }}-
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -205,6 +230,7 @@ jobs:
         run: xcodegen generate --spec project-tests.yml
 
       - name: Build and boot the simulator in parallel
+        id: build
         # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
         # in the background while this runner compiles, so the ~2.5 min boot
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
@@ -312,6 +338,24 @@ jobs:
           fi
           echo "unit shard: $batch batch invocation(s) completed"
 
+      - name: Save the build cache
+        # Main's builds only (PRs restore the newest of them), one job per
+        # project kind: shard 1 saves the app-only build. After the tests, so a
+        # test failure still saves a good build.
+        # TEMPORARY (#629): this PR saves too, to measure a second run against
+        # the first; the head_ref clause goes before merge.
+        if: >-
+          always() && steps.build.outcome == 'success'
+          && steps.cache.outputs.cache-hit != 'true'
+          && matrix.shard == 1
+          && (github.event_name == 'push' || github.head_ref == 'v2-redesign-eye4lb')
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+
       - name: Dump simulator state (failure diagnostics)
         if: failure()
         run: |
@@ -331,6 +375,31 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Pick the build cache
+        # DerivedData from the newest main build of the same project, Xcode
+        # and runner image, so ci-build-for-testing.sh recompiles only what
+        # changed since. A new Xcode or runner image starts clean.
+        id: cache-key
+        env:
+          SPEC: ${{ needs.plan.outputs.ui-spec }}
+        run: |
+          set -euo pipefail
+          kind=full
+          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "prefix=dd-v1-$kind-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: ${{ steps.cache-key.outputs.prefix }}-
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -339,6 +408,7 @@ jobs:
         run: xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"
 
       - name: Build and boot the simulator in parallel
+        id: build
         # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
         # in the background while this runner compiles, so the ~2.5 min boot
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
@@ -431,6 +501,24 @@ jobs:
             }
             echo "::warning::runner-level flake absorbed: $retry_csv failed, then the targeted retry passed"
           fi
+
+      - name: Save the build cache
+        # Main's builds only (PRs restore the newest of them), one job per
+        # project kind: UI smoke saves the full app. After the tests, so a
+        # test failure still saves a good build.
+        # TEMPORARY (#629): this PR saves too, to measure a second run against
+        # the first; the head_ref clause goes before merge.
+        if: >-
+          always() && steps.build.outcome == 'success'
+          && steps.cache.outputs.cache-hit != 'true'
+          && steps.cache-key.outputs.kind == 'full'
+          && (github.event_name == 'push' || github.head_ref == 'v2-redesign-eye4lb')
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()

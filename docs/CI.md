@@ -39,6 +39,20 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
   spec); then it builds the full app. Every push to `main` builds the full app too,
   as do the nightly run and TestFlight archives. The plan job makes that choice (`ui-spec`).
+- **Incremental builds from main's last build.** Each push to `main` saves
+  its DerivedData to the Actions cache after the tests (unit shard 1 the
+  app-only build, UI smoke the full app), keyed by project kind, Xcode build
+  and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`). Every test job
+  restores the newest matching entry before building, so a PR recompiles only
+  what it changed. Xcode trusts a restored build only when each input's file
+  info matches exactly, and a fresh checkout stamps every file with the clone
+  time, so `ci-build-for-testing.sh` first gives every tracked file (and the
+  generated project) a timestamp derived from its content
+  (`ci-normalize-mtimes.py`) and sets XCBuild's
+  `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
+  no error in a source file is retried once from scratch. A new Xcode or
+  runner image misses the cache and builds clean; the nightly never restores
+  one.
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core. `-showBuildTimingSummary` posts the
