@@ -5982,13 +5982,14 @@ final class AppState: ObservableObject {
         let pinID = pinID(for: session)
         guard let bridge = dashboardTicketBridge,
               sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
-        // Any change to a phone-only chat asks Hermes afresh; a refusal marks
-        // it again. (Only once a write can go out, so a pin made before the
-        // host reports its flag keeps its protection.)
-        let wasPhoneOnly = sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
-        if wasPhoneOnly { persistHostPinSyncState() }
-        // Hermes never took that pin, so an unpin has nothing to clear there.
-        if wasPhoneOnly, !pinned { return }
+        if sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) {
+            // Hermes refuses this chat: an unpin stays on the phone, with the
+            // mark keeping listings off it. A pin asks Hermes again; a second
+            // refusal marks it again.
+            guard pinned else { return }
+            sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
+            persistHostPinSyncState()
+        }
         let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
         enqueueHostPinWrite { [weak self] in
             guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
@@ -6331,15 +6332,20 @@ final class AppState: ObservableObject {
         pinnedSessionIDs.removeAll { ids.contains($0) }
         pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
-        let wasPhoneOnly = sessionPinSync.clearPhoneOnly(pinID: pinID(for: session), profile: profile)
-        if wasPhoneOnly { persistHostPinSyncState() }
-        guard unpinOnHost, wasPinned, !wasPhoneOnly, let bridge = dashboardTicketBridge,
-              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
-        sessionPinSync.recordWrite(pinID: pinID(for: session), profile: profile, pinned: false)
+        let pinID = pinID(for: session)
+        // A phone-only chat keeps its mark, so listings leave the removal be.
+        guard unpinOnHost, wasPinned, let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL),
+              !sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) else { return }
+        let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: false)
         enqueueHostPinWrite { [weak self] in
             guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
             do {
                 try await self.sendHostPin(session.id, pinned: false, profile: profile, using: bridge)
+            } catch let error where SessionMutationIdentity.isRefusal(error) {
+                sessionCatalogLog.notice("Pin clear kept on phone: \(String(describing: error), privacy: .public)")
+                guard self.sessionPinSync.host == bridge.baseURL else { return }
+                self.keepPinOnPhone(pinID, profile: profile, generation: generation)
             } catch {
                 sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
             }

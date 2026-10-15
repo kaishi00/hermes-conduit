@@ -63,6 +63,9 @@ struct SessionPinSync: Equatable {
     /// be (persisted).
     private(set) var phoneOnly: Set<String>
     private var writeGeneration: UInt64 = 0
+    /// "profile\u{1F}pin id" → the latest write's generation. Outlives the
+    /// pending entry, so a refusal that arrives after it lapsed still counts.
+    private var latestWrite: [String: UInt64] = [:]
 
     init(adopted: Set<String> = [], phoneOnly: Set<String> = []) {
         self.adopted = adopted
@@ -93,6 +96,7 @@ struct SessionPinSync: Equatable {
         self.host = host
         supportedProfiles = []
         pendingWrites = [:]
+        latestWrite = [:]
         uploaded = [:]
     }
 
@@ -113,7 +117,7 @@ struct SessionPinSync: Equatable {
     @discardableResult
     mutating func keepOnPhone(pinID: String, profile: String, generation: UInt64) -> Bool {
         let writeKey = Self.key(profile, pinID)
-        guard let host, pendingWrites[writeKey]?.generation == generation else { return false }
+        guard let host, latestWrite[writeKey] == generation else { return false }
         phoneOnly.insert(Self.phoneOnlyKey(host: host, profile: profile, pinID: pinID))
         pendingWrites[writeKey] = nil
         return true
@@ -207,6 +211,7 @@ struct SessionPinSync: Equatable {
     @discardableResult
     mutating func recordWrite(pinID: String, profile: String, pinned: Bool, at date: Date = Date()) -> UInt64 {
         writeGeneration &+= 1
+        latestWrite[Self.key(profile, pinID)] = writeGeneration
         pendingWrites[Self.key(profile, pinID)] = PendingWrite(
             pinned: pinned,
             writtenAt: date,
@@ -244,6 +249,7 @@ struct SessionPinSync: Equatable {
         uploaded[profile] = nil
         let profilePrefix = Self.key(profile, "")
         pendingWrites = pendingWrites.filter { !$0.key.hasPrefix(profilePrefix) }
+        latestWrite = latestWrite.filter { !$0.key.hasPrefix(profilePrefix) }
     }
 
     /// Forgets which hosts own pins, as when the phone's pins are cleared.
@@ -253,6 +259,7 @@ struct SessionPinSync: Equatable {
         adopted = []
         phoneOnly = []
         pendingWrites = [:]
+        latestWrite = [:]
         uploaded = [:]
     }
 }

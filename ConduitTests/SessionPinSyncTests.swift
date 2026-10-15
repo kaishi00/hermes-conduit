@@ -404,7 +404,7 @@ extension ChatReadStateTests {
         XCTAssertEqual(sync.pendingWrites["default\u{1F}old"]?.pinned, false, "The newer write still stands")
     }
 
-    func testPinsUnpinningAPhoneOnlyChatAsksHermesAgainNextTime() {
+    func testPinsClearingThePhoneOnlyMarkLetsListingsFollowHermes() {
         var sync = pinSync(adopted: true)
         let oldDefaultWrite = sync.recordWrite(pinID: "old", profile: "default", pinned: true)
         sync.keepOnPhone(pinID: "old", profile: "default", generation: oldDefaultWrite)
@@ -413,5 +413,19 @@ extension ChatReadStateTests {
         XCTAssertFalse(sync.clearPhoneOnly(pinID: "old", profile: "default"))
         let outcome = sync.reconcile(pins: [], listed: [pinRow("old", pinned: true)], profile: "default", now: Self.pinT0)
         XCTAssertEqual(outcome.pins, ["old"], "Listings follow Hermes for the chat again")
+    }
+
+    func testPinsARefusalAfterThePendingWriteLapsedStillMarks() {
+        var sync = pinSync(adopted: true)
+        let write = sync.recordWrite(pinID: "old", profile: "default", pinned: true, at: Self.pinT0)
+        _ = sync.reconcile(
+            pins: ["old"],
+            listed: [pinRow("b", pinned: false)],
+            profile: "default",
+            now: Self.pinT0.addingTimeInterval(SessionPinSync.pendingWriteLifetime + 1)
+        )
+        XCTAssertNil(sync.pendingWrites["default\u{1F}old"], "The pending entry lapsed")
+        XCTAssertTrue(sync.keepOnPhone(pinID: "old", profile: "default", generation: write))
+        XCTAssertTrue(sync.isPhoneOnly(pinID: "old", profile: "default"))
     }
 }
