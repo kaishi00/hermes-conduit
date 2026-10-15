@@ -66,7 +66,8 @@ fi
 # Hosted runners only: on a developer Mac both would touch the checkout and
 # the user's Xcode settings.
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-  python3 "$SCRIPT_DIR/ci-normalize-mtimes.py" --repo-root . --generated "$PROJECT"
+  python3 "$SCRIPT_DIR/ci-normalize-mtimes.py" --repo-root . --generated "$PROJECT" \
+    || echo "::warning::could not stamp the sources by content; this build will recompile everything"
   defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
   export IgnoreFileSystemDeviceInodeChanges=1
 fi
@@ -100,7 +101,7 @@ start=$(date +%s)
 status=0
 run_build || status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incremental" ] \
-  && ! grep -qE "^$PWD/[^:]+:[0-9]+:[0-9]+: error:" "$LOG_DIR/build.log"; then
+  && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -qF "$PWD/"; then
   echo "::warning::the incremental build failed (exit $status) with no error in a source file; retrying from scratch"
   mv "$LOG_DIR/build.log" "$LOG_DIR/build-incremental.log"
   rm -rf "$DERIVED_DATA_PATH"
