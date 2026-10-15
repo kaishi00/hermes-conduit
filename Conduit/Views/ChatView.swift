@@ -382,6 +382,7 @@ struct ChatView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
@@ -3285,6 +3286,21 @@ private struct ConduitBreathingTimeline<Content: View>: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { _ in
             content(ConduitAgentMark.breath(at: ProcessInfo.processInfo.systemUptime - startedAt))
+        }
+    }
+}
+
+/// V2 (iOS 26): the transcript fades out under the header instead of the
+/// navigation bar's edge ending it at a line.
+private struct V2SoftTopScrollEdge: ViewModifier {
+    let isOn: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), isOn {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
         }
     }
 }

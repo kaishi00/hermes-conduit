@@ -58,7 +58,7 @@ struct V2ConversationScreen: View {
                     .environment(\.v2ComposerRests, true)
             }
         }
-        .modifier(V2SoftTopEdge())
+        .modifier(V2FadingBarBackdrop())
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
@@ -116,6 +116,7 @@ struct V2ConversationScreen: View {
                         }
                         V2ConnectionLine()
                     }
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -146,12 +147,14 @@ struct V2ConversationScreen: View {
     }
 }
 
-/// The transcript fades out under the header instead of ending at a line:
-/// iOS 26's soft scroll edge, and before it a fading material behind the bar.
-private struct V2SoftTopEdge: ViewModifier {
+/// Before iOS 26, a fading material behind the navigation bar, so the
+/// transcript fades out under the header instead of ending at a line.
+/// iOS 26 gets its soft scroll edge on the transcript itself (ChatView).
+private struct V2FadingBarBackdrop: ViewModifier {
+    @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectStyle(.soft, for: .top)
+            content
         } else {
             content.overlay(alignment: .top) {
                 // Zero height at the top of the content: ignoring the safe
@@ -181,7 +184,8 @@ private struct V2ConnectionLine: View {
             .foregroundStyle(connecting ? Color.orange : Color.red)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .transition(.opacity)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
         }
     }
 }
@@ -211,7 +215,7 @@ private struct V2ConversationMenu: View {
                 Button {
                     Task { await appState.refreshActiveSession() }
                 } label: {
-                    Label("Refresh conversation", systemImage: "arrow.clockwise")
+                    Label(AppLocalization.string("Refresh conversation"), systemImage: "arrow.clockwise")
                 }
                 .disabled(!appState.isConnected || appState.isChatRefreshing)
                 if let session = appState.activeChatSessionSummary {
@@ -226,9 +230,10 @@ private struct V2ConversationMenu: View {
             }
             Section(statusWord) {
                 Button {
-                    Task { await appState.loadGatewayDiagnostics() }
+                    // The sheet loads its diagnostics as it opens.
+                    appState.showGatewaySheet = true
                 } label: {
-                    Label("Gateway", systemImage: "antenna.radiowaves.left.and.right")
+                    Label(AppLocalization.string("Gateway"), systemImage: "antenna.radiowaves.left.and.right")
                 }
             }
         } label: {
@@ -248,6 +253,7 @@ private struct V2ConversationMenu: View {
                     .fill(statusColor)
                     .frame(width: 7, height: 7)
                     .offset(x: -8, y: 8)
+                    .accessibilityHidden(true)
             }
             .modifier(V2PreGlassToolbarControl())
         }
@@ -261,6 +267,7 @@ private struct V2ConversationMenu: View {
 /// iOS 26 draws toolbar items on its own glass; earlier versions get the
 /// app's glass circle so the control still reads as a button.
 private struct V2PreGlassToolbarControl: ViewModifier {
+    @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content

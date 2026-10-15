@@ -41,7 +41,8 @@ struct GatewayDiagnosticsSheet: View {
         }
         .navigationTitle(embedded ? AppLocalization.string("Diagnostics & logs") : AppLocalization.string("Gateway"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        // Pushed, it keeps the Settings pages' bar.
+        .toolbarBackground(embedded ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { confirmingRestart = true } label: {

@@ -2083,7 +2083,7 @@ private struct GatewaySettingsDetail: View {
                 NavigationLink {
                     GatewayDiagnosticsSheet(embedded: true)
                 } label: {
-                    Label("Diagnostics & logs", systemImage: "doc.text.magnifyingglass")
+                    Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(minHeight: 44)
                 }
