@@ -49,11 +49,11 @@ fi
 #   build_destination): the embedded Watch app is a dependency on another
 #   platform, so ONLY_ACTIVE_ARCH did not apply and it compiled for x86_64
 #   too.
-# - SWIFT_COMPILATION_MODE=wholemodule (2026-10-15): Debug compiles each Swift
-#   module in incremental batches, which re-parses and type-checks the shared
-#   declarations once per batch. CI always builds from scratch, where
-#   compiling each module as one unit does that work once.
-# -showBuildTimingSummary prints where the time went, echoed after the build.
+# Not whole-module: tried 2026-10-15 (#629), it made the 3-core hosted builds
+# slower (full app 20.5 min against 11-16), since the app is one large module
+# and whole-module type-checks it on one core.
+# -showBuildTimingSummary prints where the time went; the slowest phases are
+# echoed after the build and posted as a notice on the job.
 started_at=$(now_iso)
 start=$(date +%s)
 status=0
@@ -67,7 +67,6 @@ run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   -enableCodeCoverage NO \
   -showBuildTimingSummary \
   COMPILER_INDEX_STORE_ENABLE=NO \
-  SWIFT_COMPILATION_MODE=wholemodule \
   ARCHS="${SIMULATOR_ARCH:-arm64}" \
   CODE_SIGN_IDENTITY="" \
   CODE_SIGNING_REQUIRED=NO \
@@ -102,8 +101,17 @@ if [ "$status" -ne 0 ]; then
 fi
 
 echo "build-for-testing ok in "${duration}"s"
-echo "::group::build timing summary"
-sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" || true
-echo "::endgroup::"
+# The notice is readable from the job's annotations, where a long test log
+# would bury the build step's output.
+timing=$(sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" | grep -E '\| *[0-9.]+ seconds' \
+  | sort -t'|' -k2 -rn | head -n 12 || true)
+if [ -n "$timing" ]; then
+  echo "::group::build timing summary"
+  echo "$timing"
+  echo "::endgroup::"
+  echo "::notice title=Build ${duration}s, slowest phases::$(printf '%s' "$timing" | tr '\n' ';' | sed 's/;/%0A/g')"
+else
+  echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
+fi
 echo "xctestrun=$xctestrun"
 exit 0

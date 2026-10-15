@@ -37,12 +37,12 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   unless the PR touches those targets' sources (`ConduitWatch/`,
   `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
   `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
-  spec); then it builds the full app, as do every push to `main`, the nightly
-  run and TestFlight archives. The plan job makes that choice (`ui-spec`).
-- **Whole-module Swift.** `ci-build-for-testing.sh` passes
-  `SWIFT_COMPILATION_MODE=wholemodule`: CI always builds from scratch, where
-  compiling each module as one unit beats Debug's incremental batches.
-  `-showBuildTimingSummary` prints the per-phase breakdown after the build.
+  spec); then it builds the full app. Every push to `main` builds the full app too,
+  as do the nightly run and TestFlight archives. The plan job makes that choice (`ui-spec`).
+- **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
+  the full app in 20.5 minutes against 11-16 before, because the app is one
+  large module type-checked on one core. `-showBuildTimingSummary` posts the
+  slowest build phases as a notice on each job.
 
 Unit shards run their classes as sequential `test-without-building` batches of
 at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
