@@ -1025,6 +1025,44 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(detail?.lanes.first?.sessions.map(\.title), ["Fix sidebar"])
     }
 
+    func testProjectSessionLaneKeepsItsFolderPath() {
+        let detail = MessageNormalizer.normalizeProjectSessions(
+            .object([
+                "project": .object([
+                    "id": .string("p_app"),
+                    "label": .string("App"),
+                    "repos": .array([
+                        .object([
+                            "label": .string("Conduit"),
+                            "groups": .array([
+                                .object([
+                                    "id": .string("voice"),
+                                    "label": .string("voice-v2"),
+                                    "path": .string("/work/app/.worktrees/voice-v2"),
+                                    "sessions": .array([
+                                        .object(["id": .string("s1"), "title": .string("Barge-in")])
+                                    ])
+                                ]),
+                                .object([
+                                    "id": .string("bare"),
+                                    "path": .string("/work/app"),
+                                    "sessions": .array([
+                                        .object(["id": .string("s2"), "title": .string("Release")])
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(detail?.lanes.map(\.title), ["voice-v2", "/work/app"])
+        // A lane labeled by its path doesn't repeat it.
+        XCTAssertEqual(detail?.lanes.map(\.path), ["/work/app/.worktrees/voice-v2", nil])
+    }
+
     func testGeneratedSessionTitleIsNormalizedForDisplay() {
         XCTAssertEqual(
             AppState.normalizedGeneratedSessionTitle("Title: \"Plan a Garden\"\nAn explanation we should not show"),

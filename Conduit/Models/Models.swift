@@ -828,6 +828,9 @@ struct ProjectSessionLane: Identifiable, Equatable {
     let id: String
     var title: String
     var sessions: [SessionSummary]
+    /// The folder the lane's sessions ran in (a worktree or the repo), when
+    /// Hermes names one apart from the label.
+    var path: String? = nil
 }
 
 struct ProjectSessionDetail: Identifiable, Equatable {

@@ -161,13 +161,20 @@ struct V2ProjectPage: View {
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 12)
-                Image(systemName: isCollapsed ? "folder" : "folder.fill")
+                Image(systemName: "folder")
                     .font(.subheadline)
                     .foregroundStyle(V2ProjectTile(project: project, size: 1).color)
                 Text(lane.title)
-                    .font(.footnote.monospaced().weight(.semibold))
+                    .font(.callout.weight(.semibold))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .layoutPriority(1)
+                if let path = lanePath(lane) {
+                    Text(path)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
                 Spacer(minLength: 6)
                 Text(String(lane.sessions.count))
                     .font(.footnote.monospacedDigit())
@@ -179,7 +186,7 @@ struct V2ProjectPage: View {
         }
         .buttonStyle(.plain)
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
-        .accessibilityLabel(Text(lane.title))
+        .accessibilityLabel(Text([lane.title, lanePath(lane)].compactMap { $0 }.joined(separator: ", ")))
         .accessibilityValue(Text(AppLocalization.string(isCollapsed ? "Collapsed" : "Expanded")))
         .accessibilityHint(Text(AppLocalization.string("\(lane.sessions.count) sessions")))
         .v2ListRow(divider: isCollapsed, dividerInset: 16)
@@ -199,6 +206,17 @@ struct V2ProjectPage: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+
+    /// The lane's folder, relative to the project's when it sits inside it
+    /// (".worktrees/voice-v2"), else as Hermes reports it.
+    private func lanePath(_ lane: ProjectSessionLane) -> String? {
+        guard let raw = lane.path?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if let root = newConversationPath {
+            let prefix = root.hasSuffix("/") ? root : root + "/"
+            if raw.hasPrefix(prefix) { return String(raw.dropFirst(prefix.count)) }
+        }
+        return raw
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {

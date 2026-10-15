@@ -2890,12 +2890,14 @@ enum MessageNormalizer {
                 let groupObject = group.objectValue ?? [:]
                 let groupID = groupObject["id"]?.stringValue ?? UUID().uuidString
                 let groupLabel = firstNonEmptyString([groupObject["label"], groupObject["path"]]) ?? AppLocalization.string("Sessions")
+                let groupPath = firstNonEmptyString([groupObject["path"], groupObject["cwd"]])
                 let sessions = normalizeSessions(.array(groupObject["sessions"]?.arrayValue ?? []), profile: profile)
                 guard !sessions.isEmpty else { continue }
                 lanes.append(ProjectSessionLane(
                     id: groupID,
                     title: multipleRepos ? "\(repoLabel) · \(groupLabel)" : groupLabel,
-                    sessions: sessions
+                    sessions: sessions,
+                    path: groupPath == groupLabel ? nil : groupPath
                 ))
             }
         }
