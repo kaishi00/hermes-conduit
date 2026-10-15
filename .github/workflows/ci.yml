@@ -65,8 +65,12 @@ jobs:
     outputs:
       unit-shards: "${{ steps.hosted.outputs.unit-shards }}"
       ui-csv: "${{ steps.smoke.outputs.ui-csv }}"
+      ui-spec: "${{ steps.spec.outputs.ui-spec }}"
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A pull_request checkout is the merge commit: HEAD^1 is the base.
+          fetch-depth: 2
 
       - name: Validate inventory + planner regression tests
         env:
@@ -115,6 +119,24 @@ jobs:
             jq -r '.unit_shards | to_entries[] | "- shard \(.key + 1): \(.value | split(",") | length) classes"' ci-artifacts/hosted.json
             echo "- nightly only: $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Choose the UI smoke project
+        # The unit shards always build project-tests.yml (the app without its
+        # Watch app and extensions, which no test runs). UI smoke builds the
+        # whole app as shipped when the change could break those targets:
+        # their own folders, the shared code they compile, the project spec,
+        # or any push to main.
+        id: spec
+        run: |
+          set -euo pipefail
+          spec=project.yml
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if ! git diff --name-only HEAD^1 HEAD | grep -qE '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$'; then
+              spec=project-tests.yml
+            fi
+          fi
+          echo "ui-spec=$spec" >> "$GITHUB_OUTPUT"
+          echo "- UI smoke project: \`$spec\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke selection summary
         run: |
@@ -173,7 +195,8 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        # The app without its Watch app and extensions (project-tests.yml).
+        run: xcodegen generate --spec project-tests.yml
 
       - name: Build and boot the simulator in parallel
         # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
@@ -306,7 +329,8 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        # project.yml or project-tests.yml, chosen by the plan job.
+        run: xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"
 
       - name: Build and boot the simulator in parallel
         # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs

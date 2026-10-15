@@ -49,6 +49,11 @@ fi
 #   build_destination): the embedded Watch app is a dependency on another
 #   platform, so ONLY_ACTIVE_ARCH did not apply and it compiled for x86_64
 #   too.
+# - SWIFT_COMPILATION_MODE=wholemodule (2026-10-15): Debug compiles each Swift
+#   module in incremental batches, which re-parses and type-checks the shared
+#   declarations once per batch. CI always builds from scratch, where
+#   compiling each module as one unit does that work once.
+# -showBuildTimingSummary prints where the time went, echoed after the build.
 started_at=$(now_iso)
 start=$(date +%s)
 status=0
@@ -60,7 +65,9 @@ run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   -configuration Debug \
   -derivedDataPath "$DERIVED_DATA_PATH" \
   -enableCodeCoverage NO \
+  -showBuildTimingSummary \
   COMPILER_INDEX_STORE_ENABLE=NO \
+  SWIFT_COMPILATION_MODE=wholemodule \
   ARCHS="${SIMULATOR_ARCH:-arm64}" \
   CODE_SIGN_IDENTITY="" \
   CODE_SIGNING_REQUIRED=NO \
@@ -95,5 +102,8 @@ if [ "$status" -ne 0 ]; then
 fi
 
 echo "build-for-testing ok in "${duration}"s"
+echo "::group::build timing summary"
+sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" | head -n 40 || true
+echo "::endgroup::"
 echo "xctestrun=$xctestrun"
 exit 0

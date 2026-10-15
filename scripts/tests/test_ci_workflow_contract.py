@@ -106,6 +106,32 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('wait "$prepare_pid"', build)
         self.assertIn("XCRUN_FILE=", build)
 
+    def test_test_builds_leave_out_the_watch_app_and_extensions(self):
+        """Unit shards build project-tests.yml (the app alone); UI smoke builds
+        the plan job's choice, the full app whenever a change reaches the
+        targets the overlay drops."""
+        self.assertIn("xcodegen generate --spec project-tests.yml",
+                      self._job_text("unit"))
+        self.assertIn('xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"',
+                      self._job_text("ui-smoke"))
+        with open(os.path.join(REPO_ROOT, "project-tests.yml"), encoding="utf-8") as fh:
+            overlay = fh.read()
+        self.assertIn("- path: project.yml", overlay)
+        self.assertIn("dependencies:REPLACE:", overlay)
+        self.assertNotIn("target:", overlay)
+        plan = self._job_text("plan")
+        self.assertIn("fetch-depth: 2", plan)
+        for folder in ("ConduitWatch", "ConduitWidgets", "ConduitNotificationService",
+                       "ConduitLocationPush", "Shared"):
+            self.assertIn(folder, plan, f"a {folder} change must build the full app")
+        with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as fh:
+            spec = fh.read()
+        # Every target the overlay drops must still be a dependency in the
+        # real spec, or the list above is out of date.
+        for target in ("ConduitWatch", "ConduitNotificationService",
+                       "ConduitWidgets", "ConduitLocationPush"):
+            self.assertIn(f"- target: {target}", spec)
+
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()
         self.assertFalse(

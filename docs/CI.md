@@ -27,6 +27,23 @@ products with `ci-build-for-testing.sh` on the same runner, then waits for the
 boot. On the v3 runs, boot readiness was a serial ~2.5 minutes after a separate
 build job and an artifact hop; now it hides behind the ~3 minute build.
 
+What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
+
+- **The app without its Watch app and extensions.** Unit shards generate the
+  project from `project-tests.yml`, an xcodegen overlay of `project.yml` whose
+  only change is that the Conduit target no longer embeds the Apple Watch app
+  and the three app extensions. No test runs them, and the Watch app is a
+  second platform compiled from scratch. UI smoke builds the same slim project
+  unless the PR touches those targets' sources (`ConduitWatch/`,
+  `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
+  `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
+  spec); then it builds the full app, as do every push to `main`, the nightly
+  run and TestFlight archives. The plan job makes that choice (`ui-spec`).
+- **Whole-module Swift.** `ci-build-for-testing.sh` passes
+  `SWIFT_COMPILATION_MODE=wholemodule`: CI always builds from scratch, where
+  compiling each module as one unit beats Debug's incremental batches.
+  `-showBuildTimingSummary` prints the per-phase breakdown after the build.
+
 Unit shards run their classes as sequential `test-without-building` batches of
 at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
 batch does not stop the shard: every batch runs, and the job fails at the end
