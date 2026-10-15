@@ -210,11 +210,21 @@ final class PresentedScreensSync: ObservableObject {
     /// Records the user's answer and takes the confirmation off screen; the
     /// next sync reports it.
     func answer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome, via source: PresentedConfirmAnswerSource) {
-        guard let scope else { return }
+        // The first answer wins: a second tap lands on a panel already gone.
+        guard let scope, prompts.contains(where: { $0.id == prompt.id }) else { return }
         prompts.removeAll { $0.id == prompt.id }
         var list = results(for: scope).filter { ($0["id"] as? String) != prompt.id }
         list.append(["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue])
         setResults(Array(list.suffix(Self.maxResults)), for: scope)
+    }
+
+    /// Takes confirmations whose time ran out off screen (the host counts
+    /// them as expired, never a yes).
+    func dropExpired(at now: Date = Date()) {
+        guard prompts.contains(where: { $0.isExpired(at: now) }) else { return }
+        prompts.removeAll { $0.isExpired(at: now) }
+        let listed = Set(prompts.map(\.id))
+        userTurnWhenShown = userTurnWhenShown.filter { listed.contains($0.key) }
     }
 
     /// Leaving a host or profile: nothing of its stays on screen.
@@ -300,7 +310,7 @@ enum PresentVoiceTool {
             // Their words reach Conduit a moment after the model heard them.
             let shownAfter = sync.userTurnWhenShown[prompt.id]
             let deadline = ContinuousClock.now + .seconds(2)
-            func stillWaiting() -> Bool { sync.prompts.contains { $0.id == prompt.id } }
+            func stillWaiting() -> Bool { sync.prompts.contains { $0.id == prompt.id && !$0.isExpired() } }
             func saidYes() -> Bool {
                 let turn = lastUserTurn()
                 // A turn from before the panel appeared answers something else.
@@ -319,7 +329,7 @@ enum PresentVoiceTool {
             await answer(prompt, .confirmed)
             return ["result": "Confirmed. Hermes goes ahead."]
         case "decline":
-            guard sync.prompts.contains(where: { $0.id == prompt.id }) else { return alreadyAnswered }
+            guard sync.prompts.contains(where: { $0.id == prompt.id && !$0.isExpired() }) else { return alreadyAnswered }
             await answer(prompt, .declined)
             return ["result": "Declined. Hermes won't do it."]
         default:

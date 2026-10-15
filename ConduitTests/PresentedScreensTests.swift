@@ -70,6 +70,11 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNotNil(tapped["error"])
         XCTAssertFalse(confirmed)
         XCTAssertTrue(sync.prompts.isEmpty)
+
+        // A second tap on the panel already gone doesn't change the answer.
+        sync.answer(prompt, outcome: .confirmed, via: .tap)
+        let all = defaults.dictionary(forKey: "conduit.presentedScreens.results.v1") as? [String: [[String: Any]]]
+        XCTAssertEqual(all?["host|default"]?.first?["outcome"] as? String, "declined")
     }
 
     func testAnExpiredConfirmIsntShown() {

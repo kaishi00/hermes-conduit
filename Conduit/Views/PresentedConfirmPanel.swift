@@ -34,6 +34,15 @@ struct PresentedConfirmOverlay: View {
             }
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: sync.current?.id)
+        // Leaves when its time runs out, not at the next exchange.
+        .task(id: sync.current?.id) {
+            guard let expires = sync.current?.expiresAt else { return }
+            let wait = expires.timeIntervalSinceNow
+            if wait > 0 {
+                do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            }
+            sync.dropExpired()
+        }
     }
 }
 
