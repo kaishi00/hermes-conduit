@@ -100,6 +100,9 @@ struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: V2Tab = .chats
+    /// The app opens on the Chats list. Nothing is pushed during the
+    /// launch's first layout: a push then, even without animation, left the
+    /// app never idle.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
     /// iOS 17's custom bar keeps a tab alive once it has been opened, so its
@@ -114,14 +117,6 @@ struct V2Shell: View {
     /// Bumped when the voice tab slot itself is picked (VoiceOver, iPad's
     /// top bar), so the voice button acts as if tapped.
     @State private var voiceSlotPicks = 0
-
-    /// The app opens on the Chats list. A caller that wants a chat first
-    /// seeds it here rather than pushing it once the shell is up: a push
-    /// during the launch's first layout, even without animation, left the
-    /// app never idle.
-    init(opensConversation: Bool = false) {
-        _chatsPath = State(initialValue: opensConversation ? [.conversation] : [])
-    }
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {

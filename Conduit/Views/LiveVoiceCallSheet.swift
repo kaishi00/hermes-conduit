@@ -95,7 +95,13 @@ struct LiveVoiceCallSheet: View {
                 if showsTranscript {
                     transcriptList
                 } else if usesV2 {
-                    v2Stage
+                    if dynamicTypeSize >= .xxLarge {
+                        // Large text can outgrow a small screen.
+                        ScrollView { v2Stage }
+                            .scrollBounceBehavior(.basedOnSize)
+                    } else {
+                        v2Stage
+                    }
                 } else if dynamicTypeSize >= .xxLarge {
                     // Large text can outgrow a small screen.
                     ScrollView { stage }
