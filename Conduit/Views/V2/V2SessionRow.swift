@@ -126,6 +126,15 @@ struct V2SessionRow: View {
             ZStack {
                 if leadingGlyph && status != .none {
                     V2StatusGlyph(status: status)
+                        .overlay(alignment: .topTrailing) {
+                            // Unread still shows beside a status glyph.
+                            if isUnread {
+                                Circle()
+                                    .fill(Color.conduitAccent)
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: 3, y: -2)
+                            }
+                        }
                 } else if isUnread {
                     Circle()
                         .fill(Color.conduitAccent)

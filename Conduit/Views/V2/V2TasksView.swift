@@ -83,6 +83,7 @@ struct V2ScheduledList: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2Shell) private var shell
     @State private var selectedJob: CronJob?
     /// Pinned jobs, per profile: "profile\tjobID" lines. Kept on the phone;
     /// Hermes has no pin for a job.
@@ -173,7 +174,11 @@ struct V2ScheduledList: View {
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: pinnedRaw)
             }
         }
-        .task(id: appState.activeProfile) { await appState.refreshCronContent() }
+        // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
+        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
+            await appState.refreshCronContent()
+        }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
