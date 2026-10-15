@@ -249883,6 +249883,88 @@
           }
         }
       }
+    },
+    "Hermes says this chat belongs to another profile. Switch to that profile, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laut Hermes gehört dieser Chat zu einem anderen Profil. Wechsle zu diesem Profil und versuche es dann erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes dice que este chat pertenece a otro perfil. Cambia a ese perfil y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selon Hermes, cette conversation appartient à un autre profil. Passez à ce profil, puis réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes menyatakan obrolan ini milik profil lain. Beralih ke profil tersebut, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secondo Hermes questa chat appartiene a un altro profilo. Passa a quel profilo, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes によると、このチャットは別のプロファイルのものです。そのプロファイルに切り替えてから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 따르면 이 채팅은 다른 프로필에 속해 있습니다. 해당 프로필로 전환한 다음 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Według Hermesa ten czat należy do innego profilu. Przełącz się na ten profil i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes diz que esta conversa pertence a outro perfil. Mude para esse perfil e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По данным Hermes, этот чат принадлежит другому профилю. Переключитесь на этот профиль и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu sohbetin başka bir profile ait olduğunu söylüyor. O profile geçin, ardından tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 表示这个聊天属于另一个配置文件。请切换到该配置文件后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 表示這個聊天屬於另一個設定檔。請切換到該設定檔後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

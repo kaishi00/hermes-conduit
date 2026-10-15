@@ -108,11 +108,23 @@ struct SessionPinSync: Equatable {
     }
 
     /// Hermes refused a pin write for this chat: keep its pin on the phone,
-    /// as the person set it, and stop sending or adopting it.
-    mutating func keepOnPhone(pinID: String, profile: String) {
-        guard let host else { return }
+    /// as the person set it, and stop sending or adopting it. Only the
+    /// latest write may decide; returns false when a newer one replaced it.
+    @discardableResult
+    mutating func keepOnPhone(pinID: String, profile: String, generation: UInt64) -> Bool {
+        let writeKey = Self.key(profile, pinID)
+        guard let host, pendingWrites[writeKey]?.generation == generation else { return false }
         phoneOnly.insert(Self.phoneOnlyKey(host: host, profile: profile, pinID: pinID))
-        pendingWrites[Self.key(profile, pinID)] = nil
+        pendingWrites[writeKey] = nil
+        return true
+    }
+
+    /// The chat's phone-only pin is gone (unpinned, archived or deleted), so
+    /// a later pin asks Hermes again. Returns whether it was phone-only.
+    @discardableResult
+    mutating func clearPhoneOnly(pinID: String, profile: String) -> Bool {
+        guard let host else { return false }
+        return phoneOnly.remove(Self.phoneOnlyKey(host: host, profile: profile, pinID: pinID)) != nil
     }
 
     private static func phoneOnlyKey(host: String, profile: String, pinID: String) -> String {

@@ -299,6 +299,8 @@ enum DashboardTicketBridgeError: LocalizedError {
                 return HermesError.timeoutMessage
             }
             return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
+        case 403 where trimmed.localizedCaseInsensitiveContains("profile_mismatch"):
+            return AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.")
         case 403 where SessionMutationIdentity.isRefusalDetail(trimmed):
             return AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
         case 401, 403:
