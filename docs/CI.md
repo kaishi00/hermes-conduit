@@ -23,10 +23,10 @@ shard or the nightly list, and a renamed class fails the plan job.
 Each macOS job (`unit` shard, `ui-smoke`, and the nightly jobs) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
 simulator's lookup, boot and `bootstatus`) in the background and runs
-`ci-build-for-testing.sh` on the same runner, which resolves packages during
-the boot and compiles the test products once the preparation has ended. On the
-v3 runs, boot readiness was a serial ~2.5 minutes after a separate build job
-and an artifact hop.
+`ci-build-for-testing.sh` on the same runner, which waits for the preparation
+to end and then resolves packages and compiles the test products. On the v3
+runs, boot readiness was a serial ~2.5 minutes after a separate build job and
+an artifact hop.
 
 What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
@@ -73,16 +73,18 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   are the same, and the tests still run on the booted device. Building during
   the boot was tried in #629 and starved it on the 3-core runners: 2 of 3
   boots missed their 200 s readiness budget, and the tests then waited 4-7
-  minutes for the device. So packages resolve during the boot (a separate,
-  timed `-resolvePackageDependencies` call, 19-32 s), and the build starts
-  when the preparation ends (`BUILD_AFTER`).
+  minutes for the device. Even a `-resolvePackageDependencies` call alone
+  during the boot sat at "Resolve Package Graph" until 43-73 s after the boot
+  ended (2 of 3 jobs). So `ci-build-for-testing.sh` calls xcodebuild only once
+  the preparation has ended (`BUILD_AFTER`): a separate, timed package
+  resolution, then the build.
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core.
 
 Each build posts two notices on its job: the slowest build phases from
 `-showBuildTimingSummary` (with the cache it restored and the seconds spent
-on the destination, the packages and waiting for the simulator before the
+on the destination, waiting for the simulator and the packages before the
 build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
@@ -94,7 +96,11 @@ classes, split evenly, so a shard of about 78 classes runs as two batches of
 about 39. A failing batch does not stop the shard: every batch runs, and the
 job fails at the end listing the failed batches. Each failed batch also posts
 its failing cases as an annotation, since the job log API returns only a job's
-last 5,000 lines and a large first batch's failures fall outside them. `-test-timeouts-enabled YES` with a 180s allowance
+last 5,000 lines and a large first batch's failures fall outside them. Every
+batch also posts how long it took and how much of that ran tests: on a freshly
+booted simulator, the first batch spent 154 s outside its tests and the second
+20 s (#629).
+`-test-timeouts-enabled YES` with a 180s allowance
 kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
 480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
 246s), so a hung launch or idle-wait stall ends and the targeted retry still

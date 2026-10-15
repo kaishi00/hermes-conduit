@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # CI v4: boot the pinned simulator in the background and build the test
-# products on THIS runner. Package resolution runs during the boot; the build
-# itself waits for it (BUILD_AFTER), because on the 3-core hosted runners a
-# build alongside the first boot slowed both (#629). Exports XCRUN_FILE,
-# DESTINATION and SIMULATOR_UDID for the later steps through $GITHUB_ENV.
+# products on THIS runner. The build script resolves packages and builds only
+# once the preparation has ended (BUILD_AFTER): on the 3-core hosted runners a
+# build beside the first boot slowed it, and xcodebuild stalled until after it
+# (#629).
+# Exports XCRUN_FILE, DESTINATION and SIMULATOR_UDID for the later steps
+# through $GITHUB_ENV.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p ci-lane
@@ -31,7 +33,7 @@ build_s=$(( $(date +%s) - step_start ))
 
 prepare_rc=0
 wait "$prepare_pid" || prepare_rc=$?
-echo "::group::simulator preparation (package resolution ran alongside)"
+echo "::group::simulator preparation"
 cat ci-lane/prepare.log || true
 echo "::endgroup::"
 # Both times count from the start of the step. A failed side says so here

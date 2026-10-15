@@ -312,6 +312,22 @@ jobs:
             >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
           failed_batches=()
+          # Each batch posts how long it took and how much of that ran tests:
+          # on a freshly booted simulator the first batch spent 154 s outside
+          # its tests and the second 20 s (#629), and the job log API cuts off
+          # an early batch's lines.
+          batch_timing_notice() {
+            local total executed tests wall
+            total=$(( $(date +%s) - $1 ))
+            executed=$(grep -E '^[[:space:]]*Executed [0-9]+ tests?, with' "$batch_log" | tail -n 1 || true)
+            tests=$(printf '%s\n' "$executed" | sed -nE 's/^[[:space:]]*Executed ([0-9]+) tests?.*/\1/p')
+            wall=$(printf '%s\n' "$executed" | sed -nE 's/.* \(([0-9]+)(\.[0-9]+)?\) seconds$/\1/p')
+            if [ -n "$tests" ] && [ -n "$wall" ]; then
+              echo "::notice title=unit batch $batch_no took ${total}s::$tests tests ran for ${wall}s of it"
+            else
+              echo "::notice title=unit batch $batch_no took ${total}s::its output has no test totals"
+            fi
+          }
           run_batch() {
             batch_no="$1"
             shift
@@ -323,6 +339,7 @@ jobs:
               batch_args+=("-only-testing:ConduitTests/${cls}")
             done
             batch_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/unit-batch-$batch_no.log"
+            batch_start=$(date +%s)
             echo "::group::unit batch $batch_no ($# classes)"
             if ! xcodebuild test-without-building \
               -xctestrun "$XCRUN_FILE" \
@@ -333,6 +350,7 @@ jobs:
               -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
               "${batch_args[@]}" 2>&1 | tee "$batch_log"; then
               echo "::endgroup::"
+              batch_timing_notice "$batch_start"
               echo "::error::unit batch $batch_no failed: $*"
               # The failing cases go in an annotation too: the job log API
               # returns only a job's last 5,000 lines, which an early batch's
@@ -353,6 +371,7 @@ jobs:
               return 0
             fi
             echo "::endgroup::"
+            batch_timing_notice "$batch_start"
           }
 
           batch=0

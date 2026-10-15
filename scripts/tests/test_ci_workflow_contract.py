@@ -128,8 +128,8 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_hosted_builds_wait_for_the_simulator_boot(self):
         """Side by side on the 3-core runners, the build starved the first
-        boot; the build now starts once the preparation has ended, after
-        resolving packages during the boot."""
+        boot, and even a package resolution stalled until after it; no
+        xcodebuild call starts before the preparation has ended."""
         with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
             hosted = fh.read()
         export = 'export BUILD_AFTER="$PWD/ci-lane/prepare.end"'
@@ -140,12 +140,11 @@ class WorkflowContractTests(unittest.TestCase):
         with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
             build = fh.read()
         wait = build.index('while [ ! -e "$BUILD_AFTER" ]')
-        self.assertLess(build.index("resolve_packages\nfi"), wait,
-                        "packages resolve during the boot, before the wait")
-        self.assertLess(wait, build.index("start_sampler\n\nstarted_at"),
-                        "the build starts only after the wait")
-        self.assertLess(build.index("resolve_packages\nfi"), build.index("start_sampler\n\nstarted_at"),
+        resolve = build.index("XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages\nfi")
+        self.assertLess(wait, resolve, "packages resolve only after the wait")
+        self.assertLess(resolve, build.index("start_sampler\n\nstarted_at"),
                         "package resolution is timed before the build's own timeline starts")
+        self.assertEqual(build.count("resolve_packages\n"), 1, "packages resolve once")
 
     def test_test_builds_leave_out_the_watch_app_and_extensions(self):
         """Unit shards build project-tests.yml (the app alone); UI smoke builds

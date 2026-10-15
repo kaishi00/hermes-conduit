@@ -105,9 +105,8 @@ skip_package_updates() {
   if [ "$skip_flag_supported" = "yes" ]; then echo "-skipPackageUpdates"; fi
 }
 
-# Resolve packages on their own first, timed, while the simulator boots (it
-# needs no device): 19-32 s on hosted runners (2026-10-15). The build's own
-# resolution then finds everything in place.
+# Resolve packages on their own first, timed, so a stall there shows apart
+# from the build. The build's own resolution then finds everything in place.
 resolve_packages() {
   local package_flag started
   package_flag=$(skip_package_updates)
@@ -147,18 +146,14 @@ run_build() {
   PROVISIONING_PROFILE_SPECIFIER=""
 }
 
-# Hosted jobs only: one xcodebuild call more on a developer Mac buys nothing.
-resolve_s=""
-if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-  XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages
-fi
-
 # ci-hosted-build.sh boots the job's simulator alongside this script and names
-# the file its preparation writes when it ends (BUILD_AFTER). The build waits
-# for it. Side by side on the 3-core, 7 GB hosted runners, a build slowed the
-# first boot badly (2026-10-15, #629): 2 of 3 boots missed their 200 s
-# readiness budget, and the tests then waited 4-7 minutes for the device.
-# Package resolution above needs no device and still runs during the boot.
+# the file its preparation writes when it ends (BUILD_AFTER). Package
+# resolution and the build wait for it (2026-10-15, #629, 3-core 7 GB hosted
+# runners): a build beside the first boot slowed the boot badly (2 of 3 missed
+# their 200 s readiness budget, and the tests then waited 4-7 minutes for the
+# device), and even a package resolution with no device involved sat at
+# "Resolve Package Graph" until 43-73 s after the boot ended (2 of 3 jobs; 21 s
+# in the third). No build started after the preparation had ended was held up.
 boot_wait_s=""
 if [ -n "${BUILD_AFTER:-}" ]; then
   boot_wait_budget="${BUILD_AFTER_TIMEOUT_S:-600}"
@@ -173,6 +168,12 @@ if [ -n "${BUILD_AFTER:-}" ]; then
   else
     echo "::warning::the simulator was still being prepared after ${boot_wait_s}s; building alongside it"
   fi
+fi
+
+# Hosted jobs only: one xcodebuild call more on a developer Mac buys nothing.
+resolve_s=""
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages
 fi
 
 # Where xcodebuild sits quietly (package resolution, build graph, waiting on
@@ -260,8 +261,8 @@ if [ -n "$timing" ]; then
   echo "::endgroup::"
   dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
   prep_note="before the build: destination ${destination_s}s"
-  if [ -n "$resolve_s" ]; then prep_note="$prep_note, packages ${resolve_s}s"; fi
-  if [ -n "$boot_wait_s" ]; then prep_note="$prep_note, then ${boot_wait_s}s waiting for the simulator"; fi
+  if [ -n "$boot_wait_s" ]; then prep_note="$prep_note, ${boot_wait_s}s waiting for the simulator"; fi
+  if [ -n "$resolve_s" ]; then prep_note="$prep_note, then packages ${resolve_s}s"; fi
   echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf 'cache: %s\n%s\n%s\n' "${BUILD_CACHE:-not used}" "$prep_note" "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"

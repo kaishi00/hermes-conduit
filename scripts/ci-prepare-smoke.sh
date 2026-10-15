@@ -45,6 +45,9 @@ if [ -n "${SIMULATOR_UDID:-}" ]; then
     echo "::warning::simulator bootstatus did not confirm - letting xcodebuild boot the destination itself"
   fi
   readiness_s=$(( $(date +%s) - started ))
+  # What the boot waited on: bootstatus names each stage as it waits.
+  echo "bootstatus (last lines):"
+  printf '%s\n' "$BOUNDED_OUTPUT" | tail -n 25
 else
   echo "::warning::could not resolve simulator UDID - letting xcodebuild boot the destination itself"
 fi

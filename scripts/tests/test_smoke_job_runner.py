@@ -49,6 +49,9 @@ if [ "$fail" = "1" ]; then
   fi
   exit 1
 fi
+if [ -n "${STUB_SUCCESS_OUTPUT:-}" ]; then
+  printf '%s\\n' "$STUB_SUCCESS_OUTPUT"
+fi
 exit 0
 """
 
@@ -131,7 +134,8 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # "unset" case must actually be unset.
         for name in ("UNIT_BATCH_SIZE", "STUB_FAIL_AT", "STUB_FAIL_FIRST_N",
                      "STUB_FLAKE_CLASS", "STUB_SILENT_FAIL", "UNIT_CLASSES",
-                     "UI_CLASSES", "STUB_RESULT_DOC", "STUB_FAILURE_OUTPUT"):
+                     "UI_CLASSES", "STUB_RESULT_DOC", "STUB_FAILURE_OUTPUT",
+                     "STUB_SUCCESS_OUTPUT"):
             env.pop(name, None)
         # The unit step keeps each batch's log under RUNNER_TEMP.
         env["RUNNER_TEMP"] = self.tmp
@@ -254,6 +258,32 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertNotIn("unit batch 2 failures", proc.stdout)
         self.assertIn("Test Case '-[ConduitTests.Unit0Tests testB]' passed", proc.stdout,
                       "the batch's output still reaches the job log")
+
+    def test_each_unit_batch_posts_its_timing(self):
+        # The job log API cuts off an early batch's lines; its notice stays.
+        output = "\n".join([
+            "Test Suite 'Unit0Tests' passed at 2026-10-15 23:30:00.000.",
+            "\t Executed 2 tests, with 0 failures (0 unexpected) in 0.010 (0.020) seconds",
+            "Test Suite 'Selected tests' passed at 2026-10-15 23:31:00.000.",
+            "\t Executed 1140 tests, with 0 failures (0 unexpected) in 196.728 (197.012) seconds",
+            "** TEST EXECUTE SUCCEEDED **",
+        ])
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 4),
+                              UNIT_BATCH_SIZE=2, STUB_SUCCESS_OUTPUT=output)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        notes = [line for line in proc.stdout.splitlines()
+                 if line.startswith("::notice title=unit batch ")]
+        self.assertEqual(len(notes), 2, proc.stdout)
+        for number, note in enumerate(notes, start=1):
+            self.assertRegex(note, r"^::notice title=unit batch {0} took [0-9]+s::"
+                             r"1140 tests ran for 197s of it$".format(number))
+
+    def test_a_failed_unit_batch_posts_its_timing_too(self):
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 2),
+                              UNIT_BATCH_SIZE=2, STUB_FAIL_FIRST_N=1)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertRegex(proc.stdout, r"(?m)^::notice title=unit batch 1 took [0-9]+s::"
+                         r"its output has no test totals$")
 
     def _failing_list_annotation(self, count):
         output = "\n".join(["Failing tests:"]
