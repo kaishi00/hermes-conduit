@@ -145,9 +145,9 @@ struct V2ScheduledList: View {
                             sectionHeader(AppLocalization.string("Pinned"))
                         }
                     }
-                    // Headerless when nothing is pinned, so the list starts
-                    // at the same height as any other.
-                    if pinned.isEmpty {
+                    // A "Jobs" header only when it separates the jobs from
+                    // pins; otherwise the section starts without a gap.
+                    if pinned.isEmpty || others.isEmpty {
                         Section {
                             ForEach(others) { row($0, pinned: false) }
                         } footer: {

@@ -275,7 +275,7 @@ struct SessionList: View {
                     .conduitGlassControl(cornerRadius: 14)
                     .disabled(!appState.canStartPhoneVoiceConversation || appState.isVoiceInUse)
                     .accessibilityShowsLargeContentViewer {
-                        Label("New voice call", systemImage: "waveform")
+                        Label(AppLocalization.string("New voice call"), systemImage: "waveform")
                     }
                     .accessibilityLabel("New voice call")
                     .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
@@ -286,21 +286,21 @@ struct SessionList: View {
                         Haptics.selection()
                         showFilterOrder = true
                     } label: {
-                        Label("Reorder filters", systemImage: "arrow.left.arrow.right")
+                        Label(AppLocalization.string("Reorder filters"), systemImage: "arrow.left.arrow.right")
                     }
 
                     Button {
                         Haptics.selection()
                         showArchivedSessions = true
                     } label: {
-                        Label("Archived conversations", systemImage: "archivebox")
+                        Label(AppLocalization.string("Archived conversations"), systemImage: "archivebox")
                     }
 
                     Button {
                         Haptics.light()
                         appState.markAllSessionsRead()
                     } label: {
-                        Label("Mark all as read", systemImage: "envelope.open")
+                        Label(AppLocalization.string("Mark all as read"), systemImage: "envelope.open")
                     }
                     .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
 
@@ -309,7 +309,7 @@ struct SessionList: View {
                         sessionPresentationRaw = SessionPresentation.projects.rawValue
                         showProjectCreator = true
                     } label: {
-                        Label("New project", systemImage: "folder.badge.plus")
+                        Label(AppLocalization.string("New project"), systemImage: "folder.badge.plus")
                     }
                     .disabled(!appState.supportsProjects)
                 } label: {
@@ -770,7 +770,7 @@ struct SessionList: View {
                 Haptics.selection()
                 showFilterOrder = true
             } label: {
-                Label("Reorder filters", systemImage: "arrow.left.arrow.right")
+                Label(AppLocalization.string("Reorder filters"), systemImage: "arrow.left.arrow.right")
             }
         }
     }
@@ -1564,7 +1564,7 @@ private struct ProjectSessionsSheet: View {
                             .listRowSeparator(.hidden)
                     } else if let detail, detail.lanes.isEmpty {
                         ContentUnavailableView {
-                            Label("No Conversations", systemImage: "tray")
+                            Label(AppLocalization.string("No Conversations"), systemImage: "tray")
                         } description: {
                             Text("This project does not have any conversations yet.")
                         } actions: {
@@ -1758,7 +1758,7 @@ struct ProjectCreateSheet: View {
                             }
                             showFolderPicker = true
                         } label: {
-                            Label("Add folder", systemImage: "plus")
+                            Label(AppLocalization.string("Add folder"), systemImage: "plus")
                         }
                     }
 

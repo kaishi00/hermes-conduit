@@ -196,6 +196,7 @@ private struct V2ConnectionLine: View {
 /// diagnostics one item away.
 private struct V2ConversationMenu: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
 
@@ -243,15 +244,13 @@ private struct V2ConversationMenu: View {
                 if appState.isChatRefreshing {
                     ProgressView()
                         .controlSize(.small)
-                        .transition(.opacity)
                 } else {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.primary)
-                        .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: appState.isChatRefreshing)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isChatRefreshing)
             .frame(width: 40, height: 40)
             .overlay(alignment: .topTrailing) {
                 Circle()
