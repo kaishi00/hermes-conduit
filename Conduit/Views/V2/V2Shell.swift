@@ -176,6 +176,9 @@ struct V2Shell: View {
                 // about to open a chat opens it itself.
                 guard appState.chatReturnSurface == .conversation,
                       !appState.hasPendingExplicitNavigation else { return }
+                if V2Diagnostics.on("deferPush") {
+                    try? await Task.sleep(for: .seconds(2))
+                }
                 openConversation()
             }
             .onDisappear {
@@ -186,7 +189,7 @@ struct V2Shell: View {
 
     @ViewBuilder
     private var tabs: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !V2Diagnostics.on("capsuleTabs") {
             nativeTabs
         } else {
             capsuleTabs
@@ -252,7 +255,9 @@ struct V2Shell: View {
         switch tab {
         case .chats:
             NavigationStack(path: $chatsPath) {
-                V2ChatsView()
+                Group {
+                    if V2Diagnostics.on("plainRoot") { Color.clear } else { V2ChatsView() }
+                }
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .tasks:

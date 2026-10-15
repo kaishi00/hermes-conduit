@@ -187,26 +187,28 @@ final class ProfilePickerUITests: XCTestCase {
         )
     }
 
-    /// TEMPORARY (PR #617): launch on the open conversation with one V2 piece
+    /// TEMPORARY (PR #617): launch on the open conversation with V2 pieces
     /// switched off. A launch that never goes idle takes over a minute.
-    private func assertConversationLaunchIdles(without diagnostic: String) {
+    private func assertConversationLaunchIdles(without diagnostics: [String]) {
         let app = XCUIApplication()
         app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
         app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
-        if !diagnostic.isEmpty {
+        for diagnostic in diagnostics {
             app.launchArguments += ["-conduit.v2.diag.\(diagnostic)", "YES"]
         }
         let started = Date()
         app.launch()
         let elapsed = Date().timeIntervalSince(started)
-        XCTAssertLessThan(elapsed, 45, "Launch with \(diagnostic) off never went idle (\(Int(elapsed)) s)")
+        XCTAssertLessThan(elapsed, 45, "Launch without \(diagnostics) never went idle (\(Int(elapsed)) s)")
     }
 
-    func testV2DiagConversationPlain() { assertConversationLaunchIdles(without: "plainConversation") }
-    func testV2DiagNoMinimize() { assertConversationLaunchIdles(without: "noMinimize") }
-    func testV2DiagStillBackdrop() { assertConversationLaunchIdles(without: "stillBackdrop") }
-    func testV2DiagNoToolbar() { assertConversationLaunchIdles(without: "noToolbar") }
-    func testV2DiagKeepTabBar() { assertConversationLaunchIdles(without: "keepTabBar") }
+    private static let conversationPieces = ["plainConversation", "noMinimize", "stillBackdrop", "noToolbar", "keepTabBar"]
+
+    func testV2DiagA_AllConversationPiecesOff() { assertConversationLaunchIdles(without: Self.conversationPieces) }
+    func testV2DiagB_PlusPlainRoot() { assertConversationLaunchIdles(without: Self.conversationPieces + ["plainRoot"]) }
+    func testV2DiagC_PlusDeferredPush() { assertConversationLaunchIdles(without: Self.conversationPieces + ["deferPush"]) }
+    func testV2DiagD_CapsuleTabsOnly() { assertConversationLaunchIdles(without: ["capsuleTabs"]) }
+    func testV2DiagE_PlainRootOnly() { assertConversationLaunchIdles(without: ["plainRoot"]) }
 
     // MARK: - Helpers
 
