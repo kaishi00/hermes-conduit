@@ -4,8 +4,10 @@ These tests pin the workflow/script interface so it cannot silently diverge
 again (e.g. passing observation files positionally when the script requires
 --observations).
 
-CI v4 shape (docs/CI.md): GitHub-hosted CI is the merge gate. It compiles
-everything, runs the cheap Linux validation, every unit class except the
+CI v4 shape (docs/CI.md): GitHub-hosted CI is the merge gate. It compiles the
+app (without its Watch app and extensions unless the plan job's ui-spec says
+otherwise, incrementally from main's last build) and every test target, runs
+the cheap Linux validation, every unit class except the
 nightly-only timing families (scripts/hosted-suite.json, split into shards),
 and the curated UI smoke selection (scripts/smoke-suite.json). The timing
 families and the complete UI suite run in nightly.yml. There is NO lane
