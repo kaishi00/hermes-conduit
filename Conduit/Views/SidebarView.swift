@@ -1974,7 +1974,7 @@ struct CronList: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 ForEach(shown) { job in
-                    Button { selectedJob = job } label: { CronJobRow(job: job) }
+                    Button { selectedJob = job } label: { CronJobRow(job: job, notifies: appState.cronJobNotifies(job)) }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
@@ -2028,7 +2028,11 @@ struct CronList: View {
         .searchable(text: $searchText, prompt: AppLocalization.string("Search scheduled jobs"))
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
-        .task(id: appState.activeProfile) { await appState.refreshCronContent() }
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)") { await appState.refreshCronContent() }
+        // The plugin's capability report can land after the tab opened.
+        .task(id: appState.supportsCronNotifications) {
+            if appState.supportsCronNotifications { await appState.refreshCronNotifications() }
+        }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
@@ -2142,6 +2146,8 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
 private struct CronJobRow: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let job: CronJob
+    /// Whether the job's runs notify (the host's per-job setting).
+    var notifies = true
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
@@ -2154,6 +2160,12 @@ private struct CronJobRow: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
+            if !notifies {
+                Image(systemName: "bell.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(AppLocalization.string("Notifications off"))
+            }
             Text(job.statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
             Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
         }
@@ -2191,6 +2203,22 @@ struct CronJobDetailSheet: View {
                             SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : job.nextRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? AppLocalization.string("Local"))
+                        }
+                        if appState.supportsCronNotifications {
+                            ConduitSettingsSection(title: AppLocalization.string("Notifications"), symbol: "bell.fill", tint: .conduitAura) {
+                                Toggle(isOn: Binding(
+                                    get: { appState.cronJobNotifies(job) },
+                                    set: { notify in Task { await appState.setCronJobNotifies(notify, for: job) } }
+                                )) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(AppLocalization.string("Notify me when it runs")).font(.subheadline.weight(.medium))
+                                        Text(AppLocalization.string("Runs that answer [SILENT] never notify.")).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .tint(.conduitAccent)
+                                .disabled(appState.cronNotificationsChangingJobID != nil)
+                                .padding(.vertical, 2)
+                            }
                         }
                         AdaptiveStack(spacing: 10) {
                             // A finished one-shot job has nothing left to pause
@@ -2234,7 +2262,11 @@ struct CronJobDetailSheet: View {
                 ConduitSheetHeader(title: AppLocalization.string("Scheduled job"), close: { dismiss() })
             }
         }
-        .task { await appState.loadCronRuns(for: job) }
+        .task {
+            async let runs: Void = appState.loadCronRuns(for: job)
+            async let notifications: Void = appState.refreshCronNotifications()
+            _ = await (runs, notifications)
+        }
     }
 }
 

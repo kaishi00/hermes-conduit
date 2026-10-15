@@ -44,7 +44,10 @@ extension AppState {
             // Hermes pulls or clones the plugin before it answers.
             let timeout = path.hasPrefix("/api/dashboard/agent-plugins") ? 180_000 : 12_000
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-        }, install: install)
+        }, install: install, renewSignIn: { [weak self] in
+            guard let self, let dashboardID, self.activeDashboardID == dashboardID else { return false }
+            return await self.renewDashboardSignIn(dashboardID: dashboardID)
+        })
         notifierPluginUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in
                 guard let self, !Task.isCancelled else { return }
@@ -66,6 +69,31 @@ extension AppState {
             if !self.isConnected { await self.reconnect() }
             await self.refreshNotifierPluginStatus()
         }
+    }
+
+    /// Signs in to the dashboard in use again with its saved password, the
+    /// way a chat reconnect does, and hands the new session to the
+    /// dashboard page. False when there is no saved password for this
+    /// address or Hermes refused it.
+    func renewDashboardSignIn(dashboardID: UUID) async -> Bool {
+        guard let bridge = dashboardTicketBridge,
+              let credentials = KeychainHelper.loadCredentials(dashboardID: dashboardID),
+              Self.sameDashboardAddress(credentials.baseURL, bridge.baseURL) else { return false }
+        let access = KeychainHelper.loadCloudflareAccess(dashboardID: dashboardID, for: credentials.baseURL)
+        guard let authenticated = try? await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access)
+            .connect(username: credentials.username, password: credentials.password) else { return false }
+        // Another dashboard may be in use by now.
+        guard activeDashboardID == dashboardID, dashboardTicketBridge === bridge else { return false }
+        authenticated.commitCookies(dashboardID: dashboardID)
+        // URLSession and WebKit keep separate cookies: reload the page so it
+        // picks up the new session.
+        bridge.reload()
+        return true
+    }
+
+    private static func sameDashboardAddress(_ a: String, _ b: String) -> Bool {
+        let slash = CharacterSet(charactersIn: "/")
+        return a.trimmingCharacters(in: slash) == b.trimmingCharacters(in: slash)
     }
 
     func dismissNotifierPluginUpdateOutcome() {

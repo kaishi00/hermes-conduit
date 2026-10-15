@@ -98,6 +98,53 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
+    func testAPluginHermesDidNotCloneIsReinstalledFromItsSource() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: "Plugin 'conduit_push' has no owned Git checkout; reinstall from its source.")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.24.0", disk: "0.30.0", boot: "old"),
+            Self.capabilities(loaded: "0.30.0", disk: "0.30.0", boot: "new"),
+        ]
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.30.0"))
+        XCTAssertEqual(host.installBody?["identifier"] as? String, NotifierPluginStatus.repository)
+        XCTAssertEqual(host.installBody?["force"] as? Bool, true)
+    }
+
+    func testAFirstInstallIsNotForced() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: "Plugin 'conduit_push' was not found under /home/h/.hermes/plugins.")
+        host.capabilities = [Self.capabilities(loaded: "0.30.0", disk: "0.30.0", boot: "b")]
+        _ = await host.updater().run { _ in }
+        XCTAssertNil(host.installBody?["force"])
+    }
+
+    func testTheDashboardRestartSigningOutSignsInAgain() async {
+        let host = PluginHost()
+        host.restartSignsOut = true
+        host.signInAgainWorks = true
+        host.capabilities = [
+            Self.capabilities(loaded: "0.24.0", disk: "0.25.0", boot: "old"),
+            Self.capabilities(loaded: "0.25.0", disk: "0.25.0", boot: "new"),
+        ]
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.25.0"))
+        XCTAssertEqual(host.signInsAgain, 1)
+    }
+
+    func testARefusedSignInEndsTheUpdateWithTheSignInError() async {
+        let host = PluginHost()
+        host.restartSignsOut = true
+        host.signInAgainWorks = false
+        host.capabilities = [Self.capabilities(loaded: "0.24.0", disk: "0.25.0", boot: "old")]
+        let start = host.clock
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, NotifierPluginUpdater.outcome(forRequestError: DashboardTicketBridgeError.signInRequired))
+        XCTAssertEqual(host.signInsAgain, 1)
+        // Says so at once instead of waiting out the comeback limit.
+        XCTAssertLessThan(host.clock.timeIntervalSince(start), NotifierPluginUpdater.comeBackLimit)
+    }
+
     func testRunningChatsAreWaitedOn() async {
         let host = PluginHost()
         host.capabilities = [
@@ -216,12 +263,27 @@ private final class PluginHost {
     var selfRestartErrors: [Error] = []
     /// Answers to the capabilities route in order; the last one repeats.
     var capabilities: [[String: Any]] = []
+    /// The dashboard restart signs everyone out, like a host without a
+    /// fixed sign-in secret.
+    var restartSignsOut = false
+    /// Whether signing in again with the saved password works; nil leaves
+    /// the updater without a way to sign in again.
+    var signInAgainWorks: Bool?
+    var signInsAgain = 0
+    private var signedIn = true
     private var gatewayPolls = 0
 
     func updater() -> NotifierPluginUpdater {
         var updater = NotifierPluginUpdater(request: { [unowned self] path, method, body in
             try self.respond(path: path, method: method, body: body)
         })
+        if let works = signInAgainWorks {
+            updater.renewSignIn = { [unowned self] in
+                self.signInsAgain += 1
+                if works { self.signedIn = true }
+                return works
+            }
+        }
         updater.sleep = { [unowned self] _ in self.clock += 2 }
         updater.now = { [unowned self] in self.clock }
         return updater
@@ -229,6 +291,7 @@ private final class PluginHost {
 
     private func respond(path: String, method: String, body: [String: Any]?) throws -> [String: Any] {
         calls.append("\(method) \(path.split(separator: "?").first.map(String.init) ?? path)")
+        guard signedIn else { throw DashboardTicketBridgeError.signInRequired }
         switch path {
         case NotifierPluginUpdater.updatePath:
             if let updateError { throw updateError }
@@ -245,6 +308,7 @@ private final class PluginHost {
             return ["gateway_running": true, "gateway_state": "running"]
         case NotifierPluginUpdater.selfRestartPath:
             if !selfRestartErrors.isEmpty { throw selfRestartErrors.removeFirst() }
+            if restartSignsOut { signedIn = false }
             return ["ok": true, "restarting": true]
         case NotifierPluginStatus.path:
             guard let first = capabilities.first else {

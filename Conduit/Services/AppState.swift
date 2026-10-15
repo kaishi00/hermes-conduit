@@ -3056,6 +3056,17 @@ final class AppState: ObservableObject {
     @Published var cronRuns: [CronRun] = []
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
+    /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
+    /// the dashboard and profile in `cronMutedJobsKey`.
+    @Published var cronMutedJobIDs: Set<String> = []
+    @Published var cronMutedJobsKey: String?
+    @Published var cronNotificationsChangingJobID: String?
+    /// Moves with every save, so a refresh that started before one drops its answer.
+    var cronNotificationsGeneration = 0
+    lazy var cronNotificationsClient = CronNotificationsClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
 
     // MARK: - Lifecycle coordination
 
@@ -15479,7 +15490,8 @@ final class AppState: ObservableObject {
     func refreshCronContent() async {
         async let sessionRefresh: Void = refreshSessionCatalog()
         async let jobsRefresh: Void = loadCronJobs()
-        _ = await (sessionRefresh, jobsRefresh)
+        async let notificationsRefresh: Void = refreshCronNotifications()
+        _ = await (sessionRefresh, jobsRefresh, notificationsRefresh)
     }
 
     // MARK: - Bot Mode (roster + canonical chat)

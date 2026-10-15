@@ -127,6 +127,12 @@ struct NotifierPluginUpdater {
     let request: Request
     /// Install rather than update: the plugin isn't on the host.
     var install = false
+    /// Signs in to the dashboard again with the saved password. A host
+    /// without a fixed dashboard sign-in secret signs everyone out when the
+    /// dashboard restarts. Returns whether it worked.
+    var renewSignIn: (@MainActor () async -> Bool)?
+    /// How many times one run may sign in again.
+    static let signInRenewalLimit = 3
     var pollInterval: Duration = .milliseconds(2_000)
     var sleep: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     var now: @MainActor () -> Date = { Date() }
@@ -134,22 +140,29 @@ struct NotifierPluginUpdater {
     /// Reports each step to `progress` and returns how it ended. Returns
     /// `.idle` when cancelled.
     func run(progress: (NotifierPluginUpdateState) -> Void) async -> NotifierPluginUpdateState {
+        let request = renewingSignIn(self.request)
         // 1. The new plugin onto the host.
         progress(.updating(install ? .installing : .downloading))
         do {
             var installs = install
+            var replaces = false
             if !installs {
                 do {
                     try Self.check(try await request(Self.updatePath, "POST", nil))
                 } catch let error where Self.isNotInstalled(error) {
                     installs = true
+                } catch let error where Self.needsReinstall(error) {
+                    installs = true
+                    replaces = true
                 }
             }
             if installs {
                 progress(.updating(.installing))
-                try Self.check(try await request(
-                    Self.installPath, "POST", ["identifier": NotifierPluginStatus.repository, "enable": true]
-                ))
+                var body: [String: Any] = ["identifier": NotifierPluginStatus.repository, "enable": true]
+                // Replacing the copy on disk takes force. The plugin keeps its
+                // state in the Hermes home, not in its own folder.
+                if replaces { body["force"] = true }
+                try Self.check(try await request(Self.installPath, "POST", body))
             }
         } catch {
             if Task.isCancelled { return .idle }
@@ -185,10 +198,13 @@ struct NotifierPluginUpdater {
         // Right after the gateway restart a read can fail once; ask again.
         var fetched: [String: Any]?
         for attempt in 0..<3 {
-            if let json = try? await request(NotifierPluginStatus.path, "GET", nil) {
-                fetched = json
+            do {
+                fetched = try await request(NotifierPluginStatus.path, "GET", nil)
                 break
-            }
+            } catch DashboardTicketBridgeError.signInRequired {
+                // Signing in again didn't work: asking again won't either.
+                return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
+            } catch {}
             if Task.isCancelled { return .idle }
             if attempt < 2 { do { try await sleep(pollInterval) } catch { return .idle } }
         }
@@ -229,9 +245,17 @@ struct NotifierPluginUpdater {
         while now().timeIntervalSince(restartStarted) < Self.comeBackLimit {
             do { try await sleep(pollInterval) } catch { return .idle }
             if Task.isCancelled { return .idle }
-            // Requests fail while the dashboard is down; the next poll asks again.
-            guard let json = try? await request(NotifierPluginStatus.path, "GET", nil),
-                  let after = NotifierPluginStatus.runtime(from: json),
+            // Requests fail while the dashboard is down; the next poll asks
+            // again. A refused sign-in means it is back.
+            let json: [String: Any]
+            do {
+                json = try await request(NotifierPluginStatus.path, "GET", nil)
+            } catch DashboardTicketBridgeError.signInRequired {
+                return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
+            } catch {
+                continue
+            }
+            guard let after = NotifierPluginStatus.runtime(from: json),
                   after.bootID != runtime.bootID else { continue }
             return after.restartNeeded ? .needsDashboardRestart(detail: nil) : .updated(version: after.loadedVersion)
         }
@@ -252,6 +276,30 @@ struct NotifierPluginUpdater {
     static func isNotInstalled(_ error: Error) -> Bool {
         guard httpStatus(of: error) == 400, let detail = detail(of: error) else { return false }
         return detail.localizedCaseInsensitiveContains("not found")
+    }
+
+    /// Hermes updates only a plugin it cloned and recorded itself; one copied
+    /// in or installed by an older Hermes answers 400 "…has no owned Git
+    /// checkout; reinstall from its source."
+    static func needsReinstall(_ error: Error) -> Bool {
+        guard httpStatus(of: error) == 400, let detail = detail(of: error) else { return false }
+        return detail.localizedCaseInsensitiveContains("no owned Git checkout")
+    }
+
+    /// `request`, tried once more after signing in again when the dashboard
+    /// answers that the sign-in has expired.
+    private func renewingSignIn(_ request: @escaping Request) -> Request {
+        guard let renewSignIn else { return request }
+        let renewals = SignInRenewals(left: Self.signInRenewalLimit)
+        return { path, method, body in
+            do {
+                return try await request(path, method, body)
+            } catch DashboardTicketBridgeError.signInRequired where renewals.left > 0 {
+                renewals.left -= 1
+                guard await renewSignIn() else { throw DashboardTicketBridgeError.signInRequired }
+                return try await request(path, method, body)
+            }
+        }
     }
 
     /// "2 chat turns still running…" → 2; 1 when the count can't be read.
@@ -278,4 +326,10 @@ struct NotifierPluginUpdater {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+}
+
+@MainActor
+private final class SignInRenewals {
+    var left: Int
+    init(left: Int) { self.left = left }
 }
