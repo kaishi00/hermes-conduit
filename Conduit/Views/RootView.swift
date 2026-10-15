@@ -319,7 +319,10 @@ struct MainView: View {
     @ViewBuilder
     private var sidebarLayoutContent: some View {
         if useV2Shell {
-            V2Shell()
+            V2Shell(opensConversation: appState.chatReturnSurface == .conversation
+                && !appState.hasPendingExplicitNavigation
+                && !V2Diagnostics.on("deferPush")
+                && !V2Diagnostics.on("pushAfterHalfSecond"))
         } else if isPersistentSidebarActive {
             HStack(spacing: 0) {
                 SidebarView(

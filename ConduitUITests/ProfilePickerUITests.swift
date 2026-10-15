@@ -190,6 +190,20 @@ final class ProfilePickerUITests: XCTestCase {
     // TEMPORARY (PR #617): remove with the V2 launch-stall diagnostics.
     /// The chat slides in 2 s after launch: does an animated push after
     /// launch settle? A stalled app times out the query below.
+    func testV2DiagPushHalfSecondAfterLaunchSettles() {
+        let app = XCUIApplication()
+        app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
+        app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
+        app.launchArguments += ["-conduit.v2.diag.pushAfterHalfSecond", "YES"]
+        var started = Date()
+        app.launch()
+        XCTAssertLessThan(Date().timeIntervalSince(started), 45, "Launch never went idle")
+        Thread.sleep(forTimeInterval: 2)
+        started = Date()
+        _ = app.navigationBars.firstMatch.waitForExistence(timeout: 10)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 20, "The app never settled after the chat slid in")
+    }
+
     func testV2DiagAnimatedPushAfterLaunchSettles() {
         let app = XCUIApplication()
         app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]

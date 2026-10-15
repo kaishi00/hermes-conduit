@@ -117,6 +117,14 @@ struct V2Shell: View {
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
 
+    /// The return setting picks the first screen: the last chat, or the
+    /// sessions list. The chat starts in the Chats path rather than being
+    /// pushed once the shell is up: a push during the launch's first layout
+    /// left the app never idle (UI smoke on PR #617).
+    init(opensConversation: Bool = false) {
+        _chatsPath = State(initialValue: opensConversation ? [.conversation] : [])
+    }
+
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
         switch selectedTab {
@@ -191,14 +199,10 @@ struct V2Shell: View {
                 if V2Diagnostics.on("deferPush") {
                     try? await Task.sleep(for: .seconds(2))
                     openConversation()
-                    return
+                } else if V2Diagnostics.on("pushAfterHalfSecond") {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    openConversation()
                 }
-                // The first screen is already there, not slid in: an
-                // animated push during the launch's first layout never
-                // settled (the app never went idle).
-                var launch = Transaction()
-                launch.disablesAnimations = true
-                withTransaction(launch) { openConversation() }
             }
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
