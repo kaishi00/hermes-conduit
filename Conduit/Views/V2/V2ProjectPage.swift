@@ -163,7 +163,7 @@ struct V2ProjectPage: View {
                     .frame(width: 12)
                 Image(systemName: "folder")
                     .font(.subheadline)
-                    .foregroundStyle(V2ProjectTile(project: project, size: 1).color)
+                    .foregroundStyle(V2ProjectTile.color(for: project))
                 Text(lane.title)
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)

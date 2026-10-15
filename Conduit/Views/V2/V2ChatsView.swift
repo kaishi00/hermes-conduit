@@ -541,15 +541,23 @@ struct V2ChatsView: View {
 
     // MARK: - Nested rows
 
+    /// Stored as "profile<TAB>nestKey" lines: nest keys are session ids,
+    /// which another profile can reuse.
+    private var expansionPrefix: String { appState.activeProfile + "\t" }
+
     private var expandedNestIDs: Set<String> {
-        Set(expandedNestsRaw.split(separator: "\n").map(String.init))
+        let prefix = expansionPrefix
+        return Set(expandedNestsRaw.split(separator: "\n").compactMap { line in
+            line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
+        })
     }
 
     private func setExpanded(_ key: String, _ expanded: Bool) {
-        var keys = expandedNestIDs
-        if expanded { keys.insert(key) } else { keys.remove(key) }
+        var lines = Set(expandedNestsRaw.split(separator: "\n").map(String.init))
+        let line = expansionPrefix + key
+        if expanded { lines.insert(line) } else { lines.remove(line) }
         // Bounded so years of expansions don't grow the default forever.
-        expandedNestsRaw = keys.sorted().suffix(400).joined(separator: "\n")
+        expandedNestsRaw = lines.sorted().suffix(400).joined(separator: "\n")
     }
 
     @ViewBuilder
@@ -874,7 +882,7 @@ struct V2ChatsView: View {
                 .disabled(appState.isProjectMutationInFlight)
                 Button {
                     Haptics.selection()
-                    DispatchQueue.main.async { projectPendingRename = project }
+                    Task { @MainActor in projectPendingRename = project }
                 } label: {
                     Label("Rename…", systemImage: "pencil")
                 }
@@ -892,7 +900,7 @@ struct V2ChatsView: View {
     private func projectActions(_ project: ProjectSummary) -> some View {
         Button {
             Haptics.selection()
-            DispatchQueue.main.async { projectPendingRename = project }
+            Task { @MainActor in projectPendingRename = project }
         } label: {
             Label("Rename…", systemImage: "pencil")
         }
@@ -1057,7 +1065,9 @@ struct V2ProjectTile: View {
     let project: ProjectSummary
     let size: CGFloat
 
-    var color: Color {
+    var color: Color { Self.color(for: project) }
+
+    static func color(for project: ProjectSummary) -> Color {
         if let hex = project.colorHex?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty {
             return BotAvatarView.color(for: hex, name: project.title)
         }

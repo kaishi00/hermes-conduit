@@ -162,6 +162,7 @@ struct V2ScheduledList: View {
                     Text(job.displayName)
                 }
                 .labelsHidden()
+                .accessibilityLabel(Text(job.displayName))
                 .tint(.conduitAccent)
                 .disabled(appState.cronJobActionID != nil)
             }

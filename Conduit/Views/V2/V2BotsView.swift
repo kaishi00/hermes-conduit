@@ -12,6 +12,7 @@ import SwiftUI
 struct V2BotsView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
     @State private var createRequest = false
 
     private var canCreate: Bool {
@@ -22,6 +23,7 @@ struct V2BotsView: View {
         ZStack {
             V2Backdrop()
             BotRosterView(createRequest: $createRequest)
+                .opacity(shell.contentFaded ? 0 : 1)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 10) {
@@ -35,7 +37,6 @@ struct V2BotsView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
                         .conduitFixedGlyph()
-                        .frame(width: 36, height: 36)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
