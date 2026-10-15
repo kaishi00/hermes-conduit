@@ -23,8 +23,6 @@ enum V2VoiceContext: Equatable {
 
 struct V2VoiceButton: View {
     let context: V2VoiceContext
-    /// Picks of iOS 26's voice tab slot under this button, which act as a tap.
-    var slotPicks = 0
     /// Faded out (the expanded composer): its bars stop redrawing unseen.
     var isHidden = false
     @EnvironmentObject private var appState: AppState
@@ -116,9 +114,6 @@ struct V2VoiceButton: View {
             }
         }
         .disabled(!canAct)
-        .onChange(of: slotPicks) { _, _ in
-            if canAct { tap() }
-        }
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
         .accessibilityShowsLargeContentViewer {

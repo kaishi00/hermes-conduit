@@ -696,6 +696,10 @@ final class AppState: ObservableObject {
         willSet { objectWillChange.send() }
     }
     @Published private(set) var projectsLoading = false
+    /// The last projects load failed for a reason other than the host not
+    /// having projects (a dropped or timed-out request), so an empty list
+    /// isn't "no projects".
+    @Published private(set) var projectsLoadFailed = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
     /// What the user has and hasn't seen, per conversation (#454).
@@ -7274,6 +7278,7 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
+        projectsLoadFailed = false
         profiles = []
         clearPendingDecisionRestorationGuard()
         activeSessionId = nil
@@ -10279,6 +10284,7 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
+        projectsLoadFailed = false
         // Off the phone screen, a renewal is refused on thinner evidence: no
         // page retries, and a locked phone can't re-sign in with the saved
         // password. The saved session and copy stay for the retry on screen
@@ -22166,6 +22172,7 @@ final class AppState: ObservableObject {
             projects = []
             supportsProjects = false
             projectsLoading = false
+            projectsLoadFailed = false
             slashCommands = Self.builtInSlashCommands
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
@@ -22414,6 +22421,7 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
+        projectsLoadFailed = false
         slashCommands = Self.builtInSlashCommands
         messages = []
         persistedTranscriptWindow = nil
@@ -22593,13 +22601,18 @@ final class AppState: ObservableObject {
                 return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
             }
             supportsProjects = true
+            projectsLoadFailed = false
         } catch {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
                   self.client === client else { return }
-            guard isProjectsUnavailable(error) else { return }
+            guard isProjectsUnavailable(error) else {
+                projectsLoadFailed = projects.isEmpty
+                return
+            }
             projects = []
             supportsProjects = false
+            projectsLoadFailed = false
         }
     }
 

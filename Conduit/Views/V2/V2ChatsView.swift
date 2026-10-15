@@ -162,7 +162,11 @@ struct V2ChatsView: View {
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)
         }
-        .task(id: appState.activeProfile) {
+        // V2 opens on this list, often before the gateway connects: a load
+        // then has no client, so the list loads again once it connects, and
+        // again each time Projects is shown.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(showingProjects)") {
+            guard appState.isConnected else { return }
             await appState.refreshProjects()
         }
         // Running and Needs approval follow the gateway's live registry
@@ -836,6 +840,18 @@ struct V2ChatsView: View {
                     .frame(maxWidth: .infinity, minHeight: 140)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
+            } else if displayedProjects.isEmpty && !isSearching && appState.projectsLoadFailed {
+                ContentUnavailableView {
+                    Label("Couldn’t Load Projects", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("Hermes didn’t answer. Pull down or try again.")
+                } actions: {
+                    Button("Try Again") {
+                        Task { await appState.refreshProjects() }
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !(isSearching && !pinned.isEmpty) {
                 ContentUnavailableView(
                     isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),

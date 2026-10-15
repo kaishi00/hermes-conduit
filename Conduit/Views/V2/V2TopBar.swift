@@ -77,6 +77,8 @@ struct V2ProfileStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onManage: () -> Void
 
+    @Namespace private var selection
+
     private let pictureSize: CGFloat = 34
 
     private var profiles: [String] {
@@ -104,41 +106,28 @@ struct V2ProfileStrip: View {
         }
     }
 
-    @ViewBuilder
+    /// One view per profile whichever is selected, so a switch moves the
+    /// glass capsule and the name across instead of swapping two different
+    /// buttons (which also reloaded both pictures).
     private func chip(_ profile: String) -> some View {
         let name = appState.profileDisplayName(profile)
-        if profile == appState.activeProfile {
-            Button(action: onManage) {
-                HStack(spacing: 7) {
-                    picture(profile, name: name)
-                        .overlay {
-                            Circle().strokeBorder(Color.conduitAccent, lineWidth: 1.5)
-                        }
-                    Text(name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .leading)))
-                }
-                .padding(.leading, 3)
-                .padding(.trailing, 12)
-                .padding(.vertical, 3)
-                .conduitGlassControl(cornerRadius: 20, interactive: false)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityIdentifier("sidebar.workspace")
-            .accessibilityLabel(AppLocalization.string("\(name) profile"))
-            .accessibilityHint(AppLocalization.string("Manage profiles"))
-            .accessibilityAddTraits(.isSelected)
-        } else {
-            let unread = appState.profileHasUnread(profile)
-            Button {
+        let isSelected = profile == appState.activeProfile
+        let unread = !isSelected && appState.profileHasUnread(profile)
+        return Button {
+            if isSelected {
+                onManage()
+            } else {
                 shell.pickProfile(profile)
-            } label: {
+            }
+        } label: {
+            HStack(spacing: 7) {
                 picture(profile, name: name)
-                    .opacity(0.62)
+                    .opacity(isSelected ? 1 : 0.62)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(Color.conduitAccent, lineWidth: 1.5)
+                            .opacity(isSelected ? 1 : 0)
+                    }
                     .overlay(alignment: .topTrailing) {
                         if unread {
                             Circle()
@@ -146,17 +135,38 @@ struct V2ProfileStrip: View {
                                 .frame(width: 9, height: 9)
                                 .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
                                 .offset(x: 1, y: -1)
+                                .transition(.opacity)
                         }
                     }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
+                if isSelected {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .leading)))
+                }
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(appState.isProfileSwitching)
-            .accessibilityLabel(AppLocalization.string("\(name) profile"))
-            .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
-            .accessibilityHint(AppLocalization.string("Switches to this profile"))
+            .padding(.leading, 3)
+            .padding(.trailing, isSelected ? 12 : 3)
+            .padding(.vertical, 3)
+            .background {
+                if isSelected {
+                    Color.clear
+                        .conduitGlassControl(cornerRadius: 20, interactive: false)
+                        .matchedGeometryEffect(id: "selectedProfile", in: selection)
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(!isSelected && appState.isProfileSwitching)
+        .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "")
+        .accessibilityLabel(AppLocalization.string("\(name) profile"))
+        .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
+        .accessibilityHint(isSelected ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func picture(_ profile: String, name: String) -> some View {

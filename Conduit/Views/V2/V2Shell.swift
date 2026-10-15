@@ -13,17 +13,14 @@
 
 import SwiftUI
 
-/// The shell's four destinations, plus the voice button's slot.
+/// The shell's four destinations.
 enum V2Tab: String, Identifiable, Hashable {
     case chats
     case tasks
     case bots
     case settings
-    /// Not a destination: iOS 26's trailing tab slot the gold voice button
-    /// sits over. Selecting it starts voice and keeps the tab that was open.
-    case voice
 
-    /// The tabs the bars list.
+    /// The tabs the bar lists.
     static let destinations: [V2Tab] = [.chats, .tasks, .bots, .settings]
 
     var id: String { rawValue }
@@ -34,7 +31,6 @@ enum V2Tab: String, Identifiable, Hashable {
         case .tasks: return AppLocalization.string("Tasks")
         case .bots: return AppLocalization.string("Bots")
         case .settings: return AppLocalization.string("Settings")
-        case .voice: return AppLocalization.string("Voice")
         }
     }
 
@@ -44,7 +40,6 @@ enum V2Tab: String, Identifiable, Hashable {
         case .tasks: return "checklist"
         case .bots: return "person.2"
         case .settings: return "slider.horizontal.3"
-        case .voice: return "waveform"
         }
     }
 }
@@ -105,7 +100,7 @@ struct V2Shell: View {
     /// app never idle.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
-    /// iOS 17's custom bar keeps a tab alive once it has been opened, so its
+    /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
     @State private var contentFaded = false
@@ -114,16 +109,13 @@ struct V2Shell: View {
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
-    /// Bumped when the voice tab slot itself is picked (VoiceOver, iPad's
-    /// top bar), so the voice button acts as if tapped.
-    @State private var voiceSlotPicks = 0
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
         switch selectedTab {
         case .chats: return chatsPath.last == .conversation
         case .bots: return botsPath.last == .conversation
-        case .tasks, .settings, .voice: return false
+        case .tasks, .settings: return false
         }
     }
 
@@ -171,15 +163,7 @@ struct V2Shell: View {
                     openConversation()
                 }
             }
-            .onChange(of: selectedTab) { old, tab in
-                if tab == .voice {
-                    // The slot never shows a page: the tab stays put and
-                    // voice starts.
-                    programmaticTab = old
-                    selectedTab = old
-                    voiceSlotPicks &+= 1
-                    return
-                }
+            .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
@@ -206,66 +190,15 @@ struct V2Shell: View {
             }
     }
 
-    @ViewBuilder
-    private var tabs: some View {
-        if #available(iOS 26.0, *) {
-            nativeTabs
-        } else {
-            capsuleTabs
-        }
-    }
-
-    /// iOS 26: the system's floating Liquid Glass tab bar, minimized while
-    /// scrolling down. The conversation hides it.
-    @available(iOS 26.0, *)
-    private var nativeTabs: some View {
-        TabView(selection: $selectedTab) {
-            Tab(V2Tab.chats.title, systemImage: V2Tab.chats.symbol, value: V2Tab.chats) {
-                tabRoot(.chats)
-                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .chats }
-            }
-            Tab(V2Tab.tasks.title, systemImage: V2Tab.tasks.symbol, value: V2Tab.tasks) {
-                tabRoot(.tasks)
-                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .tasks }
-            }
-            Tab(V2Tab.bots.title, systemImage: V2Tab.bots.symbol, value: V2Tab.bots) {
-                tabRoot(.bots)
-                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .bots }
-            }
-            Tab(V2Tab.settings.title, systemImage: V2Tab.settings.symbol, value: V2Tab.settings) {
-                tabRoot(.settings)
-                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .settings }
-            }
-            // The trailing slot (the search role's place) holds the voice
-            // button, drawn over it below.
-            Tab(V2Tab.voice.title, systemImage: V2Tab.voice.symbol, value: V2Tab.voice, role: .search) {
-                Color.clear
-            }
-        }
-        .tint(.conduitAccent)
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .overlay(alignment: .bottomTrailing) {
-            if !conversationVisible {
-                GeometryReader { proxy in
-                    // Centered on the slot: the bar's glass sits a little
-                    // lower on phones with a home indicator.
-                    let lift: CGFloat = proxy.safeAreaInsets.bottom > 0 ? -6 : 14
-                    voiceButton
-                        .padding(.trailing, 16)
-                        .padding(.bottom, lift)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                }
-                .ignoresSafeArea(.keyboard)
-            }
-        }
-    }
-
     private var voiceButton: some View {
-        V2VoiceButton(context: voiceContext, slotPicks: voiceSlotPicks)
+        V2VoiceButton(context: voiceContext)
     }
 
-    /// iOS 17 and 18: the same four tabs over a custom glass capsule.
-    private var capsuleTabs: some View {
+    /// The four tabs over a custom glass capsule, the gold voice button
+    /// beside it, on every iOS version. iOS 26's own tab bar has no place
+    /// for a separate circle: a search-role tab sat inside the bar as a
+    /// second Voice item under the button.
+    private var tabs: some View {
         ZStack {
             ForEach(V2Tab.destinations) { tab in
                 if visitedTabs.contains(tab) {
@@ -311,8 +244,6 @@ struct V2Shell: View {
             }
         case .settings:
             V2SettingsTab(link: $settingsLink)
-        case .voice:
-            EmptyView()
         }
     }
 
@@ -357,7 +288,7 @@ struct V2Shell: View {
             if chatsPath.last == .conversation { chatsPath.removeLast() }
         case .bots:
             if botsPath.last == .conversation { botsPath.removeLast() }
-        case .tasks, .settings, .voice:
+        case .tasks, .settings:
             break
         }
     }
@@ -387,9 +318,9 @@ struct V2Shell: View {
     }
 }
 
-// MARK: - iOS 17 capsule tab bar
+// MARK: - Capsule tab bar
 
-/// The pre-iOS 26 tab bar: four items in a glass capsule, the selection
+/// The tab bar: four items in a glass capsule, the selection
 /// highlight sliding between them on the overshoot spring.
 private struct V2CapsuleTabBar: View {
     @Binding var selection: V2Tab
