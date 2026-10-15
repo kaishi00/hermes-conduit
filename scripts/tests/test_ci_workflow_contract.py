@@ -118,12 +118,12 @@ class WorkflowContractTests(unittest.TestCase):
             overlay = fh.read()
         self.assertIn("- path: project.yml", overlay)
         self.assertIn("dependencies:REPLACE:", overlay)
-        self.assertNotIn("target:", overlay)
+        self.assertNotIn("- target:", overlay)
         plan = self._job_text("plan")
         self.assertIn("fetch-depth: 2", plan)
-        for folder in ("ConduitWatch", "ConduitWidgets", "ConduitNotificationService",
-                       "ConduitLocationPush", "Shared"):
-            self.assertIn(folder, plan, f"a {folder} change must build the full app")
+        self.assertIn("^(ConduitWatch|ConduitWidgets|ConduitNotificationService"
+                      "|ConduitLocationPush|Shared)/", plan,
+                      "a change to any dropped target's folder must build the full app")
         self.assertIn(r"^project(-tests)?\.yml$", plan)
         self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)
         self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")

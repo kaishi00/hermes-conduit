@@ -37,7 +37,9 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   unless the PR touches those targets' sources (`ConduitWatch/`,
   `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
   `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
-  spec); then it builds the full app. Every push to `main` builds the full app too,
+  spec); then it builds the full app. `Conduit/Localizable.xcstrings` is left
+  out on purpose: the app target compiles the same catalog in the slim build,
+  and nearly every PR edits it. Every push to `main` builds the full app too,
   as do the nightly run and TestFlight archives. The plan job makes that choice (`ui-spec`).
 - **Incremental builds from main's last build.** Each push to `main` saves
   its DerivedData to the Actions cache after the tests (unit shard 1 the
