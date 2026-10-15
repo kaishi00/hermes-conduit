@@ -65,7 +65,7 @@ struct V2ConversationScreen: View {
             if appState.activeRoomSurface == nil {
                 // Beside the resting composer; it slides aside, shrinks and
                 // fades while the composer is expanded.
-                V2VoiceButton(context: .conversation)
+                V2VoiceButton(context: .conversation, isHidden: composerExpanded)
                     .scaleEffect(composerExpanded && !reduceMotion ? 0.4 : 1)
                     .offset(x: composerExpanded && !reduceMotion ? 30 : 0)
                     .opacity(composerExpanded ? 0 : 1)

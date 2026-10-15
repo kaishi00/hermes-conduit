@@ -25,6 +25,8 @@ struct V2VoiceButton: View {
     let context: V2VoiceContext
     /// Picks of iOS 26's voice tab slot under this button, which act as a tap.
     var slotPicks = 0
+    /// Faded out (the expanded composer): its bars stop redrawing unseen.
+    var isHidden = false
     @EnvironmentObject private var appState: AppState
     /// A start in flight: a second tap doesn't make a second chat or call.
     @State private var isStarting = false
@@ -127,7 +129,7 @@ struct V2VoiceButton: View {
     private var face: some View {
         // Only a minimised call moves them: any other call's screen covers
         // the button, so it doesn't redraw unseen.
-        V2VoiceBars(isLive: returnsToCall)
+        V2VoiceBars(isLive: returnsToCall && !isHidden)
             .frame(width: Self.diameter, height: Self.diameter)
             .background(Color.conduitAccent, in: Circle())
             .opacity(canAct ? 1 : 0.55)
