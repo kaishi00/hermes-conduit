@@ -87,7 +87,9 @@ Unit shards run their classes as sequential `test-without-building` batches on
 the one booted simulator: the fewest batches of at most `UNIT_BATCH_SIZE` (45)
 classes, split evenly, so a shard of about 78 classes runs as two batches of
 about 39. A failing batch does not stop the shard: every batch runs, and the
-job fails at the end listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
+job fails at the end listing the failed batches. Each failed batch also posts
+its failing cases as an annotation, since the job log API returns only a job's
+last 5,000 lines and a large first batch's failures fall outside them. `-test-timeouts-enabled YES` with a 180s allowance
 kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
 480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
 246s), so a hung launch or idle-wait stall ends and the targeted retry still

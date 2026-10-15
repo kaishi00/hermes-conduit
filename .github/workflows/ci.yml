@@ -320,6 +320,7 @@ jobs:
             for cls in "$@"; do
               batch_args+=("-only-testing:ConduitTests/${cls}")
             done
+            batch_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/unit-batch-$batch_no.log"
             echo "::group::unit batch $batch_no ($# classes)"
             if ! xcodebuild test-without-building \
               -xctestrun "$XCRUN_FILE" \
@@ -328,9 +329,17 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
-              "${batch_args[@]}"; then
+              "${batch_args[@]}" 2>&1 | tee "$batch_log"; then
               echo "::endgroup::"
               echo "::error::unit batch $batch_no failed: $*"
+              # The failing cases go in an annotation too: the job log API
+              # returns only a job's last 5,000 lines, which an early batch's
+              # failures do not reach.
+              failures=$(grep -E ": error: -\[|Test Case '.*' failed|Restarting after unexpected exit|✘|^Failing tests:|^[[:space:]]+[A-Za-z0-9_]+\.[A-Za-z0-9_]+\(\)$" "$batch_log" \
+                | head -n 30 || true)
+              if [ -n "$failures" ]; then
+                echo "::error title=unit batch $batch_no failures::$(printf '%s\n' "$failures" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
+              fi
               failed_batches+=("$batch_no")
               return 0
             fi

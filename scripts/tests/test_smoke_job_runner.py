@@ -41,6 +41,9 @@ if [ -n "${STUB_FAIL_FIRST_N:-}" ] && [ "$count" -le "$STUB_FAIL_FIRST_N" ]; the
   fail=1
 fi
 if [ "$fail" = "1" ]; then
+  if [ -n "${STUB_FAILURE_OUTPUT:-}" ]; then
+    printf '%s\\n' "$STUB_FAILURE_OUTPUT"
+  fi
   if [ "${STUB_SILENT_FAIL:-0}" != "1" ]; then
     printf "Test Suite '%s' failed\\n" "${STUB_FLAKE_CLASS:-StubFailingTests}"
   fi
@@ -128,8 +131,10 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # "unset" case must actually be unset.
         for name in ("UNIT_BATCH_SIZE", "STUB_FAIL_AT", "STUB_FAIL_FIRST_N",
                      "STUB_FLAKE_CLASS", "STUB_SILENT_FAIL", "UNIT_CLASSES",
-                     "UI_CLASSES", "STUB_RESULT_DOC"):
+                     "UI_CLASSES", "STUB_RESULT_DOC", "STUB_FAILURE_OUTPUT"):
             env.pop(name, None)
+        # The unit step keeps each batch's log under RUNNER_TEMP.
+        env["RUNNER_TEMP"] = self.tmp
         env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
         env["STUB_LOG"] = self.log
         env["XCRUN_FILE"] = os.path.join(self.tmp, "fake.xctestrun")
@@ -216,6 +221,36 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertIn("2 of 3 batch invocation(s) failed (batches 1 2)", proc.stdout)
         self.assertEqual(proc.stdout.count("::group::"), proc.stdout.count("::endgroup::"),
                          "every opened log group must be closed, including on failure")
+
+    def test_a_failed_unit_batch_annotates_its_failing_cases(self):
+        # The job log API returns only a job's last 5,000 lines, which an early
+        # batch's failures do not reach; its annotations always can be read.
+        output = "\n".join([
+            "Test Case '-[ConduitTests.Unit0Tests testA]' started.",
+            "/w/ConduitTests/Unit0Tests.swift:12: error: -[ConduitTests.Unit0Tests testA] :"
+            " XCTAssertEqual failed: (\"100%\") is not equal to (\"0%\")",
+            "Test Case '-[ConduitTests.Unit0Tests testA]' failed (0.010 seconds).",
+            "Test Case '-[ConduitTests.Unit0Tests testB]' passed (0.001 seconds).",
+            "Failing tests:",
+            "\tUnit0Tests.testA()",
+        ])
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 4),
+                              UNIT_BATCH_SIZE=2, STUB_FAIL_FIRST_N=1,
+                              STUB_FAILURE_OUTPUT=output)
+        self.assertNotEqual(proc.returncode, 0)
+        notes = [line for line in proc.stdout.splitlines()
+                 if line.startswith("::error title=unit batch 1 failures::")]
+        self.assertEqual(len(notes), 1, proc.stdout)
+        self.assertEqual(notes[0].split("::", 2)[2].split("%0A"), [
+            "/w/ConduitTests/Unit0Tests.swift:12: error: -[ConduitTests.Unit0Tests testA] :"
+            " XCTAssertEqual failed: (\"100%25\") is not equal to (\"0%25\")",
+            "Test Case '-[ConduitTests.Unit0Tests testA]' failed (0.010 seconds).",
+            "Failing tests:",
+            "\tUnit0Tests.testA()",
+        ])
+        self.assertNotIn("unit batch 2 failures", proc.stdout)
+        self.assertIn("Test Case '-[ConduitTests.Unit0Tests testB]' passed", proc.stdout,
+                      "the batch's output still reaches the job log")
 
     def test_unit_smoke_refuses_an_empty_selection(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES="", UNIT_BATCH_SIZE=8)
