@@ -172,6 +172,21 @@ final class ProfilePickerUITests: XCTestCase {
         )
     }
 
+    /// Diagnostic for the V2 shell (temporary): launching on the sessions
+    /// list, with no conversation pushed at cold launch, must leave the app
+    /// idle with the profile strip showing.
+    func testV2LaunchOnSessionsListShowsProfileStrip() throws {
+        let app = XCUIApplication()
+        app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
+        app.launchArguments += [Identity.seededProfiles, Self.seededProfiles.joined(separator: ",")]
+        app.launchArguments += ["-conduit.chatReturnSurface.v1", "sessions"]
+        app.launch()
+        XCTAssertTrue(
+            app.buttons[Identity.workspace].waitForExistence(timeout: 20),
+            "Profile strip did not appear. Tree:\n\(app.debugDescription)"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Launches the remembered-connected stub with the seeded profile roster.
