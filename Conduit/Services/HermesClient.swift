@@ -2970,9 +2970,23 @@ enum MessageNormalizer {
                 isUnread: obj["unread"]?.boolValue,
                 readWatermark: obj["last_read_at"]?.doubleValue,
                 isPinned: obj["pinned"]?.boolValue,
-                lineageRootId: obj["_lineage_root_id"]?.stringValue
+                lineageRootId: obj["_lineage_root_id"]?.stringValue,
+                preview: Self.sessionListPreview(in: obj)
             )
         }
+    }
+
+    /// A row's `preview`, kept only when the row also has a title: an
+    /// untitled row already shows its preview as the title.
+    static func sessionListPreview(in obj: [String: AnyCodable]) -> String? {
+        guard let title = obj["title"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty,
+              let preview = obj["preview"]?.stringValue?
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !preview.isEmpty,
+              preview != title else { return nil }
+        return preview
     }
 
     /// The ordering instant for a session row, so restoration can rank

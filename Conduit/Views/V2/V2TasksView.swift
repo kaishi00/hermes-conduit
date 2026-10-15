@@ -1,0 +1,193 @@
+//
+//  V2TasksView.swift
+//  Conduit
+//
+//  Tasks: a glass segmented control over the Kanban board (its lanes as
+//  side-by-side columns) and the scheduled jobs (schedule, next run, and an
+//  on/off switch). Each scheduled run lands in Chats as its own
+//  conversation.
+//
+
+import SwiftUI
+
+struct V2TasksView: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.v2Shell) private var shell
+    @AppStorage("conduit.v2.tasksSegment") private var segmentRaw = Segment.board.rawValue
+
+    enum Segment: String, Hashable {
+        case board
+        case scheduled
+    }
+
+    private var segment: Binding<Segment> {
+        Binding(
+            get: { Segment(rawValue: segmentRaw) ?? .board },
+            set: { segmentRaw = $0.rawValue }
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            V2Backdrop()
+            VStack(spacing: 10) {
+                V2SegmentedControl(
+                    selection: segment,
+                    options: [
+                        (value: Segment.board, title: AppLocalization.string("Board")),
+                        (value: Segment.scheduled, title: AppLocalization.string("Scheduled"))
+                    ]
+                )
+                .padding(.horizontal, 16)
+
+                Group {
+                    switch segment.wrappedValue {
+                    case .board:
+                        KanbanView(columnsLayout: true)
+                            .padding(.horizontal, 14)
+                    case .scheduled:
+                        V2ScheduledList()
+                    }
+                }
+                .opacity(shell.contentFaded ? 0 : 1)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            V2TopBar()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MinimisedLiveVoiceBar()
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle(V2Tab.tasks.title)
+    }
+}
+
+/// The scheduled jobs: active ones first, each with its schedule, next run
+/// and an on/off switch (Pause / Resume). Tapping a job opens its detail
+/// with Run now and its run history.
+struct V2ScheduledList: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    @State private var selectedJob: CronJob?
+
+    private var jobs: [CronJob] {
+        CronJobFilter.visibleJobs(appState.cronJobs, filter: .all, query: "")
+    }
+
+    var body: some View {
+        List {
+            if jobs.isEmpty && !appState.cronJobsLoading {
+                let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
+                ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else if jobs.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else {
+                Section {
+                    ForEach(jobs) { job in
+                        row(job)
+                    }
+                } footer: {
+                    Text("Each run lands in Chats as its own conversation.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 1)
+        .task(id: appState.activeProfile) { await appState.refreshCronContent() }
+        .refreshable { await appState.refreshCronContent() }
+        .sheet(item: $selectedJob) {
+            CronJobDetailSheet(job: $0)
+                .environmentObject(appState)
+        }
+    }
+
+    private func row(_ job: CronJob) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                Haptics.light()
+                selectedJob = job
+            } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: job.isActive ? "clock.fill" : "clock")
+                        .font(.subheadline.weight(.semibold))
+                        .conduitFixedGlyph()
+                        .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.secondary)
+                        .frame(width: 22, height: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(job.displayName)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
+                            .font(.footnote)
+                            .foregroundStyle(Color.primary.opacity(0.58))
+                            .lineLimit(1)
+                        Text(nextRunLine(job))
+                            .font(.caption)
+                            .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(AppLocalization.string("Opens the job's details and run history"))
+
+            if !job.isFinished {
+                Toggle(isOn: Binding(
+                    get: { job.enabled },
+                    set: { on in
+                        Haptics.selection()
+                        Task { _ = await appState.performCronAction(on ? .resume : .pause, for: job) }
+                    }
+                )) {
+                    Text(job.displayName)
+                }
+                .labelsHidden()
+                .tint(.conduitAccent)
+                .disabled(appState.cronJobActionID != nil)
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 16)
+        .padding(.vertical, 10)
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .v2ListRow(dividerInset: 50)
+    }
+
+    /// "Next run in 3 hours", the job's state when it won't run again.
+    private func nextRunLine(_ job: CronJob) -> String {
+        guard job.isActive else { return job.statusLabel }
+        guard let raw = job.nextRunAt, !raw.isEmpty else { return job.statusLabel }
+        guard let date = Self.parseDate(raw) else {
+            return AppLocalization.string("Next run \(raw)")
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = AppLocalization.formattingLocale
+        formatter.unitsStyle = .full
+        return AppLocalization.string("Next run \(formatter.localizedString(for: date, relativeTo: Date()))")
+    }
+
+    private static func parseDate(_ raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        let plain = ISO8601DateFormatter()
+        if let date = plain.date(from: raw) { return date }
+        if let seconds = Double(raw) { return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds) }
+        return nil
+    }
+}

@@ -13,6 +13,15 @@ extension ShapeStyle where Self == Color {
     static var conduitAccent: Color { .conduitAdaptiveAccent }
     static var conduitAccentSoft: Color { .conduitAdaptiveAccentSoft }
     static var conduitAura: Color { Color(red: 0.38, green: 0.58, blue: 0.98) }
+    // V2 status tokens. Each is always paired with an SF Symbol and a word.
+    /// Approval waiting (amber shield).
+    static var conduitAttention: Color { .conduitAdaptiveAttention }
+    /// Finished work (green check).
+    static var conduitSuccess: Color { .conduitAdaptiveSuccess }
+    /// Scheduled runs (purple clock).
+    static var conduitScheduled: Color { .conduitAdaptiveScheduled }
+    /// Hermes speaking in a voice call (violet).
+    static var conduitVoice: Color { .conduitAdaptiveVoice }
     // Text colors (adapt to light/dark via system colors)
     static var conduitText: Color { Color.primary }
     static var conduitTextSecondary: Color { Color.secondary }
@@ -32,6 +41,30 @@ extension Color {
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 0.88, green: 0.67, blue: 0.28, alpha: 1)
             : UIColor(red: 0.55, green: 0.37, blue: 0.13, alpha: 1)
+    })
+
+    static let conduitAdaptiveAttention = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.96, green: 0.65, blue: 0.24, alpha: 1)
+            : UIColor(red: 0.74, green: 0.42, blue: 0.04, alpha: 1)
+    })
+
+    static let conduitAdaptiveSuccess = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.38, green: 0.80, blue: 0.50, alpha: 1)
+            : UIColor(red: 0.13, green: 0.53, blue: 0.27, alpha: 1)
+    })
+
+    static let conduitAdaptiveScheduled = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.67, green: 0.56, blue: 0.98, alpha: 1)
+            : UIColor(red: 0.44, green: 0.32, blue: 0.80, alpha: 1)
+    })
+
+    static let conduitAdaptiveVoice = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.74, green: 0.53, blue: 0.98, alpha: 1)
+            : UIColor(red: 0.51, green: 0.31, blue: 0.82, alpha: 1)
     })
 
     static let conduitAdaptiveAccentSoft = Color(uiColor: UIColor { traits in
@@ -71,6 +104,44 @@ enum ConduitMotion {
     static let response = Animation.spring(response: 0.34, dampingFraction: 0.82)
     static let transition = Animation.spring(response: 0.46, dampingFraction: 0.84)
     static let settle = Animation.easeOut(duration: 0.22)
+
+    // V2 motion: the prototype's two curves as springs.
+    /// The prototype's `cubic-bezier(.32,.72,0,1)` ease: pushes, resizes,
+    /// list expand and collapse.
+    static let easeSpring = Animation.spring(response: 0.5, dampingFraction: 0.9)
+    /// The prototype's overshoot curve: tab highlight, menus, toggles, presses.
+    static let overshootSpring = Animation.spring(response: 0.45, dampingFraction: 0.72)
+    /// The quick fade-out before a profile switch.
+    static let fadeOut = Animation.easeOut(duration: 0.17)
+
+    /// Under Reduce Motion every spring becomes the plain settle fade.
+    static func ease(reduceMotion: Bool) -> Animation {
+        reduceMotion ? settle : easeSpring
+    }
+
+    static func overshoot(reduceMotion: Bool) -> Animation {
+        reduceMotion ? settle : overshootSpring
+    }
+}
+
+/// V2's shared press feedback: every tappable control scales to 0.95 on the
+/// overshoot spring, and holds still under Reduce Motion.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        PressableButtonLabel(configuration: configuration)
+    }
+}
+
+private struct PressableButtonLabel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let configuration: ButtonStyleConfiguration
+
+    var body: some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .opacity(configuration.isPressed && reduceMotion ? 0.7 : 1)
+            .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: configuration.isPressed)
+    }
 }
 
 // MARK: - Living canvas
@@ -159,12 +230,16 @@ struct ConduitBackdrop: View {
     @ObservedObject private var devicePower = DevicePowerState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
     private let drifts: Bool
+    /// The warm glow's color. V2 tints it with the active profile's color;
+    /// nil keeps the gold accent.
+    private let glowTint: Color?
 
     /// Pass `drifts: true` only for the app's main surfaces (chat, persistent
     /// sidebar column, sign-in). Sheets and pushed screens keep the still
     /// composition.
-    init(drifts: Bool = false) {
+    init(drifts: Bool = false, glowTint: Color? = nil) {
         self.drifts = drifts
+        self.glowTint = glowTint
     }
 
     private var shouldAnimate: Bool {
@@ -193,7 +268,7 @@ struct ConduitBackdrop: View {
                     let drift = motionClock.progress(at: ProcessInfo.processInfo.systemUptime)
                     ZStack {
                         Circle()
-                            .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
+                            .fill((glowTint ?? Color.conduitAccent).opacity(colorScheme == .dark ? 0.20 : 0.055))
                             .frame(width: proxy.size.width * 0.92)
                             .blur(radius: 72)
                             .offset(
@@ -220,6 +295,7 @@ struct ConduitBackdrop: View {
                 endPoint: .center
             )
         }
+        .animation(.easeInOut(duration: 0.6), value: glowTint)
         .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }

@@ -16,6 +16,13 @@ struct BotRosterView: View {
     /// Outcome of the last management action that needs explaining (a
     /// failed delete, a save whose picture did not land).
     @State private var managementNotice: String?
+    /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
+    /// in-list create card steps aside.
+    private let createRequest: Binding<Bool>?
+
+    init(createRequest: Binding<Bool>? = nil) {
+        self.createRequest = createRequest
+    }
 
     var body: some View {
         Group {
@@ -71,6 +78,13 @@ struct BotRosterView: View {
         .task(id: rosterRefreshKey) {
             await appState.refreshBotRoster()
             await appState.refreshGroupChatSupport()
+        }
+        .onChange(of: createRequest?.wrappedValue ?? false) { _, requested in
+            guard requested else { return }
+            createRequest?.wrappedValue = false
+            guard canManageBots else { return }
+            Haptics.light()
+            editorMode = .create
         }
     }
 
@@ -178,11 +192,11 @@ struct BotRosterView: View {
                             onDelete: { pendingDelete = bot }
                         )
                     }
-                    if canManageBots {
+                    if canManageBots && createRequest == nil {
                         newBotButton
                     }
                 }
-            } else if canManageBots {
+            } else if canManageBots && createRequest == nil {
                 Section(AppLocalization.string("Bots")) {
                     newBotButton
                 }
@@ -484,44 +498,43 @@ private struct BotRosterRow: View {
             appState.dismissSidebarDrawer()
             Task { await appState.openBotChat(for: bot) }
         } label: {
+            // V2: a chat-style row, no card. Picture, name and time, then
+            // the latest message.
             HStack(spacing: 12) {
                 BotMonogramView(bot: bot)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(bot.displayLabel)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(bot.displayLabel)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        if bot.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Color.primary.opacity(0.35))
+                        }
+                        Spacer(minLength: 4)
+                        if let activity = activityLabel {
+                            Text(activity)
+                                .font(.footnote)
+                                .foregroundStyle(Color.primary.opacity(0.45))
+                                .lineLimit(1)
+                        }
+                    }
                     subtitleText
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                 }
-                Spacer(minLength: 0)
-                if bot.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Color.primary.opacity(0.045),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            }
+            .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 64) }
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
@@ -575,10 +588,20 @@ private struct BotRosterRow: View {
         return BotMode.canonicalChatTitle
     }
 
+    /// When the bot last talked with anyone, short and relative.
+    private var activityLabel: String? {
+        guard let lastActive = bot.lastActive, lastActive > 0 else { return nil }
+        let seconds = lastActive > 10_000_000_000 ? lastActive / 1000 : lastActive
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = AppLocalization.formattingLocale
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: Date(timeIntervalSince1970: seconds), relativeTo: Date())
+    }
+
     /// The pin badge and the subtitle, spoken after the name; the label
     /// alone would leave both visual-only.
     private var accessibilityValue: String {
-        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", subtitleString]
+        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", subtitleString, activityLabel ?? ""]
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }

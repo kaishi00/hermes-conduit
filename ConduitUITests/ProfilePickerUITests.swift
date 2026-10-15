@@ -26,7 +26,6 @@ final class ProfilePickerUITests: XCTestCase {
     private enum Identity {
         static let connectedDashboard = "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD"
         static let seededProfiles = "-CONDUIT_UI_TEST_PROFILES"
-        static let openSidebar = "Open sessions"
         static let workspace = "sidebar.workspace"
         static let pickerTitle = "Profiles"
         static let currentMarker = "Current"
@@ -187,18 +186,33 @@ final class ProfilePickerUITests: XCTestCase {
     }
 
     private func openProfilePicker(_ app: XCUIApplication) {
-        let drawer = app.buttons[Identity.openSidebar]
-        XCTAssertTrue(drawer.waitForExistence(timeout: 10), "Main UI did not appear. Tree:\n\(app.debugDescription)")
-        drawer.tap()
-
+        // The profile strip's selected chip opens the profile manager.
         let workspace = app.buttons[Identity.workspace]
-        XCTAssertTrue(workspace.waitForExistence(timeout: 10), "Sidebar did not appear. Tree:\n\(app.debugDescription)")
+        returnToTabs(app, revealing: workspace)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10), "Profile strip did not appear. Tree:\n\(app.debugDescription)")
         workspace.tap()
 
         XCTAssertTrue(
             app.staticTexts[Identity.pickerTitle].waitForExistence(timeout: 10),
             "Profile picker did not appear. Tree:\n\(app.debugDescription)"
         )
+    }
+
+    /// V2 opens the last conversation at launch with the tab bar hidden; Back
+    /// returns to Chats, where the tab bar and the profile strip live.
+    private func returnToTabs(_ app: XCUIApplication, revealing element: XCUIElement) {
+        if element.waitForExistence(timeout: 5) { return }
+        let candidates = [
+            app.navigationBars.buttons["Chats"],
+            app.navigationBars.buttons["BackButton"],
+            app.navigationBars.buttons["Back"]
+        ]
+        if let back = candidates.first(where: { $0.exists }) {
+            back.tap()
+        } else {
+            let first = app.navigationBars.buttons.element(boundBy: 0)
+            if first.exists { first.tap() }
+        }
     }
 
     /// The seeded profile that is not the active one: the card only selects when

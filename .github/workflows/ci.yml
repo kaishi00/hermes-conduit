@@ -31,9 +31,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v2-redesign]
   pull_request:
-    branches: [main]
+    branches: [main, v2-redesign]
 
 # A PR's newer push supersedes its older run. A push to main is grouped by its
 # own commit instead, so every merge gets a full run: branch protection does

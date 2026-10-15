@@ -1075,7 +1075,7 @@ private struct SessionFilterOrderSheet: View {
     }
 }
 
-private struct ArchivedSessionsSheet: View {
+struct ArchivedSessionsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -1711,7 +1711,7 @@ private struct ProjectSessionsSheet: View {
     }
 }
 
-private struct ProjectCreateSheet: View {
+struct ProjectCreateSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -2158,7 +2158,7 @@ private struct CronJobRow: View {
     }
 }
 
-private struct CronJobDetailSheet: View {
+struct CronJobDetailSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss

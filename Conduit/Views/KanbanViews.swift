@@ -344,6 +344,14 @@ struct KanbanBulkActionsCluster<MoreMenu: View>: View {
 
 struct KanbanView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// V2's Tasks › Board: every lane as a column, side by side in a
+    /// horizontal scroll, instead of one lane behind the chip selector.
+    var columnsLayout = false
+
+    init(columnsLayout: Bool = false) {
+        self.columnsLayout = columnsLayout
+    }
+
     @EnvironmentObject private var appState: AppState
     @StateObject private var store = KanbanStore()
     @State private var selectedTask: KanbanTask?
@@ -898,6 +906,92 @@ struct KanbanView: View {
     /// creation, matching upstream LOCKED_COLUMNS semantics.
     @ViewBuilder
     private var laneBoard: some View {
+        if columnsLayout {
+            columnBoard
+        } else {
+            chipLaneBoard
+        }
+    }
+
+    /// V2: each lane is a column of cards with its status symbol, name and
+    /// count; the board scrolls sideways.
+    private var columnBoard: some View {
+        let columns = visibleColumns
+        return ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(columns) { column in
+                    boardColumn(column)
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.bottom, 14)
+        }
+        .disabled(!store.isSelectedSnapshotLoaded)
+        .overlay(alignment: .top) {
+            if !store.isSelectedSnapshotLoaded {
+                Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if isSelectionActive {
+                bulkActionBar
+            }
+        }
+    }
+
+    private func boardColumn(_ column: KanbanColumn) -> some View {
+        let presentation = KanbanStatusPresentation.forStatus(column.name)
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: presentation.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(presentation.tint)
+                Text(presentation.displayName)
+                    .font(.subheadline.weight(.semibold))
+                Text(String(column.tasks.count))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if presentation.isBackendControlled {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel(presentation.displayName + ", " + AppLocalization.string("\(column.tasks.count) tasks"))
+
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 9) {
+                    if KanbanRunningGroupPolicy.shouldApply(lane: column.name, enabled: groupRunningByProfile) {
+                        ForEach(KanbanRunningGroupPolicy.group(column.tasks)) { group in
+                            runningGroupHeader(group)
+                            ForEach(group.tasks) { task in
+                                taskCard(task)
+                            }
+                        }
+                    } else {
+                        ForEach(column.tasks) { task in
+                            taskCard(task)
+                        }
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(width: 280)
+        .padding(10)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var chipLaneBoard: some View {
         let columns = visibleColumns
         VStack(spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {

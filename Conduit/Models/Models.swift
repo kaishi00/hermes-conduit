@@ -802,6 +802,9 @@ struct SessionSummary: Identifiable, Equatable {
     /// `session.list` RPC, hosts older than the flag).
     var isPinned: Bool? = nil
     var lineageRootId: String?
+    /// The listing's one-line `preview` (the opening message), when the row
+    /// carried one apart from its title. The V2 session list's second line.
+    var preview: String? = nil
 }
 
 /// A server-owned workspace from Hermes' `projects.*` capability. Projects are
