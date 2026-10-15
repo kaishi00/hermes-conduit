@@ -589,12 +589,17 @@ private struct BotRosterRow: View {
     }
 
     /// When the bot last talked with anyone, short and relative.
+    private static let activityFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
+
     private var activityLabel: String? {
         guard let lastActive = bot.lastActive, lastActive > 0 else { return nil }
         let seconds = lastActive > 10_000_000_000 ? lastActive / 1000 : lastActive
-        let formatter = RelativeDateTimeFormatter()
+        let formatter = Self.activityFormatter
         formatter.locale = AppLocalization.formattingLocale
-        formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: Date(timeIntervalSince1970: seconds), relativeTo: Date())
     }
 

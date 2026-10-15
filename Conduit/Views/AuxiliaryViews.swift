@@ -1001,7 +1001,7 @@ private struct SettingsHome: View {
                 title: AppLocalization.string("Connection"),
                 detail: v2ConnectionDetail,
                 identifier: "settings.gateway",
-                statusDot: appState.isConnected ? .green : (appState.isConnecting ? .orange : .red)
+                statusDot: appState.isConnected ? Color.green : (appState.isConnecting ? Color.orange : Color.red)
             )
             settingsLink(.workspace, icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
             settingsLink(.profile, icon: "person.crop.circle", title: AppLocalization.string("Edit profile"), detail: AppLocalization.string("Profile-specific preferences"))

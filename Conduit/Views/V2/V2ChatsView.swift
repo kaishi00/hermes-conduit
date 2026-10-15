@@ -164,8 +164,9 @@ struct V2ChatsView: View {
             await appState.refreshProjects()
         }
         // Running and Needs approval follow the gateway's live registry
-        // while the list is on screen.
-        .task(id: appState.activeProfile) {
+        // while the list is on screen; a hidden capsule tab stops polling.
+        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
             while !Task.isCancelled {
                 await appState.refreshLiveSessionStatuses()
                 try? await Task.sleep(for: .seconds(4))
@@ -309,7 +310,7 @@ struct V2ChatsView: View {
                 systemImage: filter == .all
                     ? "line.3.horizontal.decrease"
                     : "line.3.horizontal.decrease.circle.fill",
-                dot: waitingApprovalCount > 0 ? .conduitAttention : nil
+                dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
             )
         }
         .menuOrder(.fixed)

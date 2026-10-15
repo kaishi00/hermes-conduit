@@ -72,6 +72,9 @@ enum V2Route: Hashable {
 struct V2ShellContext {
     var pickProfile: (String) -> Void = { _ in }
     var contentFaded = false
+    /// False while this tab sits hidden behind the selected one (the capsule
+    /// bar keeps visited tabs alive), so its polling can stop.
+    var isTabActive = true
 }
 
 private struct V2ShellContextKey: EnvironmentKey {
@@ -204,6 +207,7 @@ struct V2Shell: View {
                 if visitedTabs.contains(tab) {
                     let isSelected = selectedTab == tab
                     tabRoot(tab)
+                        .transformEnvironment(\.v2Shell) { $0.isTabActive = isSelected }
                         .opacity(isSelected ? 1 : 0)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)

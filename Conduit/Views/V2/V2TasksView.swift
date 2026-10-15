@@ -175,18 +175,29 @@ struct V2ScheduledList: View {
         guard let date = Self.parseDate(raw) else {
             return AppLocalization.string("Next run \(raw)")
         }
-        let formatter = RelativeDateTimeFormatter()
+        let formatter = Self.relativeFormatter
         formatter.locale = AppLocalization.formattingLocale
-        formatter.unitsStyle = .full
         return AppLocalization.string("Next run \(formatter.localizedString(for: date, relativeTo: Date()))")
     }
 
+    // Shared per list; rows read them on the main actor only.
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
+    private static let fractionalISOFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let plainISOFormatter = ISO8601DateFormatter()
+
     private static func parseDate(_ raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: raw) { return date }
+        if let date = fractionalISOFormatter.date(from: raw) { return date }
+        if let date = plainISOFormatter.date(from: raw) { return date }
         if let seconds = Double(raw) { return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds) }
         return nil
     }
