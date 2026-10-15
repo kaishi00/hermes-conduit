@@ -129,6 +129,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn(r"^project(-tests)?\.yml$", plan)
         self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)
         self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
+        self.assertIn('= "$PR_HEAD" ]', plan, "the merge commit's second parent must be this PR's head")
         self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
         with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as fh:
             spec = fh.read()

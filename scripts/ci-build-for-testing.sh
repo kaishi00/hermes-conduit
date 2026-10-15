@@ -101,19 +101,29 @@ run_build() {
 # Where xcodebuild sits quietly (package resolution, build graph, waiting on
 # the simulator service) never shows in the timing summary, which counts only
 # tasks. A sampler records the log's length every 2 s; the longest stretches
-# without a new line are posted with the line they followed.
+# without a new line are posted with the line they followed. A clean retry
+# starts a fresh timeline, so the notice describes the attempt whose build.log
+# it quotes.
 timeline="$LOG_DIR/build-timeline.txt"
-: > "$timeline"
-(
-  t0=$(date +%s)
-  while :; do
-    lines=$( { wc -l < "$LOG_DIR/build.log"; } 2>/dev/null || echo 0)
-    echo "$(( $(date +%s) - t0 )) ${lines// /}" >> "$timeline"
-    sleep 2
-  done
-) &
-sampler=$!
-trap 'kill "$sampler" 2>/dev/null || true' EXIT
+sampler=""
+start_sampler() {
+  : > "$timeline"
+  (
+    t0=$(date +%s)
+    while :; do
+      lines=$( { wc -l < "$LOG_DIR/build.log"; } 2>/dev/null || echo 0)
+      echo "$(( $(date +%s) - t0 )) ${lines// /}" >> "$timeline"
+      sleep 2
+    done
+  ) &
+  sampler=$!
+}
+stop_sampler() {
+  if [ -n "$sampler" ]; then kill "$sampler" 2>/dev/null || true; fi
+  sampler=""
+}
+trap stop_sampler EXIT
+start_sampler
 
 started_at=$(now_iso)
 start=$(date +%s)
@@ -123,13 +133,15 @@ XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incremental" ] \
   && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -qF "$PWD/"; then
   echo "::warning::the incremental build failed (exit $status) with no error in a source file; retrying from scratch"
+  stop_sampler
   mv "$LOG_DIR/build.log" "$LOG_DIR/build-incremental.log"
   rm -rf "$DERIVED_DATA_PATH"
   build_kind="clean retry"
   status=0
+  start_sampler
   XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
 fi
-kill "$sampler" 2>/dev/null || true
+stop_sampler
 finished_at=$(now_iso)
 duration=$(( $(date +%s) - start ))
 
