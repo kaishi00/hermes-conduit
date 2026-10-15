@@ -413,6 +413,7 @@ struct ComposerBar: View {
         }
         .onDisappear {
             dictation.cancel()
+            collapseTask?.cancel()
             // Dependable second hook: whether this view leaves for a room,
             // a session switch, or teardown, the typed text lands in the
             // app-lifetime store first.
@@ -676,6 +677,7 @@ struct ComposerBar: View {
             holdsExpanded = true
             return
         }
+        guard holdsExpanded else { return }
         collapseTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }

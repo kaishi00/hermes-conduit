@@ -27,6 +27,7 @@ struct ChatView: View {
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: the composer is expanded, which hides the minimised call's bar.
     @State private var composerExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
     /// Owns the viewport: follows the latest message, holds the reader's
     /// place while browsing, restores saved positions. It reads and sets the
     /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
@@ -237,7 +238,10 @@ struct ChatView: View {
             ComposerBar()
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
-            composerExpanded = expanded
+            // In step with the voice button retreating beside it.
+            withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
+                composerExpanded = expanded
+            }
         }
         .environment(\.chatTextSize, chatTextSize)
         // Gateway videos, audio and documents open from a download (#569).

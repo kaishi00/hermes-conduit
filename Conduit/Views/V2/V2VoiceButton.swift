@@ -227,7 +227,11 @@ struct V2VoiceButton: View {
         isStarting = true
         Task { @MainActor in
             defer { isStarting = false }
-            guard await appState.openSession(sessionID) else {
+            switch await appState.openSessionOutcome(sessionID) {
+            case .opened: break
+            // A newer navigation took over: not a failure, and not this chat.
+            case .superseded: return
+            case .failed:
                 reportCouldNotOpen()
                 return
             }
