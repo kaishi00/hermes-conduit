@@ -157,9 +157,9 @@ struct V2VoiceButton: View {
             }
         case .conversation:
             // Voice in the open chat, as the composer's voice button does.
-            Task {
+            Task { @MainActor in
                 defer { isStarting = false }
-                _ = await appState.openVoiceConversation(
+                await startVoice(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
                 )
             }
