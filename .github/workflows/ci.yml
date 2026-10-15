@@ -209,8 +209,10 @@ jobs:
           kind=full
           if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
           xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
+          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
-          echo "prefix=dd-v1-$kind-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
       - name: Restore the build cache
         id: cache
@@ -385,8 +387,10 @@ jobs:
           kind=full
           if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
           xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
+          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
-          echo "prefix=dd-v1-$kind-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
       - name: Restore the build cache
         id: cache

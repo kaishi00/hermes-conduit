@@ -98,10 +98,28 @@ run_build() {
   PROVISIONING_PROFILE_SPECIFIER=""
 }
 
+# Where xcodebuild sits quietly (package resolution, build graph, waiting on
+# the simulator service) never shows in the timing summary, which counts only
+# tasks. A sampler records the log's length every 2 s; the longest stretches
+# without a new line are posted with the line they followed.
+timeline="$LOG_DIR/build-timeline.txt"
+: > "$timeline"
+(
+  t0=$(date +%s)
+  while :; do
+    lines=$( { wc -l < "$LOG_DIR/build.log"; } 2>/dev/null || echo 0)
+    echo "$(( $(date +%s) - t0 )) ${lines// /}" >> "$timeline"
+    sleep 2
+  done
+) &
+sampler=$!
+trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
 started_at=$(now_iso)
 start=$(date +%s)
 status=0
-run_build || status=$?
+# Poll every 2 s instead of 15: an incremental build can be done in seconds.
+XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incremental" ] \
   && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -qF "$PWD/"; then
   echo "::warning::the incremental build failed (exit $status) with no error in a source file; retrying from scratch"
@@ -109,8 +127,9 @@ if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incrementa
   rm -rf "$DERIVED_DATA_PATH"
   build_kind="clean retry"
   status=0
-  run_build || status=$?
+  XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
 fi
+kill "$sampler" 2>/dev/null || true
 finished_at=$(now_iso)
 duration=$(( $(date +%s) - start ))
 
@@ -152,6 +171,13 @@ if [ -n "$timing" ]; then
   echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf '%s\n' "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
+fi
+quiet=$(python3 "$SCRIPT_DIR/ci-build-quiet-stretches.py" "$timeline" "$LOG_DIR/build.log" 2>/dev/null || true)
+if [ -n "$quiet" ]; then
+  echo "::group::longest quiet stretches of the build"
+  echo "$quiet"
+  echo "::endgroup::"
+  echo "::notice title=Build ${duration}s - longest stretches with no new output::$(printf '%s\n' "$quiet" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 fi
 echo "xctestrun=$xctestrun"
 exit 0
