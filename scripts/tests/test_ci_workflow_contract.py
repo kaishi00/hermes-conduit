@@ -108,6 +108,24 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('wait "$prepare_pid"', build)
         self.assertIn("XCRUN_FILE=", build)
 
+    def test_hosted_builds_need_no_simulator_device(self):
+        """The build targets a generic simulator, so it never waits on the
+        CoreSimulator service the background boot keeps busy; the tests still
+        get the pinned device from the preparation step."""
+        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
+            hosted = fh.read()
+        export = 'export BUILD_DESTINATION="${BUILD_DESTINATION:-generic/platform=iOS Simulator}"'
+        self.assertIn(export, hosted)
+        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        generic = build.index('if [ -n "${BUILD_DESTINATION:-}" ]; then')
+        self.assertLess(generic, build.index("wait_for_destination_device"),
+                        "without BUILD_DESTINATION the build still waits for its device")
+        self.assertIn("-resolvePackageDependencies", build)
+        self.assertLess(build.index("resolve_packages\nfi"), build.index("start_sampler\n\nstarted_at"),
+                        "package resolution is timed before the build's own timeline starts")
+
     def test_test_builds_leave_out_the_watch_app_and_extensions(self):
         """Unit shards build project-tests.yml (the app alone); UI smoke builds
         the plan job's choice, the full app whenever a change reaches the

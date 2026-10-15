@@ -56,18 +56,29 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
   no error in a source file is retried once from scratch. A new Xcode build
   misses the cache and builds clean; the nightly never restores one.
-- **Packages from the restored checkout.** With nothing to compile, the first
-  incremental builds still took 139-304 s, and 116-199 s of that sat on
-  "Resolve Package Graph" for WebRTC, the only package. When the restored
-  DerivedData holds the package checkout, the build passes
-  `-skipPackageUpdates` and resolves from it. A new pinned version fails that
-  build, and the clean retry resolves it from the network.
+- **Packages from the restored checkout.** When the restored DerivedData
+  holds the WebRTC checkout (the only package), the build passes
+  `-skipPackageUpdates` and resolves from it instead of the network. A new
+  pinned version fails that build, and the clean retry resolves it from the
+  network.
+- **A generic build destination.** With nothing to compile, the first
+  incremental builds still took 139-304 s: about 60 s finding the pinned
+  device before xcodebuild started, then 116-199 s with no output around
+  "Resolve Package Graph", with or without `-skipPackageUpdates`. The
+  simulator boots alongside the build and keeps CoreSimulator busy for about
+  the same time. Hosted jobs now build for `generic/platform=iOS Simulator`
+  (`BUILD_DESTINATION`, set by `ci-hosted-build.sh`), which needs no device;
+  the products and `.xctestrun` are the same, and the tests still run on the
+  booted device. Packages are resolved first in a separate, timed
+  `-resolvePackageDependencies` call, so the build notice tells package time
+  apart from the rest.
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core.
 
 Each build posts two notices on its job: the slowest build phases from
-`-showBuildTimingSummary` (with the cache it restored), and the longest
+`-showBuildTimingSummary` (with the cache it restored and the seconds spent
+on the destination and packages before the build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
 package resolution, build planning, waiting on the simulator service.
@@ -690,6 +701,11 @@ everything else in this shape.
    batch or class completed successfully.
 
 ### Destination readiness gate
+
+Hosted test jobs skip this gate for the build, which targets a generic
+simulator (see "What gets compiled"); their preparation step still waits for
+the pinned device before the tests run. The gate applies when
+`ci-build-for-testing.sh` runs without `BUILD_DESTINATION`.
 
 The build job pins one known simulator name (`SIMULATOR_NAME`, no `simctl`
 enumeration on the happy path). Fresh hosted runners occasionally reach the

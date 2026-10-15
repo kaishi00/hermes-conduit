@@ -25,21 +25,32 @@ BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-1200}"
 LOG_DIR="ci-lane/build"
 mkdir -p "$LOG_DIR"
 
-SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17 Pro}"
-build_destination
+prep_start=$(date +%s)
+if [ -n "${BUILD_DESTINATION:-}" ]; then
+  # Hosted jobs (ci-hosted-build.sh) build for a generic simulator: the
+  # products and .xctestrun are the same, but neither this script nor
+  # xcodebuild has to reach CoreSimulator, which is busy booting the job's
+  # simulator alongside. The device lookup took about 60 s here (2026-10-15).
+  DESTINATION="$BUILD_DESTINATION"
+  echo "build-for-testing: destination $DESTINATION"
+else
+  SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17 Pro}"
+  build_destination
 
-# Destination readiness gate: absorb the fresh-runner CoreSimulator
-# settlement race before spending the build budget on a guaranteed
-# destination-resolution failure (observed as an empty available-destinations
-# list and "Unable to find a device matching the provided destination
-# specifier", which skips every downstream lane).
-if ! wait_for_destination_device; then
-  build_status_token="failed"
-  printf '{"schema_version": 1, "status": "%s", "duration_s": %d, "started_at": "%s", "finished_at": "%s", "xctestrun": "%s", "shared_artifact": true}\n' \
-    "$build_status_token" 0 "$(now_iso)" "$(now_iso)" "" > "$LOG_DIR/build-result.json"
-  echo "::error::destination device '$SIMULATOR_NAME' never became available; build-for-testing skipped"
-  exit 1
+  # Destination readiness gate: absorb the fresh-runner CoreSimulator
+  # settlement race before spending the build budget on a guaranteed
+  # destination-resolution failure (observed as an empty available-destinations
+  # list and "Unable to find a device matching the provided destination
+  # specifier", which skips every downstream lane).
+  if ! wait_for_destination_device; then
+    build_status_token="failed"
+    printf '{"schema_version": 1, "status": "%s", "duration_s": %d, "started_at": "%s", "finished_at": "%s", "xctestrun": "%s", "shared_artifact": true}\n' \
+      "$build_status_token" 0 "$(now_iso)" "$(now_iso)" "" > "$LOG_DIR/build-result.json"
+    echo "::error::destination device '$SIMULATOR_NAME' never became available; build-for-testing skipped"
+    exit 1
+  fi
 fi
+destination_s=$(( $(date +%s) - prep_start ))
 
 # Build-time trims (2026-10-13: builds of 800-900 s were common and a third of
 # a day's runs hit the budget). None of these change what the tests exercise:
@@ -93,12 +104,29 @@ skip_package_updates() {
   esac
 }
 
+# Resolve packages on their own first, timed: the build's own "Resolve Package
+# Graph" sat silent for 116-199 s, and this tells package resolution apart
+# from whatever else the build waits on there.
+resolve_packages() {
+  local package_flag started
+  package_flag=$(skip_package_updates)
+  started=$(date +%s)
+  echo "::group::resolve packages${package_flag:+ ($package_flag)}"
+  run_with_deadline 600 "$LOG_DIR/resolve.log" \
+    -resolvePackageDependencies \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -derivedDataPath "$DERIVED_DATA_PATH" \
+    ${package_flag:+"$package_flag"} \
+    || echo "::warning::resolving packages on their own failed; the build resolves them itself"
+  echo "::endgroup::"
+  resolve_s=$(( $(date +%s) - started ))
+  echo "build-for-testing: packages resolved in ${resolve_s}s"
+}
+
 run_build() {
   local package_flag
   package_flag=$(skip_package_updates)
-  if [ -n "$package_flag" ]; then
-    echo "build-for-testing: resolving packages from the restored checkout ($package_flag)"
-  fi
   run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   build-for-testing \
   -project "$PROJECT" \
@@ -117,6 +145,12 @@ run_build() {
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER=""
 }
+
+# Hosted jobs only: one xcodebuild call more on a developer Mac buys nothing.
+resolve_s=""
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages
+fi
 
 # Where xcodebuild sits quietly (package resolution, build graph, waiting on
 # the simulator service) never shows in the timing summary, which counts only
@@ -202,7 +236,9 @@ if [ -n "$timing" ]; then
   echo "$timing"
   echo "::endgroup::"
   dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
-  echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf 'cache: %s\n%s\n' "${BUILD_CACHE:-not used}" "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
+  prep_note="before the build: destination ${destination_s}s"
+  if [ -n "$resolve_s" ]; then prep_note="$prep_note, packages ${resolve_s}s"; fi
+  echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf 'cache: %s\n%s\n%s\n' "${BUILD_CACHE:-not used}" "$prep_note" "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
 fi

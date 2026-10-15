@@ -9,6 +9,11 @@ mkdir -p ci-lane
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
 export DERIVED_DATA_PATH
 
+# The build targets a generic simulator: it needs no device, so it never waits
+# on CoreSimulator while the boot below keeps it busy. The tests still run on
+# the booted device (DESTINATION, from the preparation).
+export BUILD_DESTINATION="${BUILD_DESTINATION:-generic/platform=iOS Simulator}"
+
 step_start=$(date +%s)
 rm -f ci-lane/prepare.end
 ( rc=0
