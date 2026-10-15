@@ -124,7 +124,8 @@ struct V2ProfileStrip: View {
                 .padding(.trailing, 12)
                 .padding(.vertical, 3)
                 .conduitGlassControl(cornerRadius: 20, interactive: false)
-                .contentShape(Capsule())
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityIdentifier("sidebar.workspace")

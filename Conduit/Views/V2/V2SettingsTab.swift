@@ -30,10 +30,10 @@ struct V2SettingsTab: View {
             openLinkIfNeeded()
         }
         .onChange(of: link) { _, _ in openLinkIfNeeded() }
-        // The snapshot carries the profile and connection the home page
-        // shows; a switch from the top bar starts the home page over.
+        // The snapshot carries the profile the home page shows; a switch
+        // from the top bar starts the home page over. The connection row
+        // reads the live state, so a reconnect leaves the open page alone.
         .onChange(of: appState.activeProfile) { _, _ in snapshot = appState.makeSettingsSnapshot() }
-        .onChange(of: appState.isConnected) { _, _ in snapshot = appState.makeSettingsSnapshot() }
         // Leaving the tab is the old sheet's dismiss: voice settings the
         // user changed take effect. Hidden capsule tabs stay mounted, so
         // this follows the tab's active state rather than onDisappear.

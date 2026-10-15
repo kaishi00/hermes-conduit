@@ -164,9 +164,10 @@ struct V2ChatsView: View {
             await appState.refreshProjects()
         }
         // Running and Needs approval follow the gateway's live registry
-        // while the list is on screen; a hidden capsule tab stops polling.
-        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)") {
-            guard shell.isTabActive else { return }
+        // while the list is on screen; a hidden tab or a conversation
+        // pushed over the list stops polling.
+        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)|\(appState.showSidebar)") {
+            guard shell.isTabActive, appState.showSidebar else { return }
             while !Task.isCancelled {
                 await appState.refreshLiveSessionStatuses()
                 try? await Task.sleep(for: .seconds(4))
