@@ -112,6 +112,8 @@ struct V2Shell: View {
     @State private var visitedTabs: Set<V2Tab> = [.chats]
     @State private var contentFaded = false
     @State private var profileSwitchToken = 0
+    /// A tab the shell switched to itself, which skips the selection click.
+    @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
 
@@ -157,7 +159,13 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
-                Haptics.selection()
+                // Only a tab the user picked clicks; a chat or link that
+                // switches tabs for them doesn't.
+                if programmaticTab == tab {
+                    programmaticTab = nil
+                } else {
+                    Haptics.selection()
+                }
             }
             .onChange(of: appState.activeProfile) { _, _ in
                 fadeContentBackIn()
@@ -168,7 +176,7 @@ struct V2Shell: View {
                 guard !appState.isModalSheetPresented else { return }
                 settingsLink = page
                 visitedTabs.insert(.settings)
-                selectedTab = .settings
+                selectTab(.settings)
             }
             .task {
                 // The return setting picks the first screen: the last chat,
@@ -178,8 +186,15 @@ struct V2Shell: View {
                       !appState.hasPendingExplicitNavigation else { return }
                 if V2Diagnostics.on("deferPush") {
                     try? await Task.sleep(for: .seconds(2))
+                    openConversation()
+                    return
                 }
-                openConversation()
+                // The first screen is already there, not slid in: an
+                // animated push during the launch's first layout never
+                // settled (the app never went idle).
+                var launch = Transaction()
+                launch.disablesAnimations = true
+                withTransaction(launch) { openConversation() }
             }
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
@@ -300,7 +315,13 @@ struct V2Shell: View {
             if chatsPath.last != .conversation { chatsPath.append(.conversation) }
         }
         visitedTabs.insert(target)
-        selectedTab = target
+        selectTab(target)
+    }
+
+    private func selectTab(_ tab: V2Tab) {
+        guard selectedTab != tab else { return }
+        programmaticTab = tab
+        selectedTab = tab
     }
 
     private func closeConversation() {
