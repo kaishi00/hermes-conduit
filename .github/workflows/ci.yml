@@ -142,7 +142,9 @@ jobs:
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
             && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
-            if ! printf '%s\n' "$changed" | grep -qE '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$'; then
+            # grep reads all its input (no -q): stopping at the first match could
+            # kill printf with SIGPIPE, which pipefail would read as "no match".
+            if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
               spec=project-tests.yml
             fi
           fi
@@ -334,11 +336,13 @@ jobs:
               echo "::error::unit batch $batch_no failed: $*"
               # The failing cases go in an annotation too: the job log API
               # returns only a job's last 5,000 lines, which an early batch's
-              # failures do not reach. xcodebuild's own list of every failing
-              # test comes first, then the first messages and crashes.
+              # failures do not reach. xcodebuild's own list of failing tests
+              # comes first (its first 40 lines, then a marker if it is longer),
+              # then the first messages and crashes.
               failing_list=$(awk '/^Failing tests:/ { on = 1; print; next }
                 on && /^[[:space:]]+[^[:space:]]/ { print; next }
-                { on = 0 }' "$batch_log" | head -n 41 || true)
+                { on = 0 }' "$batch_log" \
+                | awk 'NR <= 40 { print } NR == 41 { print "\t(more failing tests in the job log)" }' || true)
               details=$(grep -E ": error: -\[|Test Case '.*' failed|Restarting after unexpected exit|✘" "$batch_log" \
                 | head -n 20 || true)
               failures=$(printf '%s\n%s\n' "$failing_list" "$details" | sed '/^$/d')

@@ -255,6 +255,29 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertIn("Test Case '-[ConduitTests.Unit0Tests testB]' passed", proc.stdout,
                       "the batch's output still reaches the job log")
 
+    def _failing_list_annotation(self, count):
+        output = "\n".join(["Failing tests:"]
+                           + ["\tUnit0Tests.test{0}()".format(n) for n in range(count)]
+                           + ["", "** TEST EXECUTE FAILED **"])
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 2),
+                              UNIT_BATCH_SIZE=2, STUB_FAIL_FIRST_N=1,
+                              STUB_FAILURE_OUTPUT=output)
+        notes = [line for line in proc.stdout.splitlines()
+                 if line.startswith("::error title=unit batch 1 failures::")]
+        self.assertEqual(len(notes), 1, proc.stdout)
+        return notes[0].split("::", 2)[2].split("%0A")
+
+    def test_a_long_failing_list_is_cut_with_a_marker(self):
+        lines = self._failing_list_annotation(45)
+        self.assertEqual(lines[:2], ["Failing tests:", "\tUnit0Tests.test0()"])
+        self.assertEqual(len(lines), 41)
+        self.assertEqual(lines[-1], "\t(more failing tests in the job log)")
+
+    def test_a_failing_list_within_the_cap_is_whole(self):
+        lines = self._failing_list_annotation(39)
+        self.assertEqual(lines[-1], "\tUnit0Tests.test38()")
+        self.assertEqual(len(lines), 40)
+
     def test_unit_smoke_refuses_an_empty_selection(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES="", UNIT_BATCH_SIZE=8)
         self.assertNotEqual(proc.returncode, 0)
