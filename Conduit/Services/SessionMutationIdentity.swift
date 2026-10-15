@@ -69,7 +69,7 @@ enum SessionMutationIdentity {
         refusals.contains { detail.localizedCaseInsensitiveContains($0) }
     }
 
-    static let refusals = ["permission_denied", "profile_mismatch"]
+    private static let refusals = ["permission_denied", "profile_mismatch"]
 
     /// Hermes' session-write conflicts, retried once or shown as "busy".
     static let retryableConflicts = ["revision_conflict", "stale_generation", "mutation_identity_required"]

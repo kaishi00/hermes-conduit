@@ -4122,7 +4122,7 @@ final class AppState: ObservableObject {
         SessionPinSync.pinID(for: session)
     }
 
-    private func persistHostPinsAdopted() {
+    private func persistHostPinSyncState() {
         if sessionPinSync.adopted.isEmpty {
             defaults.removeObject(forKey: hostPinsAdoptedKey)
         } else {
@@ -4139,7 +4139,7 @@ final class AppState: ObservableObject {
     /// on the phone instead of flipping back.
     private func keepPinOnPhone(_ pinID: String, profile: String, generation: UInt64) {
         guard sessionPinSync.keepOnPhone(pinID: pinID, profile: profile, generation: generation) else { return }
-        persistHostPinsAdopted()
+        persistHostPinSyncState()
     }
 
     /// The phone's pins are gone, so no host owns them any more: the next
@@ -4158,7 +4158,7 @@ final class AppState: ObservableObject {
         let current = pinnedSessionIDsByProfile[profile] ?? []
         let adoptedBefore = sessionPinSync.adopted
         let outcome = sessionPinSync.reconcile(pins: current, listed: listed, profile: profile)
-        if sessionPinSync.adopted != adoptedBefore { persistHostPinsAdopted() }
+        if sessionPinSync.adopted != adoptedBefore { persistHostPinSyncState() }
         if outcome.pins != current { storePins(outcome.pins, profile: profile) }
         for upload in outcome.uploads {
             let generation = sessionPinSync.recordWrite(pinID: upload.pinID, profile: profile, pinned: true)
@@ -4170,6 +4170,7 @@ final class AppState: ObservableObject {
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
                 } catch let error where SessionMutationIdentity.isRefusal(error) {
+                    sessionCatalogLog.notice("Pin upload kept on phone: \(String(describing: error), privacy: .public)")
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.keepPinOnPhone(upload.pinID, profile: profile, generation: generation)
                 } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
@@ -5979,15 +5980,14 @@ final class AppState: ObservableObject {
         let pinned = !isSessionPinned(session)
         setLocalPin(session, pinned: pinned, profile: profile)
         let pinID = pinID(for: session)
-        if !pinned, sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile) {
-            // Hermes never took this pin, so there's nothing to clear there;
-            // pinning it again asks once more.
-            persistHostPinsAdopted()
-            return
-        }
+        // Any change to a phone-only chat asks Hermes afresh next time; a
+        // refusal marks it again.
+        let wasPhoneOnly = sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
+        if wasPhoneOnly { persistHostPinSyncState() }
+        // Hermes never took that pin, so an unpin has nothing to clear there.
+        if wasPhoneOnly, !pinned { return }
         guard let bridge = dashboardTicketBridge,
-              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL),
-              !sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) else { return }
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
         let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
         enqueueHostPinWrite { [weak self] in
             guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
@@ -6331,7 +6331,7 @@ final class AppState: ObservableObject {
         pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
         let wasPhoneOnly = sessionPinSync.clearPhoneOnly(pinID: pinID(for: session), profile: profile)
-        if wasPhoneOnly { persistHostPinsAdopted() }
+        if wasPhoneOnly { persistHostPinSyncState() }
         guard unpinOnHost, wasPinned, !wasPhoneOnly, let bridge = dashboardTicketBridge,
               sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
         sessionPinSync.recordWrite(pinID: pinID(for: session), profile: profile, pinned: false)
@@ -22528,7 +22528,7 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
         pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
         sessionPinSync.forget(profile: activeProfile)
-        persistHostPinsAdopted()
+        persistHostPinSyncState()
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
