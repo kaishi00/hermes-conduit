@@ -850,6 +850,9 @@ struct V2CallHeaderTitle: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            // The header reads as one element: a label changing every second
+            // would keep VoiceOver from settling on it. The state is announced.
+            .accessibilityHidden(true)
         }
     }
 

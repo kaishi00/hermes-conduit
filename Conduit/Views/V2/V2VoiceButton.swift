@@ -31,7 +31,6 @@ struct V2VoiceButton: View {
 
     /// A minimised call: the button is the way back to it.
     private var returnsToCall: Bool { appState.minimisedLiveVoice != nil }
-    private var callIsLive: Bool { returnsToCall || appState.isVoiceInUse }
     /// Voice is off for this profile: the button opens its setup instead.
     private var needsSetup: Bool { !appState.showsComposerVoiceButton }
 
@@ -100,14 +99,15 @@ struct V2VoiceButton: View {
         }
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
-        .accessibilityAddTraits(callIsLive ? .updatesFrequently : [])
         .accessibilityShowsLargeContentViewer {
             Label(label, systemImage: "waveform")
         }
     }
 
     private var face: some View {
-        V2VoiceBars(isLive: callIsLive)
+        // Only a minimised call moves them: any other call's screen covers
+        // the button, so it doesn't redraw unseen.
+        V2VoiceBars(isLive: returnsToCall)
             .frame(width: Self.diameter, height: Self.diameter)
             .background(Color.conduitAccent, in: Circle())
             .opacity(canAct ? 1 : 0.55)
