@@ -13,6 +13,7 @@ import SwiftUI
 struct V2TasksView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.v2Shell) private var shell
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("conduit.v2.tasksSegment") private var segmentRaw = Segment.board.rawValue
 
     enum Segment: String, Hashable {
@@ -25,6 +26,11 @@ struct V2TasksView: View {
             get: { Segment(rawValue: segmentRaw) ?? .board },
             set: { segmentRaw = $0.rawValue }
         )
+    }
+
+    /// Under Reduce Motion the pages only crossfade.
+    private func pageTransition(from edge: Edge) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
     }
 
     var body: some View {
@@ -40,15 +46,21 @@ struct V2TasksView: View {
                 )
                 .padding(.horizontal, 16)
 
-                Group {
+                ZStack {
+                    // Board sits left of Scheduled, as in the control: each
+                    // slides in from its own side.
                     switch segment.wrappedValue {
                     case .board:
                         KanbanView(columnsLayout: true)
                             .padding(.horizontal, 14)
+                            .transition(pageTransition(from: .leading))
                     case .scheduled:
                         V2ScheduledList()
+                            .transition(pageTransition(from: .trailing))
                     }
                 }
+                .clipped()
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: segmentRaw)
                 .opacity(shell.contentFaded ? 0 : 1)
             }
         }
