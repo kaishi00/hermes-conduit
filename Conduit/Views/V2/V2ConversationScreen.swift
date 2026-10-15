@@ -89,7 +89,7 @@ struct V2ConversationScreen: View {
                     }
                     .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
                     .disabled(!appState.isConnected || appState.isChatRefreshing)
-                    .accessibilityLabel("Refresh conversation")
+                    .accessibilityLabel(AppLocalization.string("Refresh conversation"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {

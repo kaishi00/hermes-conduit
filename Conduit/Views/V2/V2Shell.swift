@@ -136,9 +136,11 @@ struct V2Shell: View {
             }
             // Leaving a group room from its own toolbar ends that screen.
             .onChange(of: appState.activeRoomSurface?.room.roomID) { old, new in
-                if old != nil, new == nil, conversationVisible {
-                    closeConversation()
-                }
+                // Whichever tab holds the room's screen, even one that isn't
+                // showing, drops it so it doesn't come back on return.
+                guard old != nil, new == nil else { return }
+                if chatsPath.last == .conversation { chatsPath.removeLast() }
+                if botsPath.last == .conversation { botsPath.removeLast() }
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)

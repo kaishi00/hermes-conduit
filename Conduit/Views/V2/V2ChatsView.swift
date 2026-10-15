@@ -476,6 +476,7 @@ struct V2ChatsView: View {
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(EdgeInsets())
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// "Search Home" names the profile the list belongs to.
@@ -553,11 +554,15 @@ struct V2ChatsView: View {
     }
 
     private func setExpanded(_ key: String, _ expanded: Bool) {
-        var lines = Set(expandedNestsRaw.split(separator: "\n").map(String.init))
-        let line = expansionPrefix + key
-        if expanded { lines.insert(line) } else { lines.remove(line) }
-        // Bounded so years of expansions don't grow the default forever.
-        expandedNestsRaw = lines.sorted().suffix(400).joined(separator: "\n")
+        let prefix = expansionPrefix
+        let all = expandedNestsRaw.split(separator: "\n").map(String.init)
+        var own = Set(all.filter { $0.hasPrefix(prefix) })
+        let others = all.filter { !$0.hasPrefix(prefix) }
+        let line = prefix + key
+        if expanded { own.insert(line) } else { own.remove(line) }
+        // Bounded per profile so years of expansions don't grow the default
+        // forever, and one profile never evicts another's.
+        expandedNestsRaw = (others + own.sorted().suffix(200)).joined(separator: "\n")
     }
 
     @ViewBuilder

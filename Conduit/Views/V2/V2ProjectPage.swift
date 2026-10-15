@@ -16,6 +16,9 @@ struct V2ProjectPage: View {
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
+    /// Pull-to-refresh and the page's own load can overlap; only the
+    /// newest one writes back.
+    @State private var reloadGeneration = 0
     @State private var collapsedLanes: Set<String> = []
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -189,6 +192,7 @@ struct V2ProjectPage: View {
         .accessibilityLabel(Text([lane.title, lanePath(lane)].compactMap { $0 }.joined(separator: ", ")))
         .accessibilityValue(Text(AppLocalization.string(isCollapsed ? "Collapsed" : "Expanded")))
         .accessibilityHint(Text(AppLocalization.string("\(lane.sessions.count) sessions")))
+        .accessibilityAddTraits(.isHeader)
         .v2ListRow(divider: isCollapsed, dividerInset: 16)
 
         if !isCollapsed {
@@ -250,10 +254,12 @@ struct V2ProjectPage: View {
     // MARK: - Actions
 
     private func reload() async {
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
         isLoading = true
-        if let loaded = await appState.loadProjectSessions(project) {
-            detail = loaded
-        }
+        let loaded = await appState.loadProjectSessions(project)
+        guard !Task.isCancelled, generation == reloadGeneration else { return }
+        if let loaded { detail = loaded }
         isLoading = false
     }
 
