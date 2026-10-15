@@ -104,6 +104,13 @@ struct MainView: View {
                 PhoneChangeOverlay(engine: appState.phoneSync)
             }
         }
+        // Confirmations Hermes asks to present (PresentedScreens.swift); a
+        // call's screen shows its own over the call.
+        .overlay(alignment: .bottom) {
+            if !appState.isVoiceCallScreenPresented {
+                presentedConfirmOverlay(inCall: false)
+            }
+        }
         .sheet(isPresented: $appState.showModelPicker) {
             ModelPickerView()
                 .presentationDetents([.medium, .large])
@@ -164,6 +171,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -177,6 +185,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.grokLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -189,6 +198,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -201,6 +211,7 @@ struct MainView: View {
                 shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() }
             )
                 .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+                .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -495,6 +506,20 @@ struct MainView: View {
             drawerPresented: appState.showSidebar
         ) else { return }
         appState.showSidebar = true
+    }
+
+    /// The confirmation Hermes is waiting on, answered by tap.
+    private func presentedConfirmOverlay(inCall: Bool) -> some View {
+        PresentedConfirmOverlay(
+            sync: appState.presentedScreens,
+            inCall: inCall,
+            onAnswer: { prompt, outcome in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: outcome, via: .tap) }
+            },
+            onEdit: inCall ? nil : { prompt in
+                Task { await appState.editPresentedConfirm(prompt) }
+            }
+        )
     }
 
     private var windowWidthReader: some View {

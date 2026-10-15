@@ -56,7 +56,8 @@ extension AppState {
             : []
         // Maps run on this iPhone's MapKit for every live mode; "me" and
         // saved places check the mode's location consent at each call.
-        let local = phoneTools + [MapsVoiceTool.tool]
+        // Confirmations Hermes put on screen, answered out loud.
+        let local = phoneTools + [MapsVoiceTool.tool] + presentVoiceTools
         guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".
@@ -97,6 +98,9 @@ extension AppState {
         switch tool.key {
         case "health", "location": return await callSealedReadTool(tool, arguments: arguments, mode: mode)
         case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode)
+        case PresentVoiceTool.key:
+            guard tool.name == PresentVoiceTool.name else { return ["error": "That isn't available on this call."] }
+            return await callPresentVoiceTool(arguments)
         case MapsVoiceTool.key:
             guard let mode, tool.name == MapsVoiceTool.name else { return ["error": "That isn't available on this call."] }
             let location = LocationSharingController.shared
@@ -278,14 +282,21 @@ extension AppState {
         guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
         // The host couldn't be asked: the same mode keeps its host tools
         // (each read still checks consent); another mode's were cleared above.
-        let host = fetched.host ?? supervisor.hostTools.filter { $0.key != PhoneVoiceTools.key && $0.key != MapsVoiceTool.key }
+        let host = fetched.host ?? supervisor.hostTools.filter {
+            $0.key != PhoneVoiceTools.key && $0.key != MapsVoiceTool.key && $0.key != PresentVoiceTool.key
+        }
         supervisor.hostToolsMode = mode
         supervisor.hostTools = host + fetched.local
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]
         }
-        supervisor.hostToolsWatch = fetched.local.contains { $0.key == PhoneVoiceTools.key } ? watchPhoneChanges(for: mode) : nil
+        let phoneWatch = fetched.local.contains { $0.key == PhoneVoiceTools.key } ? watchPhoneChanges(for: mode) : nil
+        let presentWatch = fetched.local.contains { $0.key == PresentVoiceTool.key } ? watchPresentedConfirms(for: mode) : nil
+        supervisor.hostToolsWatch = phoneWatch == nil && presentWatch == nil ? nil : AnyCancellable {
+            phoneWatch?.cancel()
+            presentWatch?.cancel()
+        }
     }
 
     /// Tells the running call about each change Hermes asks for while it
