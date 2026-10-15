@@ -126,6 +126,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(folder, plan, f"a {folder} change must build the full app")
         self.assertIn(r"^project(-tests)?\.yml$", plan)
         self.assertIn("GPTLiveProtocol", plan)
+        self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
         self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
         with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as fh:
             spec = fh.read()

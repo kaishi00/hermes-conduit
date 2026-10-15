@@ -131,9 +131,11 @@ jobs:
         id: spec
         run: |
           set -euo pipefail
-          # Fails closed: no diff (an unexpected checkout) builds the full app.
+          # Fails closed: anything but the expected merge commit (HEAD^2 is the
+          # PR head) or an unreadable or empty diff builds the full app.
           spec=project.yml
           if [ "${{ github.event_name }}" = "pull_request" ] \
+            && git rev-parse -q --verify HEAD^2 >/dev/null \
             && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             if ! printf '%s\n' "$changed" | grep -qE '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$'; then
               spec=project-tests.yml

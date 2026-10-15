@@ -103,7 +103,7 @@ fi
 
 echo "build-for-testing ok in "${duration}"s"
 echo "::group::build timing summary"
-sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" | head -n 40 || true
+sed -n '/Build Timing Summary/,$p' "$LOG_DIR/build.log" || true
 echo "::endgroup::"
 echo "xctestrun=$xctestrun"
 exit 0
