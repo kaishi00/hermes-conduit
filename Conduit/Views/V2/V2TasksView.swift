@@ -100,9 +100,6 @@ struct V2ScheduledList: View {
         pinnedRaw.split(separator: "\n").map(String.init)
     }
 
-    private func isPinned(_ job: CronJob) -> Bool {
-        pinKeys.contains(pinKey(job))
-    }
 
     private func togglePin(_ job: CronJob) {
         Haptics.light()
@@ -120,7 +117,9 @@ struct V2ScheduledList: View {
         let all = jobs
         // In the order they were pinned.
         let pinned = pinKeys.compactMap { key in all.first { pinKey($0) == key } }
-        let others = all.filter { !isPinned($0) }
+        // Parsed once per pass; each row is told whether it is pinned.
+        let pins = Set(pinKeys)
+        let others = all.filter { !pins.contains(pinKey($0)) }
         Group {
             if all.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
@@ -136,13 +135,13 @@ struct V2ScheduledList: View {
                 List {
                     if !pinned.isEmpty {
                         Section {
-                            ForEach(pinned) { row($0) }
+                            ForEach(pinned) { row($0, pinned: true) }
                         } header: {
                             sectionHeader(AppLocalization.string("Pinned"))
                         }
                     }
                     Section {
-                        ForEach(others) { row($0) }
+                        ForEach(others) { row($0, pinned: false) }
                     } header: {
                         if !pinned.isEmpty {
                             sectionHeader(AppLocalization.string("Jobs"))
@@ -177,13 +176,13 @@ struct V2ScheduledList: View {
     }
 
     @ViewBuilder
-    private func actions(_ job: CronJob) -> some View {
+    private func actions(_ job: CronJob, pinned: Bool) -> some View {
         Button {
             togglePin(job)
         } label: {
             Label(
-                isPinned(job) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                systemImage: isPinned(job) ? "pin.slash" : "pin"
+                pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                systemImage: pinned ? "pin.slash" : "pin"
             )
         }
         if !job.isFinished {
@@ -212,7 +211,7 @@ struct V2ScheduledList: View {
         }
     }
 
-    private func row(_ job: CronJob) -> some View {
+    private func row(_ job: CronJob, pinned: Bool) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Button {
                 Haptics.light()
@@ -220,7 +219,7 @@ struct V2ScheduledList: View {
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
-                        if isPinned(job) {
+                        if pinned {
                             Image(systemName: "pin.fill")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(Color.conduitAccent)
@@ -272,14 +271,14 @@ struct V2ScheduledList: View {
         .padding(.vertical, 4)
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .listRowBackground(Color.primary.opacity(0.06))
-        .contextMenu { actions(job) }
+        .contextMenu { actions(job, pinned: pinned) }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 togglePin(job)
             } label: {
                 Label(
-                    isPinned(job) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                    systemImage: isPinned(job) ? "pin.slash" : "pin"
+                    pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                    systemImage: pinned ? "pin.slash" : "pin"
                 )
             }
             .tint(.conduitAccent)

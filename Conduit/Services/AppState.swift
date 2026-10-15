@@ -15254,7 +15254,7 @@ final class AppState: ObservableObject {
         }
         do {
             return try await attempt()
-        } catch let error where SessionMutationIdentity.isStaleRevision(error) {
+        } catch let error where SessionMutationIdentity.warrantsRetry(error) {
             return try await attempt()
         }
     }

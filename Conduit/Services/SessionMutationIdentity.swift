@@ -42,12 +42,15 @@ enum SessionMutationIdentity {
 
     /// A conflict worth one retry with a fresh snapshot: the row moved on
     /// between the snapshot and the write (Hermes' revision_conflict, or
-    /// stale_generation when a turn started in between).
-    static func isStaleRevision(_ error: Error) -> Bool {
+    /// stale_generation when a turn started in between), or the snapshot read
+    /// failed so the write went without its identity (mutation_identity_required).
+    static func warrantsRetry(_ error: Error) -> Bool {
         guard case DashboardTicketBridgeError.http(status: 409, detail: let detail) = error else { return false }
-        return detail.localizedCaseInsensitiveContains("revision_conflict")
-            || detail.localizedCaseInsensitiveContains("stale_generation")
+        return retryableConflicts.contains(where: { detail.localizedCaseInsensitiveContains($0) })
     }
+
+    /// Hermes' session-write conflicts, retried once or shown as "busy".
+    static let retryableConflicts = ["revision_conflict", "stale_generation", "mutation_identity_required"]
 
     private static func integer(_ value: Any?) -> Int? {
         // JSON booleans arrive as NSNumber too; a revision is never one.

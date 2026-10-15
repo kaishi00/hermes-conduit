@@ -207,11 +207,100 @@ extension ChatReadStateTests {
         XCTAssertEqual(SessionMutationIdentity.path("/api/sessions/abc", adding: ["expected_revision": 3]), "/api/sessions/abc?expected_revision=3")
     }
 
-    func testSessionMutationRetriesOnlyAStaleRevision() {
-        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "revision_conflict")))
-        XCTAssertTrue(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: #"{"detail":"stale_generation"}"#)))
-        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "mutation_identity_required")))
-        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 409, detail: "session_busy")))
-        XCTAssertFalse(SessionMutationIdentity.isStaleRevision(DashboardTicketBridgeError.http(status: 404, detail: "not_found")))
+    func testSessionMutationRetriesOnlyHermesConflicts() {
+        func retries(_ status: Int, _ detail: String) -> Bool {
+            SessionMutationIdentity.warrantsRetry(DashboardTicketBridgeError.http(status: status, detail: detail))
+        }
+        XCTAssertTrue(retries(409, "revision_conflict"))
+        XCTAssertTrue(retries(409, #"{"detail":"stale_generation"}"#))
+        XCTAssertTrue(retries(409, "mutation_identity_required"))
+        XCTAssertFalse(retries(409, "session_busy"))
+        XCTAssertFalse(retries(409, "lock held by another gateway"))
+        XCTAssertFalse(retries(404, "not_found"))
+    }
+
+    func testSessionWriteConflictReadsAsBusy() {
+        let busy = AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
+        XCTAssertEqual(DashboardTicketBridgeError.describe(status: 409, detail: #"{"detail":"mutation_identity_required"}"#), busy)
+        XCTAssertEqual(DashboardTicketBridgeError.describe(status: 409, detail: "session_busy"), busy)
+    }
+
+    @MainActor
+    private func mutationAppState() -> AppState {
+        let suite = "SessionMutation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return AppState(defaults: defaults, loadSavedConnection: false)
+    }
+
+    @MainActor
+    func testSessionPatchReadsTheSnapshotThenCarriesItsIdentity() async throws {
+        let appState = mutationAppState()
+        var calls: [(path: String, method: String, body: [String: Any]?)] = []
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": true], profile: "work") { path, method, body in
+            calls.append((path, method, body))
+            return method == "GET" ? ["runtime_revision": 4, "runtime_generation": 2] : ["ok": true]
+        }
+        XCTAssertEqual(calls.map(\.method), ["GET", "PATCH"])
+        XCTAssertTrue(calls[0].path.hasPrefix("/api/sessions/abc/mutation-snapshot"))
+        let body = try XCTUnwrap(calls[1].body)
+        XCTAssertEqual(body["pinned"] as? Bool, true)
+        XCTAssertEqual(body["profile"] as? String, "work")
+        XCTAssertEqual(body["expected_revision"] as? Int, 4)
+        XCTAssertEqual(body["expected_generation"] as? Int, 2)
+        XCTAssertNotNil(body["request_id"] as? String)
+    }
+
+    @MainActor
+    func testSessionDeleteCarriesTheIdentityInItsQuery() async throws {
+        let appState = mutationAppState()
+        var paths: [String] = []
+        _ = try await appState.sendSessionMutation("abc", body: nil, profile: "default") { path, method, _ in
+            paths.append("\(method) \(path)")
+            return method == "GET" ? ["runtime_revision": 7] : [:]
+        }
+        XCTAssertEqual(paths.count, 2)
+        XCTAssertTrue(paths[1].hasPrefix("DELETE /api/sessions/abc?expected_revision=7&request_id="))
+    }
+
+    @MainActor
+    func testSessionWriteRetriesOnceWithAFreshSnapshot() async throws {
+        let appState = mutationAppState()
+        var revisions: [Int] = []
+        var requestIDs: [String] = []
+        var snapshots = 0
+        _ = try await appState.sendSessionMutation("abc", body: ["archived": true], profile: "default") { _, method, body in
+            if method == "GET" {
+                snapshots += 1
+                // The first snapshot read fails, so the first write goes bare.
+                if snapshots == 1 { throw DashboardTicketBridgeError.http(status: 0, detail: "Load failed") }
+                return ["runtime_revision": 9]
+            }
+            if let id = body?["request_id"] as? String { requestIDs.append(id) }
+            guard let revision = body?["expected_revision"] as? Int else {
+                throw DashboardTicketBridgeError.http(status: 409, detail: "mutation_identity_required")
+            }
+            revisions.append(revision)
+            return [:]
+        }
+        XCTAssertEqual(snapshots, 2)
+        XCTAssertEqual(revisions, [9])
+        XCTAssertEqual(requestIDs.count, 1)
+    }
+
+    @MainActor
+    func testSessionWriteDoesNotRetryABusySession() async {
+        let appState = mutationAppState()
+        var writes = 0
+        do {
+            _ = try await appState.sendSessionMutation("abc", body: ["title": "x"], profile: "default") { _, method, _ in
+                if method == "GET" { return ["runtime_revision": 1] }
+                writes += 1
+                throw DashboardTicketBridgeError.http(status: 409, detail: "session_busy")
+            }
+            XCTFail("A busy session should fail the write")
+        } catch {
+            XCTAssertEqual(writes, 1)
+        }
     }
 }
