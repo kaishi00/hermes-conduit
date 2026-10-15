@@ -242,9 +242,12 @@ private struct V2ConversationMenu: View {
         } label: {
             // The two glyphs crossfade in one fixed frame, so the dot stays put.
             ZStack {
-                ProgressView()
-                    .controlSize(.small)
-                    .opacity(appState.isChatRefreshing ? 1 : 0)
+                // Mounted only while refreshing, so a hidden spinner never runs.
+                if appState.isChatRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .transition(.opacity)
+                }
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.primary)
