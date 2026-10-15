@@ -150,8 +150,10 @@ start=$(date +%s)
 status=0
 # Poll every 2 s instead of 15: an incremental build can be done in seconds.
 XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
+# The second grep reads all its input (no -q): stopping early could kill the
+# first with SIGPIPE, which pipefail would read as "no source error".
 if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incremental" ] \
-  && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -qF "$PWD/"; then
+  && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -F "$PWD/" >/dev/null; then
   echo "::warning::the incremental build failed (exit $status) with no error in a source file; retrying from scratch"
   stop_sampler
   mv "$LOG_DIR/build.log" "$LOG_DIR/build-incremental.log"

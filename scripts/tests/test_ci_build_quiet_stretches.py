@@ -30,7 +30,6 @@ class QuietStretchTests(unittest.TestCase):
             log = Path(tmp) / "build.log"
             timeline.write_text("0 0\ngarbage\n2 1\n30 1\n32 2\n")
             log.write_text("first\nsecond\n")
-            rows = []
             import contextlib
             import io
             out = io.StringIO()
