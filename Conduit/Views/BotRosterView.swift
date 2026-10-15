@@ -200,7 +200,7 @@ struct BotRosterView: View {
                 Section {
                     botRows
                 } footer: {
-                    Text("Each bot is its own profile with one ongoing conversation. Talk to it here, or let it answer on its channels.")
+                    Text("Each bot is its own profile with one ongoing conversation.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 10)

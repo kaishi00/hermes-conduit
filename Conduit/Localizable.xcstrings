@@ -248080,84 +248080,84 @@
         }
       }
     },
-    "Each bot is its own profile with one ongoing conversation. Talk to it here, or let it answer on its channels." : {
+    "Each bot is its own profile with one ongoing conversation." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jeder Bot ist ein eigenes Profil mit einer fortlaufenden Unterhaltung. Sprich hier mit ihm oder lass ihn auf seinen Kanälen antworten."
+            "value" : "Jeder Bot ist ein eigenes Profil mit einer fortlaufenden Unterhaltung."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cada bot es su propio perfil con una conversación continua. Habla con él aquí o deja que responda en sus canales."
+            "value" : "Cada bot es su propio perfil con una conversación continua."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chaque bot est un profil à part avec une conversation continue. Parlez-lui ici ou laissez-le répondre sur ses canaux."
+            "value" : "Chaque bot est un profil à part avec une conversation continue."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Setiap bot adalah profil tersendiri dengan satu percakapan berkelanjutan. Bicaralah di sini, atau biarkan ia menjawab di kanalnya."
+            "value" : "Setiap bot adalah profil tersendiri dengan satu percakapan berkelanjutan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ogni bot è un profilo a sé con una conversazione continua. Parlagli qui o lascialo rispondere sui suoi canali."
+            "value" : "Ogni bot è un profilo a sé con una conversazione continua."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "各ボットは1つの継続する会話を持つ独立したプロファイルです。ここで話すか、ボットのチャンネルで応答させましょう。"
+            "value" : "各ボットは1つの継続する会話を持つ独立したプロファイルです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "각 봇은 하나의 대화가 이어지는 별도의 프로필입니다. 여기서 대화하거나 봇의 채널에서 답하게 하세요."
+            "value" : "각 봇은 하나의 대화가 이어지는 별도의 프로필입니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Każdy bot to osobny profil z jedną trwającą rozmową. Rozmawiaj z nim tutaj albo pozwól mu odpowiadać na jego kanałach."
+            "value" : "Każdy bot to osobny profil z jedną trwającą rozmową."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cada bot é um perfil próprio com uma conversa contínua. Fale com ele aqui ou deixe-o responder nos canais dele."
+            "value" : "Cada bot é um perfil próprio com uma conversa contínua."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Каждый бот — отдельный профиль с одним непрерывным разговором. Общайтесь с ним здесь или позвольте ему отвечать в своих каналах."
+            "value" : "Каждый бот — отдельный профиль с одним непрерывным разговором."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her bot, süren tek bir konuşması olan ayrı bir profildir. Onunla burada konuşun ya da kanallarında yanıt vermesine izin verin."
+            "value" : "Her bot, süren tek bir konuşması olan ayrı bir profildir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每个机器人都是独立的配置文件，拥有一个持续的对话。在这里与它交谈，或让它在自己的频道上回复。"
+            "value" : "每个机器人都是独立的配置文件，拥有一个持续的对话。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每個機器人都是獨立的設定檔，擁有一個持續的對話。在這裡與它交談，或讓它在自己的頻道上回覆。"
+            "value" : "每個機器人都是獨立的設定檔，擁有一個持續的對話。"
           }
         }
       }
