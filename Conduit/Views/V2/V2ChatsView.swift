@@ -163,10 +163,11 @@ struct V2ChatsView: View {
                 .environmentObject(appState)
         }
         // V2 opens on this list, often before the gateway connects: a load
-        // then has no client, so the list loads again once it connects, and
-        // again each time Projects is shown.
-        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(showingProjects)") {
-            guard appState.isConnected else { return }
+        // then has no client, so Projects loads once it connects, and again
+        // each time Projects is shown. The session catalog's own load keeps
+        // the project list fresh behind Sessions.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(showingProjects)|\(shell.isTabActive)") {
+            guard appState.isConnected, showingProjects, shell.isTabActive else { return }
             await appState.refreshProjects()
         }
         // Running and Needs approval follow the gateway's live registry

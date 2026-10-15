@@ -162,7 +162,7 @@ struct V2ProfileStrip: View {
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(!isSelected && appState.isProfileSwitching)
-        .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "")
+        .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
         .accessibilityHint(isSelected ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
