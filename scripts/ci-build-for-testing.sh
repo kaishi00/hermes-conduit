@@ -6,8 +6,10 @@
 # (/Users/runner/work/<repo>/<repo>/...). The Build/ tree is uploaded as an
 # artifact and downstream lanes run test-without-building from it.
 #
-# No retry: build failures are deterministic; a simulator reset cannot fix
-# them. Budget: BUILD_TIMEOUT_SECS.
+# One retry only: an incremental build (from a restored cache) that fails with
+# no error in a source file is retried once from scratch, since the cache
+# itself could be the cause. Any other failure is deterministic. Budget:
+# BUILD_TIMEOUT_SECS per attempt, so a retried build can take twice that.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
