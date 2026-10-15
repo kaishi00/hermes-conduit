@@ -37,7 +37,10 @@ def extract_for_retry(data, label):
                         or not isinstance(child.get("name"), str) or not child["name"]
                         or child.get("children") not in (None, [])
                         or child.get("result") is not None):
-                    raise ValueError("unattributable raw test case child")
+                    raise ValueError("unattributable raw test case child: {} {!r} under a {} case".format(
+                        child.get("nodeType") if isinstance(child, dict) else type(child).__name__,
+                        str(child.get("name") or "")[:60] if isinstance(child, dict) else "",
+                        result))
             return 1, result == "Failed"
         if "test bundle" in kind:
             in_bundle, in_suite = True, False
