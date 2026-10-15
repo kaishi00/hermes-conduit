@@ -98,6 +98,27 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
+    func testAPluginHermesDidNotCloneIsReinstalledFromItsSource() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: "Plugin 'conduit_push' has no owned Git checkout; reinstall from its source.")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.24.0", disk: "0.30.0", boot: "old"),
+            Self.capabilities(loaded: "0.30.0", disk: "0.30.0", boot: "new"),
+        ]
+        let outcome = await host.updater().run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.30.0"))
+        XCTAssertEqual(host.installBody?["identifier"] as? String, NotifierPluginStatus.repository)
+        XCTAssertEqual(host.installBody?["force"] as? Bool, true)
+    }
+
+    func testAFirstInstallIsNotForced() async {
+        let host = PluginHost()
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: "Plugin 'conduit_push' was not found under /home/h/.hermes/plugins.")
+        host.capabilities = [Self.capabilities(loaded: "0.30.0", disk: "0.30.0", boot: "b")]
+        _ = await host.updater().run { _ in }
+        XCTAssertNil(host.installBody?["force"])
+    }
+
     func testRunningChatsAreWaitedOn() async {
         let host = PluginHost()
         host.capabilities = [

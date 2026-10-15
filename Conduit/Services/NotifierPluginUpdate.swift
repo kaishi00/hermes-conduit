@@ -138,18 +138,24 @@ struct NotifierPluginUpdater {
         progress(.updating(install ? .installing : .downloading))
         do {
             var installs = install
+            var replaces = false
             if !installs {
                 do {
                     try Self.check(try await request(Self.updatePath, "POST", nil))
                 } catch let error where Self.isNotInstalled(error) {
                     installs = true
+                } catch let error where Self.needsReinstall(error) {
+                    installs = true
+                    replaces = true
                 }
             }
             if installs {
                 progress(.updating(.installing))
-                try Self.check(try await request(
-                    Self.installPath, "POST", ["identifier": NotifierPluginStatus.repository, "enable": true]
-                ))
+                var body: [String: Any] = ["identifier": NotifierPluginStatus.repository, "enable": true]
+                // Replacing the copy on disk takes force. The plugin keeps its
+                // state in the Hermes home, not in its own folder.
+                if replaces { body["force"] = true }
+                try Self.check(try await request(Self.installPath, "POST", body))
             }
         } catch {
             if Task.isCancelled { return .idle }
@@ -252,6 +258,14 @@ struct NotifierPluginUpdater {
     static func isNotInstalled(_ error: Error) -> Bool {
         guard httpStatus(of: error) == 400, let detail = detail(of: error) else { return false }
         return detail.localizedCaseInsensitiveContains("not found")
+    }
+
+    /// Hermes updates only a plugin it cloned and recorded itself; one copied
+    /// in or installed by an older Hermes answers 400 "…has no owned Git
+    /// checkout; reinstall from its source."
+    static func needsReinstall(_ error: Error) -> Bool {
+        guard httpStatus(of: error) == 400, let detail = detail(of: error) else { return false }
+        return detail.localizedCaseInsensitiveContains("no owned Git checkout")
     }
 
     /// "2 chat turns still running…" → 2; 1 when the count can't be read.
