@@ -244,6 +244,8 @@ jobs:
         env:
           # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
           BUILD_TIMEOUT_SECS: 1200
+          # Named in the build's timing notice, to explain a clean build.
+          BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's unit classes
@@ -422,6 +424,8 @@ jobs:
         env:
           # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
           BUILD_TIMEOUT_SECS: 1200
+          # Named in the build's timing notice, to explain a clean build.
+          BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated UI smoke suite
