@@ -169,7 +169,10 @@ struct V2VoiceButton: View {
             Task { @MainActor in
                 defer { isStarting = false }
                 await appState.createNewSession(cwd: project.primaryPath)
-                guard appState.activeSessionId != previous else { return }
+                guard appState.activeSessionId != previous else {
+                    reportCouldNotOpen()
+                    return
+                }
                 await startVoice(
                     PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
                 )
@@ -186,6 +189,14 @@ struct V2VoiceButton: View {
         }
     }
 
+    /// A chat couldn't be made or opened: say so, unless something already did.
+    private func reportCouldNotOpen() {
+        guard appState.errorMessage == nil else { return }
+        appState.errorMessage = appState.isConnected
+            ? AppLocalization.string("Couldn't open that chat for voice.")
+            : AppLocalization.string("Reconnect to Hermes to start voice.")
+    }
+
     /// Opens a recent conversation and talks in it.
     private func talk(in sessionID: String) {
         guard !isStarting else { return }
@@ -193,7 +204,10 @@ struct V2VoiceButton: View {
         isStarting = true
         Task { @MainActor in
             defer { isStarting = false }
-            guard await appState.openSession(sessionID) else { return }
+            guard await appState.openSession(sessionID) else {
+                reportCouldNotOpen()
+                return
+            }
             await startVoice(
                 PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: false, source: .composer)
             )
