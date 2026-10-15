@@ -306,6 +306,57 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", self._invocations()[1])
         self.assertNotIn("retaining entire selection", proc.stderr)
 
+    def _retry_with_case_children(self, children, failed_class_children=True):
+        """Fail ProfilePickerUITests and hang `children` under its case (or
+        under ConnectionSetupUITests' passing case); return the step."""
+        doc = json.loads(self._result_doc(["ProfilePickerUITests"]))
+        suites = doc["testNodes"][0]["children"][0]["children"]
+        target = suites[1] if failed_class_children else suites[0]
+        target["children"][0]["children"] = children
+        return self._run_step(UI_STEP,
+                              UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                              STUB_FAIL_FIRST_N=1, STUB_RESULT_DOC=json.dumps(doc))
+
+    def test_ui_failure_diagnostics_still_retry_only_the_failed_class(self):
+        # What a real failed UI case carries: the failure message (with its
+        # own result and source reference) and the screenshot attachment.
+        proc = self._retry_with_case_children([
+            {"nodeType": "Failure Message", "name": "ProfilePickerUITests.swift:119: XCTAssertTrue failed",
+             "result": "Failed",
+             "children": [{"nodeType": "Source Code Reference", "name": "ProfilePickerUITests.swift:119"}]},
+            {"nodeType": "Attachment", "name": "Screenshot at failure"},
+            {"nodeType": "Runtime Warning", "name": "Publishing changes from background threads"},
+        ])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        retry = self._invocations()[1]
+        self.assertIn("-only-testing:ConduitUITests/ProfilePickerUITests", retry)
+        self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", retry)
+        self.assertNotIn("retaining entire selection", proc.stderr)
+
+    def test_a_passing_case_may_carry_a_runtime_warning(self):
+        proc = self._retry_with_case_children(
+            [{"nodeType": "Runtime Warning", "name": "Main thread checker"}],
+            failed_class_children=False)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", self._invocations()[1])
+        self.assertNotIn("retaining entire selection", proc.stderr)
+
+    def test_unknown_or_inconsistent_case_children_retain_the_entire_selection(self):
+        for children, on_failed_class in (
+            ([{"nodeType": "Repetition", "name": "Repetition 1", "result": "Failed"}], True),
+            ([{"nodeType": "Test Case", "name": "hidden()", "result": "Failed"}], True),
+            ([{"nodeType": "Attachment", "name": "x",
+               "children": [{"nodeType": "Test Case Run", "name": "run", "result": "Failed"}]}], True),
+            ([{"nodeType": "Failure Message", "name": "XCTFail", "result": "Failed"}], False),
+            ([{"nodeType": "Failure Message", "name": ""}], True),
+            ([{"nodeType": "Attachment", "name": "x", "result": "Expected Failure"}], True),
+        ):
+            proc = self._retry_with_case_children(children, on_failed_class)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertEqual(self._invocations()[1].count("-only-testing:ConduitUITests/"), 2,
+                             "children {!r} must keep the whole selection".format(children))
+            self.assertIn("retaining entire selection", proc.stderr)
+
     def test_lossy_extraction_retains_the_entire_retry_selection(self):
         for extra in (
             {"nodeType": "Test Case", "name": "System Failures", "result": "Failed"},

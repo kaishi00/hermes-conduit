@@ -328,6 +328,13 @@ follow-up accepts only those known leaves on failed cases; unknown,
 nested or inconsistent children still force the whole-selection fallback.
 Regressions cover class attribution and the actual workflow retry command.
 This correction has local evidence, but no hosted timing measurement yet.
+Hosted UI failures still fell back to the whole selection ("unattributable
+raw test case child"), so since #629 a failed case may also carry what
+xcresulttool hangs under it in practice: failure messages with their own
+result and source references, attachments such as the failure screenshot,
+and runtime warnings. A nested test, a repetition, an unknown node or a
+failure message under a case that did not fail still keeps the whole
+selection.
 Neither candidate run demonstrates an overall wall-time improvement;
 the first UI attempt and simulator preparation remain substantial costs.
 

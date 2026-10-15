@@ -11,6 +11,36 @@ import subprocess
 import sys
 
 
+# What xcresulttool hangs under a test case: its failure messages, their
+# source references, attachments such as the screenshot taken on a failure,
+# and runtime warnings. They describe that case, so its class is the one to
+# retry whatever they hold.
+CASE_DETAILS = {"Failure Message", "Source Code Reference", "Attachment",
+                "Expression", "Test Value", "Runtime Warning"}
+
+
+def check_case_detail(node, case_result):
+    """Reject anything under a case that could hide another result: a nested
+    test, a repetition, an unknown node, or a failure under a case that did
+    not fail."""
+    if not isinstance(node, dict):
+        raise ValueError("malformed raw test case child")
+    kind = node.get("nodeType")
+    if kind not in CASE_DETAILS:
+        raise ValueError("unattributable raw test case child: {} {!r} under a {} case".format(
+            kind, str(node.get("name") or "")[:60], case_result))
+    if kind == "Failure Message" and (case_result != "Failed" or not isinstance(node.get("name"), str)
+                                      or not node["name"]):
+        raise ValueError("inconsistent failure message under a {} case".format(case_result))
+    if node.get("result") not in (None, "Passed", "Failed", "Skipped"):
+        raise ValueError("unrecognized raw result status")
+    children = node.get("children", []) or []
+    if not isinstance(children, list):
+        raise ValueError("malformed raw result children")
+    for child in children:
+        check_case_detail(child, case_result)
+
+
 def extract_for_retry(data, label):
     # Timing extraction intentionally tolerates lossy schemas. Retry attribution
     # cannot: every raw result must be understood and every case accounted for.
@@ -27,20 +57,12 @@ def extract_for_retry(data, label):
         if "test case" in kind:
             if not in_bundle or not in_suite:
                 raise ValueError("unattributable raw test case")
-            # xcresulttool attaches assertion diagnostics to failed cases.
-            # The normalizer intentionally ignores those leaves: their failure
-            # already belongs to this case. Still reject hidden cases, unknown
-            # metadata, or inconsistent diagnostics instead of dropping them.
+            # The normalizer intentionally ignores a case's diagnostics: what
+            # they report already belongs to this case. Still reject hidden
+            # cases, unknown metadata, or inconsistent diagnostics instead of
+            # dropping them.
             for child in children:
-                if (result != "Failed" or not isinstance(child, dict)
-                        or child.get("nodeType") != "Failure Message"
-                        or not isinstance(child.get("name"), str) or not child["name"]
-                        or child.get("children") not in (None, [])
-                        or child.get("result") is not None):
-                    raise ValueError("unattributable raw test case child: {} {!r} under a {} case".format(
-                        child.get("nodeType") if isinstance(child, dict) else type(child).__name__,
-                        str(child.get("name") or "")[:60] if isinstance(child, dict) else "",
-                        result))
+                check_case_detail(child, result)
             return 1, result == "Failed"
         if "test bundle" in kind:
             in_bundle, in_suite = True, False
