@@ -222,7 +222,7 @@ struct V2Backdrop: View {
 
     var body: some View {
         // A capsule tab hidden behind the selected one holds still.
-        ConduitBackdrop(drifts: drifts && shell.isTabActive, glowTint: appState.profileGlowTint(appState.activeProfile))
+        ConduitBackdrop(drifts: drifts && shell.isTabActive && !V2Diagnostics.on("stillBackdrop"), glowTint: appState.profileGlowTint(appState.activeProfile))
     }
 }
 

@@ -77,6 +77,19 @@ struct V2ShellContext {
     var isTabActive = true
 }
 
+/// TEMPORARY (PR #617): Debug-only switches that turn single V2 pieces off
+/// so hosted UI smoke can find what keeps the app from going idle with a
+/// conversation open. Removed with the fix.
+enum V2Diagnostics {
+    static func on(_ name: String) -> Bool {
+        #if DEBUG
+        return UserDefaults.standard.bool(forKey: "conduit.v2.diag.\(name)")
+        #else
+        return false
+        #endif
+    }
+}
+
 private struct V2ShellContextKey: EnvironmentKey {
     static let defaultValue = V2ShellContext()
 }
@@ -203,7 +216,12 @@ struct V2Shell: View {
             }
         }
         .tint(.conduitAccent)
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabBarMinimizeBehavior(minimizeBehavior)
+    }
+
+    @available(iOS 26.0, *)
+    private var minimizeBehavior: TabBarMinimizeBehavior {
+        V2Diagnostics.on("noMinimize") ? .never : .onScrollDown
     }
 
     /// iOS 17 and 18: the same four tabs over a custom glass capsule.
