@@ -227,7 +227,7 @@ struct V2ChatsView: View {
                     sessionPresentationRaw = showingProjects ? "sessions" : "projects"
                 }
             } label: {
-                V2CapsuleIcon(systemImage: showingProjects ? "list.bullet" : "folder")
+                V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
@@ -478,6 +478,13 @@ struct V2ChatsView: View {
             .listRowInsets(EdgeInsets())
     }
 
+    /// "Search Home" names the profile the list belongs to.
+    private var searchPrompt: String {
+        if showingProjects { return AppLocalization.string("Search projects") }
+        let name = appState.profileDisplayName(appState.activeProfile)
+        return AppLocalization.string("Search \(name)")
+    }
+
     /// The 40 pt glass search capsule, with the active filter as a removable
     /// gold chip inside it.
     private var searchField: some View {
@@ -507,7 +514,7 @@ struct V2ChatsView: View {
                 .accessibilityLabel(AppLocalization.string("Remove filter \(filter.title)"))
                 .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
             }
-            TextField(AppLocalization.string("Search sessions"), text: $searchText)
+            TextField(searchPrompt, text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
                 .submitLabel(.search)
@@ -1000,30 +1007,25 @@ struct V2ProjectRow: View {
     let runningCount: Int
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            V2ProjectTile(project: project, size: 36)
+        HStack(alignment: .center, spacing: 14) {
+            V2ProjectTile(project: project, size: 44)
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(project.title)
-                        .font(.callout.weight(.semibold))
+                        .font(.body.weight(.semibold))
                         .lineLimit(1)
                     if project.isAuto {
                         Text("Discovered")
-                            .font(.caption2.weight(.semibold))
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
-                            .background(Color.primary.opacity(0.08), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
                     }
-                    Spacer(minLength: 4)
-                    Text("\(project.sessionCount) conversations")
-                        .font(.footnote)
-                        .foregroundStyle(Color.primary.opacity(0.45))
-                        .lineLimit(1)
                 }
                 if let path = project.primaryPath, !path.isEmpty {
                     Text(path)
-                        .font(.caption.monospaced())
+                        .font(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -1037,10 +1039,16 @@ struct V2ProjectRow: View {
                     }
                 }
             }
+            Spacer(minLength: 6)
+            Text(String(project.sessionCount))
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(Color.primary.opacity(0.45))
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(Text(AppLocalization.string("\(project.sessionCount) conversations")))
     }
 }
 
@@ -1057,11 +1065,13 @@ struct V2ProjectTile: View {
     }
 
     var body: some View {
-        Image(systemName: project.isHome ? "house.fill" : "folder.fill")
-            .font(.system(size: size * 0.42, weight: .semibold))
+        let shape = RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+        Image(systemName: project.isHome ? "house" : "folder")
+            .font(.system(size: size * 0.42, weight: .medium))
             .foregroundStyle(color)
             .frame(width: size, height: size)
-            .background(color.opacity(0.16), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
+            .background(color.opacity(0.16), in: shape)
+            .overlay(shape.strokeBorder(color.opacity(0.35), lineWidth: 1))
             .accessibilityHidden(true)
     }
 }

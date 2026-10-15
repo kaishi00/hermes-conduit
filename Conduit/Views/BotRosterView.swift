@@ -151,6 +151,24 @@ struct BotRosterView: View {
         return nil
     }
 
+    @ViewBuilder
+    private var botRows: some View {
+        ForEach(visibleBots) { bot in
+            BotRosterRow(
+                bot: bot,
+                canManage: canManageBots,
+                canDelete: appState.canDeleteBot(bot),
+                onEdit: { editorMode = .edit(bot) },
+                onTogglePin: {
+                    Task {
+                        managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned)
+                    }
+                },
+                onDelete: { pendingDelete = bot }
+            )
+        }
+    }
+
     private var rosterList: some View {
         List {
             if let notice = managementNotice {
@@ -176,23 +194,21 @@ struct BotRosterView: View {
                     .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                 }
             }
-            if !visibleBots.isEmpty {
+            if !visibleBots.isEmpty && createRequest != nil {
+                // V2's Bots tab: the page title names the list; a footer
+                // says what a bot is.
+                Section {
+                    botRows
+                } footer: {
+                    Text("Each bot is its own profile with one ongoing conversation. Talk to it here, or let it answer on its channels.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 10)
+                }
+            } else if !visibleBots.isEmpty {
                 Section(AppLocalization.string("Bots")) {
-                    ForEach(visibleBots) { bot in
-                        BotRosterRow(
-                            bot: bot,
-                            canManage: canManageBots,
-                            canDelete: appState.canDeleteBot(bot),
-                            onEdit: { editorMode = .edit(bot) },
-                            onTogglePin: {
-                                Task {
-                                    managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned)
-                                }
-                            },
-                            onDelete: { pendingDelete = bot }
-                        )
-                    }
-                    if canManageBots && createRequest == nil {
+                    botRows
+                    if canManageBots {
                         newBotButton
                     }
                 }

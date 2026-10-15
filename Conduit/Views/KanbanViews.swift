@@ -985,7 +985,7 @@ struct KanbanView: View {
                 .padding(.bottom, 8)
             }
         }
-        .frame(width: 280)
+        .frame(width: 250)
         .padding(10)
         .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }

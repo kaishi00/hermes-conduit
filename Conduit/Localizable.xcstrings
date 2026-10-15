@@ -247833,6 +247833,334 @@
           }
         }
       }
+    },
+    "Search projects" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekte durchsuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar proyectos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher des projets"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cari proyek"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca progetti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクトを検索"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로젝트 검색"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szukaj projektów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar projetos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поиск проектов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projelerde ara"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋專案"
+          }
+        }
+      }
+    },
+    "Search %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ durchsuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar en %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher dans %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cari di %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca in %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を検索"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 검색"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szukaj w %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поиск в %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ içinde ara"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋 %@"
+          }
+        }
+      }
+    },
+    "Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Lauf erscheint in Chats als eigene Unterhaltung. Bitte Hermes, einen Zeitplan hinzuzufügen oder zu ändern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada ejecución aparece en Chats como su propia conversación. Pídele a Hermes que añada o cambie una programación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque exécution arrive dans Chats comme sa propre conversation. Demandez à Hermes d'ajouter ou de modifier une planification."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap jalannya muncul di Obrolan sebagai percakapan tersendiri. Minta Hermes untuk menambah atau mengubah jadwal."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni esecuzione arriva in Chat come conversazione a sé. Chiedi a Hermes di aggiungere o modificare una pianificazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各実行はチャットに独立した会話として表示されます。スケジュールの追加や変更は Hermes に頼んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 실행은 채팅에 별도의 대화로 표시됩니다. 일정을 추가하거나 바꾸려면 Hermes에게 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każde uruchomienie trafia do Czatów jako osobna rozmowa. Poproś Hermesa, aby dodał lub zmienił harmonogram."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada execução aparece em Chats como uma conversa própria. Peça ao Hermes para adicionar ou mudar um agendamento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый запуск появляется в Чатах отдельным разговором. Попросите Hermes добавить или изменить расписание."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her çalıştırma Sohbetler'de ayrı bir konuşma olarak yer alır. Bir zamanlama eklemek veya değiştirmek için Hermes'e sorun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次运行都会作为单独的对话出现在聊天中。可以让 Hermes 添加或更改计划。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次執行都會以獨立對話出現在聊天中。可以請 Hermes 新增或更改排程。"
+          }
+        }
+      }
+    },
+    "Each bot is its own profile with one ongoing conversation. Talk to it here, or let it answer on its channels." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Bot ist ein eigenes Profil mit einer fortlaufenden Unterhaltung. Sprich hier mit ihm oder lass ihn auf seinen Kanälen antworten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada bot es su propio perfil con una conversación continua. Habla con él aquí o deja que responda en sus canales."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque bot est un profil à part avec une conversation continue. Parlez-lui ici ou laissez-le répondre sur ses canaux."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap bot adalah profil tersendiri dengan satu percakapan berkelanjutan. Bicaralah di sini, atau biarkan ia menjawab di kanalnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni bot è un profilo a sé con una conversazione continua. Parlagli qui o lascialo rispondere sui suoi canali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各ボットは1つの継続する会話を持つ独立したプロファイルです。ここで話すか、ボットのチャンネルで応答させましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 봇은 하나의 대화가 이어지는 별도의 프로필입니다. 여기서 대화하거나 봇의 채널에서 답하게 하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każdy bot to osobny profil z jedną trwającą rozmową. Rozmawiaj z nim tutaj albo pozwól mu odpowiadać na jego kanałach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada bot é um perfil próprio com uma conversa contínua. Fale com ele aqui ou deixe-o responder nos canais dele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый бот — отдельный профиль с одним непрерывным разговором. Общайтесь с ним здесь или позвольте ему отвечать в своих каналах."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her bot, süren tek bir konuşması olan ayrı bir profildir. Onunla burada konuşun ya da kanallarında yanıt vermesine izin verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个机器人都是独立的配置文件，拥有一个持续的对话。在这里与它交谈，或让它在自己的频道上回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個機器人都是獨立的設定檔，擁有一個持續的對話。在這裡與它交談，或讓它在自己的頻道上回覆。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

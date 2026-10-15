@@ -190,12 +190,14 @@ struct V2ControlCapsule<Content: View>: View {
 struct V2CapsuleIcon: View {
     let systemImage: String
     var dot: Color? = nil
+    /// The control's on state (Projects showing): the glyph turns gold.
+    var tint: Color? = nil
 
     var body: some View {
         Image(systemName: systemImage)
             .font(.system(size: 16, weight: .semibold))
             .conduitFixedGlyph()
-            .foregroundStyle(.primary)
+            .foregroundStyle(tint ?? Color.primary)
             .frame(width: 36, height: 36)
             .overlay(alignment: .topTrailing) {
                 if let dot {
@@ -214,10 +216,12 @@ struct V2CapsuleIcon: View {
 /// glow in the active profile's color.
 struct V2Backdrop: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
     var drifts = true
 
     var body: some View {
-        ConduitBackdrop(drifts: drifts, glowTint: appState.profileGlowTint(appState.activeProfile))
+        // A capsule tab hidden behind the selected one holds still.
+        ConduitBackdrop(drifts: drifts && shell.isTabActive, glowTint: appState.profileGlowTint(appState.activeProfile))
     }
 }
 

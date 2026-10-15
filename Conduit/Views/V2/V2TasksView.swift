@@ -76,34 +76,40 @@ struct V2ScheduledList: View {
     }
 
     var body: some View {
-        List {
+        ScrollView {
             if jobs.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
                 ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                    .padding(.top, 60)
             } else if jobs.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
             } else {
-                Section {
-                    ForEach(jobs) { job in
-                        row(job)
+                VStack(alignment: .leading, spacing: 12) {
+                    // One glass card holds the jobs, hairlines between them.
+                    VStack(spacing: 0) {
+                        ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
+                            row(job)
+                            if index < jobs.count - 1 {
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.1))
+                                    .frame(height: 0.5)
+                            }
+                        }
                     }
-                } footer: {
-                    Text("Each run lands in Chats as its own conversation.")
+                    .conduitGlassSurface(cornerRadius: 24)
+
+                    Text("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                        .padding(.horizontal, 12)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 24)
             }
         }
-        .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 1)
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) {
@@ -118,28 +124,27 @@ struct V2ScheduledList: View {
                 Haptics.light()
                 selectedJob = job
             } label: {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: job.isActive ? "clock.fill" : "clock")
-                        .font(.subheadline.weight(.semibold))
-                        .conduitFixedGlyph()
-                        .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.secondary)
-                        .frame(width: 22, height: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(job.displayName)
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
-                            .font(.footnote)
-                            .foregroundStyle(Color.primary.opacity(0.58))
-                            .lineLimit(1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(job.displayName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock")
+                            .font(.caption.weight(.semibold))
+                            .conduitFixedGlyph()
+                            .accessibilityHidden(true)
                         Text(nextRunLine(job))
-                            .font(.caption)
-                            .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
                             .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
+                    .font(.footnote)
+                    .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -161,11 +166,9 @@ struct V2ScheduledList: View {
                 .disabled(appState.cronJobActionID != nil)
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
-        .v2ListRow(dividerInset: 50)
     }
 
     /// "Next run in 3 hours", the job's state when it won't run again.

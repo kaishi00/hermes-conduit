@@ -114,15 +114,15 @@ struct V2ProjectPage: View {
     private var header: some View {
         let runningCount = allSessions.filter { appState.sessionLiveStatus($0) == .working }.count
         let count = detail.map { _ in allSessions.count } ?? project.sessionCount
-        return HStack(alignment: .center, spacing: 14) {
-            V2ProjectTile(project: project, size: 52)
+        return HStack(alignment: .center, spacing: 16) {
+            V2ProjectTile(project: project, size: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(project.title)
-                    .font(.title3.weight(.semibold))
+                    .font(.title.weight(.bold))
                     .lineLimit(2)
                 if let path = newConversationPath {
                     Text(path)
-                        .font(.caption.monospaced())
+                        .font(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -133,10 +133,9 @@ struct V2ProjectPage: View {
                     if runningCount > 0 {
                         Text(verbatim: "·")
                         Text("\(runningCount) running")
-                            .foregroundStyle(Color.conduitAccent)
                     }
                 }
-                .font(.footnote)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -221,7 +220,8 @@ struct V2ProjectPage: View {
                     status: appState.v2RowStatus(for: session),
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
-                    isSelected: session.id == appState.activeSessionId
+                    isSelected: session.id == appState.activeSessionId,
+                    leadingGlyph: true
                 )
             }
         }

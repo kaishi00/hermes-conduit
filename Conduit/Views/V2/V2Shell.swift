@@ -36,7 +36,7 @@ enum V2Tab: String, CaseIterable, Identifiable, Hashable {
         case .chats: return "bubble.left.and.bubble.right"
         case .tasks: return "checklist"
         case .bots: return "person.2"
-        case .settings: return "gearshape"
+        case .settings: return "slider.horizontal.3"
         }
     }
 }

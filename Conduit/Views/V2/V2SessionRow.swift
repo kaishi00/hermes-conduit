@@ -114,6 +114,9 @@ struct V2SessionRow: View {
     var isUnread = false
     var isPinned = false
     var isSelected = false
+    /// Project pages draw the status glyph ahead of the title, in the unread
+    /// column, instead of ahead of the preview.
+    var leadingGlyph = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -121,15 +124,17 @@ struct V2SessionRow: View {
         HStack(alignment: .top, spacing: 0) {
             // The unread column: always reserved, so titles align.
             ZStack {
-                if isUnread {
+                if leadingGlyph && status != .none {
+                    V2StatusGlyph(status: status)
+                } else if isUnread {
                     Circle()
                         .fill(Color.conduitAccent)
                         .frame(width: 7, height: 7)
                 }
             }
-            .frame(width: 12)
+            .frame(width: leadingGlyph ? 20 : 12)
             .frame(minHeight: 21)
-            .padding(.trailing, 4)
+            .padding(.trailing, leadingGlyph ? 8 : 4)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -137,12 +142,6 @@ struct V2SessionRow: View {
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    if isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.primary.opacity(0.35))
-                            .accessibilityHidden(true)
-                    }
                     Spacer(minLength: 4)
                     Text(time)
                         .font(.footnote)
@@ -151,7 +150,7 @@ struct V2SessionRow: View {
                         .layoutPriority(1)
                 }
                 HStack(alignment: .center, spacing: 5) {
-                    if status != .none {
+                    if status != .none && !leadingGlyph {
                         V2StatusGlyph(status: status)
                     }
                     Text(preview)
@@ -159,7 +158,7 @@ struct V2SessionRow: View {
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    if let word = status.actionWord {
+                    if !leadingGlyph, let word = status.actionWord {
                         Text(word)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(status.color)
