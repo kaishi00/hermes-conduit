@@ -185,15 +185,19 @@ struct V2Shell: View {
         TabView(selection: $selectedTab) {
             Tab(V2Tab.chats.title, systemImage: V2Tab.chats.symbol, value: V2Tab.chats) {
                 tabRoot(.chats)
+                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .chats }
             }
             Tab(V2Tab.tasks.title, systemImage: V2Tab.tasks.symbol, value: V2Tab.tasks) {
                 tabRoot(.tasks)
+                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .tasks }
             }
             Tab(V2Tab.bots.title, systemImage: V2Tab.bots.symbol, value: V2Tab.bots) {
                 tabRoot(.bots)
+                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .bots }
             }
             Tab(V2Tab.settings.title, systemImage: V2Tab.settings.symbol, value: V2Tab.settings) {
                 tabRoot(.settings)
+                    .transformEnvironment(\.v2Shell) { $0.isTabActive = selectedTab == .settings }
             }
         }
         .tint(.conduitAccent)
