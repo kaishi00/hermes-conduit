@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# CI v4: build the test products on THIS runner while the pinned simulator
-# boots in the background, so device boot (~2.5 min on hosted macos-26) is
-# hidden behind the ~3 min build instead of adding to it. Exports XCRUN_FILE,
+# CI v4: boot the pinned simulator in the background and build the test
+# products on THIS runner. Package resolution runs during the boot; the build
+# itself waits for it (BUILD_AFTER), because on the 3-core hosted runners a
+# build alongside the first boot slowed both (#629). Exports XCRUN_FILE,
 # DESTINATION and SIMULATOR_UDID for the later steps through $GITHUB_ENV.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -9,10 +10,12 @@ mkdir -p ci-lane
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
 export DERIVED_DATA_PATH
 
-# The build targets a generic simulator: it needs no device, so it never waits
-# on CoreSimulator while the boot below keeps it busy. The tests still run on
-# the booted device (DESTINATION, from the preparation).
+# The build targets a generic simulator and needs no device. With the pinned
+# device as its destination, the lookups took 4-64 s and xcodebuild then sat
+# silent until 30-75 s after the boot ended (#629). The tests still run on the
+# booted device (DESTINATION, from the preparation).
 export BUILD_DESTINATION="${BUILD_DESTINATION:-generic/platform=iOS Simulator}"
+export BUILD_AFTER="$PWD/ci-lane/prepare.end"
 
 step_start=$(date +%s)
 rm -f ci-lane/prepare.end
@@ -28,17 +31,16 @@ build_s=$(( $(date +%s) - step_start ))
 
 prepare_rc=0
 wait "$prepare_pid" || prepare_rc=$?
-echo "::group::simulator preparation (ran during the build)"
+echo "::group::simulator preparation (package resolution ran alongside)"
 cat ci-lane/prepare.log || true
 echo "::endgroup::"
-# Which side of the pair the step waited on: once builds are incremental, the
-# simulator boot can be the longer one.
-# A failed side says so here too, so the notice never reads as a healthy run.
+# Both times count from the start of the step. A failed side says so here
+# too, so the notice never reads as a healthy run.
 if prepare_end=$(cat ci-lane/prepare.end 2>/dev/null) && [ -n "$prepare_end" ]; then
   outcome=""
   if [ "$build_rc" -ne 0 ]; then outcome="$outcome; the build failed (exit $build_rc)"; fi
   if [ "$prepare_rc" -ne 0 ]; then outcome="$outcome; simulator preparation failed (exit $prepare_rc)"; fi
-  echo "::notice title=Build ${build_s}s and simulator $(( prepare_end - step_start ))s (side by side)::the step took $(( $(date +%s) - step_start ))s$outcome"
+  echo "::notice title=Simulator ready after $(( prepare_end - step_start ))s - build done after ${build_s}s::the step took $(( $(date +%s) - step_start ))s$outcome"
 fi
 
 if [ "$build_rc" -ne 0 ]; then

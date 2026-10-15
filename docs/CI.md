@@ -22,10 +22,11 @@ shard or the nightly list, and a renamed class fails the plan job.
 
 Each macOS job (`unit` shard, `ui-smoke`, and the nightly jobs) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
-simulator's lookup, boot and `bootstatus`) in the background, compiles the test
-products with `ci-build-for-testing.sh` on the same runner, then waits for the
-boot. On the v3 runs, boot readiness was a serial ~2.5 minutes after a separate
-build job and an artifact hop; now it hides behind the ~3 minute build.
+simulator's lookup, boot and `bootstatus`) in the background and runs
+`ci-build-for-testing.sh` on the same runner, which resolves packages during
+the boot and compiles the test products once the preparation has ended. On the
+v3 runs, boot readiness was a serial ~2.5 minutes after a separate build job
+and an artifact hop.
 
 What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
@@ -61,24 +62,28 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   `-skipPackageUpdates` and resolves from it instead of the network. A new
   pinned version fails that build, and the clean retry resolves it from the
   network.
-- **A generic build destination.** With nothing to compile, the first
-  incremental builds still took 139-304 s: about 60 s finding the pinned
-  device before xcodebuild started, then 116-199 s with no output around
-  "Resolve Package Graph", with or without `-skipPackageUpdates`. The
-  simulator boots alongside the build and keeps CoreSimulator busy for about
-  the same time. Hosted jobs now build for `generic/platform=iOS Simulator`
-  (`BUILD_DESTINATION`, set by `ci-hosted-build.sh`), which needs no device;
-  the products and `.xctestrun` are the same, and the tests still run on the
-  booted device. Packages are resolved first in a separate, timed
-  `-resolvePackageDependencies` call, so the build notice tells package time
-  apart from the rest.
+- **A generic build destination, built after the boot.** With nothing to
+  compile, the first incremental builds still took 139-340 s: 4-64 s finding
+  the pinned device, then 116-213 s with no output around "Resolve Package
+  Graph", with or without `-skipPackageUpdates`. The silence ended 30-75 s
+  after the simulator booting alongside was ready: with that device as its
+  destination, xcodebuild waited for it. Hosted jobs now build for
+  `generic/platform=iOS Simulator` (`BUILD_DESTINATION`, set by
+  `ci-hosted-build.sh`), which needs no device; the products and `.xctestrun`
+  are the same, and the tests still run on the booted device. Building during
+  the boot was tried in #629 and starved it on the 3-core runners: 2 of 3
+  boots missed their 200 s readiness budget, and the tests then waited 4-7
+  minutes for the device. So packages resolve during the boot (a separate,
+  timed `-resolvePackageDependencies` call, 19-32 s), and the build starts
+  when the preparation ends (`BUILD_AFTER`).
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core.
 
 Each build posts two notices on its job: the slowest build phases from
 `-showBuildTimingSummary` (with the cache it restored and the seconds spent
-on the destination and packages before the build), and the longest
+on the destination, the packages and waiting for the simulator before the
+build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
 package resolution, build planning, waiting on the simulator service.

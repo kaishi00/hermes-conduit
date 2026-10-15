@@ -93,8 +93,8 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_test_jobs_build_while_the_simulator_boots(self):
         """Each macOS test job builds its own products with the simulator
-        booting in the background: no shared-artifact hop, and the boot hides
-        behind the build."""
+        booting in the background: no shared-artifact hop, and package
+        resolution runs during the boot."""
         for job in ("unit", "ui-smoke"):
             text = self._job_text(job)
             self.assertIn("bash scripts/ci-hosted-build.sh", text, job)
@@ -123,8 +123,27 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(generic, build.index("wait_for_destination_device"),
                         "without BUILD_DESTINATION the build still waits for its device")
         self.assertIn("-resolvePackageDependencies", build)
-        self.assertIn("(side by side)::the step took $(( $(date +%s) - step_start ))s$outcome", hosted,
+        self.assertIn("s::the step took $(( $(date +%s) - step_start ))s$outcome", hosted,
                       "the timing notice names a failed build or preparation")
+
+    def test_hosted_builds_wait_for_the_simulator_boot(self):
+        """Side by side on the 3-core runners, the build starved the first
+        boot; the build now starts once the preparation has ended, after
+        resolving packages during the boot."""
+        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
+            hosted = fh.read()
+        export = 'export BUILD_AFTER="$PWD/ci-lane/prepare.end"'
+        self.assertIn(export, hosted)
+        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
+        self.assertIn("date +%s > ci-lane/prepare.end", hosted,
+                      "the preparation must leave the marker whether or not it succeeds")
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        wait = build.index('while [ ! -e "$BUILD_AFTER" ]')
+        self.assertLess(build.index("resolve_packages\nfi"), wait,
+                        "packages resolve during the boot, before the wait")
+        self.assertLess(wait, build.index("start_sampler\n\nstarted_at"),
+                        "the build starts only after the wait")
         self.assertLess(build.index("resolve_packages\nfi"), build.index("start_sampler\n\nstarted_at"),
                         "package resolution is timed before the build's own timeline starts")
 

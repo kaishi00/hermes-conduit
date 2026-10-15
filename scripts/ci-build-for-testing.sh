@@ -29,8 +29,9 @@ prep_start=$(date +%s)
 if [ -n "${BUILD_DESTINATION:-}" ]; then
   # Hosted jobs (ci-hosted-build.sh) build for a generic simulator: the
   # products and .xctestrun are the same, but neither this script nor
-  # xcodebuild has to reach CoreSimulator, which is busy booting the job's
-  # simulator alongside. The device lookup took about 60 s here (2026-10-15).
+  # xcodebuild has to reach CoreSimulator while the job's simulator boots.
+  # With the device as destination, the lookup here took 4-64 s and
+  # xcodebuild sat silent until 30-75 s after the boot ended (2026-10-15).
   DESTINATION="$BUILD_DESTINATION"
   echo "build-for-testing: destination $DESTINATION"
 else
@@ -90,23 +91,23 @@ if [ -d "$DERIVED_DATA_PATH/Build/Intermediates.noindex" ]; then
 fi
 echo "build-for-testing: $build_kind build"
 
-# Resolving the WebRTC package took 116 of a 139 s incremental build
-# (2026-10-15), with its checkout already in the restored DerivedData. With
-# a checkout present, -skipPackageUpdates resolves from it instead of the
-# network. A new pinned version the checkout lacks fails the build, and the
-# clean retry below resolves it from scratch.
+# With the WebRTC checkout in the restored DerivedData, -skipPackageUpdates
+# resolves from it instead of the network. A new pinned version the checkout
+# lacks fails the build, and the clean retry below resolves it from scratch.
+# Whether this xcodebuild knows the flag is asked once: an xcodebuild launch
+# took up to 30 s while the job's simulator booted (2026-10-15).
+skip_flag_supported=no
+case "$(xcodebuild -help 2>&1 || true)" in
+  *-skipPackageUpdates*) skip_flag_supported=yes ;;
+esac
 skip_package_updates() {
   [ -d "$DERIVED_DATA_PATH/SourcePackages/checkouts" ] || return 0
-  local usage
-  usage=$(xcodebuild -help 2>&1 || true)
-  case "$usage" in
-    *-skipPackageUpdates*) echo "-skipPackageUpdates" ;;
-  esac
+  if [ "$skip_flag_supported" = "yes" ]; then echo "-skipPackageUpdates"; fi
 }
 
-# Resolve packages on their own first, timed: the build's own "Resolve Package
-# Graph" sat silent for 116-199 s, and this tells package resolution apart
-# from whatever else the build waits on there.
+# Resolve packages on their own first, timed, while the simulator boots (it
+# needs no device): 19-32 s on hosted runners (2026-10-15). The build's own
+# resolution then finds everything in place.
 resolve_packages() {
   local package_flag started
   package_flag=$(skip_package_updates)
@@ -150,6 +151,28 @@ run_build() {
 resolve_s=""
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
   XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages
+fi
+
+# ci-hosted-build.sh boots the job's simulator alongside this script and names
+# the file its preparation writes when it ends (BUILD_AFTER). The build waits
+# for it. Side by side on the 3-core, 7 GB hosted runners, a build slowed the
+# first boot badly (2026-10-15, #629): 2 of 3 boots missed their 200 s
+# readiness budget, and the tests then waited 4-7 minutes for the device.
+# Package resolution above needs no device and still runs during the boot.
+boot_wait_s=""
+if [ -n "${BUILD_AFTER:-}" ]; then
+  boot_wait_budget="${BUILD_AFTER_TIMEOUT_S:-600}"
+  case "$boot_wait_budget" in ''|*[!0-9]*) boot_wait_budget=600 ;; esac
+  wait_start=$(date +%s)
+  while [ ! -e "$BUILD_AFTER" ] && [ $(( $(date +%s) - wait_start )) -lt "$boot_wait_budget" ]; do
+    sleep 2
+  done
+  boot_wait_s=$(( $(date +%s) - wait_start ))
+  if [ -e "$BUILD_AFTER" ]; then
+    echo "build-for-testing: waited ${boot_wait_s}s for the simulator to boot"
+  else
+    echo "::warning::the simulator was still being prepared after ${boot_wait_s}s; building alongside it"
+  fi
 fi
 
 # Where xcodebuild sits quietly (package resolution, build graph, waiting on
@@ -238,6 +261,7 @@ if [ -n "$timing" ]; then
   dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
   prep_note="before the build: destination ${destination_s}s"
   if [ -n "$resolve_s" ]; then prep_note="$prep_note, packages ${resolve_s}s"; fi
+  if [ -n "$boot_wait_s" ]; then prep_note="$prep_note, then ${boot_wait_s}s waiting for the simulator"; fi
   echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf 'cache: %s\n%s\n%s\n' "${BUILD_CACHE:-not used}" "$prep_note" "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"
