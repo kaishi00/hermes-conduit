@@ -5980,14 +5980,15 @@ final class AppState: ObservableObject {
         let pinned = !isSessionPinned(session)
         setLocalPin(session, pinned: pinned, profile: profile)
         let pinID = pinID(for: session)
-        // Any change to a phone-only chat asks Hermes afresh next time; a
-        // refusal marks it again.
+        guard let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
+        // Any change to a phone-only chat asks Hermes afresh; a refusal marks
+        // it again. (Only once a write can go out, so a pin made before the
+        // host reports its flag keeps its protection.)
         let wasPhoneOnly = sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
         if wasPhoneOnly { persistHostPinSyncState() }
         // Hermes never took that pin, so an unpin has nothing to clear there.
         if wasPhoneOnly, !pinned { return }
-        guard let bridge = dashboardTicketBridge,
-              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
         let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
         enqueueHostPinWrite { [weak self] in
             guard let self, self.sessionPinSync.host == bridge.baseURL else { return }

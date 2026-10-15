@@ -66,7 +66,7 @@ enum SessionMutationIdentity {
     }
 
     static func isRefusalDetail(_ detail: String) -> Bool {
-        refusals.contains { detail.localizedCaseInsensitiveContains($0) }
+        refusals.contains { detail.range(of: $0, options: .caseInsensitive) != nil }
     }
 
     private static let refusals = ["permission_denied", "profile_mismatch"]
