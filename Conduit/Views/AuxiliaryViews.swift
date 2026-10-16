@@ -3061,7 +3061,7 @@ struct SettingsDetailContainer<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         ZStack {
-            ConduitBackdrop()
+            SettingsBackdrop()
             ScrollView {
                 VStack(alignment: .leading, spacing: compact ? 18 : 24) { content }
                     .padding(.horizontal, 16)
@@ -3109,6 +3109,17 @@ struct ConduitSettingsSection<Content: View>: View {
             .settingsCard()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A settings page's still backdrop. In V2 its glow takes the active
+/// profile's color, as the Settings home's does, so pushing a page keeps it.
+struct SettingsBackdrop: View {
+    @EnvironmentObject private var appState: AppState
+    @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
+
+    var body: some View {
+        ConduitBackdrop(glowTint: usesV2 ? appState.profileGlowTint(appState.activeProfile) : nil)
     }
 }
 

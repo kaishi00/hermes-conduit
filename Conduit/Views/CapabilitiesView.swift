@@ -75,7 +75,7 @@ struct CapabilitiesView: View {
             }
         }
         // The other settings pages' backdrop and small title.
-        .background { ConduitBackdrop() }
+        .background { SettingsBackdrop() }
         .navigationTitle("Capabilities")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)

@@ -281,7 +281,7 @@ struct VoiceSettingsView: View {
 
     var body: some View {
         ZStack {
-            ConduitBackdrop()
+            SettingsBackdrop()
             ScrollView {
                 // Setup first, then what most people change. Provider
                 // detail, models and tuning wait under Advanced.
@@ -764,6 +764,7 @@ struct VoiceSettingsView: View {
                     } icon: {
                         Image(systemName: "slider.horizontal.3")
                             .foregroundStyle(Color.conduitAccent)
+                            .accessibilityHidden(true)
                     }
                     .font(.callout.weight(.semibold))
                     Spacer(minLength: 8)
