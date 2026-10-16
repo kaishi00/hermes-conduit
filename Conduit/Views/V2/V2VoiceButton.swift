@@ -54,7 +54,7 @@ struct V2VoiceButton: View {
     /// The `limit` most recently active of `sessions`, newest first, ties
     /// in list order. One pass rather than a sort: the button redraws with
     /// every AppState publish.
-    nonisolated static func mostRecent(_ sessions: [SessionSummary], limit: Int) -> [SessionSummary] {
+    static func mostRecent(_ sessions: [SessionSummary], limit: Int) -> [SessionSummary] {
         var recent: [SessionSummary] = []
         for session in sessions {
             let activity = session.lastActivityAt ?? 0

@@ -156,6 +156,7 @@ extension SidebarLayoutTests {
         XCTAssertEqual(merged.map(\.id), ["a", "x", "c", "e", "t", "y"])
     }
 
+    @MainActor
     func testVoiceButtonRecentsAreTheNewestInListOrderOnTies() {
         let sessions = [
             filterRow("old", source: .chat, at: 10),
