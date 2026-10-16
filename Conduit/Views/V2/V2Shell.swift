@@ -123,6 +123,9 @@ struct V2Shell: View {
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
+    /// The floating bar's height as last laid out (the capsule and the
+    /// voice button, with their bottom padding).
+    @State private var tabBarHeight: CGFloat = 62
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -224,7 +227,9 @@ struct V2Shell: View {
     private var tabs: some View {
         ZStack {
             ForEach(V2Tab.destinations) { tab in
-                if visitedTabs.contains(tab) {
+                // The selected tab shows from the tap's own frame; it joins
+                // the visited ones right after.
+                if visitedTabs.contains(tab) || selectedTab == tab {
                     let isSelected = selectedTab == tab
                     let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
@@ -235,22 +240,39 @@ struct V2Shell: View {
                         .opacity(isSelected ? 1 : 0)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
+                        // A tab switch swaps screens at once, like a system
+                        // tab bar; only the bar's highlight slides. Fading
+                        // two full screens of glass and backdrop into each
+                        // other dropped frames.
+                        .animation(nil, value: selectedTab)
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !conversationVisible {
-                HStack(spacing: 10) {
-                    V2CapsuleTabBar(selection: $selectedTab)
-                    voiceButton
+        // The bar floats over the screens instead of insetting them: hiding
+        // it for a pushed chat then moves only the bar, not the layout of the
+        // chat being pushed. Screens that show it keep a fixed clearance
+        // (`tabBarClearance`).
+        .overlay(alignment: .bottom) {
+            ZStack(alignment: .bottom) {
+                if !conversationVisible {
+                    HStack(spacing: 10) {
+                        V2CapsuleTabBar(selection: $selectedTab)
+                        voiceButton
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        if abs(height - tabBarHeight) > 0.5 { tabBarHeight = height }
+                    }
+                    // Lists fade out under the bar, as a chat does under its
+                    // composer.
+                    .background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-                // Lists fade out under the bar, as a chat does under its
-                // composer.
-                .background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible)
         }
         .overlay(alignment: .top) {
             // Animated on its own, so the notice slides in without
@@ -265,7 +287,19 @@ struct V2Shell: View {
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.pinSyncNotice)
         }
-        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible)
+    }
+
+    /// Room under the floating bar for a screen that shows it: its lists
+    /// scroll under the bar and stop above it. The same height whether or
+    /// not the bar is up, so pushing or popping a chat never re-lays out
+    /// the screen under it.
+    private func tabBarClearance<Content: View>(_ content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: tabBarHeight)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
@@ -273,20 +307,20 @@ struct V2Shell: View {
         switch tab {
         case .chats:
             NavigationStack(path: $chatsPath) {
-                V2ChatsView()
+                tabBarClearance(V2ChatsView())
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .tasks:
-            NavigationStack {
+            tabBarClearance(NavigationStack {
                 V2TasksView()
-            }
+            })
         case .bots:
             NavigationStack(path: $botsPath) {
-                V2BotsView()
+                tabBarClearance(V2BotsView())
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .settings:
-            V2SettingsTab(link: $settingsLink)
+            tabBarClearance(V2SettingsTab(link: $settingsLink))
         }
     }
 
@@ -296,7 +330,7 @@ struct V2Shell: View {
         case .conversation:
             V2ConversationScreen()
         case .project(let project):
-            V2ProjectPage(project: project)
+            tabBarClearance(V2ProjectPage(project: project))
         }
     }
 
