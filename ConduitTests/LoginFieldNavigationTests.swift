@@ -128,6 +128,9 @@ final class LoginFieldNavigationTests: XCTestCase {
         XCTAssertTrue(LoginAddress.shouldTryNextCandidate(after: URLError(.cannotConnectToHost)))
         XCTAssertTrue(LoginAddress.shouldTryNextCandidate(after: AuthClientError.providerDiscoveryFailed(status: 400, detail: "")))
         XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: URLError(.timedOut)))
+        // Both schemes look up the same name.
+        XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: URLError(.cannotFindHost)))
+        XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: URLError(.dnsLookupFailed)))
         XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: URLError(.notConnectedToInternet)))
         XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: CancellationError()))
         XCTAssertFalse(LoginAddress.shouldTryNextCandidate(after: AuthClientError.cloudflareServiceTokenRejected))

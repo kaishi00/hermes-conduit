@@ -207,20 +207,21 @@ struct LoginAddressStep: View {
             ))
             .tint(.conduitAccent)
             .font(.callout.weight(.semibold))
-            // Stable handles for the UI tests, apart from the copy.
-            .accessibilityIdentifier("login.cloudflare-toggle")
+            // Stable handles for the UI tests, apart from the copy; the Add
+            // sheet's own don't repeat the sign-in screen's.
+            .accessibilityIdentifier("\(prefix).cloudflare-toggle")
             if flow.cloudflareEnabled {
                 TextField("Cloudflare Client ID", text: $flow.cloudflareClientID)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .accessibilityIdentifier("login.cloudflare-client-id")
+                    .accessibilityIdentifier("\(prefix).cloudflare-client-id")
                     .focused($focusedField, equals: .cloudflareClientID)
                     .submitLabel(LoginField.cloudflareClientID.submitKeyboardLabel(cloudflareTokenEntryEnabled: true))
                     .onSubmit { submit(from: .cloudflareClientID) }
                     .loginFieldChrome(isFocused: focusedField == .cloudflareClientID)
                     .id(LoginField.cloudflareClientID)
                 SecureField("Cloudflare Client Secret", text: $flow.cloudflareClientSecret)
-                    .accessibilityIdentifier("login.cloudflare-client-secret")
+                    .accessibilityIdentifier("\(prefix).cloudflare-client-secret")
                     .focused($focusedField, equals: .cloudflareClientSecret)
                     .submitLabel(LoginField.cloudflareClientSecret.submitKeyboardLabel(cloudflareTokenEntryEnabled: true))
                     .onSubmit { submit(from: .cloudflareClientSecret) }
@@ -254,7 +255,7 @@ struct LoginAddressStep: View {
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .disabled(flow.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityIdentifier("login.extra-headers")
+            .accessibilityIdentifier("\(prefix).extra-headers")
         }
     }
 
@@ -668,7 +669,7 @@ struct LoginDashboardsScreen: View {
             }
         }
         if dashboards.count > 1, dashboard.id == appState.activeDashboardID {
-            text += " · " + AppLocalization.string("Last used")
+            text = AppLocalization.string("\(text) · Last used")
         }
         return LoginRowLabel.Status(text: text, icon: icon, tint: tint)
     }
@@ -715,7 +716,7 @@ struct LoginHeader: View {
                 switch style {
                 case .firstLaunch:
                     Text("Conduit")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text("A focused home for your Hermes work")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

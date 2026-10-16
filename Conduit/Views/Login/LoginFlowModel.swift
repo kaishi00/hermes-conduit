@@ -131,13 +131,14 @@ enum LoginAddress {
 
     /// Whether a failed check is worth repeating at the next candidate. A
     /// wrong scheme fails fast (a TLS error, a refused connection, a page
-    /// that isn't Hermes); a host that doesn't answer at all, or no network,
-    /// won't answer the other scheme either.
+    /// that isn't Hermes); a host that doesn't answer at all, a name that
+    /// doesn't resolve, or no network won't answer the other scheme either.
     static func shouldTryNextCandidate(after error: Error) -> Bool {
         if error is CancellationError { return false }
         if let urlError = error as? URLError {
             switch urlError.code {
-            case .timedOut, .notConnectedToInternet, .cancelled, .dataNotAllowed, .internationalRoamingOff:
+            case .timedOut, .cannotFindHost, .dnsLookupFailed,
+                 .notConnectedToInternet, .cancelled, .dataNotAllowed, .internationalRoamingOff:
                 return false
             default:
                 return true
@@ -364,10 +365,13 @@ final class LoginFlowModel: ObservableObject {
             await appState.switchDashboard(to: dashboard.id)
             if appState.isConnected || !appState.showLogin { return }
             // A refused saved sign-in shows under its row; a dismissed Face
-            // ID prompt leaves the row as it was. Only a dashboard with
-            // nothing left to sign in with goes on to its sign-in.
-            if failure != nil || appState.pendingLoginFailure != nil
-                || appState.savedSignIn(for: dashboard.id).canSignInWithoutTyping {
+            // ID prompt leaves the row as it was, to ask again on the next
+            // tap. A dashboard with nothing left to sign in with goes on to
+            // its sign-in, and so does a Face ID one on a phone where Face
+            // ID is off now: it would never ask.
+            if failure != nil || appState.pendingLoginFailure != nil { return }
+            let left = appState.savedSignIn(for: dashboard.id)
+            if left.canSignInWithoutTyping, left != .biometric || BiometricAuth.status.isAvailable {
                 return
             }
         }
