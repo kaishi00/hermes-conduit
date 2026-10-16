@@ -142,7 +142,7 @@ struct MapsRequest {
         }
         if let limit = (json["limit"] as? NSNumber)?.intValue { request.limit = limit }
         if let modeName = json["mode"] as? String {
-            guard let mode = Mode(rawValue: modeName) else { return .failure(.failed("mode is driving, walking, transit or cycling.")) }
+            guard let mode = Mode(rawValue: modeName.lowercased()) else { return .failure(.failed("mode is driving, walking, transit or cycling.")) }
             request.mode = mode
         }
         request.departAt = (json["depart_at"] as? String).flatMap(MapsDates.parse)
@@ -338,6 +338,20 @@ enum MapsEngine {
             return .failure(MapsRun.failure(error, transit: request.mode == .transit))
         }
     }
+
+    /// The place `ref` names, resolved as a lookup resolves it, to open
+    /// Apple Maps there (navigate). Never "me": directions start there.
+    static func destination(_ ref: MapsPlaceRef, places: [LocationSavedPlace], near hint: CLLocationCoordinate2D?,
+                            deadline: TimeInterval) async -> Result<MKMapItem, MapsFailure> {
+        let run = MapsRun(request: MapsRequest(id: "navigate", action: .lookup), context: MapsContext(me: nil, places: places))
+        return await MapsDeadline.run(after: deadline, fallback: .failure(.timeout)) {
+            do {
+                return .success(try await run.destination(ref, near: hint))
+            } catch {
+                return .failure(MapsRun.failure(error, transit: false))
+            }
+        }
+    }
 }
 
 /// One request's work: the places it resolved and "me".
@@ -431,6 +445,11 @@ private final class MapsRun {
         meLocation?.coordinate ?? fallback
     }
 
+    func destination(_ ref: MapsPlaceRef, near hint: CLLocationCoordinate2D?) async throws -> MKMapItem {
+        if ref == .me { throw MapsFailure.failed("Directions start from where the user is; give where to go.") }
+        return try await resolve(ref, near: hint).item
+    }
+
     private func resolve(_ ref: MapsPlaceRef, near hint: CLLocationCoordinate2D?) async throws -> Resolved {
         switch ref {
         case .me:
@@ -465,7 +484,7 @@ private final class MapsRun {
     }
 
     private static func coordinateName(_ coordinate: CLLocationCoordinate2D) -> String {
-        String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+        String(format: "%.5f, %.5f", locale: Locale(identifier: "en_US_POSIX"), coordinate.latitude, coordinate.longitude)
     }
 
     /// The name a destination that failed is listed by.

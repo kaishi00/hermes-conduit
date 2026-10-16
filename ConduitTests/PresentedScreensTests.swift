@@ -6,6 +6,7 @@
 //  An extension of an existing class, so the test planner needs no new entry.
 //
 
+import CoreLocation
 import XCTest
 @testable import Conduit
 
@@ -75,6 +76,49 @@ extension AppStateVoiceCapabilityTests {
         sync.answer(prompt, outcome: .confirmed, via: .tap)
         let all = defaults.dictionary(forKey: "conduit.presentedScreens.results.v1") as? [String: [[String: Any]]]
         XCTAssertEqual(all?["host|default"]?.first?["outcome"] as? String, "declined")
+    }
+
+    func testAGoConfirmationCarriesWhereMapsOpens() async throws {
+        let prompt = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p1", "title": "Directions to Heathrow?", "action_label": "Go",
+            "maps": ["to": " Heathrow Terminal 5 ", "mode": "transit"],
+        ]))
+        XCTAssertEqual(prompt.maps, PresentedMapsTarget(to: "Heathrow Terminal 5", mode: .transit))
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p2", "title": "Go?", "maps": ["to": "Paris"]])?.maps?.mode, .driving)
+        XCTAssertNil(PresentedConfirm(json: ["id": "p3", "title": "Go?", "maps": ["to": "Paris", "mode": "rocket"]])?.maps)
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p5", "title": "Go?", "maps": ["to": "Paris", "mode": "Walking"]])?.maps?.mode, .walking)
+        XCTAssertNil(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.maps)
+
+        // Each exchange tells the host this Conduit opens Apple Maps for them.
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var sent: [String: Any] = [:]
+        await PresentedScreensSync(defaults: defaults).sync(scope: "host|default", profile: "default",
+                                                            installationID: "install-1") { _, body in
+            sent = body
+            return ["ok": true, "prompts": []]
+        }
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate"])
+    }
+
+    func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {
+        let to = CLLocationCoordinate2D(latitude: 51.5, longitude: -0.12)
+        XCTAssertEqual(MapsNavigator.mapsURL(to: to, mode: .walking)?.absoluteString, "maps://?daddr=51.500000,-0.120000&dirflg=w")
+        XCTAssertEqual(MapsNavigator.mapsURL(to: to, mode: .cycling)?.absoluteString, "maps://?daddr=51.500000,-0.120000")
+        let url = try XCTUnwrap(MapsNavigator.mapsURL(to: to, mode: .driving))
+        XCTAssertEqual(MapsNavigator.url(fromNotification: [MapsNavigator.urlKey: url.absoluteString]), url)
+        XCTAssertNil(MapsNavigator.url(fromNotification: [MapsNavigator.urlKey: "https://example.com"]))
+        XCTAssertNil(MapsNavigator.url(fromNotification: ["aps": [:]]))
+    }
+
+    func testOnlyASentNavigateOpensMapsWithoutATap() {
+        let sent = #"{"ok": true, "action": "navigate", "status": "sent", "prompt_id": "p1", "to": "Paris"}"#
+        XCTAssertEqual(AppState.mapsNavigatePromptID(sent), "p1")
+        XCTAssertNil(AppState.mapsNavigatePromptID(#"{"ok": true, "action": "directions", "to": "navigate street"}"#))
+        XCTAssertNil(AppState.mapsNavigatePromptID(#"{"ok": false, "action": "navigate", "error": "not_set_up"}"#))
+        XCTAssertNil(AppState.mapsNavigatePromptID("navigate"))
+        XCTAssertNil(AppState.mapsNavigatePromptID(nil))
     }
 
     func testAnExpiredConfirmIsntShown() {

@@ -9,7 +9,9 @@
 //
 
 import Combine
+import CoreLocation
 import Foundation
+import UIKit
 
 extension AppState {
     /// Exchanges when the host's plugin serves it; silent otherwise.
@@ -27,6 +29,67 @@ extension AppState {
             }
             return try await bridge.requestJSON(path: path, method: "POST", body: body)
         }
+        await openExpectedPresentedMaps()
+    }
+
+    /// Hermes was seen asking to open Apple Maps (`conduit_maps` navigate)
+    /// in the chat on screen: that Go confirmation opens Maps without a tap.
+    func noteMapsNavigateExpected(_ promptID: String) {
+        mapsNavigateExpected = (promptID, Date().addingTimeInterval(120))
+        // Stored before the tool returned: fetch it now.
+        Task { [weak self] in await self?.syncPresentedScreens() }
+    }
+
+    /// The Go confirmation a `conduit_maps` result sent, read from the
+    /// tool's JSON answer: only a navigate that was sent.
+    nonisolated static func mapsNavigatePromptID(_ output: String?) -> String? {
+        guard let data = output?.data(using: .utf8),
+              let answer = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              answer["action"] as? String == "navigate", answer["status"] as? String == "sent",
+              let promptID = answer["prompt_id"] as? String, !promptID.isEmpty else { return nil }
+        return promptID
+    }
+
+    /// The Go confirmation Hermes was just seen sending in the chat on
+    /// screen opens Apple Maps at once, with Conduit in front; any other
+    /// waits for a tap or a spoken go.
+    private func openExpectedPresentedMaps() async {
+        guard UIApplication.shared.applicationState == .active,
+              let expected = mapsNavigateExpected, expected.until > Date(),
+              let prompt = presentedScreens.prompts.first(where: {
+                  $0.id == expected.promptID && $0.maps != nil && !$0.isExpired()
+              }),
+              // Only from the chat the user is looking at.
+              let session = prompt.sessionID, session == activeSessionId else { return }
+        mapsNavigateExpected = nil
+        presentedScreens.answer(prompt, outcome: .confirmed, via: .auto)
+        // Reported first, on its own round: Hermes hears the answer before
+        // Maps opens. The expectation is spent, so that round opens nothing.
+        Task { [weak self] in await self?.syncPresentedScreens() }
+        await openPresentedMaps(prompt)
+    }
+
+    /// Opens Apple Maps for a confirmed Go confirmation.
+    func openPresentedMaps(_ prompt: PresentedConfirm) async {
+        guard let target = prompt.maps else { return }
+        let location = LocationSharingController.shared
+        // On this phone only (nothing goes back to Hermes): the user's own
+        // saved places, and where they are to find "the nearest Boots" while
+        // they share their location with Conduit and haven't paused it.
+        let places = location.places
+        guard let place = MapsVoiceTool.ref(target.to, places: places), place != .me else {
+            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.")
+            return
+        }
+        var hint: CLLocation?
+        if location.settings.talking || location.settings.background, !location.isPaused() {
+            hint = await location.fixes.currentFix(accuracy: LocationFixProvider.desiredAccuracy(for: .area),
+                                                   maxAge: 300, timeout: .seconds(2))
+        }
+        let outcome = await MapsNavigator.open(place, mode: target.mode, places: places, near: hint?.coordinate)
+        if case .failed = outcome {
+            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.")
+        }
     }
 
     /// The user's answer; reported to the host right away.
@@ -34,6 +97,7 @@ extension AppState {
                                 via source: PresentedConfirmAnswerSource) async {
         presentedScreens.answer(prompt, outcome: outcome, via: source)
         await syncPresentedScreens()
+        if outcome == .confirmed { await openPresentedMaps(prompt) }
     }
 
     /// Edit: Hermes hears the user wants changes, and the chat it came from
@@ -88,7 +152,10 @@ extension AppState {
         ) { prompt, outcome in
             presentedScreens.answer(prompt, outcome: outcome, via: .voice)
             // Reported in the background: the call hears the outcome now.
-            Task { await self.syncPresentedScreens() }
+            Task { [weak self] in
+                await self?.syncPresentedScreens()
+                if outcome == .confirmed { await self?.openPresentedMaps(prompt) }
+            }
         }
     }
 

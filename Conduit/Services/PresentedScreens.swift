@@ -14,6 +14,30 @@
 import Foundation
 import UIKit
 
+/// Where a Go confirmation opens Apple Maps (`conduit_maps` navigate): the
+/// place as Hermes named it and how to travel.
+struct PresentedMapsTarget: Equatable {
+    let to: String
+    let mode: MapsRequest.Mode
+
+    init(to: String, mode: MapsRequest.Mode = .driving) {
+        self.to = to
+        self.mode = mode
+    }
+
+    init?(json: Any?) {
+        guard let entry = json as? [String: Any],
+              let to = (entry["to"] as? String).flatMap({ MapsText.cleanOrNil($0, limit: MapsPlaceRef.maxTextLength) })
+        else { return nil }
+        var mode = MapsRequest.Mode.driving
+        if let name = entry["mode"] as? String {
+            guard let chosen = MapsRequest.Mode(rawValue: name.lowercased()) else { return nil }
+            mode = chosen
+        }
+        self.init(to: to, mode: mode)
+    }
+}
+
 /// One confirmation Hermes is waiting on.
 struct PresentedConfirm: Identifiable, Equatable {
     let id: String
@@ -27,9 +51,11 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// The chat it came from, if any.
     let sessionID: String?
     let expiresAt: Date?
+    /// A Go confirmation: confirming opens Apple Maps here.
+    let maps: PresentedMapsTarget?
 
     init(id: String, title: String, preview: String, actionLabel: String,
-         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil) {
+         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -37,6 +63,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         self.spokenYes = spokenYes
         self.sessionID = sessionID
         self.expiresAt = expiresAt
+        self.maps = maps
     }
 
     init?(json: Any) {
@@ -58,7 +85,8 @@ struct PresentedConfirm: Identifiable, Equatable {
                 .prefix(5)
                 .map { String($0.prefix(40)) },
             sessionID: session,
-            expiresAt: expires
+            expiresAt: expires,
+            maps: PresentedMapsTarget(json: entry["maps"])
         )
     }
 
@@ -112,6 +140,9 @@ enum PresentedConfirmOutcome: String {
 enum PresentedConfirmAnswerSource: String {
     case tap
     case voice
+    /// Conduit opened Apple Maps for a Go confirmation itself: the user was
+    /// in that chat with Conduit open.
+    case auto
 }
 
 /// Keeps the confirmations Hermes is waiting on in step with the host's
@@ -120,6 +151,9 @@ enum PresentedConfirmAnswerSource: String {
 final class PresentedScreensSync: ObservableObject {
     static let path = "/api/plugins/conduit_push/present/exchange"
     static let capability = "present-v1"
+    /// What this Conduit does with a confirmation beyond showing it, told to
+    /// the host in each exchange.
+    static let features = ["maps-navigate"]
     private static let resultsKey = "conduit.presentedScreens.results.v1"
     private static let maxResults = 40
 
@@ -188,6 +222,7 @@ final class PresentedScreensSync: ObservableObject {
             "device": UIDevice.current.name,
             "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             "results": answers,
+            "features": Self.features,
         ]
         let response: [String: Any]
         do {

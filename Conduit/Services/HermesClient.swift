@@ -3282,6 +3282,8 @@ enum MessageNormalizer {
                     var updated = match
                     updated.tool?.output = content.isEmpty ? (match.tool?.output ?? "") : content
                     updated.tool?.status = .complete
+                    updated.tool?.duration = toolDuration(in: obj)
+                        ?? ChatStepTiming.elapsed(from: match.timestamp, to: extractTimestamp(obj))
                     if let idx = messages.firstIndex(where: { $0.id == match.id }) {
                         messages[idx] = updated
                         if !callId.isEmpty { callsById[callId] = updated }
@@ -4210,6 +4212,17 @@ enum MessageNormalizer {
             if let n = candidate?.doubleValue { return String(n) }
         }
         return ""
+    }
+
+    /// A tool result's own timing, when Hermes sends one: seconds in
+    /// `duration` or `elapsed`, milliseconds in `duration_ms`.
+    private static func toolDuration(in obj: [String: AnyCodable]) -> TimeInterval? {
+        let meta = obj["metadata"]?.objectValue ?? obj["meta"]?.objectValue ?? [:]
+        for source in [obj, meta] {
+            if let ms = source["duration_ms"]?.doubleValue, ms >= 0 { return ms / 1_000 }
+            if let seconds = (source["duration"] ?? source["elapsed"])?.doubleValue, seconds >= 0 { return seconds }
+        }
+        return nil
     }
 
     private static func isDuplicateReasoning(_ reasoning: String, _ content: String) -> Bool {

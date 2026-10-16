@@ -115,14 +115,26 @@ struct ChatView: View {
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
-        // Back to the turn's start: a long turn can run many tools.
+        // Back to the turn's start: a long turn can run many tools. A steer
+        // joins the running turn rather than starting one.
         for message in messages.reversed() {
-            if message.role == .user { return nil }
+            if message.role == .user && !message.isSteer { return nil }
             if message.role == .tool, let tool = message.tool, tool.status == .running {
                 return tool.name
             }
         }
         return nil
+    }
+
+    /// When the running turn began, for the working line's timer.
+    private var turnStartedAt: Date? {
+        guard appState.isBusy else { return nil }
+        return Self.turnStart(in: appState.messages)
+    }
+
+    static func turnStart(in messages: [ChatMessage]) -> Date? {
+        guard let message = messages.last(where: { $0.role == .user && !$0.isSteer }) else { return nil }
+        return MessageTimestampFormatter.date(from: message.timestamp)
     }
 
     /// Whether "Load earlier messages" is offered right now. AppState owns
@@ -322,7 +334,7 @@ struct ChatView: View {
 
     private func chatScrollView(proxy: ScrollViewProxy) -> some View {
         ScrollView {
-            LazyVStack(spacing: 18) {
+            LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
                 Color.clear
                     .frame(height: 1)
                     .id(topAnchor)
@@ -343,7 +355,11 @@ struct ChatView: View {
                 // order needed by row geometry (target.order, maintained by
                 // the scroll-target cache) are unchanged.
                 ForEach(chatMessageScrollTargets) { target in
-                    MessageBubble(message: target.message, gatewayResolver: appState.gatewayMediaResolver)
+                    MessageBubble(
+                        message: target.message,
+                        gatewayResolver: appState.gatewayMediaResolver,
+                        step: target.step
+                    )
                         .id(target.id)
                         .background {
                             // Measured in the stack's own coordinate space,
@@ -374,7 +390,8 @@ struct ChatView: View {
                     projection: appState.liveTurn,
                     isBusy: appState.isBusy,
                     author: appState.activeProfile,
-                    currentToolName: runningToolName
+                    currentToolName: runningToolName,
+                    turnStartedAt: turnStartedAt
                 )
 
                 // Fallback target for ScrollViewProxy before the engine has
@@ -795,6 +812,9 @@ private struct ChatScrollRowFramesPreferenceKey: PreferenceKey {
 struct MessageBubble: View {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// A thinking or tool row's place in its turn's run of steps, which
+    /// draws as one card. Nil outside the chat transcript.
+    var step: ChatStepPlacement? = nil
     @EnvironmentObject var appState: AppState
 
     var body: some View {
@@ -817,7 +837,11 @@ struct MessageBubble: View {
                 gatewayResolver: gatewayResolver
             )
         case .reasoning:
-            ThinkingCard(message: message)
+            if let step {
+                ChatStepRow(message: message, placement: step)
+            } else {
+                ThinkingCard(message: message)
+            }
         case .tool:
             // A finished clarify from history reads as its answered card,
             // not the raw tool call (#394). Like the live card it shows
@@ -826,6 +850,8 @@ struct MessageBubble: View {
             if let tool = message.tool,
                let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
                 ClarifyCard(message: message.presenting(clarify))
+            } else if let step {
+                ChatStepRow(message: message, placement: step)
             } else {
                 ToolCard(message: message)
             }
@@ -1934,6 +1960,9 @@ struct SettledThinkingCardContent: View, Equatable {
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
     let chatTextSize: ChatTextSize
+    /// Drawn inside a run's card: no card of its own, its time taken in
+    /// place of the clock time.
+    var grouped = false
     @Environment(\.chatRowDisclosure) private var disclosure
     /// Nil until tapped here: a rebuilt row (the live card settling, a lazy
     /// row coming back) takes what the reader chose from `disclosure`.
@@ -1947,6 +1976,7 @@ struct SettledThinkingCardContent: View, Equatable {
         lhs.message == rhs.message
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
+            && lhs.grouped == rhs.grouped
     }
 
     var body: some View {
@@ -1965,16 +1995,17 @@ struct SettledThinkingCardContent: View, Equatable {
                         Text(AppLocalization.string("Thinking"))
                             .font(.body)
                             .foregroundStyle(.secondary)
-                        MessageTimestampLabel(timestamp: message.timestamp)
+                        ChatStepTimeLabel(timestamp: message.timestamp, duration: message.stepDuration, grouped: grouped)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .accessibilityHidden(true)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, ChatStepStyle.rowHorizontalPadding)
+                .padding(.vertical, ChatStepStyle.rowVerticalPadding)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1987,17 +2018,18 @@ struct SettledThinkingCardContent: View, Equatable {
                     textColor: .secondaryLabel
                 )
                 .padding(.leading, ChatStepStyle.contentInset)
-                .padding(.trailing, 14)
+                .padding(.trailing, ChatStepStyle.rowHorizontalPadding)
                 .padding(.bottom, 12)
                 .transition(.opacity)
             }
         }
-        .chatStepCard()
+        .chatStepCard(!grouped)
     }
 }
 
 struct ThinkingCard: View {
     let message: ChatMessage
+    var grouped = false
     @EnvironmentObject var appState: AppState
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
@@ -2007,7 +2039,8 @@ struct ThinkingCard: View {
             SettledThinkingCardContent(
                 message: message,
                 sizeCategory: sizeCategory,
-                chatTextSize: chatTextSize
+                chatTextSize: chatTextSize,
+                grouped: grouped
             )
             .equatable()
         }
@@ -2029,7 +2062,28 @@ private struct MessageTimestampLabel: View {
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
-                .accessibilityLabel("Sent \(label)")
+                .accessibilityLabel(AppLocalization.string("Sent \(label)"))
+        }
+    }
+}
+
+/// A step's time: how long it took when known; else, on a step standing
+/// alone, when it happened.
+private struct ChatStepTimeLabel: View {
+    let timestamp: String
+    let duration: TimeInterval?
+    let grouped: Bool
+    var tone: MessageTimestampTone = .subtle
+
+    var body: some View {
+        if let text = ChatStepTiming.text(duration) {
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .accessibilityLabel(ChatStepTiming.spokenText(duration) ?? text)
+        } else if !grouped {
+            MessageTimestampLabel(timestamp: timestamp, tone: tone)
         }
     }
 }
@@ -2081,8 +2135,9 @@ private struct SettledToolCardContent: View, Equatable {
     let expandToolsByDefault: Bool
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
+    /// Drawn inside a run's card; see SettledThinkingCardContent.
+    var grouped = false
     @Environment(\.chatRowDisclosure) private var disclosure
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Nil until tapped here; see SettledThinkingCardContent.
     @State private var tapped: Bool?
 
@@ -2097,6 +2152,7 @@ private struct SettledToolCardContent: View, Equatable {
         lhs.message == rhs.message
             && lhs.expandToolsByDefault == rhs.expandToolsByDefault
             && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.grouped == rhs.grouped
     }
 
     var body: some View {
@@ -2115,7 +2171,7 @@ private struct SettledToolCardContent: View, Equatable {
                     // V2: plain words for what the step did, what it was
                     // about underneath, and the tool's own name only once
                     // it is opened.
-                    HStack(spacing: 11) {
+                    HStack(spacing: ChatStepStyle.iconGap) {
                         ChatStepIcon(symbol: style.symbol, tint: style.tint)
 
                         VStack(alignment: .leading, spacing: 1) {
@@ -2125,10 +2181,16 @@ private struct SettledToolCardContent: View, Equatable {
                                 Text(running ? style.runningTitle : style.doneTitle)
                                     .font(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
-                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                                MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                                    .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
+                                ChatStepTimeLabel(
+                                    timestamp: message.timestamp,
+                                    duration: tool.duration,
+                                    grouped: grouped,
+                                    tone: .supporting
+                                )
                             }
-                            if !expanded, let subject = ChatStepSubject.line(from: tool.input ?? tool.output) {
+                            if !expanded, let subject = ChatStepSubject.line(from: tool.input)
+                                ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
@@ -2143,15 +2205,17 @@ private struct SettledToolCardContent: View, Equatable {
                             ProgressView()
                                 .controlSize(.mini)
                                 .tint(Color.conduitAccent)
+                                .accessibilityHidden(true)
                         }
 
                         Image(systemName: "chevron.down")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(expanded ? 180 : 0))
+                            .accessibilityHidden(true)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, ChatStepStyle.rowHorizontalPadding)
+                    .padding(.vertical, ChatStepStyle.rowVerticalPadding)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -2201,7 +2265,7 @@ private struct SettledToolCardContent: View, Equatable {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .chatStepCard()
+            .chatStepCard(!grouped)
         }
     }
 }
@@ -2209,6 +2273,7 @@ private struct SettledToolCardContent: View, Equatable {
 struct ToolCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
+    var grouped = false
     @EnvironmentObject var appState: AppState
     @Environment(\.sizeCategory) private var sizeCategory
 
@@ -2217,7 +2282,8 @@ struct ToolCard: View {
             SettledToolCardContent(
                 message: message,
                 expandToolsByDefault: appState.displayPreferences.expandToolsByDefault,
-                sizeCategory: sizeCategory
+                sizeCategory: sizeCategory,
+                grouped: grouped
             )
             .equatable()
         }
@@ -3061,6 +3127,8 @@ struct ChatLiveTurnRows: View {
     let author: String
     /// The tool running now, named on the working line.
     var currentToolName: String?
+    /// When the turn began, for the working line's timer.
+    var turnStartedAt: Date?
 
     var body: some View {
         // Live reasoning renders from the projection, not the settled
@@ -3092,7 +3160,8 @@ struct ChatLiveTurnRows: View {
         if isBusy && projection.streamingText.isEmpty {
             ChatWorkingLine(
                 currentToolName: currentToolName,
-                isThinking: projection.reasoningSegment != nil
+                isThinking: projection.reasoningSegment != nil,
+                startedAt: turnStartedAt
             )
             .id("typing")
         }

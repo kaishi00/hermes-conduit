@@ -102,6 +102,9 @@ struct ToolActivity: Codable, Equatable {
     var input: String?
     var output: String?
     var status: Status
+    /// How long the call took, in seconds, when Conduit saw it start and
+    /// finish or Hermes' history times both ends. Nil when unknown.
+    var duration: TimeInterval? = nil
 
     enum Status: String, Codable {
         case running
@@ -558,6 +561,9 @@ struct ChatMessage: Identifiable, Equatable {
     var rowId: Int?
     /// Tapback reactions persisted on the row, at most one per author.
     var reactions: [MessageReaction]
+    /// How long a thinking step took, in seconds, when Conduit watched it
+    /// stream (tool calls keep theirs on `tool`). Nil when unknown.
+    var stepDuration: TimeInterval? = nil
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.

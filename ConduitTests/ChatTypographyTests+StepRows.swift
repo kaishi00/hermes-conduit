@@ -61,4 +61,137 @@ extension ChatTypographyTests {
         // A stuck row from an earlier turn isn't this turn's step.
         XCTAssertNil(ChatView.runningToolName(in: [earlier, user]))
     }
+
+    func testStepSubjectFallsBackToOutputWhenInputIsEmpty() {
+        let tool = ToolActivity(id: "t", name: "terminal", input: "", output: "done\nmore", status: .complete)
+        XCTAssertEqual(
+            ChatStepSubject.line(from: tool.input) ?? ChatStepSubject.line(from: tool.output),
+            "done more"
+        )
+    }
+
+    @MainActor
+    func testSteerDoesNotStartANewTurn() {
+        let user = ChatMessage(id: "u", role: .user, content: "Hi", timestamp: "2026-10-16T09:00:00Z")
+        let running = ChatMessage(
+            id: "t1", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t1", name: "web_search", input: nil, output: nil, status: .running)
+        )
+        let steer = ChatMessage(
+            id: "s", role: .user, content: "Also lunch", timestamp: "2026-10-16T09:00:30Z",
+            displayKind: ChatMessage.steerDisplayKind
+        )
+        XCTAssertEqual(ChatView.runningToolName(in: [user, running, steer]), "web_search")
+        XCTAssertEqual(
+            ChatView.turnStart(in: [user, running, steer]),
+            MessageTimestampFormatter.date(from: "2026-10-16T09:00:00Z")
+        )
+    }
+
+    func testRunsOfStepsArePlacedTogether() {
+        func step(_ id: String, _ status: ToolActivity.Status = .complete) -> ChatMessage {
+            ChatMessage(
+                id: id, role: .tool, content: "", timestamp: "now",
+                tool: ToolActivity(id: id, name: "web_search", input: nil, output: nil, status: status)
+            )
+        }
+        let user = ChatMessage(id: "u", role: .user, content: "Hi", timestamp: "now")
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let answer = ChatMessage(id: "a", role: .assistant, content: "Done", timestamp: "now")
+        let clarify = ChatMessage(
+            id: "c", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "c", name: "clarify", input: nil, output: nil, status: .complete)
+        )
+
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [user, thinking, step("t1"), clarify, step("t2"), answer])
+        let placed = cache.targets.map { $0.step?.index }
+        XCTAssertEqual(placed, [nil, 0, 1, nil, 0, nil])
+        XCTAssertEqual(cache.targets[1].step?.group.members.map(\.messageID), ["r", "t1"])
+        XCTAssertEqual(cache.targets[1].step?.group.isTrailing, false)
+
+        // A live turn: the run is at the end and grows as steps arrive.
+        cache.update(for: [user, thinking, step("t1", .running)])
+        XCTAssertEqual(cache.targets[1].step?.group.isTrailing, true)
+        XCTAssertEqual(cache.targets[2].step?.group.members.last?.running, true)
+        cache.update(for: [user, thinking, step("t1"), step("t2", .running)])
+        XCTAssertEqual(cache.targets[1].step?.group.members.count, 3)
+        XCTAssertEqual(cache.targets[1].step?.group.members[1].running, false)
+        cache.update(for: [user, thinking, step("t1"), step("t2"), answer])
+        XCTAssertEqual(cache.targets[1].step?.group.isTrailing, false)
+        XCTAssertNil(cache.targets[4].step)
+    }
+
+    func testStepTimesReadAsShortDurations() {
+        XCTAssertNil(ChatStepTiming.text(nil))
+        XCTAssertNil(ChatStepTiming.text(0.4))
+        XCTAssertEqual(ChatStepTiming.text(12.2)?.contains("12"), true)
+        XCTAssertNil(ChatStepTiming.spokenText(0.4))
+        XCTAssertNotEqual(ChatStepTiming.spokenText(12), ChatStepTiming.text(12))
+        XCTAssertEqual(
+            ChatStepTiming.elapsed(from: "2026-10-16T09:00:00Z", to: "2026-10-16T09:00:05Z"),
+            5
+        )
+        XCTAssertNil(ChatStepTiming.elapsed(from: "2026-10-16T09:00:05Z", to: "2026-10-16T09:00:00Z"))
+        XCTAssertNil(ChatStepTiming.elapsed(from: "now", to: Date()))
+
+        func member(_ id: String, _ timestamp: String, _ duration: TimeInterval?) -> ChatStepGroupMember {
+            var message = ChatMessage(
+                id: id, role: .tool, content: "", timestamp: timestamp,
+                tool: ToolActivity(id: id, name: "terminal", input: nil, output: nil, status: .complete)
+            )
+            message.tool?.duration = duration
+            return ChatStepGroupMember(message)
+        }
+        // From the first start to the last end.
+        XCTAssertEqual(
+            ChatStepTiming.span(of: [
+                member("a", "2026-10-16T09:00:00Z", 2),
+                member("b", "2026-10-16T09:00:03Z", 9),
+            ]),
+            12
+        )
+        XCTAssertNil(ChatStepTiming.span(of: [member("a", "now", 2)]))
+    }
+
+    func testHistoryTimesAToolCallFromItsRows() {
+        func call(_ id: Double, _ callID: String, at timestamp: Double) -> AnyCodable {
+            .object([
+                "id": .number(id),
+                "role": .string("assistant"),
+                "content": .string(""),
+                "timestamp": .number(timestamp),
+                "tool_calls": .array([
+                    .object([
+                        "id": .string(callID),
+                        "function": .object([
+                            "name": .string("terminal"),
+                            "arguments": .string("{\"command\":\"ls\"}"),
+                        ]),
+                    ]),
+                ]),
+            ])
+        }
+        func result(_ id: Double, _ callID: String, at timestamp: Double, extra: [String: AnyCodable] = [:]) -> AnyCodable {
+            var row: [String: AnyCodable] = [
+                "id": .number(id),
+                "role": .string("tool"),
+                "tool_call_id": .string(callID),
+                "tool_name": .string("terminal"),
+                "content": .string("ok"),
+                "timestamp": .number(timestamp),
+            ]
+            row.merge(extra) { _, new in new }
+            return .object(row)
+        }
+        let messages = MessageNormalizer.normalizeMessages([
+            call(1, "call-1", at: 1_760_000_000),
+            result(2, "call-1", at: 1_760_000_007),
+            call(3, "call-2", at: 1_760_000_010),
+            // Hermes' own timing wins over the row times.
+            result(4, "call-2", at: 1_760_000_010, extra: ["duration_ms": .number(2_500)]),
+        ])
+        let tools = messages.compactMap(\.tool)
+        XCTAssertEqual(tools.map(\.duration), [7, 2.5])
+    }
 }
