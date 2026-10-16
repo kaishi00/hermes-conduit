@@ -303,6 +303,11 @@ struct ConduitBackdrop: View {
                 endPoint: .center
             )
         }
+        // Flattened into one opaque image, drawn again only when the glow
+        // moves (10 fps at most) or changes color. As two live blurs, the
+        // circles were blurred again on every frame anything moved over
+        // them, every frame of a list's scroll included.
+        .drawingGroup(opaque: true)
         .animation(.easeInOut(duration: 0.6), value: glowTint)
         .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)

@@ -590,6 +590,7 @@ struct V2ChatsView: View {
         // Worked out once per render: the rows walk the whole catalog.
         let displayed = displayedSessions
         let sections = nestedSections(displayed)
+        let expanded = expandedNestIDs
         let layout = SidebarOfflineLayout.visibility(
             showingProjects: false,
             hasOfflineCopy: appState.offlineChatPresentation != nil,
@@ -636,7 +637,7 @@ struct V2ChatsView: View {
 
             if layout.liveSections && !sections.pinned.isEmpty {
                 Section {
-                    nestRows(sections.pinned)
+                    listRows(V2ChatsListItem.items(sections.pinned, expanded: expanded))
                 } header: {
                     sectionHeader(AppLocalization.string("Pinned"))
                 }
@@ -644,7 +645,7 @@ struct V2ChatsView: View {
 
             if layout.liveSections && !sections.recent.isEmpty {
                 Section {
-                    nestRows(sections.recent)
+                    listRows(V2ChatsListItem.items(sections.recent, expanded: expanded))
                 } header: {
                     sectionHeader(AppLocalization.string("Recent"))
                 }
@@ -786,122 +787,16 @@ struct V2ChatsView: View {
         expandedNestsRaw = (others + own.sorted().suffix(200)).joined(separator: "\n")
     }
 
-    @ViewBuilder
-    private func nestRows(_ nodes: [SessionNesting.Node]) -> some View {
-        ForEach(nodes) { node in
-            nestBlock(node)
-        }
-    }
-
-    /// A top-level row, its "3 jobs · 1 running" disclosure, and, once
-    /// expanded, its descendants on a thread line.
-    @ViewBuilder
-    private func nestBlock(_ node: SessionNesting.Node) -> some View {
-        let key = SessionNesting.nestKey(of: node.session)
-        let isExpanded = expandedNestIDs.contains(key)
-        let hasChildren = !node.children.isEmpty
-        let signals = SessionNesting.signals(
-            node,
-            isUnread: appState.isSessionUnread,
-            liveStatus: appState.sessionLiveStatus
-        )
-        let readToggle = SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread)
-
-        sessionRowButton(node.session, isUnread: signals.isUnread, parentTitle: nil, hasNestBelow: hasChildren)
-            .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
-            .sessionActions(
-                session: node.session,
-                nest: readToggle,
-                onRename: { sessionPendingRename = node.session },
-                onDelete: { sessionPendingDeletion = node.session }
-            )
-
-        if hasChildren {
-            nestDisclosure(node, key: key, isExpanded: isExpanded)
-                .v2ListRow(divider: !isExpanded, dividerInset: V2SessionRow.iconTextInset)
-            if isExpanded {
-                let descendants = Self.flatten(node.children, depth: 0)
-                ForEach(Array(descendants.enumerated()), id: \.element.node.id) { index, entry in
-                    childRow(entry.node.session, depth: entry.depth, parentTitle: node.session.title)
-                        .v2ListRow(divider: index == descendants.count - 1, dividerInset: V2SessionRow.iconTextInset)
-                        .sessionActions(
-                            session: entry.node.session,
-                            nest: nil,
-                            onRename: { sessionPendingRename = entry.node.session },
-                            onDelete: { sessionPendingDeletion = entry.node.session }
-                        )
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-        }
-    }
-
-    private struct FlatNode {
-        let node: SessionNesting.Node
-        let depth: Int
-    }
-
-    private static func flatten(_ nodes: [SessionNesting.Node], depth: Int) -> [FlatNode] {
-        nodes.flatMap { node in
-            [FlatNode(node: node, depth: depth)] + flatten(node.children, depth: depth + 1)
-        }
-    }
-
-    private func sessionRowButton(_ session: SessionSummary, isUnread: Bool, parentTitle: String?, hasNestBelow: Bool = false) -> some View {
-        Button {
-            Haptics.light()
-            appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
-        } label: {
-            V2SessionRow(
-                title: session.title,
-                time: session.updatedLabel,
-                preview: appState.v2RowPreview(for: session),
-                status: appState.v2RowStatus(for: session),
-                isUnread: isUnread,
-                isSelected: session.id == appState.activeSessionId,
-                icon: appState.sessionCategory(for: session),
-                hasNestBelow: hasNestBelow
+    /// One List row per item, so the List builds only the rows on screen.
+    private func listRows(_ items: [V2ChatsListItem]) -> some View {
+        ForEach(items) { item in
+            V2ChatsRow(
+                item: item,
+                onRename: { sessionPendingRename = $0 },
+                onDelete: { sessionPendingDeletion = $0 },
+                setExpanded: setExpanded
             )
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
-    }
-
-    /// The parent's summary of what sits under it, and its expander.
-    private func nestDisclosure(_ node: SessionNesting.Node, key: String, isExpanded: Bool) -> some View {
-        let summary = Self.nestSummary(
-            node,
-            category: appState.sessionCategory,
-            liveStatus: appState.sessionLiveStatus
-        )
-        return Button {
-            Haptics.light()
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                setExpanded(key, !isExpanded)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
-                    .conduitFixedGlyph()
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                Text(summary)
-                    .font(.footnote.weight(.medium))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(.secondary)
-            .padding(.leading, V2SessionRow.iconTextInset)
-            .padding(.bottom, 11)
-            .frame(minHeight: 30)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
-        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text(summary))
-        .accessibilityHint(SessionList.nestExpanderHint(isExpanded: isExpanded))
-        .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
 
     /// "3 jobs · 1 running · 1 to approve": the count names jobs when every
@@ -922,50 +817,6 @@ struct V2ChatsView: View {
         let approvalCount = descendants.filter { liveStatus($0) == .needsInput }.count
         if approvalCount > 0 { parts.append(AppLocalization.string("\(approvalCount) to approve")) }
         return parts.joined(separator: " · ")
-    }
-
-    /// An expanded child: one line on the parent's 1.5 pt thread line.
-    private func childRow(_ session: SessionSummary, depth: Int, parentTitle: String) -> some View {
-        let status = appState.v2RowStatus(for: session)
-        let isUnread = appState.isSessionUnread(session)
-        return Button {
-            Haptics.light()
-            appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
-        } label: {
-            HStack(spacing: 7) {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.16))
-                    .frame(width: 1.5)
-                    .padding(.leading, 34 + CGFloat(min(depth, 3)) * 14)
-                    .padding(.trailing, 6)
-                V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
-                Text(session.title)
-                    .font(.subheadline.weight(isUnread ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Text(status.actionWord ?? session.updatedLabel)
-                    .font(.footnote)
-                    .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
-                    .lineLimit(1)
-            }
-            .padding(.trailing, 16)
-            .frame(minHeight: 36)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(session.title))
-        .accessibilityValue(Text([
-            AppLocalization.string("From \(parentTitle)"),
-            isUnread ? AppLocalization.string("Unread") : nil,
-            status.accessibilityWord,
-            session.updatedLabel
-        ].compactMap { $0 }.joined(separator: ", ")))
-        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
-        .accessibilityAddTraits(.isButton)
     }
 
     private func offlineSessionRow(
@@ -1040,16 +891,7 @@ struct V2ChatsView: View {
 
             if !pinned.isEmpty {
                 Section {
-                    ForEach(pinned) { session in
-                        sessionRowButton(session, isUnread: appState.isSessionUnread(session), parentTitle: nil)
-                            .v2ListRow(dividerInset: V2SessionRow.iconTextInset)
-                            .sessionActions(
-                                session: session,
-                                nest: nil,
-                                onRename: { sessionPendingRename = session },
-                                onDelete: { sessionPendingDeletion = session }
-                            )
-                    }
+                    listRows(pinned.map(V2ChatsListItem.leaf))
                 } header: {
                     sectionHeader(AppLocalization.string("Pinned"))
                 }
@@ -1162,6 +1004,216 @@ struct V2ChatsView: View {
     /// Running conversations among the ones the project tree lists.
     private func runningCount(_ project: ProjectSummary) -> Int {
         project.previewSessions.filter { appState.sessionLiveStatus($0) == .working }.count
+    }
+}
+
+// MARK: - List rows
+
+/// One row of the Chats list. A nest used to be one block of a varying
+/// number of rows (the row, its "3 jobs" line, its open children), so on
+/// every redraw the List built every row of the list just to count them.
+/// With one List row per item it builds only the rows on screen.
+struct V2ChatsListItem: Identifiable {
+    enum Kind {
+        /// A conversation at the top of its nest, or on its own.
+        case session(SessionNesting.Node)
+        /// The "3 jobs · 1 running" line under a parent: its expander.
+        case nest(SessionNesting.Node, key: String, isExpanded: Bool)
+        /// An open nest's descendant, on the parent's thread line. The
+        /// last one draws the hairline that closes the nest.
+        case child(SessionSummary, depth: Int, parentTitle: String, isLast: Bool)
+    }
+
+    let id: String
+    let kind: Kind
+
+    /// A row with nothing nested under it (the pinned chats over Projects).
+    static func leaf(_ session: SessionSummary) -> V2ChatsListItem {
+        V2ChatsListItem(id: "row:" + session.id, kind: .session(SessionNesting.Node(session: session, children: [])))
+    }
+
+    /// The rows of `nodes` in list order: each node, its "3 jobs" line
+    /// when it has children, and, when `expanded` holds its nest key, its
+    /// descendants depth first.
+    static func items(_ nodes: [SessionNesting.Node], expanded: Set<String>) -> [V2ChatsListItem] {
+        var items: [V2ChatsListItem] = []
+        items.reserveCapacity(nodes.count)
+        for node in nodes {
+            items.append(V2ChatsListItem(id: "row:" + node.id, kind: .session(node)))
+            guard !node.children.isEmpty else { continue }
+            let key = SessionNesting.nestKey(of: node.session)
+            let isExpanded = expanded.contains(key)
+            items.append(V2ChatsListItem(id: "nest:" + node.id, kind: .nest(node, key: key, isExpanded: isExpanded)))
+            guard isExpanded else { continue }
+            let descendants = descendants(of: node.children, depth: 0)
+            for (index, entry) in descendants.enumerated() {
+                items.append(V2ChatsListItem(
+                    id: "child:" + entry.session.id,
+                    kind: .child(
+                        entry.session,
+                        depth: entry.depth,
+                        parentTitle: node.session.title,
+                        isLast: index == descendants.count - 1
+                    )
+                ))
+            }
+        }
+        return items
+    }
+
+    private static func descendants(of nodes: [SessionNesting.Node], depth: Int) -> [(session: SessionSummary, depth: Int)] {
+        nodes.flatMap { node in
+            [(session: node.session, depth: depth)] + descendants(of: node.children, depth: depth + 1)
+        }
+    }
+}
+
+/// One Chats list row. It works out its own dot, status and preview, so
+/// only the rows on screen do.
+private struct V2ChatsRow: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let item: V2ChatsListItem
+    let onRename: (SessionSummary) -> Void
+    let onDelete: (SessionSummary) -> Void
+    /// Opens or closes the nest with this key.
+    let setExpanded: (String, Bool) -> Void
+
+    var body: some View {
+        switch item.kind {
+        case .session(let node):
+            sessionRow(node)
+        case .nest(let node, let key, let isExpanded):
+            nestDisclosure(node, key: key, isExpanded: isExpanded)
+                .v2ListRow(divider: !isExpanded, dividerInset: V2SessionRow.iconTextInset)
+        case .child(let session, let depth, let parentTitle, let isLast):
+            childRow(session, depth: depth, parentTitle: parentTitle)
+                .v2ListRow(divider: isLast, dividerInset: V2SessionRow.iconTextInset)
+                .sessionActions(
+                    session: session,
+                    nest: nil,
+                    onRename: { onRename(session) },
+                    onDelete: { onDelete(session) }
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    /// A top-level row. Its dot speaks for the whole nest, so a closed
+    /// nest never hides an unread reply.
+    private func sessionRow(_ node: SessionNesting.Node) -> some View {
+        let session = node.session
+        let hasChildren = !node.children.isEmpty
+        let signals = SessionNesting.signals(
+            node,
+            isUnread: appState.isSessionUnread,
+            liveStatus: appState.sessionLiveStatus
+        )
+        return Button {
+            Haptics.light()
+            appState.dismissSidebarDrawer()
+            appState.requestOpenSession(session.id)
+        } label: {
+            V2SessionRow(
+                title: session.title,
+                time: session.updatedLabel,
+                preview: appState.v2RowPreview(for: session),
+                status: appState.v2RowStatus(for: session),
+                isUnread: signals.isUnread,
+                isSelected: session.id == appState.activeSessionId,
+                icon: appState.sessionCategory(for: session),
+                hasNestBelow: hasChildren
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
+        .sessionActions(
+            session: session,
+            nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
+            onRename: { onRename(session) },
+            onDelete: { onDelete(session) }
+        )
+    }
+
+    /// The parent's summary of what sits under it, and its expander.
+    private func nestDisclosure(_ node: SessionNesting.Node, key: String, isExpanded: Bool) -> some View {
+        let summary = V2ChatsView.nestSummary(
+            node,
+            category: appState.sessionCategory,
+            liveStatus: appState.sessionLiveStatus
+        )
+        return Button {
+            Haptics.light()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                setExpanded(key, !isExpanded)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .conduitFixedGlyph()
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                Text(summary)
+                    .font(.footnote.weight(.medium))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.leading, V2SessionRow.iconTextInset)
+            .padding(.bottom, 11)
+            .frame(minHeight: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text(summary))
+        .accessibilityHint(SessionList.nestExpanderHint(isExpanded: isExpanded))
+        .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
+    }
+
+    /// An expanded child: one line on the parent's 1.5 pt thread line.
+    private func childRow(_ session: SessionSummary, depth: Int, parentTitle: String) -> some View {
+        let status = appState.v2RowStatus(for: session)
+        let isUnread = appState.isSessionUnread(session)
+        return Button {
+            Haptics.light()
+            appState.dismissSidebarDrawer()
+            appState.requestOpenSession(session.id)
+        } label: {
+            HStack(spacing: 7) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.16))
+                    .frame(width: 1.5)
+                    .padding(.leading, 34 + CGFloat(min(depth, 3)) * 14)
+                    .padding(.trailing, 6)
+                V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
+                Text(session.title)
+                    .font(.subheadline.weight(isUnread ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Text(status.actionWord ?? session.updatedLabel)
+                    .font(.footnote)
+                    .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
+                    .lineLimit(1)
+            }
+            .padding(.trailing, 16)
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(session.title))
+        .accessibilityValue(Text([
+            AppLocalization.string("From \(parentTitle)"),
+            isUnread ? AppLocalization.string("Unread") : nil,
+            status.accessibilityWord,
+            session.updatedLabel
+        ].compactMap { $0 }.joined(separator: ", ")))
+        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .accessibilityAddTraits(.isButton)
     }
 }
 
