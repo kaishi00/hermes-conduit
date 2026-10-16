@@ -286,8 +286,9 @@ struct V2Shell: View {
                         if abs(height - tabBarHeight) > 0.5 { tabBarHeight = height }
                     }
                     // Lists fade out under the bar, as a chat does under its
-                    // composer.
-                    .background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
+                    // composer: iOS 26 draws that edge itself, under the
+                    // clearance (`tabBarClearance`).
+                    .modifier(V2LegacyTabBarEdge())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -312,8 +313,10 @@ struct V2Shell: View {
     /// scroll under the bar and stop above it. The same height whether or
     /// not the bar is up, so pushing or popping a chat never re-lays out
     /// the screen under it.
+    /// On iOS 26 the clearance is a bar to the lists, so they draw the
+    /// system's soft edge under the floating bar.
     private func tabBarClearance<Content: View>(_ content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
+        content.v2EdgeBar(.bottom) {
             Color.clear
                 .frame(height: tabBarHeight)
                 .allowsHitTesting(false)
@@ -508,4 +511,18 @@ private struct V2CapsuleTabBar: View {
 enum V2ShellPreference {
     static let key = "conduit.useV2Shell"
     static let defaultValue = true
+}
+
+/// Before iOS 26, the capsule bar carries the fading material the lists
+/// scroll under, reaching a little above the bar. iOS 26 draws a soft
+/// edge under the bar's clearance instead.
+private struct V2LegacyTabBarEdge: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
+        }
+    }
 }

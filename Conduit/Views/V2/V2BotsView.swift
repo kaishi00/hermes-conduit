@@ -25,7 +25,7 @@ struct V2BotsView: View {
             BotRosterView(createRequest: $createRequest)
                 .opacity(shell.contentFaded ? 0 : 1)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .v2EdgeBar(.top) {
             HStack(spacing: 10) {
                 Text(V2Tab.bots.title)
                     .font(.title2.weight(.bold))
@@ -49,7 +49,7 @@ struct V2BotsView: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
             .frame(minHeight: 52)
-            .background { V2ScrollEdgeBackground() }
+            .modifier(V2LegacyScrollEdge())
             .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

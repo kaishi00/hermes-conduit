@@ -251,10 +251,10 @@ struct ChatView: View {
                 bottomBar
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
-                    .background { V2ScrollEdgeBackground(edge: .bottom) }
+                    .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in

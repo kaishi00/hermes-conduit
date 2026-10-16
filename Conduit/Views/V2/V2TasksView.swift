@@ -55,7 +55,7 @@ struct V2TasksView: View {
         // The control rides in the header, so the pages scroll under one
         // soft edge, as a chat does under its header, instead of stopping
         // at a hard line below the control.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .v2EdgeBar(.top) {
             VStack(spacing: 2) {
                 V2TopBar().withoutScrollEdge()
                 V2SegmentedControl(
@@ -68,7 +68,7 @@ struct V2TasksView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
             }
-            .background { V2ScrollEdgeBackground() }
+            .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()

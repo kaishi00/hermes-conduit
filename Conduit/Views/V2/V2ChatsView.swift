@@ -295,8 +295,10 @@ struct V2ChatsView: View {
             }
             .opacity(shell.contentFaded ? 0 : 1)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .v2EdgeBar(.top) {
             V2TopBar { trailingControls }
+                .withoutScrollEdge()
+                .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()

@@ -57,6 +57,40 @@ extension V2TopBar {
     }
 }
 
+extension View {
+    /// Pins `bar` to a screen edge, with this view's lists scrolling under
+    /// it and fading out beneath it. On iOS 26 it is a `safeAreaBar`, so the
+    /// lists draw the system's soft scroll edge under it; before, it is a
+    /// `safeAreaInset`, and the bar draws `V2ScrollEdgeBackground` itself
+    /// (`V2LegacyScrollEdge`).
+    @ViewBuilder
+    func v2EdgeBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder bar: () -> Bar) -> some View {
+        let content = bar()
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: edge == .top ? .top : .bottom)
+                .safeAreaBar(edge: edge, spacing: 0) { content }
+        } else {
+            safeAreaInset(edge: edge, spacing: 0) { content }
+        }
+    }
+}
+
+/// Before iOS 26, the fading material behind a bar that lists scroll
+/// under. iOS 26 draws its own soft edge there (`v2EdgeBar`), which
+/// costs less than our blur under a gradient mask on every scroll frame.
+struct V2LegacyScrollEdge: ViewModifier {
+    var edge: VerticalEdge = .top
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.background { V2ScrollEdgeBackground(edge: edge) }
+        }
+    }
+}
+
 /// The soft edge content scrolls under: a material that fades out away
 /// from the screen edge, so the bar reads without a hard line.
 struct V2ScrollEdgeBackground: View {
