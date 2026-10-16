@@ -833,7 +833,9 @@ struct VoiceSettingsView: View {
     /// A Base URL that isn't empty and isn't OpenAI's own API.
     static func isOwnVoiceServer(_ baseURL: String) -> Bool {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let host = URL(string: trimmed)?.host?.lowercased() ?? ""
+        // "api.openai.com/v1" has no scheme, so URL finds no host in it.
+        let withScheme = trimmed.contains("://") ? trimmed : "http://" + trimmed
+        let host = URL(string: withScheme)?.host?.lowercased() ?? ""
         return !trimmed.isEmpty && host != "api.openai.com"
     }
 
