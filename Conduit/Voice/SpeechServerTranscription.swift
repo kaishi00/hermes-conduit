@@ -180,7 +180,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         let samples: [Int16] = pcm16.withUnsafeBytes { raw in
             (0..<(raw.count / 2)).map { Int16(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self)) }
         }
-        guard samples.count > 1 else { return pcm16.count >= 2 ? pcm16 : Data() }
+        guard samples.count > 1 else { return Data() }
         let step = rate / inputSampleRate
         let count = Int((Double(samples.count) / step).rounded(.down))
         var output = Data(capacity: count * 2)
@@ -197,7 +197,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     }
 
     private func enqueueAudio(_ pcm24: Data) {
-        guard let frame = try? Self.encode([
+        guard !pcm24.isEmpty, let frame = try? Self.encode([
             "type": "input_audio_buffer.append",
             "audio": pcm24.base64EncodedString(),
         ]) else { return }

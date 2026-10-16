@@ -131,6 +131,8 @@ struct SpeechServerSettingsView: View {
         testResult = nil
         saveError = nil
         let loaded = await service.speechServerStatus()
+        // A newer profile switch replaced this load.
+        guard !Task.isCancelled else { return }
         status = loaded
         urlDraft = loaded.url ?? ""
     }

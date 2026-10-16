@@ -298,8 +298,9 @@ final class HermesVoiceConfigurationService: ObservableObject {
                 body: ["config": config]
             )
             // The snapshot only reflects a confirmed write; a failed PUT
-            // must leave it matching the server.
-            if clears {
+            // must leave it matching the server. A key saved into the config
+            // (the speech server's) is never kept in memory.
+            if clears || key.hasSuffix("api_key") {
                 snapshot.values.removeValue(forKey: key)
             } else {
                 snapshot.values[key] = stored

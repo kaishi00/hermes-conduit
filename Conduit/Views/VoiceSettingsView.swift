@@ -471,9 +471,8 @@ struct VoiceSettingsView: View {
             if let server = service.speechServer, server.available, let url = server.url {
                 return setupStep(title, detail: url, state: .done)
             }
-            if let server = service.speechServer, server.configured || server.pluginMissing,
-               let reason = server.pluginMissing ? SpeechServerStatus.pluginMissingReason : server.reason {
-                return setupStep(title, detail: reason, state: .attention)
+            if let server = service.speechServer, server.configured || server.pluginMissing {
+                return setupStep(title, detail: server.reason ?? AppLocalization.string("Your speech server. Use Test connection under Speech to text to check it."), state: .attention)
             }
             return setupStep(title, detail: AppLocalization.string("Your speech server. Use Test connection under Speech to text to check it."), state: .pending)
         }
