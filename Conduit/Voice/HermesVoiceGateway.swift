@@ -472,7 +472,7 @@ enum HermesSpeechFailure {
     /// `url='…'` wrapper, or more than one short paragraph.
     static func cleaned(_ raw: String) -> String {
         var text = raw
-        for pattern in [#",?\s*url=(['"]).*?\1"#, #"\b(?:wss?|https?)://\S+"#] {
+        for pattern in [#",?\s*(?<![\w-])url=(['"]).*?\1"#, #"\b(?:wss?|https?)://\S+"#] {
             text = text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
         text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
