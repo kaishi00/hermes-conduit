@@ -630,6 +630,9 @@ final class LoginFlowModel: ObservableObject {
         Self.logger.error(
             "Auth WebView sign-in error: \(String(describing: classifiedFailure), privacy: .public) detail: \(detail)"
         )
+        // The failure shows under the step, so the sheet closes as the
+        // single sign-on sheet does on an error.
+        browserRequest = nil
         show(.presenting(classifiedFailure), at: browserPlace)
     }
 }

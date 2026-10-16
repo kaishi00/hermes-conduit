@@ -675,10 +675,15 @@ struct LoginDashboardsScreen: View {
     }
 
     private func refreshSignIns() {
-        biometricKind = BiometricAuth.status.kind
+        let biometrics = BiometricAuth.status
+        biometricKind = biometrics.kind
         var kinds: [UUID: SavedSignInKind] = [:]
         for dashboard in dashboards {
-            kinds[dashboard.id] = appState.savedSignIn(for: dashboard.id)
+            var kind = appState.savedSignIn(for: dashboard.id)
+            // With Face ID off the row opens its sign-in page, so it says
+            // a sign-in is needed.
+            if kind == .biometric, !biometrics.isAvailable { kind = .signInNeeded }
+            kinds[dashboard.id] = kind
         }
         signIns = kinds
     }
