@@ -2,11 +2,11 @@
 //  V2SessionRow.swift
 //  Conduit
 //
-//  The dense V2 session row: no card, two lines, about 58 pt tall so ten or
-//  more conversations fit on an iPhone screen. Line one is the title and
-//  time; line two a status glyph, a one-line preview, and an action word
-//  only when the row needs one (Running, Approve). Unread is a gold dot in
-//  the leading column.
+//  The V2 session row: no card, two lines, about 66 pt tall, with more room
+//  between rows than between a row's own lines so each conversation reads
+//  as one block. Line one is the title and time; line two a status glyph, a
+//  dimmer one-line preview, and an action word only when the row needs one
+//  (Running, Approve). Unread is a gold dot in the leading column.
 //
 
 import SwiftUI
@@ -117,6 +117,9 @@ struct V2SessionRow: View {
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
     var leadingGlyph = false
+    /// A Chats row with its "3 jobs" summary under it: the summary sits
+    /// close, as part of this row, rather than a row's gap away.
+    var hasNestBelow = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -168,7 +171,7 @@ struct V2SessionRow: View {
                     }
                     Text(preview)
                         .font(.subheadline)
-                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .foregroundStyle(Color.primary.opacity(0.5))
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if !leadingGlyph, let word = status.actionWord {
@@ -181,7 +184,8 @@ struct V2SessionRow: View {
                 }
             }
         }
-        .padding(.vertical, 9)
+        .padding(.top, 13)
+        .padding(.bottom, hasNestBelow ? 4 : 13)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
@@ -215,7 +219,7 @@ struct V2RowDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.09))
+            .fill(Color.primary.opacity(0.14))
             .frame(height: 0.5)
             .padding(.leading, leadingInset)
             .accessibilityHidden(true)

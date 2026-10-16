@@ -801,7 +801,7 @@ struct V2ChatsView: View {
         )
         let readToggle = SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread)
 
-        sessionRowButton(node.session, isUnread: signals.isUnread, parentTitle: nil)
+        sessionRowButton(node.session, isUnread: signals.isUnread, parentTitle: nil, hasNestBelow: hasChildren)
             .v2ListRow(divider: !hasChildren)
             .sessionActions(
                 session: node.session,
@@ -841,7 +841,7 @@ struct V2ChatsView: View {
         }
     }
 
-    private func sessionRowButton(_ session: SessionSummary, isUnread: Bool, parentTitle: String?) -> some View {
+    private func sessionRowButton(_ session: SessionSummary, isUnread: Bool, parentTitle: String?, hasNestBelow: Bool = false) -> some View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -853,7 +853,8 @@ struct V2ChatsView: View {
                 preview: appState.v2RowPreview(for: session),
                 status: appState.v2RowStatus(for: session),
                 isUnread: isUnread,
-                isSelected: session.id == appState.activeSessionId
+                isSelected: session.id == appState.activeSessionId,
+                hasNestBelow: hasNestBelow
             )
         }
         .buttonStyle(.plain)
@@ -885,8 +886,7 @@ struct V2ChatsView: View {
             }
             .foregroundStyle(.secondary)
             .padding(.leading, 32)
-            .padding(.top, 0)
-            .padding(.bottom, 8)
+            .padding(.bottom, 11)
             .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
