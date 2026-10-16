@@ -333,16 +333,21 @@ struct V2Shell: View {
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .tasks:
-            tabBarClearance(NavigationStack {
-                V2TasksView()
-            })
+            // Inside the stack, as on Chats and Bots: the lists in it stop
+            // above the bar and fade under it.
+            NavigationStack {
+                tabBarClearance(V2TasksView())
+            }
         case .bots:
             NavigationStack(path: $botsPath) {
                 tabBarClearance(V2BotsView())
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .settings:
-            tabBarClearance(V2SettingsTab(link: $settingsLink))
+            // Settings puts the clearance inside its own stack, on its home
+            // and on every page it pushes (`v2TabBarClearance()`).
+            V2SettingsTab(link: $settingsLink)
+                .environment(\.v2TabBarClearance, tabBarHeight)
         }
     }
 
@@ -511,6 +516,46 @@ private struct V2CapsuleTabBar: View {
 enum V2ShellPreference {
     static let key = "conduit.useV2Shell"
     static let defaultValue = true
+}
+
+private struct V2TabBarClearanceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// The floating tab bar's height, for a tab whose own NavigationStack
+    /// gives each of its screens the clearance; 0 outside the V2 shell.
+    var v2TabBarClearance: CGFloat {
+        get { self[V2TabBarClearanceKey.self] }
+        set { self[V2TabBarClearanceKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Room under the V2 floating tab bar, set inside a tab's own
+    /// NavigationStack on each screen it shows, as the shell's
+    /// `tabBarClearance` does for the other tabs. Nothing outside V2.
+    func v2TabBarClearance() -> some View {
+        modifier(V2TabBarClearance())
+    }
+}
+
+private struct V2TabBarClearance: ViewModifier {
+    @Environment(\.v2TabBarClearance) private var height
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if height > 0 {
+            content.v2EdgeBar(.bottom) {
+                Color.clear
+                    .frame(height: height)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            content
+        }
+    }
 }
 
 /// Before iOS 26, the capsule bar carries the fading material the lists

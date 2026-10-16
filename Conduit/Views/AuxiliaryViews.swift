@@ -501,8 +501,12 @@ struct SettingsView: View {
                         ConduitSheetHeader(title: AppLocalization.string("Settings"), close: { dismiss() })
                     }
                 }
+                // V2's Settings tab: each screen stops above the floating
+                // tab bar and fades under it. Nothing in the sheet.
+                .v2TabBarClearance()
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     destinationView(destination)
+                        .v2TabBarClearance()
                 }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
@@ -2231,6 +2235,7 @@ private struct GatewaySettingsDetail: View {
                 // which the chat header used to open.
                 NavigationLink {
                     GatewayDiagnosticsSheet(embedded: true)
+                        .v2TabBarClearance()
                 } label: {
                     Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
                         .frame(maxWidth: .infinity, alignment: .leading)
