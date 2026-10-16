@@ -21,12 +21,13 @@ struct VoiceCredentialStatus: Equatable, Identifiable {
 
     var id: String { key }
 
-    /// A masked value as Hermes sends it. Anything long with no mask in it
-    /// could be a whole key, so it is dropped rather than shown.
+    /// A masked value as Hermes sends it ("sk-p...abcd", or "***" for a
+    /// short key). A value with no mask in it could be a whole key, so it
+    /// is dropped rather than shown.
     static func maskedValue(_ value: Any?) -> String? {
         guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
         let masked = text.contains("…") || text.contains("...") || text.contains("*")
-        return masked || text.count < 12 ? text : nil
+        return masked ? text : nil
     }
 }
 
@@ -410,7 +411,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// This deliberately never requests `/api/env/reveal`; Conduit only
     /// reads whether a credential is set and Hermes' masked form of it.
     func saveCredential(_ value: String, key: String) async -> Bool {
-        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !key.isEmpty else { return false }
         do {
             _ = try await requester.requestJSON(
                 path: profilePath("/api/env"), method: "PUT",

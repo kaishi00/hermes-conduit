@@ -1093,7 +1093,8 @@ extension HermesVoiceConfigurationServiceTests {
             environment: [
                 "GEMINI_API_KEY": ["is_set": true, "redacted_value": "AIza...wxyz", "description": "Google key"],
                 "XAI_API_KEY": ["is_set": false, "redacted_value": NSNull()],
-                "MIMO_API_KEY": ["is_set": true, "redacted_value": "mi…123"]
+                "MIMO_API_KEY": ["is_set": true, "redacted_value": "mi…123"],
+                "STEPFUN_API_KEY": ["is_set": true, "redacted_value": "short1"]
             ],
             ttsToolsetConfigAvailable: false
         )
@@ -1103,6 +1104,8 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(snapshot.environment["XAI_API_KEY"]?.isSet, false)
         XCTAssertNil(snapshot.environment["XAI_API_KEY"]?.redactedValue)
         XCTAssertEqual(snapshot.credentials.first { $0.key == "MIMO_API_KEY" }?.redactedValue, "mi…123")
+        // A short value with no mask could be the whole key.
+        XCTAssertNil(snapshot.environment["STEPFUN_API_KEY"]?.redactedValue)
     }
 
     func testMissingEnvironmentIsNotReadAsUnset() {
@@ -1167,6 +1170,7 @@ extension HermesVoiceConfigurationServiceTests {
         let put = try XCTUnwrap(requester.recorded.first { $0.method == "PUT" })
         XCTAssertEqual(put.path, "/api/env")
         XCTAssertEqual(put.body?["key"] as? String, "XAI_API_KEY")
+        XCTAssertEqual(put.body?["value"] as? String, "xai-secret")
         XCTAssertFalse(requester.recorded.contains { $0.path.contains("reveal") })
     }
 }

@@ -35,14 +35,14 @@ struct VoiceAPIKeyRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: targetKey)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .accessibilityLabel(Text(verbatim: targetKey.replacingOccurrences(of: "_", with: " ")))
                     statusText
                 }
                 Spacer(minLength: 8)
                 if configured != nil, !isEditing {
                     Button(AppLocalization.string("Replace")) { isEditing = true }
                         .font(.subheadline)
+                        .disabled(isSaving)
                         .accessibilityIdentifier("voice.apiKey.\(targetKey).replace")
                 }
             }
@@ -52,18 +52,20 @@ struct VoiceAPIKeyRow: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
-                    .onSubmit { Task { await save() } }
+                    .onSubmit { Task { @MainActor in await save() } }
                     .accessibilityIdentifier("voice.apiKey.\(targetKey).field")
                 HStack {
                     if isEditing {
                         Button(AppLocalization.string("Cancel"), role: .cancel) {
                             draft = ""
+                            saveError = nil
                             isEditing = false
                         }
+                        .disabled(isSaving)
                     }
                     Spacer()
                     Button {
-                        Task { await save() }
+                        Task { @MainActor in await save() }
                     } label: {
                         if isSaving {
                             ProgressView()
@@ -120,9 +122,10 @@ struct VoiceAPIKeyRow: View {
         }
     }
 
+    @MainActor
     private func save() async {
         let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !isSaving else { return }
+        guard !value.isEmpty, !targetKey.isEmpty, !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         saveError = nil

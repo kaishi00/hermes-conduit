@@ -1075,7 +1075,7 @@ struct VoiceSettingsView: View {
             }
         }
         if descriptor.id == "openai", descriptor.kind == .tts {
-            Text("Using your own OpenAI-compatible speech server, such as Chatterbox? Set its address in Base URL below. If the server doesn't check keys, any placeholder key works.")
+            Text(AppLocalization.string("Using your own OpenAI-compatible speech server, such as Chatterbox? Set its address in Base URL below. If the server doesn't check keys, any placeholder key works."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
