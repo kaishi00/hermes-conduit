@@ -161,7 +161,11 @@ struct SpeechServerSettingsView: View {
         }
         let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
-            guard await save(key, for: Self.apiKeyKey) else { return }
+            guard await save(key, for: Self.apiKeyKey) else {
+                // The address may have landed; show what the host has now.
+                await refreshStatus(submittedURL: submitted)
+                return
+            }
             keyDraft = ""
         }
         await refreshStatus(submittedURL: submitted)

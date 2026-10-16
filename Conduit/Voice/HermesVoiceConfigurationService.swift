@@ -174,6 +174,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
             ttsToolsetConfigAvailable: (try? tts.get()) != nil
         )
         snapshot = parsed
+        // The speech server step refreshes with the rest once it was shown.
+        if speechServer != nil { _ = await speechServerStatus() }
         // Toolset config was added after some public gateways. Its absence is
         // a capability limitation, not a failed text-chat connection.
         if (try? stt.get()) == nil && (try? tts.get()) == nil {

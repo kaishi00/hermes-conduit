@@ -76,7 +76,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if let update = try? Self.encode(Self.sessionUpdate) {
             enqueue(.string(update))
         }
-        receiveTask = Task { [weak self] in await self?.receiveLoop() }
+        receiveTask = Task { @MainActor [weak self] in await self?.receiveLoop() }
     }
 
     deinit {
@@ -113,7 +113,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if let commit = try? Self.encode(["type": "input_audio_buffer.commit"]) {
             enqueue(.string(commit))
         }
-        let timeout = Task { [weak self, finishTimeout] in
+        let timeout = Task { @MainActor [weak self, finishTimeout] in
             try? await Task.sleep(for: finishTimeout)
             guard !Task.isCancelled, let self else { return }
             if self.segments.isEmpty {
@@ -125,7 +125,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         // The grace runs from when the last audio went out: a whole short
         // recording sent at once can take a while on a slow uplink.
         let sent = sendChain
-        let grace = Task { [weak self, quietGrace] in
+        let grace = Task { @MainActor [weak self, quietGrace] in
             await sent?.value
             try? await Task.sleep(for: quietGrace)
             guard !Task.isCancelled, let self else { return }
@@ -206,7 +206,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
 
     private func enqueue(_ message: URLSessionWebSocketTask.Message) {
         let previous = sendChain
-        sendChain = Task { [weak self, socket] in
+        sendChain = Task { @MainActor [weak self, socket] in
             await previous?.value
             guard !Task.isCancelled else { return }
             do {
@@ -306,6 +306,8 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         waiter?.resume(returning: Self.transcript(result))
         waiter = nil
         receiveTask?.cancel()
+        // Frames still queued have nowhere to go.
+        sendChain?.cancel()
         socket.cancel(with: .normalClosure, reason: nil)
     }
 
