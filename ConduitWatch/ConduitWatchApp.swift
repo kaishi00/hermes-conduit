@@ -23,6 +23,8 @@ struct ConduitWatchApp: App {
         // Before launch finishes: a call from Hermes that launched the app
         // waits on its PushKit registry.
         HermesWatchCalls.shared.activate()
+        // The Action button, a control or a shortcut (TalkToHermesIntent).
+        WatchCallRequests.handler = { WatchVoiceCall.shared.requestCall(source: $0) }
     }
 
     var body: some Scene {
@@ -30,6 +32,10 @@ struct ConduitWatchApp: App {
             WatchRootView()
                 .environmentObject(call)
                 .environmentObject(link)
+                .onOpenURL { url in
+                    // The watch face complication.
+                    if WatchCallURL.isTalk(url) { call.requestCall(source: "complication") }
+                }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             call.scenePhaseChanged(phase)

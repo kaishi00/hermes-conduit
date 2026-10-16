@@ -88,6 +88,9 @@ targets:
     deploymentTarget: "10.0"
     sources:
       - path: ConduitWatch
+        # The widget extension's own code (ConduitWatchWidgets).
+        excludes:
+          - "Widgets/**"
       - path: Shared/WatchVoice
       # The iPhone's own Gemini Live code: the Watch runs the same session
       # (designs/apple-watch-voice-direct.md).
@@ -115,6 +118,37 @@ targets:
         # capability to the App ID. Production, as the iPhone's: the relay
         # sends only to production APNs.
         CODE_SIGN_ENTITLEMENTS: ConduitWatch/ConduitWatch.entitlements
+    dependencies:
+      # Embedded as ConduitWatch.app/PlugIns/ConduitWatchWidgets.appex.
+      - target: ConduitWatchWidgets
+  # The Watch's complication and its control for the Action button,
+  # Control Center and the Smart Stack: both start a call
+  # (ConduitWatch/TalkToHermesIntent.swift). watchOS 26, where Watch apps
+  # first get controls. Signed automatically, as the Watch app.
+  ConduitWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: ConduitWatch/Widgets
+        excludes:
+          - "Info.plist"
+      # The control's intent runs in the app, so both build it.
+      - path: ConduitWatch/TalkToHermesIntent.swift
+      - path: ConduitWatch/Localizable.xcstrings
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp.widgets
+        PRODUCT_NAME: ConduitWatchWidgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ConduitWatch/Widgets/Info.plist
+        TARGETED_DEVICE_FAMILY: "4"
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+        PROVISIONING_PROFILE_SPECIFIER: ""
   ConduitNotificationService:
     # Decrypts end-to-end encrypted notifications before iOS shows them
     # (#431). APNs still targets com.milim.relay; this App ID has no Push
