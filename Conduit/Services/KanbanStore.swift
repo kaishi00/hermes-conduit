@@ -191,7 +191,7 @@ final class KanbanStore: ObservableObject {
         let generation = loadGeneration
         guard let service else {
             if board == nil {
-                errorMessage = AppLocalization.string("Connect to a Hermes dashboard to use Kanban.")
+                setIfChanged(\.errorMessage, AppLocalization.string("Connect to a Hermes dashboard to use Kanban."))
             }
             return
         }
@@ -200,7 +200,6 @@ final class KanbanStore: ObservableObject {
         // /boards returns and invalid-selection validation runs, so the fetch
         // below always carries an explicit ?board= that matches what we record.
         isLoading = true
-        setIfChanged(\.errorMessage, nil)
         defer {
             if generation == loadGeneration { isLoading = false }
         }
@@ -242,12 +241,17 @@ final class KanbanStore: ObservableObject {
             if let resolvedProfiles { setIfChanged(\.profiles, resolvedProfiles) }
             if let resolvedProjects { setIfChanged(\.projects, resolvedProjects) }
             if let resolvedOrchestration { setIfChanged(\.orchestration, resolvedOrchestration) }
+            // Cleared on success rather than as the load starts: a failure
+            // that persists keeps its banner steady between polls instead of
+            // blinking off and on.
+            setIfChanged(\.errorMessage, nil)
         } catch is CancellationError {
             return
         } catch {
             guard generation == loadGeneration else { return }
             // Keep the last successful board visible during refresh failures.
-            errorMessage = UserFacingError.message(for: error)
+            // A failure that persists reads the same each poll.
+            setIfChanged(\.errorMessage, UserFacingError.message(for: error))
         }
     }
 

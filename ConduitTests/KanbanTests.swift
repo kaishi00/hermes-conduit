@@ -392,6 +392,26 @@ final class KanbanTests: XCTestCase {
         XCTAssertFalse(store.isLoading)
     }
 
+    func testPollFailingTheSameWayAgainOnlyTogglesLoading() async {
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        let store = makeStore(requester: requester)
+        await store.reload()
+        requester.errorsByPath["/api/plugins/kanban/boards"] = MockRequestError.failed("dashboard unreachable")
+        await store.poll()
+        let message = store.errorMessage
+        XCTAssertTrue(message?.contains("dashboard unreachable") == true)
+
+        var changes = 0
+        let subscription = store.objectWillChange.sink { changes += 1 }
+        await store.poll()
+        subscription.cancel()
+
+        // The same failure leaves the message as it is; the board stays.
+        XCTAssertEqual(changes, 2)
+        XCTAssertEqual(store.errorMessage, message)
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+    }
+
     // MARK: - Mutation reconciliation vs passive poll ordering
 
     func testMutationReconciliationSupersedesInFlightPassivePoll() async throws {

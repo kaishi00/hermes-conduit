@@ -77,20 +77,39 @@ enum V2Route: Hashable {
 /// render, and a closure never compares equal, so without this every
 /// AppState publish would redraw every view that reads the context, the
 /// hidden tabs included. Every copy of the closure does the same thing.
+/// Values go in `Values`, whose equality is synthesized, so a new one is
+/// compared without anyone remembering to.
 struct V2ShellContext: Equatable {
+    struct Values: Equatable {
+        var contentFaded = false
+        /// False while this tab sits hidden behind the selected one (the
+        /// capsule bar keeps visited tabs alive), so its polling can stop.
+        var isTabActive = true
+        /// True while a screen is pushed over this tab's root (a chat, a
+        /// project page), so the root's backdrop can hold still under it.
+        var isRootCovered = false
+    }
+
     var pickProfile: (String) -> Void = { _ in }
-    var contentFaded = false
-    /// False while this tab sits hidden behind the selected one (the capsule
-    /// bar keeps visited tabs alive), so its polling can stop.
-    var isTabActive = true
-    /// True while a screen is pushed over this tab's root (a chat, a project
-    /// page), so the root's backdrop can hold still under it.
-    var isRootCovered = false
+    var values = Values()
+
+    var contentFaded: Bool {
+        get { values.contentFaded }
+        set { values.contentFaded = newValue }
+    }
+
+    var isTabActive: Bool {
+        get { values.isTabActive }
+        set { values.isTabActive = newValue }
+    }
+
+    var isRootCovered: Bool {
+        get { values.isRootCovered }
+        set { values.isRootCovered = newValue }
+    }
 
     static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
-        lhs.contentFaded == rhs.contentFaded
-            && lhs.isTabActive == rhs.isTabActive
-            && lhs.isRootCovered == rhs.isRootCovered
+        lhs.values == rhs.values
     }
 }
 
@@ -156,7 +175,7 @@ struct V2Shell: View {
 
     var body: some View {
         tabs
-            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, contentFaded: contentFaded))
+            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, values: .init(contentFaded: contentFaded)))
             .onChange(of: conversationVisible, initial: true) { _, visible in
                 // Covered means streaming rows needn't redraw and the chat
                 // doesn't count as seen (AppState.showSidebar).
