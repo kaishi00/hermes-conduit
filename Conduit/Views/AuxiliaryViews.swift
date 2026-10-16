@@ -519,6 +519,14 @@ struct SettingsView: View {
             transaction.disablesAnimations = true
             withTransaction(transaction) { path = [SettingsDestination(page)] }
         }
+        // V2's tab keeps this view (and its profile bar) across snapshots:
+        // a new one, from a profile switch or a settings link, starts the
+        // stack over, at the link's page if it has one.
+        .onChange(of: snapshot.id) { _, _ in
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { path = snapshot.opensAt.map { [SettingsDestination($0)] } ?? [] }
+        }
     }
 
     private func wakeSettings(profile: String) -> WakePhraseSettingsModel? {
@@ -844,6 +852,7 @@ private struct SettingsHome: View {
     /// V2's grouping: the selected profile first, then Voice, Hermes, App.
     var v2Layout = false
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
     @State private var showProfileManager = false
     /// Round 5: the Settings entry into the existing Connection Setup
     /// assistant, seeded from the current configuration.
@@ -938,6 +947,11 @@ private struct SettingsHome: View {
                 .padding(.top, v2Layout ? 8 : 16)
                 .padding(.bottom, v2Layout ? 24 : 16)
             }
+            // A profile switch from the bar above fades the list out and
+            // back in with the new profile's settings, from the top, as the
+            // other tabs do; the bar stays put.
+            .id(snapshot.id)
+            .opacity(shell.contentFaded ? 0 : 1)
         }
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()

@@ -714,15 +714,15 @@ final class ChatTypographyTests: XCTestCase {
     func testSettledThinkingGateReOpensOnChatSizeChange() {
         let message = assistantMessage()
         let baseline = SettledThinkingCardContent(
-            message: message, displayName: "Hermes", avatarURL: nil,
+            message: message,
             sizeCategory: .large, chatTextSize: .default
         )
         XCTAssertEqual(baseline, SettledThinkingCardContent(
-            message: message, displayName: "Hermes", avatarURL: nil,
+            message: message,
             sizeCategory: .large, chatTextSize: .default
         ))
         XCTAssertNotEqual(baseline, SettledThinkingCardContent(
-            message: message, displayName: "Hermes", avatarURL: nil,
+            message: message,
             sizeCategory: .large, chatTextSize: .largest
         ))
     }
