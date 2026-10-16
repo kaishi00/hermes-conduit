@@ -17,6 +17,32 @@ import Foundation
 import WebKit
 
 extension DashboardTicketBridge {
+    /// A request whose JSON body is already encoded (a file upload's),
+    /// always through URLSession: the page's path would copy the whole body
+    /// into a script literal on the main actor and again inside WebKit.
+    func requestEncodedJSON(
+        path: String,
+        method: String = "POST",
+        encodedBody: Data,
+        timeoutMilliseconds: Int = 12_000
+    ) async throws -> [String: Any] {
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        if let nativeOAuthSession {
+            return try await nativeOAuthSession.requestJSON(
+                path: path,
+                method: method,
+                encodedBody: encodedBody,
+                timeoutMilliseconds: timeoutMilliseconds
+            )
+        }
+        return try await requestJSONWithoutPage(
+            path: path,
+            method: method,
+            encodedBody: encodedBody,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
+    }
+
     /// The request the page's `fetch` would send, without the page: same
     /// path (resolved against the page's origin), method, JSON body and
     /// proxy headers, with the dashboard's cookies attached. Same error
@@ -26,6 +52,7 @@ extension DashboardTicketBridge {
         path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
+        encodedBody: Data? = nil,
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
@@ -52,7 +79,10 @@ extension DashboardTicketBridge {
             let port = url.port.map { ":\($0)" } ?? ""
             request.setValue("\(scheme)://\(host)\(port)", forHTTPHeaderField: "Origin")
         }
-        if let body {
+        if let encodedBody {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = encodedBody
+        } else if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }

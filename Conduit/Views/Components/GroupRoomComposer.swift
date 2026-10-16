@@ -540,6 +540,7 @@ struct GroupRoomComposer: View {
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
         let limit = attachmentLimitMegabytes
+        let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
             for (index, item) in items.enumerated() {
@@ -547,7 +548,7 @@ struct GroupRoomComposer: View {
                     await ComposerBar.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit)
+            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
         }
     }
 
@@ -562,6 +563,7 @@ struct GroupRoomComposer: View {
             return
         }
         let limit = attachmentLimitMegabytes
+        let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
             for url in urls {
@@ -569,23 +571,32 @@ struct GroupRoomComposer: View {
                     ComposerBar.stageDocument(at: url, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit)
+            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
         }
     }
 
     private func importCapturedPhoto(_ image: UIImage) {
         let limit = attachmentLimitMegabytes
+        let roomID = surface?.room.roomID
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 ComposerBar.stageCapturedPhoto(image, limitMegabytes: limit)
             }.value
-            finishImport([outcome], limitMegabytes: limit)
+            finishImport([outcome], limitMegabytes: limit, roomID: roomID)
         }
     }
 
     /// One cue per selection: the error and its message when anything was
     /// left out, otherwise a light tap.
-    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], limitMegabytes: Int) {
+    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], limitMegabytes: Int, roomID: String?) {
+        // Left the room while the files were staged: this composer is gone,
+        // so their local copies are dropped.
+        guard appState.activeRoomSurface?.room.roomID == roomID else {
+            for case .staged(let attachment) in outcomes {
+                ComposerBar.discardStagedFile(attachment)
+            }
+            return
+        }
         var oversized: [String] = []
         var failed: [String] = []
         for outcome in outcomes {

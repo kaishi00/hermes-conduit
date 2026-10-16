@@ -77,8 +77,9 @@ extension GroupChatModelsTests {
         var sent: [[String: Any]] = []
         let client = GroupRoomFilesClient(request: { path, body in
             XCTAssertEqual(path, GroupRoomFilesClient.path)
-            sent.append(body)
-            return ["ok": true, "path": "/h/room-files/\(body["name"] as? String ?? "")"]
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            sent.append(json)
+            return ["ok": true, "path": "/h/room-files/\(json["name"] as? String ?? "")"]
         })
         let references = try await client.upload(files)
         XCTAssertEqual(references, ["@file:/h/room-files/a.txt", "@file:/h/room-files/b.txt"])

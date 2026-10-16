@@ -11,7 +11,8 @@ final class GroupRoomFilesClient {
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let timeoutMilliseconds = 180_000
 
-    typealias Request = @MainActor (_ path: String, _ body: [String: Any]) async throws -> [String: Any]
+    /// Sends one upload's JSON body, already encoded.
+    typealias Request = @MainActor (_ path: String, _ body: Data) async throws -> [String: Any]
 
     enum Failure: LocalizedError, Equatable {
         case unreadable(String)
@@ -41,11 +42,13 @@ final class GroupRoomFilesClient {
             // A composer that went away stops before the next file.
             try Task.checkCancellation()
             // Reading and encoding a large file stays off the main actor.
-            let base64 = await Task.detached(priority: .userInitiated) {
-                await AttachmentHelper.toBase64(attachment)
+            let body = await Task.detached(priority: .userInitiated) { () -> Data? in
+                let base64 = await AttachmentHelper.toBase64(attachment)
+                guard !base64.isEmpty else { return nil }
+                return try? JSONSerialization.data(withJSONObject: ["name": attachment.name, "data_base64": base64])
             }.value
-            guard !base64.isEmpty else { throw Failure.unreadable(attachment.name) }
-            let response = try await request(Self.path, ["name": attachment.name, "data_base64": base64])
+            guard let body else { throw Failure.unreadable(attachment.name) }
+            let response = try await request(Self.path, body)
             references.append(try Self.reference(from: response))
         }
         return references
@@ -76,10 +79,9 @@ extension AppState {
         guard !attachments.isEmpty else { return text }
         let client = GroupRoomFilesClient(request: { [weak self] path, body in
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-            return try await bridge.requestJSON(
+            return try await bridge.requestEncodedJSON(
                 path: path,
-                method: "POST",
-                body: body,
+                encodedBody: body,
                 timeoutMilliseconds: GroupRoomFilesClient.timeoutMilliseconds
             )
         })
