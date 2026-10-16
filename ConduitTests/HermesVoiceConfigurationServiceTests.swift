@@ -53,6 +53,19 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.capability.unavailableReason, "The selected text-to-speech provider is not ready for this profile.")
     }
 
+    /// The Private voice row only treats the OpenAI voice as private when its
+    /// Base URL points somewhere other than OpenAI's own API.
+    func testOwnVoiceServerExcludesOpenAIHost() {
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer(""))
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("   "))
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("https://api.openai.com/v1"))
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("api.openai.com/v1"))
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("https://API.OpenAI.com./v1"))
+        XCTAssertTrue(VoiceSettingsView.isOwnVoiceServer("http://192.168.1.20:4123/v1"))
+        XCTAssertTrue(VoiceSettingsView.isOwnVoiceServer("chatterbox.local:4123"))
+        XCTAssertTrue(VoiceSettingsView.isOwnVoiceServer("https://openai.example.com/v1"))
+    }
+
     /// Toolset readiness metadata is picker/diagnostic surface only: when
     /// /api/tools/toolsets/stt/config is unavailable but the profile config
     /// loads, Hermes transcription stays attemptable and the unavailable
