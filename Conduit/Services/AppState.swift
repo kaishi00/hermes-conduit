@@ -706,6 +706,9 @@ final class AppState: ObservableObject {
     @Published private(set) var projectsLoadFailed = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
+    /// A pin change that stayed on this phone because Hermes didn't take
+    /// it, shown for a moment with Hermes' reason (#555).
+    @Published private(set) var pinSyncNotice: PinSyncNotice?
     /// What the user has and hasn't seen, per conversation (#454).
     @Published private(set) var chatReadState = ChatReadState()
     /// The latest `session.active_list` snapshot and the profile it belongs
@@ -4146,12 +4149,14 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Hermes refused to pin this chat for this sign-in, so its pin stays
-    /// on the phone instead of flipping back. A listing that landed while
-    /// a slow refusal was in flight may already have flipped it; the
-    /// refused write's value is put back.
-    private func keepPinOnPhone(_ pinID: String, profile: String, generation: UInt64, pinned: Bool) {
-        guard sessionPinSync.keepOnPhone(pinID: pinID, profile: profile, generation: generation) else { return }
+    /// Hermes didn't take this chat's pin change, so the pin stays as set,
+    /// on the phone, instead of flipping back. A listing that landed while
+    /// a slow failure was in flight may already have flipped it; the
+    /// failed write's value is put back. Returns false when a newer write
+    /// replaced this one, which then decides.
+    @discardableResult
+    private func keepPinOnPhone(_ pinID: String, profile: String, generation: UInt64, pinned: Bool) -> Bool {
+        guard sessionPinSync.keepOnPhone(pinID: pinID, profile: profile, generation: generation) else { return false }
         persistHostPinSyncState()
         let pins = pinnedSessionIDsByProfile[profile] ?? []
         if pinned, !pins.contains(pinID) {
@@ -4161,6 +4166,19 @@ final class AppState: ObservableObject {
             storePins(pins.filter { $0 != pinID }, profile: profile)
             publishWidgetSnapshot()
         }
+        return true
+    }
+
+    /// Says for a moment that a pin change stayed on this phone, and why.
+    private func showPinSyncNotice(for error: Error, pinned: Bool) {
+        let notice = PinSyncNotice(error: error, pinned: pinned)
+        pinSyncNotice = notice
+        UIAccessibility.post(notification: .announcement, argument: notice.message)
+    }
+
+    func dismissPinSyncNotice(_ id: UUID) {
+        guard pinSyncNotice?.id == id else { return }
+        pinSyncNotice = nil
     }
 
     /// The phone's pins are gone, so no host owns them any more: the next
@@ -6004,9 +6022,9 @@ final class AppState: ObservableObject {
         guard let bridge = dashboardTicketBridge,
               sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
         if sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) {
-            // Hermes refuses this chat: an unpin stays on the phone, with the
-            // mark keeping listings off it. A pin asks Hermes again; a second
-            // refusal marks it again.
+            // Hermes didn't take this chat's pin before: an unpin stays on
+            // the phone, with the mark keeping listings off it. A pin asks
+            // Hermes again; another failure marks it again.
             guard pinned else { return }
             sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
             persistHostPinSyncState()
@@ -6016,22 +6034,17 @@ final class AppState: ObservableObject {
             guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
             do {
                 try await self.sendHostPin(session.id, pinned: pinned, profile: profile, using: bridge)
-            } catch let error where SessionMutationIdentity.isRefusal(error) {
-                // Hermes won't let this sign-in change the chat (old local
-                // history), which no retry fixes: the pin stays as set, on
-                // the phone only.
-                sessionCatalogLog.notice("Pin kept on phone: \(String(describing: error), privacy: .public)")
-                guard self.sessionPinSync.host == bridge.baseURL else { return }
-                self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned)
             } catch {
-                // The pin flips back rather than claim a change Hermes
-                // didn't take.
-                sessionCatalogLog.notice("Pin write failed: \(String(describing: error), privacy: .public)")
+                // Hermes refused the chat (old local history only the
+                // computer running it may change) or the write failed. The
+                // pin stays as the person set it, on the phone only, rather
+                // than flip back; the notice says why. Pinning it again asks
+                // Hermes again.
+                sessionCatalogLog.notice("Pin kept on phone: \(String(describing: error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL,
-                      self.sessionPinSync.discardWrite(pinID: pinID, profile: profile, generation: generation),
-                      profile == self.activeProfile,
-                      self.isSessionPinned(session) == pinned else { return }
-                self.setLocalPin(session, pinned: !pinned, profile: profile)
+                      self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned),
+                      profile == self.activeProfile else { return }
+                self.showPinSyncNotice(for: error, pinned: pinned)
             }
         }
     }

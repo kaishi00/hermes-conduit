@@ -69,6 +69,7 @@ struct V2ProjectPage: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 1)
+            .modifier(V2SoftTopScrollEdge(isOn: true))
             .refreshable { await reload() }
         }
         .navigationTitle(project.title)

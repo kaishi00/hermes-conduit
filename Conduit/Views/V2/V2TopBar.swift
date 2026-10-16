@@ -13,6 +13,7 @@ struct V2TopBar<Trailing: View>: View {
     @EnvironmentObject private var appState: AppState
     @State private var showProfileManager = false
     private let trailing: Trailing
+    private var drawsScrollEdge = true
 
     init(@ViewBuilder trailing: () -> Trailing) {
         self.trailing = trailing()
@@ -27,7 +28,9 @@ struct V2TopBar<Trailing: View>: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(minHeight: 52)
-        .background { V2ScrollEdgeBackground() }
+        .background {
+            if drawsScrollEdge { V2ScrollEdgeBackground() }
+        }
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()
@@ -41,6 +44,16 @@ struct V2TopBar<Trailing: View>: View {
 extension V2TopBar where Trailing == EmptyView {
     init() {
         self.init { EmptyView() }
+    }
+}
+
+extension V2TopBar {
+    /// For a header that stacks more controls under the bar and draws one
+    /// soft edge behind all of them (Tasks).
+    func withoutScrollEdge() -> Self {
+        var bar = self
+        bar.drawsScrollEdge = false
+        return bar
     }
 }
 

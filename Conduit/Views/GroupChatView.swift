@@ -905,50 +905,17 @@ struct DesktopGroupRosterRow: View {
             Haptics.light()
             onOpen()
         } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color.conduitAccent.opacity(0.16))
-                    Image(systemName: "person.3")
-                        .font(.caption)
-                        .foregroundStyle(.conduitAccent)
-                }
-                .frame(width: 36, height: 36)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(group.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(subtitleText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "desktopcomputer")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Color.primary.opacity(0.045),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RosterGlyphRow(
+                symbol: "person.3",
+                title: group.name,
+                subtitle: subtitleText,
+                trailingSymbol: "desktopcomputer"
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            }
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .rosterListRow()
         .accessibilityLabel(Text(group.name))
+        .accessibilityValue(Text(subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
     }
 

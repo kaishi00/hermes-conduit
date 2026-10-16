@@ -3,15 +3,17 @@
 //  Conduit
 //
 //  Chats: the dense session list (Pinned, Recent, child sessions under
-//  their parent) and, behind the folder toggle, Projects. The filter is a
-//  native pull-down menu; an active filter shows as a gold chip in the
-//  search field. Rows keep the old drawer's swipes and context menu.
+//  their parent) and, behind the folder toggle, Projects. The filters are
+//  a native pull-down menu and combine (Unread and Chat lists unread
+//  chats); the active ones show as a gold chip in the search field. Rows
+//  keep the old drawer's swipes and context menu.
 //
 
 import SwiftUI
 
-/// The Chats filter menu. Status filters flatten the list to matching rows;
-/// Voice and Scheduled keep it nested, like the old source filters.
+/// One filter in the Chats menu. Status filters flatten the list to matching
+/// rows; Voice, Scheduled and the other sources keep it nested, like the old
+/// source filters.
 enum V2SessionFilter: Equatable, Hashable {
     case all
     case unread
@@ -79,8 +81,26 @@ enum V2SessionFilter: Equatable, Hashable {
     /// Needs approval and Running come from the gateway's live registry.
     var isLive: Bool { self == .needsApproval || self == .running }
 
-    /// A lookup, not a browse: the list flattens to the matching rows.
-    var flattens: Bool { self == .unread || isLive }
+    /// Unread, Needs approval and Running: what state a row is in, rather
+    /// than where it came from.
+    var isStatus: Bool { self == .unread || isLive }
+
+    /// The source a source filter lists (Scheduled lists cron runs).
+    var sessionSource: SessionSource? {
+        switch self {
+        case .voice: return .voice
+        case .scheduled: return .cron
+        case .source(let source): return source
+        case .all, .unread, .needsApproval, .running: return nil
+        }
+    }
+
+    /// Menu order: the fixed filters first, then other sources by name.
+    fileprivate var menuRank: (Int, String) {
+        if let index = Self.menuCases.firstIndex(of: self) { return (index, "") }
+        if case .source(let source) = self { return (Self.menuCases.count, source.rawValue) }
+        return (Self.menuCases.count + 1, rawValue)
+    }
 
     var emptyTitle: String {
         switch self {
@@ -98,6 +118,129 @@ enum V2SessionFilter: Equatable, Hashable {
         case .running: return SessionStatusFilter.working.emptyDescription
         default: return AppLocalization.string("Sessions will appear here once created.")
         }
+    }
+}
+
+/// The Chats filters, any number at once. A row is listed when it has one of
+/// the chosen statuses and comes from one of the chosen sources; a group with
+/// nothing chosen doesn't narrow. Saved comma-separated under the single
+/// filter's old key, so a filter saved by an earlier build reads as itself
+/// and "all" as none.
+struct V2FilterSelection: Equatable {
+    private(set) var filters: Set<V2SessionFilter>
+
+    static let empty = V2FilterSelection(filters: [])
+
+    init(filters: Set<V2SessionFilter>) {
+        self.filters = filters.subtracting([.all])
+    }
+
+    init(rawValue: String) {
+        self.init(filters: Set(rawValue.split(separator: ",").map {
+            V2SessionFilter(rawValue: $0.trimmingCharacters(in: .whitespaces))
+        }))
+    }
+
+    var rawValue: String {
+        isEmpty ? V2SessionFilter.all.rawValue : ordered.map(\.rawValue).joined(separator: ",")
+    }
+
+    var isEmpty: Bool { filters.isEmpty }
+
+    /// In menu order.
+    var ordered: [V2SessionFilter] {
+        filters.sorted { $0.menuRank < $1.menuRank }
+    }
+
+    var statuses: [V2SessionFilter] { ordered.filter(\.isStatus) }
+    var sources: [V2SessionFilter] { ordered.filter { !$0.isStatus } }
+
+    /// A status is a lookup, not a browse: the list flattens to the matching
+    /// rows.
+    var flattens: Bool { !statuses.isEmpty }
+
+    /// All counts as chosen when nothing else is.
+    func contains(_ filter: V2SessionFilter) -> Bool {
+        filter == .all ? isEmpty : filters.contains(filter)
+    }
+
+    /// Turns one filter on or off; turning All on clears the rest.
+    func setting(_ filter: V2SessionFilter, on: Bool) -> V2FilterSelection {
+        guard filter != .all else { return on ? .empty : self }
+        var changed = filters
+        if on { changed.insert(filter) } else { changed.remove(filter) }
+        return V2FilterSelection(filters: changed)
+    }
+
+    /// While the gateway can't report live status, Needs approval and
+    /// Running sit out rather than empty the list.
+    var withoutLive: V2FilterSelection {
+        V2FilterSelection(filters: filters.filter { !$0.isLive })
+    }
+
+    /// What the menu counts beside `filter`: the other group's choices with
+    /// `filter` alone in its own group, so with Unread on, Chat counts the
+    /// unread chats.
+    func facet(_ filter: V2SessionFilter) -> V2FilterSelection {
+        guard filter != .all else { return .empty }
+        let otherGroup = filter.isStatus ? sources : statuses
+        return V2FilterSelection(filters: Set(otherGroup + [filter]))
+    }
+
+    /// The filter whose empty-list wording fits the selection.
+    var emptyStateFilter: V2SessionFilter {
+        statuses.first ?? sources.first ?? .all
+    }
+
+    /// The rows the selection lists. `everything` is what a status looks
+    /// through when no source is chosen. Chosen sources keep the listing's
+    /// order, with cron runs (Scheduled) woven in by recency.
+    func rows(
+        everything: @autoclosure () -> [SessionSummary],
+        sessions: [SessionSummary],
+        cronSessions: [SessionSummary],
+        category: (SessionSummary) -> SessionSource,
+        hasStatus: (V2SessionFilter, SessionSummary) -> Bool
+    ) -> [SessionSummary] {
+        let kinds = Set(sources.compactMap(\.sessionSource))
+        let listed: [SessionSummary]
+        if kinds.isEmpty {
+            listed = everything()
+        } else {
+            // Cron runs come only from their own list, as under Scheduled.
+            let chats = sessions.filter { session in
+                guard !session.isArchived else { return false }
+                let source = category(session)
+                return source != .cron && kinds.contains(source)
+            }
+            listed = kinds.contains(.cron)
+                ? Self.mergedByRecency(chats, cronSessions.filter { !$0.isArchived })
+                : chats
+        }
+        let wanted = statuses
+        guard !wanted.isEmpty else { return listed }
+        return listed.filter { session in wanted.contains { hasStatus($0, session) } }
+    }
+
+    /// Two lists, each newest first, merged so each keeps its own order. A
+    /// row without a time goes after the other list's timed rows.
+    static func mergedByRecency(_ first: [SessionSummary], _ second: [SessionSummary]) -> [SessionSummary] {
+        var merged: [SessionSummary] = []
+        merged.reserveCapacity(first.count + second.count)
+        var i = first.startIndex
+        var j = second.startIndex
+        while i < first.endIndex, j < second.endIndex {
+            if (second[j].lastActivityAt ?? -.infinity) > (first[i].lastActivityAt ?? -.infinity) {
+                merged.append(second[j])
+                j += 1
+            } else {
+                merged.append(first[i])
+                i += 1
+            }
+        }
+        merged.append(contentsOf: first[i...])
+        merged.append(contentsOf: second[j...])
+        return merged
     }
 }
 
@@ -124,12 +267,19 @@ struct V2ChatsView: View {
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
-    /// A live filter saved while the gateway can't report live status reads
-    /// as All, so the list doesn't empty out behind a filter nobody can see.
-    private var filter: V2SessionFilter {
-        let saved = V2SessionFilter(rawValue: filterRaw)
-        if saved.isLive && !appState.liveSessionStatusAvailable { return .all }
-        return saved
+    private var savedSelection: V2FilterSelection {
+        V2FilterSelection(rawValue: filterRaw)
+    }
+
+    /// A live filter saved while the gateway can't report live status sits
+    /// out, so the list doesn't empty out behind a filter nobody can see.
+    private var selection: V2FilterSelection {
+        appState.liveSessionStatusAvailable ? savedSelection : savedSelection.withoutLive
+    }
+
+    private func select(_ newSelection: V2FilterSelection) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filterRaw = newSelection.rawValue }
     }
 
     var body: some View {
@@ -272,30 +422,19 @@ struct V2ChatsView: View {
                 }
                 .disabled(!appState.supportsProjects)
             } else {
-                Picker(selection: Binding(
-                    get: { filter.rawValue },
-                    set: { raw in
-                        Haptics.selection()
-                        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filterRaw = raw }
+                filterToggle(.all)
+
+                Section(AppLocalization.string("Status")) {
+                    ForEach(statusFilters, id: \.self) { option in
+                        filterToggle(option)
                     }
-                )) {
-                    ForEach(visibleFilters, id: \.self) { option in
-                        Label("\(option.title) \(String(filterRows(option).count))", systemImage: option.symbol)
-                            .tag(option.rawValue)
-                    }
-                    if !otherSources.isEmpty {
-                        Section(AppLocalization.string("Sources")) {
-                            ForEach(otherSources, id: \.self) { source in
-                                let option = V2SessionFilter.source(source)
-                                Label("\(option.title) \(String(filterRows(option).count))", systemImage: option.symbol)
-                                    .tag(option.rawValue)
-                            }
-                        }
-                    }
-                } label: {
-                    Text("Filter")
                 }
-                .pickerStyle(.inline)
+
+                Section(AppLocalization.string("Sources")) {
+                    ForEach(sourceFilters, id: \.self) { option in
+                        filterToggle(option)
+                    }
+                }
 
                 Section {
                     Button {
@@ -315,7 +454,7 @@ struct V2ChatsView: View {
             }
         } label: {
             V2CapsuleIcon(
-                systemImage: filter == .all
+                systemImage: selection.isEmpty
                     ? "line.3.horizontal.decrease"
                     : "line.3.horizontal.decrease.circle.fill",
                 dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
@@ -325,18 +464,50 @@ struct V2ChatsView: View {
         .accessibilityLabel(AppLocalization.string("Filter"))
         .accessibilityValue(waitingApprovalCount > 0
             ? AppLocalization.string("\(waitingApprovalCount) waiting for approval")
-            : filter.title)
+            : spokenSelection)
     }
 
-    private var visibleFilters: [V2SessionFilter] {
-        V2SessionFilter.menuCases.filter { !$0.isLive || appState.liveSessionStatusAvailable }
+    /// One filter as a checkable menu item, with the rows it would list
+    /// beside what's already chosen. Filters combine, so the menu stays open
+    /// while picking; All, which clears them, closes it.
+    private func filterToggle(_ option: V2SessionFilter) -> some View {
+        Toggle(isOn: Binding(
+            get: { selection.contains(option) },
+            set: { on in
+                // All can't be turned off; pick another filter instead.
+                guard on || option != .all else { return }
+                select(savedSelection.setting(option, on: on))
+            }
+        )) {
+            Label("\(option.title) \(String(filterRows(selection.facet(option)).count))", systemImage: option.symbol)
+        }
+        .menuActionDismissBehavior(option == .all ? .automatic : .disabled)
     }
 
-    /// Sources beyond Voice and Scheduled that have rows, in the user's order.
-    private var otherSources: [SessionSource] {
-        appState.sessionFilterOrder.filter { source in
+    private var statusFilters: [V2SessionFilter] {
+        V2SessionFilter.menuCases.filter { $0.isStatus && (!$0.isLive || appState.liveSessionStatusAvailable) }
+    }
+
+    /// Voice and Scheduled, then the other sources that have rows, in the
+    /// user's order.
+    private var sourceFilters: [V2SessionFilter] {
+        let fixed: [V2SessionFilter] = [.voice, .scheduled]
+        let others = appState.sessionFilterOrder.filter { source in
             source != .voice && source != .cron && !sourceRows(source).isEmpty
         }
+        return fixed + others.map { V2SessionFilter.source($0) }
+    }
+
+    /// The chosen filters' names, or All.
+    private func selectionTitles(separator: String) -> String {
+        selection.isEmpty
+            ? V2SessionFilter.all.title
+            : selection.ordered.map(\.title).joined(separator: separator)
+    }
+
+    /// The chosen filters' names as VoiceOver reads them.
+    private var spokenSelection: String {
+        selectionTitles(separator: ", ")
     }
 
     // MARK: - Rows
@@ -353,15 +524,23 @@ struct V2ChatsView: View {
         )
     }
 
-    private func filterRows(_ filter: V2SessionFilter) -> [SessionSummary] {
+    private func filterRows(_ selection: V2FilterSelection) -> [SessionSummary] {
+        guard !selection.isEmpty else { return mainListRows(sourceRows(nil)) }
+        return selection.rows(
+            everything: sourceRows(nil),
+            sessions: appState.activeProfileSessions,
+            cronSessions: appState.activeProfileCronSessions,
+            category: appState.sessionCategory,
+            hasStatus: hasStatus
+        )
+    }
+
+    private func hasStatus(_ filter: V2SessionFilter, _ session: SessionSummary) -> Bool {
         switch filter {
-        case .all: return mainListRows(sourceRows(nil))
-        case .unread: return sourceRows(nil).filter { appState.isSessionUnread($0) }
-        case .needsApproval: return sourceRows(nil).filter { appState.sessionLiveStatus($0) == .needsInput }
-        case .running: return sourceRows(nil).filter { appState.sessionLiveStatus($0) == .working }
-        case .voice: return sourceRows(.voice)
-        case .scheduled: return sourceRows(.cron)
-        case .source(let source): return sourceRows(source)
+        case .unread: return appState.isSessionUnread(session)
+        case .needsApproval: return appState.sessionLiveStatus(session) == .needsInput
+        case .running: return appState.sessionLiveStatus(session) == .working
+        case .all, .voice, .scheduled, .source: return false
         }
     }
 
@@ -375,7 +554,7 @@ struct V2ChatsView: View {
     }
 
     private var displayedSessions: [SessionSummary] {
-        let rows = filterRows(filter)
+        let rows = filterRows(selection)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return rows }
         return rows.filter { sessionMatches($0, query: query) }
@@ -394,7 +573,7 @@ struct V2ChatsView: View {
         SessionNesting.sections(
             displayedSessions,
             query: searchText,
-            statusFilterActive: filter.flattens,
+            statusFilterActive: selection.flattens,
             isPinned: appState.isSessionPinned,
             parentKeyOf: appState.sessionNestingParentKey
         )
@@ -420,22 +599,29 @@ struct V2ChatsView: View {
                     ForEach(offline.snapshot.sessions) { session in
                         offlineSessionRow(session, presentation: offline)
                     }
-                } header: {
-                    sectionHeader(AppLocalization.string("Saved on this device"))
-                } footer: {
+                    // A row, not a footer: a plain List paints footers as an
+                    // opaque band across the backdrop.
                     Text("Read-only copies from your last connection.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .padding(.leading, 32)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
+                } header: {
+                    sectionHeader(AppLocalization.string("Saved on this device"))
                 }
             }
 
             if layout.emptyState {
                 ContentUnavailableView(
-                    filter.emptyTitle,
+                    selection.emptyStateFilter.emptyTitle,
                     systemImage: "tray",
                     description: Text(isSearching
                         ? AppLocalization.string("Try a different search.")
-                        : filter.emptyDescription)
+                        : selection.emptyStateFilter.emptyDescription)
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -494,21 +680,20 @@ struct V2ChatsView: View {
         return AppLocalization.string("Search \(name)")
     }
 
-    /// The 40 pt glass search capsule, with the active filter as a removable
-    /// gold chip inside it.
+    /// The 40 pt glass search capsule, with the active filters as one
+    /// removable gold chip inside it ("Unread · Chat").
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            if filter != .all {
+            if !selection.isEmpty {
                 Button {
-                    Haptics.selection()
-                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filterRaw = "all" }
+                    select(.empty)
                 } label: {
                     HStack(spacing: 4) {
-                        Text(filter.title)
+                        Text(selectionTitles(separator: " · "))
                             .font(.footnote.weight(.semibold))
                             .lineLimit(1)
                         Image(systemName: "xmark")
@@ -520,7 +705,7 @@ struct V2ChatsView: View {
                     .background(Color.conduitAccent, in: Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(AppLocalization.string("Remove filter \(filter.title)"))
+                .accessibilityLabel(AppLocalization.string("Remove filter \(spokenSelection)"))
                 .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
             }
             TextField(searchPrompt, text: $searchText)
@@ -544,7 +729,7 @@ struct V2ChatsView: View {
         .padding(.trailing, 6)
         .frame(minHeight: 40)
         .conduitGlassSurface(cornerRadius: 20)
-        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: filter)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selection)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
     }
 

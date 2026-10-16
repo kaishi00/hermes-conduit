@@ -3290,9 +3290,9 @@ private struct ConduitBreathingTimeline<Content: View>: View {
     }
 }
 
-/// V2 (iOS 26): the transcript fades out under the header instead of the
-/// navigation bar's edge ending it at a line.
-private struct V2SoftTopScrollEdge: ViewModifier {
+/// V2 (iOS 26): the transcript (or a pushed page's list) fades out under the
+/// header instead of the navigation bar's edge ending it at a line.
+struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
 
     @ViewBuilder

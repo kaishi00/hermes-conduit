@@ -428,4 +428,15 @@ extension ChatReadStateTests {
         XCTAssertTrue(sync.keepOnPhone(pinID: "old", profile: "default", generation: write))
         XCTAssertTrue(sync.isPhoneOnly(pinID: "old", profile: "default"))
     }
+
+    func testPinKeptOnThePhoneSaysWhatHermesSaid() {
+        let conflict = "admission_conflict"
+        let pinned = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 409, detail: conflict), pinned: true)
+        XCTAssertEqual(pinned.message, AppLocalization.string("Pinned on this iPhone only. \(conflict)"))
+        let refusal = DashboardTicketBridgeError.describe(status: 403, detail: "permission_denied")
+        let unpinned = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 403, detail: "permission_denied"), pinned: false)
+        XCTAssertEqual(unpinned.message, AppLocalization.string("Unpinned on this iPhone only. \(refusal)"))
+        let repeated = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 409, detail: conflict), pinned: true)
+        XCTAssertNotEqual(pinned, repeated, "A repeat failure shows again")
+    }
 }

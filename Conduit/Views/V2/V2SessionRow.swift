@@ -131,18 +131,22 @@ struct V2SessionRow: View {
                             if isUnread {
                                 Circle()
                                     .fill(Color.conduitAccent)
-                                    .frame(width: 6, height: 6)
-                                    .offset(x: 3, y: -2)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 4, y: -3)
                             }
                         }
                 } else if isUnread {
                     Circle()
                         .fill(Color.conduitAccent)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 10, height: 10)
                 }
             }
             .frame(width: leadingGlyph ? 20 : 12)
             .frame(minHeight: 21)
+            // A Chats row starts at the screen edge: the dot sits in from it,
+            // and the title lines up with the nest summary and the hairline
+            // at 32 pt. A project page draws its own thread line there.
+            .padding(.leading, leadingGlyph ? 0 : 16)
             .padding(.trailing, leadingGlyph ? 8 : 4)
 
             VStack(alignment: .leading, spacing: 2) {

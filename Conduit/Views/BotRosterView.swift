@@ -176,7 +176,7 @@ struct BotRosterView: View {
                     managementNoticeCard(notice)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
             }
             if case .failed(let message) = appState.botModePhase {
@@ -191,20 +191,23 @@ struct BotRosterView: View {
                     .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
             }
             if !visibleBots.isEmpty && createRequest != nil {
-                // V2's Bots tab: the page title names the list; a footer
-                // says what a bot is.
+                // V2's Bots tab: the page title names the list; a line under
+                // the bots says what a bot is. A row, not a footer: a plain
+                // List paints footers as an opaque band across the backdrop.
                 Section {
                     botRows
-                } footer: {
                     Text("Each bot is its own profile with one ongoing conversation.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 10)
+                        .padding(.bottom, 8)
+                        .rosterListRow(divider: false)
                 }
+                .listSectionSeparator(.hidden)
             } else if !visibleBots.isEmpty {
                 Section(AppLocalization.string("Bots")) {
                     botRows
@@ -254,7 +257,7 @@ struct BotRosterView: View {
                     .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
                 if hostedGroupsAvailable {
                     ForEach(appState.groupRooms) { room in
@@ -276,16 +279,28 @@ struct BotRosterView: View {
                         newGroupCard
                     }
                     .buttonStyle(.plain)
-                    // Same row chrome as the room cards above: a plain List
-                    // otherwise paints its own opaque, sharp-edged slab.
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                    .rosterListRow(divider: false)
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
             } header: {
-                Text(AppLocalization.string("Group Chats"))
+                if createRequest != nil {
+                    // As the Chats list's section headers, in line with the
+                    // pictures.
+                    Text(AppLocalization.string("Group Chats"))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                        .padding(.leading, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityAddTraits(.isHeader)
+                } else {
+                    Text(AppLocalization.string("Group Chats"))
+                }
             }
+            .listSectionSeparator(.hidden)
         }
     }
 
@@ -297,9 +312,7 @@ struct BotRosterView: View {
             createCard(title: AppLocalization.string("New Bot"))
         }
         .buttonStyle(.plain)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .rosterListRow(divider: false)
         .accessibilityLabel(Text(AppLocalization.string("New Bot")))
     }
 
@@ -307,35 +320,10 @@ struct BotRosterView: View {
         createCard(title: AppLocalization.string("New Group Chat"))
     }
 
-    /// A create action as a roster card: the rows' glyph, padding, fill and
-    /// border, with the accent carrying the "new" affordance.
+    /// A create action as a roster row, the accent carrying the "new"
+    /// affordance.
     private func createCard(title: String) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.conduitAccent.opacity(0.16))
-                Image(systemName: "plus")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.conduitAccent)
-            }
-            .frame(width: 36, height: 36)
-            Text(title)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.conduitAccent)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            Color.primary.opacity(0.045),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        }
-        .contentShape(Rectangle())
+        RosterGlyphRow(symbol: "plus", title: title, isAction: true)
     }
 
     @ViewBuilder
@@ -428,60 +416,13 @@ struct GroupRosterRow: View {
             appState.dismissSidebarDrawer()
             Task { await appState.openGroupRoom(room) }
         } label: {
-            rowCard
+            RosterGlyphRow(symbol: "person.3", title: room.name, subtitle: subtitleText)
         }
         .buttonStyle(.plain)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .rosterListRow()
         .accessibilityLabel(Text(room.name))
+        .accessibilityValue(Text(subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
-    }
-
-    private var rowCard: some View {
-        HStack(spacing: 12) {
-            roomGlyph
-            VStack(alignment: .leading, spacing: 3) {
-                Text(room.name)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(subtitleText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(cardBackground)
-        .overlay(cardBorder)
-        .contentShape(Rectangle())
-    }
-
-    private var roomGlyph: some View {
-        ZStack {
-            Circle()
-                .fill(Color.conduitAccent.opacity(0.16))
-            Image(systemName: "person.3")
-                .font(.caption)
-                .foregroundStyle(.conduitAccent)
-        }
-        .frame(width: 36, height: 36)
-    }
-
-    private var cardBackground: some View {
-        Color.primary.opacity(0.045)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
     }
 
     private var subtitleText: String {
@@ -494,11 +435,8 @@ struct GroupRosterRow: View {
 
 /// One roster row. Tap resolves the canonical Bot Chat and opens it; the
 /// preview/activity text comes from what `profiles.list` already supplies.
-///
-/// Rows carry their own rounded card, the same treatment `SessionRow` and
-/// `CronJobRow` give the sibling sidebar tabs: a plain-styled `List` with the
-/// system row chrome cleared would otherwise render the roster as one
-/// sharp-edged slab that ignores the rounded glass surfaces above it.
+/// A chat-style row with no card, like the group rows under it
+/// (`RosterGlyphRow`).
 private struct BotRosterRow: View {
     let bot: BotProfile
     let canManage: Bool
@@ -550,7 +488,7 @@ private struct BotRosterRow: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-        .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 64) }
+        .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 48) }
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
@@ -665,5 +603,67 @@ private struct BotModeNoticeRow: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// What isn't a bot in the Bots list (group chats, create actions), in the
+/// bots' chat-style row: a round glyph in place of the picture, a title and
+/// a subtitle, no card.
+struct RosterGlyphRow: View {
+    let symbol: String
+    let title: String
+    var subtitle: String? = nil
+    /// A create action: the title in gold.
+    var isAction = false
+    /// A marker after the text (Desktop's computer on its mirrored groups).
+    var trailingSymbol: String? = nil
+    @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 36
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.conduitAccent.opacity(0.16))
+                Image(systemName: symbol)
+                    .font(Font.caption.weight(isAction ? .bold : .regular))
+                    .foregroundStyle(Color.conduitAccent)
+            }
+            .frame(width: glyphSize, height: glyphSize)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(isAction ? Color.conduitAccent : Color.primary)
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            if let trailingSymbol {
+                Image(systemName: trailingSymbol)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+    }
+}
+
+extension View {
+    /// A Bots list row's chrome: no system background or separator, 16 pt
+    /// side insets, and the row's hairline from the text column.
+    func rosterListRow(divider: Bool = true) -> some View {
+        self
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .overlay(alignment: .bottom) {
+                if divider { V2RowDivider(leadingInset: 48) }
+            }
     }
 }

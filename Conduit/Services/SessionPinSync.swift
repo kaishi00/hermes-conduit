@@ -1,5 +1,20 @@
 import Foundation
 
+/// A pin change Hermes didn't take, kept on the phone: what the brief notice
+/// says. Each failure is a new notice, so a repeat shows again.
+struct PinSyncNotice: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+
+    /// Where the change stayed, then what Hermes said.
+    init(error: Error, pinned: Bool) {
+        let reason = UserFacingError.message(for: error)
+        message = pinned
+            ? AppLocalization.string("Pinned on this iPhone only. \(reason)")
+            : AppLocalization.string("Unpinned on this iPhone only. \(reason)")
+    }
+}
+
 /// Pins shared with Hermes (#555).
 ///
 /// Hermes keeps a durable `pinned` flag per conversation (`sessions.pinned`,

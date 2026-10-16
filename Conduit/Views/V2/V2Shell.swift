@@ -219,8 +219,24 @@ struct V2Shell: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
+                // Lists fade out under the bar, as a chat does under its
+                // composer.
+                .background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .top) {
+            // Animated on its own, so the notice slides in without
+            // animating the screen under it.
+            ZStack(alignment: .top) {
+                if let notice = appState.pinSyncNotice {
+                    V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.pinSyncNotice)
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible)
     }
@@ -315,6 +331,44 @@ struct V2Shell: View {
     private func fadeContentBackIn() {
         guard contentFaded else { return }
         withAnimation(ConduitMotion.settle) { contentFaded = false }
+    }
+}
+
+// MARK: - Notice
+
+/// A short notice over the top of the screen: a pin change that stayed on
+/// this iPhone, and what Hermes said. It goes away after a few seconds, or
+/// on a tap.
+private struct V2NoticeBanner: View {
+    let notice: PinSyncNotice
+    let dismiss: () -> Void
+
+    var body: some View {
+        Button(action: dismiss) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "pin.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.conduitAccent)
+                    .accessibilityHidden(true)
+                Text(notice.message)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .conduitGlassControl(cornerRadius: 20, interactive: false)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .task(id: notice.id) {
+            do {
+                try await Task.sleep(for: .seconds(6))
+            } catch {
+                return
+            }
+            dismiss()
+        }
     }
 }
 

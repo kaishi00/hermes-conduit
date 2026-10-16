@@ -36,7 +36,28 @@ struct V2TasksView: View {
     var body: some View {
         ZStack {
             V2Backdrop()
-            VStack(spacing: 10) {
+            ZStack {
+                // Board sits left of Scheduled, as in the control: each
+                // slides in from its own side.
+                switch segment.wrappedValue {
+                case .board:
+                    KanbanView(columnsLayout: true)
+                        .padding(.horizontal, 14)
+                        .transition(pageTransition(from: .leading))
+                case .scheduled:
+                    V2ScheduledList()
+                        .transition(pageTransition(from: .trailing))
+                }
+            }
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: segmentRaw)
+            .opacity(shell.contentFaded ? 0 : 1)
+        }
+        // The control rides in the header, so the pages scroll under one
+        // soft edge, as a chat does under its header, instead of stopping
+        // at a hard line below the control.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 2) {
+                V2TopBar().withoutScrollEdge()
                 V2SegmentedControl(
                     selection: segment,
                     options: [
@@ -45,27 +66,9 @@ struct V2TasksView: View {
                     ]
                 )
                 .padding(.horizontal, 16)
-
-                ZStack {
-                    // Board sits left of Scheduled, as in the control: each
-                    // slides in from its own side.
-                    switch segment.wrappedValue {
-                    case .board:
-                        KanbanView(columnsLayout: true)
-                            .padding(.horizontal, 14)
-                            .transition(pageTransition(from: .leading))
-                    case .scheduled:
-                        V2ScheduledList()
-                            .transition(pageTransition(from: .trailing))
-                    }
-                }
-                .clipped()
-                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: segmentRaw)
-                .opacity(shell.contentFaded ? 0 : 1)
+                .padding(.bottom, 10)
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            V2TopBar()
+            .background { V2ScrollEdgeBackground() }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
