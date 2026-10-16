@@ -648,6 +648,30 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// The lost session was mid-answer during a handoff: its turn never
+    /// completes, so the fresh start closes it and the recap still goes out.
+    func testGeminiLiveFreshSessionMidTurnClosesTheDeadTurnAndSendsTheRecap() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscription("what's the weather"))
+        session.onEvent?(.outputTranscription("Sunny all"))
+
+        session.onFreshSession?(false)
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .listening)
+        current += GeminiLiveConversationController.userQuietInterval + GeminiLiveConversationController.modelQuietInterval + 1
+        controller.flushPendingTextIfIdle()
+        let recap = session.textTurns.last ?? ""
+        XCTAssertTrue(recap.contains("You: Sunny all"), recap)
+
+        // The new session's answer is a line of its own.
+        session.onEvent?(.outputTranscription("Sunny all day."))
+        XCTAssertEqual(controller.transcript.filter { $0.speaker == .assistant }.map(\.text), ["Sunny all", "Sunny all day."])
+        controller.stop()
+    }
+
     func testGeminiLiveOtherRefusalOfAResumptionFailsWithoutAFreshStart() async throws {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)

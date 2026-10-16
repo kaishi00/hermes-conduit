@@ -1083,6 +1083,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Watch's rejoin wording) before anything else goes out.
     private func freshSessionStarted(heardDropout: Bool) {
         tools.serverSessionStarted()
+        // A turn the lost session was in never completes. After a handoff
+        // nothing else ends it (a dropout already did via `.reconnecting`),
+        // so it is closed here as an interruption would.
+        output.interrupt()
+        suppressingModelTurn = false
+        modelTurnActive = false
+        lastModelTurnEndedAt = now()
+        publishFinished(openUserEntry)
+        publishFinished(openAssistantEntry)
+        closeOpenEntries()
+        if endRequestedAt == nil { phase = restingPhase }
         // Ending: the goodbye goes on without a recap.
         guard endRequestedAt == nil else { return }
         let at = now()

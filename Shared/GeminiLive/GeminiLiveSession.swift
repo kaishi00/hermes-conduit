@@ -224,7 +224,7 @@ final class GeminiLiveSession {
     /// far. `heardDropout` is false when the old connection kept serving
     /// (a GoAway handoff), so the user heard no break. Only when this is
     /// set does a refused resumption start fresh; otherwise it fails the
-    /// session as before.
+    /// session as before. Called just before `.ready` is (re-)announced.
     var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)?
     /// The connection being set up replaces a session Google wouldn't
     /// resume; reported through `onFreshSession` once it is ready. nil: no
