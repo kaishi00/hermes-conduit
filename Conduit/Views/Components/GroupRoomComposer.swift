@@ -467,8 +467,12 @@ struct GroupRoomComposer: View {
             }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
-            let handedOver = draft == text
-            if handedOver { draft = "" }
+            // Typed on after it while the files went up: only the sent
+            // text leaves the draft.
+            let handedOver = draft.hasPrefix(text)
+            if handedOver {
+                draft = String(draft.dropFirst(text.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
             let registered = await appState.sendGroupRoomMessage(message)
             if registered {
