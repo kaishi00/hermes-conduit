@@ -107,6 +107,8 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(glow.red, 200.0 / 255, accuracy: 0.0001)
         XCTAssertEqual(glow.green, 58.0 / 255, accuracy: 0.0001)
         XCTAssertEqual(glow.blue, 58.0 / 255, accuracy: 0.0001)
+        attributes.glowHex = "#C83A3A\n"
+        XCTAssertEqual(try XCTUnwrap(attributes.glowColor).red, 200.0 / 255, accuracy: 0.0001, "uppercase and a trailing newline parse")
         attributes.glowHex = "nope"
         XCTAssertNil(attributes.glowColor)
 

@@ -63,7 +63,9 @@ struct HermesTurnLiveActivity: Widget {
 }
 
 /// V2's colors, here because the widget extension doesn't build Theme.swift.
-/// The card is always dark glass, so these are the dark values.
+/// The card is always dark glass, so these are the dark values of
+/// Theme.swift's conduitAdaptiveAccent (gold), conduitAdaptiveAccentSoft,
+/// conduitAdaptiveAttention and conduitAdaptiveSuccess: keep them in step.
 enum HermesTurnStyle {
     static let gold = Color(red: 0.88, green: 0.67, blue: 0.28)
     static let goldSoft = Color(red: 0.98, green: 0.83, blue: 0.48)
@@ -96,7 +98,7 @@ enum HermesTurnStyle {
             if let rgb = attributes.glowColor { return Color(red: rgb.red, green: rgb.green, blue: rgb.blue) }
             return gold
         case .stopped: return .gray
-        default: return tint(for: phase)
+        case .approval, .input, .done, .failed: return tint(for: phase)
         }
     }
 }
