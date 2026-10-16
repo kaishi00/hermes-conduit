@@ -202,6 +202,14 @@ private func settle(until done: () -> Bool, limit: Duration = .seconds(10)) asyn
     while !done(), ContinuousClock.now < deadline { await Task.yield() }
 }
 
+extension GeminiLiveSession.State {
+    /// Failed for any reason, for waits that end when a session gives up.
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+}
+
 // MARK: - Wire format and token client
 
 @MainActor
@@ -530,7 +538,7 @@ extension VoiceConversationControllerTests {
         session.start()
         await settle()
         try XCTUnwrap(sockets().first).serverClose(.init(code: 1008, reason: "models/gemini-3.8-live is not found"))
-        await settle(80)
+        await settle(until: { session.state.isFailed })
 
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("models/gemini-3.8-live is not found")")))
         XCTAssertEqual(sockets().count, 1, "a refused setup is not retried")
@@ -569,7 +577,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
 
         try XCTUnwrap(sockets().first).serverClose(spentQuota)
-        await settle(80)
+        await settle(until: { sockets().count == 2 })
         XCTAssertEqual(sockets().count, 2)
         XCTAssertFalse(searches(try XCTUnwrap(sockets().last)))
         try XCTUnwrap(sockets().last).deliver(["setupComplete": [String: Any]()])
@@ -583,7 +591,7 @@ extension VoiceConversationControllerTests {
         session.start()
         await settle()
         try XCTUnwrap(sockets().first).serverClose(spentQuota)
-        await settle(80)
+        await settle(until: { sockets().count == 2 })
         XCTAssertEqual(sockets().count, 2)
         try XCTUnwrap(sockets().last).deliver(["setupComplete": [String: Any]()])
         await settle()
@@ -599,7 +607,7 @@ extension VoiceConversationControllerTests {
         await settle()
 
         try XCTUnwrap(sockets().first).serverClose(.init(code: 1007, reason: "Invalid frame"))
-        await settle(80)
+        await settle(until: { sockets().count == 2 })
         XCTAssertEqual(sockets().count, 2, "a live connection reconnects with resumption")
         XCTAssertTrue(searches(try XCTUnwrap(sockets().last)), "only a spent quota drops Search")
         try XCTUnwrap(sockets().last).deliver(["setupComplete": [String: Any]()])
@@ -616,13 +624,13 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(searches(try XCTUnwrap(sockets().first)))
 
         try XCTUnwrap(sockets().first).serverClose(quota)
-        await settle(80)
+        await settle(until: { sockets().count == 2 })
         XCTAssertEqual(sockets().count, 2, "Search's own quota doesn't end the conversation")
         XCTAssertFalse(searches(try XCTUnwrap(sockets().last)))
         if case .failed = session.state { XCTFail("the retry without Search should still be connecting") }
 
         try XCTUnwrap(sockets().last).serverClose(quota)
-        await settle(80)
+        await settle(until: { session.state.isFailed })
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \(quota.summary)")))
         XCTAssertEqual(sockets().count, 2, "without Search a quota refusal is final")
     }
@@ -631,7 +639,7 @@ extension VoiceConversationControllerTests {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
         session.start()
-        await driveUntilFailed(session) { sockets().last?.serverClose(.init(code: 1001, reason: "going away")) }
+        await driveUntilFailed(session, sockets: sockets) { $0.serverClose(.init(code: 1001, reason: "going away")) }
 
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Gemini Live: \("going away")")))
         XCTAssertEqual(sockets().count, 1 + GeminiLiveSession.maximumReconnectAttempts)
@@ -641,7 +649,7 @@ extension VoiceConversationControllerTests {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
         session.start()
-        await driveUntilFailed(session) { sockets().last?.serverClose(nil) }
+        await driveUntilFailed(session, sockets: sockets) { $0.serverClose(nil) }
 
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Gemini Live.")))
         XCTAssertEqual(sockets().count, 1 + GeminiLiveSession.maximumReconnectAttempts)
@@ -676,11 +684,18 @@ extension VoiceConversationControllerTests {
     }
 
     /// Closes each new connection before setup until the session gives up.
-    private func driveUntilFailed(_ session: GeminiLiveSession, close: () -> Void) async {
+    /// Each round waits for the session to open its next connection or
+    /// fail: a dropped close only reaches it after the fake socket's own
+    /// yields, which a fixed count could outrun.
+    private func driveUntilFailed(
+        _ session: GeminiLiveSession,
+        sockets: () -> [FakeGeminiLiveSocket],
+        close: (FakeGeminiLiveSocket) -> Void
+    ) async {
         for _ in 0..<10 {
-            await settle(80)
-            if case .failed = session.state { return }
-            close()
+            await settle(until: { session.state.isFailed || sockets().last?.closed == false })
+            guard !session.state.isFailed, let open = sockets().last, !open.closed else { return }
+            close(open)
         }
     }
 
@@ -2108,7 +2123,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // With no Search to drop, a spent quota is final.
         try XCTUnwrap(sockets.first).serverClose(.init(code: 1011, reason: "You exceeded your current quota, please check your plan and billing details."))
-        await settle(80)
+        await settle(until: { session.state.isFailed })
         XCTAssertEqual(sockets.count, 1)
         guard case .failed = session.state else { return XCTFail("Expected failed, got \(session.state)") }
     }
