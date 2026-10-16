@@ -808,10 +808,12 @@ struct GroupMessageCopyButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
         .accessibilityLabel(copied ? copiedTitle : title)
+        .onDisappear { resetTask?.cancel() }
     }
 }
 
-/// MainActor-confined view code, so the shared formatter is safe.
+/// Only view bodies format, so the shared formatter stays on the main actor.
+@MainActor
 enum GroupBubbleTime {
     // A fresh DateFormatter per bubble per render is brutally expensive
     // across a 200-event LazyVStack.

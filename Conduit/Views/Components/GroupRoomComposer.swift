@@ -428,6 +428,7 @@ struct GroupRoomComposer: View {
             return
         }
         isUploading = true
+        let roomID = surface?.room.roomID
         Task {
             defer { isUploading = false }
             let message: String
@@ -438,6 +439,9 @@ struct GroupRoomComposer: View {
                 Haptics.error()
                 return
             }
+            // Left for another room while the files went up: they never
+            // go to the room open now, and stay with this room's draft.
+            guard appState.activeRoomSurface?.room.roomID == roomID else { return }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
             if draft == text { draft = "" }
