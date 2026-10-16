@@ -21,14 +21,29 @@ extension AppState {
         return BotAvatarView.color(for: color, name: bot.name)
     }
 
-    /// Whether any listed conversation of `profile` has activity the user
-    /// hasn't seen. Only rows this device has listed count, so a profile
-    /// never opened here shows no dot rather than a guess.
-    func profileHasUnread(_ profile: String) -> Bool {
-        sessions.contains { session in
-            guard let owner = session.profile, profilesMatch(owner, profile) else { return false }
-            return chatReadState.isUnread(session, profile: profile)
+    /// Which of `profiles` have a listed conversation with activity the
+    /// user hasn't seen. Only rows this device has listed count, so a profile
+    /// never opened here shows no dot rather than a guess. One walk of the
+    /// catalog for the whole profile strip, which redraws with every top bar.
+    func profilesWithUnread(among profiles: [String]) -> Set<String> {
+        var unread = Set<String>()
+        // Owners repeat across rows, so each distinct one is matched once.
+        var profilesByOwner: [String: [String]] = [:]
+        for session in sessions {
+            guard unread.count < profiles.count else { break }
+            guard let owner = session.profile else { continue }
+            let matched: [String]
+            if let known = profilesByOwner[owner] {
+                matched = known
+            } else {
+                matched = profiles.filter { profilesMatch(owner, $0) }
+                profilesByOwner[owner] = matched
+            }
+            for profile in matched where !unread.contains(profile) {
+                if chatReadState.isUnread(session, profile: profile) { unread.insert(profile) }
+            }
         }
+        return unread
     }
 
     /// Whether a voice call's screen is up or on its way up. Opening a call

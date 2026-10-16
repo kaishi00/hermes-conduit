@@ -337,4 +337,44 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertEqual(sessions.first { $0.id == "a" }?.isUnread, true)
         XCTAssertNil(sessions.first { $0.id == "b" }?.isUnread)
     }
+
+    @MainActor
+    func testProfileStripDotsMarkEachProfileWithAnUnreadChat() {
+        let suite = "ChatReadStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        func chat(_ id: String, owner: String?) -> SessionSummary {
+            SessionSummary(
+                id: id,
+                alternateIds: [],
+                title: id,
+                model: "Hermes",
+                updatedLabel: "",
+                profile: owner,
+                source: .chat,
+                isActive: false,
+                isArchived: false
+            )
+        }
+        let workUnread = chat("work-unread", owner: " Work ")
+        let homeRead = chat("home-read", owner: "home")
+        let defaultUnread = chat("default-unread", owner: "default")
+        appState.sessions = [chat("work-read", owner: "work"), workUnread, homeRead, defaultUnread, chat("ownerless", owner: nil)]
+        appState.setActiveProfileForTesting("work")
+        appState.markSessionUnread(workUnread)
+        appState.setActiveProfileForTesting("default")
+        appState.markSessionUnread(defaultUnread)
+
+        // An owner spelled differently still counts for its profile.
+        XCTAssertEqual(appState.profilesWithUnread(among: ["work", "home"]), ["work"])
+        XCTAssertEqual(appState.profilesWithUnread(among: ["default", "work", "home"]), ["default", "work"])
+        XCTAssertEqual(appState.profilesWithUnread(among: ["home"]), [])
+        XCTAssertEqual(appState.profilesWithUnread(among: []), [])
+    }
 }

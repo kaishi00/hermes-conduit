@@ -48,14 +48,26 @@ struct V2VoiceButton: View {
 
     /// The three most recently active conversations of this profile.
     private var recentSessions: [SessionSummary] {
-        let sorted = appState.activeProfileSessions.sorted {
-            ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0)
+        Self.mostRecent(appState.activeProfileSessions, limit: 3)
+    }
+
+    /// The `limit` most recently active of `sessions`, newest first, ties
+    /// in list order. One pass rather than a sort: the button redraws with
+    /// every AppState publish.
+    nonisolated static func mostRecent(_ sessions: [SessionSummary], limit: Int) -> [SessionSummary] {
+        var recent: [SessionSummary] = []
+        for session in sessions {
+            let activity = session.lastActivityAt ?? 0
+            let index = recent.firstIndex { ($0.lastActivityAt ?? 0) < activity } ?? recent.count
+            guard index < limit else { continue }
+            recent.insert(session, at: index)
+            if recent.count > limit { recent.removeLast() }
         }
-        return Array(sorted.prefix(3))
+        return recent
     }
 
     private var showsRecentMenu: Bool {
-        context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
+        context == .home && !returnsToCall && !needsSetup && !appState.activeProfileSessions.isEmpty
     }
 
     private var label: String {

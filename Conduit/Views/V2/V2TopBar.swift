@@ -105,8 +105,10 @@ struct V2ProfileStrip: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    // The selected chip never shows a dot.
+                    let unread = appState.profilesWithUnread(among: profiles.filter { $0 != appState.activeProfile })
                     ForEach(profiles, id: \.self) { profile in
-                        chip(profile)
+                        chip(profile, unread: unread.contains(profile))
                             .id(profile)
                     }
                 }
@@ -125,10 +127,9 @@ struct V2ProfileStrip: View {
     /// One view per profile whichever is selected, so a switch moves the
     /// glass capsule and the name across instead of swapping two different
     /// buttons (which also reloaded both pictures).
-    private func chip(_ profile: String) -> some View {
+    private func chip(_ profile: String, unread: Bool) -> some View {
         let name = appState.profileDisplayName(profile)
         let isSelected = profile == appState.activeProfile
-        let unread = !isSelected && appState.profileHasUnread(profile)
         return Button {
             if isSelected {
                 onManage()

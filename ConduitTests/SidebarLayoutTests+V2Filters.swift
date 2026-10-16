@@ -155,4 +155,23 @@ extension SidebarLayoutTests {
         // Ties keep the first list first; a run without a time goes last.
         XCTAssertEqual(merged.map(\.id), ["a", "x", "c", "e", "t", "y"])
     }
+
+    func testVoiceButtonRecentsAreTheNewestInListOrderOnTies() {
+        let sessions = [
+            filterRow("old", source: .chat, at: 10),
+            filterRow("untimed", source: .chat),
+            filterRow("tie-first", source: .chat, at: 40),
+            filterRow("newest", source: .chat, at: 90),
+            filterRow("tie-second", source: .chat, at: 40),
+            filterRow("middle", source: .chat, at: 20)
+        ]
+        XCTAssertEqual(V2VoiceButton.mostRecent(sessions, limit: 3).map(\.id), ["newest", "tie-first", "tie-second"])
+        // The whole list comes back newest first; no time counts as oldest.
+        XCTAssertEqual(
+            V2VoiceButton.mostRecent(sessions, limit: 6).map(\.id),
+            ["newest", "tie-first", "tie-second", "middle", "old", "untimed"]
+        )
+        XCTAssertEqual(V2VoiceButton.mostRecent(Array(sessions.prefix(2)), limit: 3).map(\.id), ["old", "untimed"])
+        XCTAssertTrue(V2VoiceButton.mostRecent([], limit: 3).isEmpty)
+    }
 }
