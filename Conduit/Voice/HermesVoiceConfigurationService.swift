@@ -414,10 +414,14 @@ final class HermesVoiceConfigurationService: ObservableObject {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !key.isEmpty else { return false }
         do {
-            _ = try await requester.requestJSON(
+            let response = try await requester.requestJSON(
                 path: profilePath("/api/env"), method: "PUT",
                 body: ["key": key, "value": value, "profile": profile]
             )
+            if let error = response["error"] as? String, !error.isEmpty {
+                errorMessage = AppLocalization.string("Could not save credential: \(error)")
+                return false
+            }
             replaceCredential(VoiceCredentialStatus(key: key, isSet: true, description: credentialDescription(key)))
             await reload()
             return true

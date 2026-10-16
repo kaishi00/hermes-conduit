@@ -1175,6 +1175,24 @@ extension HermesVoiceConfigurationServiceTests {
     }
 }
 
+extension HermesVoiceConfigurationServiceTests {
+    func testKeySaveFailsWhenHermesAnswersWithAnError() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "openai"], "tts": ["provider": "openai"]],
+            "/api/env": ["error": "Unknown key", "XAI_API_KEY": ["is_set": false]]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.saveCredential("xai-secret", key: "XAI_API_KEY")
+
+        XCTAssertFalse(saved)
+        XCTAssertNotEqual(service.credential("XAI_API_KEY")?.isSet, true)
+        XCTAssertNotNil(service.errorMessage)
+    }
+}
+
 @MainActor
 private final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     var routes: [String: [String: Any]] = [:]

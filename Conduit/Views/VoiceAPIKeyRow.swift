@@ -12,8 +12,10 @@ import SwiftUI
 
 struct VoiceAPIKeyRow: View {
     @ObservedObject var service: HermesVoiceConfigurationService
-    /// Variables Hermes reads, in its order. The first set one is shown and
-    /// replaced; with none set, a new key is saved under the first.
+    /// Variables Hermes reads, in its order. The first set one is shown; a
+    /// new or replacement key is always saved under the first, which Hermes
+    /// reads ahead of the rest, so a shared fallback such as OPENAI_API_KEY
+    /// (also used for chat) is never overwritten from here.
     let keys: [String]
     /// One line on what the key is for, under the row.
     var note: String? = nil
@@ -24,7 +26,9 @@ struct VoiceAPIKeyRow: View {
     @State private var saveError: String?
 
     private var configured: VoiceCredentialStatus? { service.configuredCredential(among: keys) }
-    private var targetKey: String { configured?.key ?? keys.first ?? "" }
+    /// The key shown: the one Hermes uses now, else the one a save writes.
+    private var targetKey: String { configured?.key ?? writeKey }
+    private var writeKey: String { keys.first ?? "" }
 
     var body: some View {
         if !targetKey.isEmpty { row }
@@ -52,6 +56,7 @@ struct VoiceAPIKeyRow: View {
             }
             if configured == nil || isEditing {
                 SecureField(AppLocalization.string("Paste API key"), text: $draft)
+                    .disabled(isSaving)
                     .textContentType(.password)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -105,7 +110,7 @@ struct VoiceAPIKeyRow: View {
                 Text(verbatim: masked)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(Text(AppLocalization.string("Key set on Hermes")))
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Key set on Hermes") + ", " + masked))
             } else {
                 Text(AppLocalization.string("Key set on Hermes"))
                     .font(.caption)
@@ -129,11 +134,11 @@ struct VoiceAPIKeyRow: View {
     @MainActor
     private func save() async {
         let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !targetKey.isEmpty, !isSaving else { return }
+        guard !value.isEmpty, !writeKey.isEmpty, !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         saveError = nil
-        if await service.saveCredential(value, key: targetKey) {
+        if await service.saveCredential(value, key: writeKey) {
             draft = ""
             isEditing = false
         } else {
