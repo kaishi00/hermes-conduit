@@ -38,7 +38,10 @@ final class GroupRoomFilesClient {
     func upload(_ attachments: [Attachment]) async throws -> [String] {
         var references: [String] = []
         for attachment in attachments {
-            let base64 = await AttachmentHelper.toBase64(attachment)
+            // Reading and encoding a large file stays off the main actor.
+            let base64 = await Task.detached(priority: .userInitiated) {
+                await AttachmentHelper.toBase64(attachment)
+            }.value
             guard !base64.isEmpty else { throw Failure.unreadable(attachment.name) }
             let response = try await request(Self.path, ["name": attachment.name, "data_base64": base64])
             references.append(try Self.reference(from: response))
