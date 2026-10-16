@@ -1756,6 +1756,10 @@ final class HermesClient: ObservableObject {
         ]
         if omitMessages {
             params["omit_messages"] = true
+        } else {
+            // The transcript without the copy of every picture stored in
+            // it (#652); a gateway without the flag ignores it.
+            params["inline_images"] = false
         }
         // A bot chat lives in the bot profile's state.db; the gateway's
         // `session.resume` reads the `profile` param to open that store
@@ -3240,7 +3244,12 @@ enum MessageNormalizer {
         return .other
     }
 
-    static func normalizeMessages(_ payload: [AnyCodable]) -> [ChatMessage] {
+    /// `imageScope` names the session and profile the rows were read from,
+    /// so pictures stored inside them can be fetched again (#652).
+    static func normalizeMessages(
+        _ payload: [AnyCodable],
+        imageScope: TranscriptImageScope? = nil
+    ) -> [ChatMessage] {
         var messages: [ChatMessage] = []
         var callsById = [String: ChatMessage]()
 
@@ -3344,8 +3353,9 @@ enum MessageNormalizer {
             if modelChange != nil || systemNotice != nil || (displayKind != nil && !isToolResult) {
                 role = .system
             }
+            let rowId = durableRowId(in: obj)
             let userContent: (content: String, rawContent: String?, attachments: [Attachment]?) = role == .user
-                ? splitUserAttachmentReferences(rawContent, messageId: id)
+                ? splitUserAttachmentReferences(rawContent, messageId: id, rowId: rowId, imageScope: imageScope)
                 : (content: rawContent, rawContent: nil, attachments: nil)
             let content: String
             if let displayKind, !isToolResult {
@@ -3454,7 +3464,7 @@ enum MessageNormalizer {
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
                     ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil),
-                rowId: durableRowId(in: obj),
+                rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
 
@@ -3999,16 +4009,24 @@ enum MessageNormalizer {
     /// prompt is retained for replay/branch operations.
     private static func splitUserAttachmentReferences(
         _ source: String,
-        messageId: String
+        messageId: String,
+        rowId: Int? = nil,
+        imageScope: TranscriptImageScope? = nil
     ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
-        let images = splitUserImageReferences(source, messageId: messageId)
+        let images = splitUserImageReferences(
+            source,
+            messageId: messageId,
+            rowId: rowId,
+            imageScope: imageScope
+        )
         let files = splitLeadingFileReferences(
             removingContextFooter(images.content),
             messageId: messageId
         )
         guard files.content != images.content else { return images }
         let attachments = files.attachments + (images.attachments ?? [])
-        return (files.content, source, attachments.isEmpty ? nil : attachments)
+        // Without Hermes' picture stand-ins, which a branch must not replay.
+        return (files.content, images.rawContent ?? source, attachments.isEmpty ? nil : attachments)
     }
 
     /// Hermes appends what it expanded for `@file:`/`@url:` references below
@@ -4078,40 +4096,140 @@ enum MessageNormalizer {
         return (content, attachments)
     }
 
-    /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
-    /// tokens in the user prompt. Project those tokens into Conduit's regular
-    /// attachment model so resumed cross-client sessions keep their previews.
-    /// Retain the original prompt for replay/branch operations.
-    private static func splitUserImageReferences(
-        _ source: String,
-        messageId: String
-    ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
-        let pattern = #"@image:(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else {
-            return (source, nil, nil)
-        }
+    /// `@image:` tokens, quoted the way Hermes quotes one
+    /// (`format_reference_value`) or bare.
+    private static let imageReferencePattern = try? NSRegularExpression(
+        pattern: #"@image:(?:`([^`\r\n]+)`|"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))"#
+    )
 
-        let fullRange = NSRange(source.startIndex..<source.endIndex, in: source)
-        let matches = expression.matches(in: source, range: fullRange)
-        guard !matches.isEmpty else { return (source, nil, nil) }
+    /// The gateway's note for a picture that came in through a chat
+    /// platform or a bot (`agent/image_routing.py`).
+    private static let imageHintPattern = try? NSRegularExpression(
+        pattern: #"\[Image attached at: ([^\n\]]+)\]"#
+    )
 
-        var paths: [String] = []
-        for match in matches {
-            for group in 1..<match.numberOfRanges {
-                let range = match.range(at: group)
-                guard range.location != NSNotFound,
-                      let swiftRange = Range(range, in: source) else { continue }
-                let path = String(source[swiftRange])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !path.isEmpty { paths.append(path) }
+    /// The caption the gateway writes when a picture arrives without one.
+    private static let defaultImageCaption = "What do you see in this image?"
+
+    /// What Hermes puts in place of each picture it leaves out of a
+    /// transcript read with `inline_images=false` (#652).
+    static let inlineImageMarker = "[image]"
+
+    private static let inlineImagePartTypes: Set<String> = ["image_url", "input_image", "image"]
+
+    /// A content part carrying a picture (OpenAI `image_url`/`input_image`,
+    /// Anthropic or MCP `image`), as opposed to some other object whose
+    /// `type` happens to say image.
+    static func isInlineImagePart(_ part: [String: AnyCodable]) -> Bool {
+        guard let type = part["type"]?.stringValue, inlineImagePartTypes.contains(type) else { return false }
+        return ["image_url", "image", "source", "data", "file_id"].contains { part[$0] != nil }
+    }
+
+    /// Splits Hermes' trailing picture stand-ins off a persisted prompt.
+    /// Hermes appends one line per picture after the text, so only a
+    /// trailing run counts and a typed "[image]" inside the text stays. A
+    /// bare `data:image/…` line (a gateway that writes pictures out as text)
+    /// counts as one too and is never shown.
+    static func trailingInlineImageMarkers(_ text: String) -> (text: String, count: Int) {
+        guard text.contains(inlineImageMarker) || text.contains("data:image/") else { return (text, 0) }
+        var lines = text.components(separatedBy: "\n")
+        var count = 0
+        while let last = lines.last {
+            let line = last.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty {
+                lines.removeLast()
+            } else if line == inlineImageMarker
+                        || (line.hasPrefix("data:image/") && line.contains(";base64,") && !line.contains(" ")) {
+                lines.removeLast()
+                count += 1
+            } else {
                 break
             }
         }
-        guard !paths.isEmpty else { return (source, nil, nil) }
+        guard count > 0 else { return (text, 0) }
+        return (lines.joined(separator: "\n"), count)
+    }
 
-        var visibleContent = source
-        for match in matches.reversed() {
-            guard let range = Range(match.range, in: visibleContent) else { continue }
+    /// The pictures stored inside persisted row `rowId`, in order, as data
+    /// URLs (nil for one that is not a data URL). `rows` comes from a read
+    /// that keeps pictures inline.
+    static func inlineImageDataURLs(inRows rows: [Any], rowId: Int) -> [String?] {
+        for raw in rows {
+            guard let envelope = AnyCodable.from(raw).objectValue else { continue }
+            let nested = envelope["message"]?.objectValue ?? envelope["payload"]?.objectValue ?? [:]
+            let obj = envelope.merging(nested) { _, nestedValue in nestedValue }
+            guard durableRowId(in: obj) == rowId else { continue }
+            var urls: [String?] = []
+            for part in obj["content"]?.arrayValue ?? [] {
+                guard let object = part.objectValue, isInlineImagePart(object) else { continue }
+                urls.append(inlineImageDataURL(in: object))
+            }
+            return urls
+        }
+        return []
+    }
+
+    private static func inlineImageDataURL(in part: [String: AnyCodable]) -> String? {
+        let url = part["image_url"]?.objectValue?["url"]?.stringValue
+            ?? part["image_url"]?.stringValue
+            ?? part["url"]?.stringValue
+        if let url {
+            return url.lowercased().hasPrefix("data:image/") ? url : nil
+        }
+        // Anthropic `source` block, or an MCP image (`data` + `mimeType`).
+        let source = part["source"]?.objectValue
+        let media = source?["media_type"]?.stringValue ?? part["mimeType"]?.stringValue ?? part["media_type"]?.stringValue
+        let data = source?["data"]?.stringValue ?? part["data"]?.stringValue
+        guard let media, media.lowercased().hasPrefix("image/"), let data, !data.isEmpty else { return nil }
+        return "data:\(media);base64,\(data)"
+    }
+
+    /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
+    /// tokens in the user prompt, and the gateway notes a picture that came
+    /// in through a chat platform as `[Image attached at: /path]`. Both
+    /// become Conduit's regular attachments so resumed cross-client sessions
+    /// keep their previews.
+    ///
+    /// A persisted row (`rowId`) also ends with one `[image]` stand-in per
+    /// picture Hermes stored inside it (#652). Each pairs, in order, with
+    /// the picture the prompt names a file for, as its fallback when that
+    /// file is gone, or becomes an attachment of its own. The prompt is
+    /// retained, without the stand-ins, for replay/branch operations.
+    private static func splitUserImageReferences(
+        _ source: String,
+        messageId: String,
+        rowId: Int? = nil,
+        imageScope: TranscriptImageScope? = nil
+    ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
+        let markers = rowId == nil ? (text: source, count: 0) : trailingInlineImageMarkers(source)
+        let body = markers.text
+        let fullRange = NSRange(body.startIndex..<body.endIndex, in: body)
+
+        var references: [(range: NSRange, path: String)] = []
+        var foundHint = false
+        for (expression, isHint) in [(imageReferencePattern, false), (imageHintPattern, true)] {
+            guard let expression else { continue }
+            for match in expression.matches(in: body, range: fullRange) {
+                for group in 1..<match.numberOfRanges {
+                    let range = match.range(at: group)
+                    guard range.location != NSNotFound,
+                          let swiftRange = Range(range, in: body) else { continue }
+                    let path = String(body[swiftRange])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !path.isEmpty {
+                        references.append((match.range, path))
+                        foundHint = foundHint || isHint
+                    }
+                    break
+                }
+            }
+        }
+        guard !references.isEmpty || markers.count > 0 else { return (source, nil, nil) }
+        references.sort { $0.range.location < $1.range.location }
+
+        var visibleContent = body
+        for reference in references.reversed() {
+            guard let range = Range(reference.range, in: visibleContent) else { continue }
             visibleContent.removeSubrange(range)
         }
         visibleContent = visibleContent
@@ -4126,18 +4244,33 @@ enum MessageNormalizer {
                 options: .regularExpression
             )
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        if foundHint, visibleContent == defaultImageCaption {
+            visibleContent = ""
+        }
 
-        let attachments = paths.enumerated().map { index, path in
-            let name = URL(fileURLWithPath: path).lastPathComponent
+        let paths = references.map(\.path)
+        let attachments = (0..<max(paths.count, markers.count)).map { index -> Attachment in
+            let path = index < paths.count ? paths[index] : nil
+            let name = path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+            var inlineImage: InlineImageRef?
+            if index < markers.count, let rowId, let imageScope {
+                inlineImage = InlineImageRef(
+                    sessionId: imageScope.sessionId,
+                    profile: imageScope.profile,
+                    rowId: rowId,
+                    index: index
+                )
+            }
             return Attachment(
                 id: "\(messageId)-gateway-image-\(index)",
                 name: name.isEmpty ? AppLocalization.string("Attached image") : name,
-                uri: path,
-                mimeType: imageMimeType(for: path),
-                kind: .image
+                uri: path ?? "",
+                mimeType: path.flatMap { imageMimeType(for: $0) },
+                kind: .image,
+                inlineImage: inlineImage
             )
         }
-        return (visibleContent, source, attachments)
+        return (visibleContent, body, attachments)
     }
 
     private static func imageMimeType(for path: String) -> String? {
@@ -4233,6 +4366,10 @@ enum MessageNormalizer {
         case .object(let obj):
             if let text = obj["text"] { return extractContent(text) }
             if let content = obj["content"] { return extractContent(content) }
+            // A picture stored inside the message: the same stand-in Hermes
+            // writes for it with `inline_images=false`, never its base64 as
+            // JSON text.
+            if isInlineImagePart(obj) { return "\n" + inlineImageMarker }
             if let data = try? JSONSerialization.data(withJSONObject: obj.mapValues { $0.anyValue }, options: .prettyPrinted),
                let str = String(data: data, encoding: .utf8) {
                 return str

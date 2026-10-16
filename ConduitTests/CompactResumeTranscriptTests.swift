@@ -1339,11 +1339,11 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(PersistedTranscriptPagination.pageSize, 120)
         XCTAssertEqual(
             PersistedTranscriptPagination.tailQuery(offset: 0),
-            "?limit=120&offset=0&order=latest&include_compacted=true"
+            "?limit=120&offset=0&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(
             PersistedTranscriptPagination.tailQuery(offset: 240),
-            "?limit=120&offset=240&order=latest&include_compacted=true"
+            "?limit=120&offset=240&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(PersistedTranscriptPagination.legacyQuery, "")
         XCTAssertEqual(
@@ -1352,7 +1352,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 profile: "default",
                 query: PersistedTranscriptPagination.tailQuery(offset: 0)
             ),
-            "/api/sessions/stored%20a/messages?limit=120&offset=0&order=latest&include_compacted=true"
+            "/api/sessions/stored%20a/messages?limit=120&offset=0&order=latest&include_compacted=true&inline_images=false"
         )
         XCTAssertEqual(
             AppState.sessionMessagesPath(
@@ -1360,7 +1360,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
                 profile: "work",
                 query: PersistedTranscriptPagination.tailQuery(offset: 120)
             ),
-            "/api/sessions/stored-a/messages?limit=120&offset=120&order=latest&include_compacted=true&profile=work"
+            "/api/sessions/stored-a/messages?limit=120&offset=120&order=latest&include_compacted=true&inline_images=false&profile=work"
         )
     }
 

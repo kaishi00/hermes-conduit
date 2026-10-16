@@ -88,12 +88,33 @@ struct Attachment: Codable, Identifiable, Equatable {
     var uri: String
     var mimeType: String?
     var kind: Kind
+    /// A picture Hermes also stored inside the message itself. Chats load
+    /// without those copies (#652); this says where to fetch one when its
+    /// file is gone from the server.
+    var inlineImage: InlineImageRef? = nil
 
     enum Kind: String, Codable {
         case image
         case video
         case document
     }
+}
+
+/// One picture stored inside a persisted Hermes message: the row's durable
+/// id, the picture's place among the row's pictures, and the session and
+/// profile whose database holds the row.
+struct InlineImageRef: Codable, Equatable, Hashable {
+    let sessionId: String
+    let profile: String
+    let rowId: Int
+    let index: Int
+}
+
+/// The session and profile a page of persisted rows was read from, so the
+/// pictures inside those rows can be fetched again later.
+struct TranscriptImageScope: Equatable {
+    let sessionId: String
+    let profile: String
 }
 
 struct ToolActivity: Codable, Equatable {
