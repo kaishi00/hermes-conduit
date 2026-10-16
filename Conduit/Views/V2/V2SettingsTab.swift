@@ -83,5 +83,7 @@ struct V2SettingsTab: View {
             disconnect: { appState.disconnect() },
             homeHeader: AnyView(V2TopBar())
         )
+        // Pushed pages keep the home page's profile glow.
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
     }
 }

@@ -3112,14 +3112,27 @@ struct ConduitSettingsSection<Content: View>: View {
     }
 }
 
-/// A settings page's still backdrop. In V2 its glow takes the active
-/// profile's color, as the Settings home's does, so pushing a page keeps it.
+/// A settings page's still backdrop, its glow in `settingsGlowTint`: the
+/// active profile's color in V2's Settings tab, as on its home page, so
+/// pushing a page keeps it. An environment value rather than AppState, so a
+/// sheet built on these pages needs nothing injected (check-sheet-environment).
 struct SettingsBackdrop: View {
-    @EnvironmentObject private var appState: AppState
-    @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
+    @Environment(\.settingsGlowTint) private var glowTint
 
     var body: some View {
-        ConduitBackdrop(glowTint: usesV2 ? appState.profileGlowTint(appState.activeProfile) : nil)
+        ConduitBackdrop(glowTint: glowTint)
+    }
+}
+
+private struct SettingsGlowTintKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
+extension EnvironmentValues {
+    /// The glow color of settings pages' backdrops; nil keeps the gold.
+    var settingsGlowTint: Color? {
+        get { self[SettingsGlowTintKey.self] }
+        set { self[SettingsGlowTintKey.self] = newValue }
     }
 }
 
