@@ -1,9 +1,9 @@
 name: Stress (temporary)
 
 # Temporary, removed before the PR: runs unit tests repeatedly under CPU
-# load (-test-iterations plus `yes` hogs) to find and confirm hosted-only
-# timing flakes. Triggered by pushes to this work branch only. One job at a
-# time, so it never holds more than one macOS runner.
+# load (`yes` hogs once tests run) to confirm the fixed condition waits hold
+# and to measure how long they take. Triggered by pushes to this work branch
+# only; one job, so it never holds more than one macOS runner.
 
 on:
   push:
@@ -15,41 +15,17 @@ permissions:
 env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
-  # The branch's base on main: "before" runs use its test files.
-  BASE_SHA: 5f685d4c15c31fedc374c12cb858671e57238d20
 
 jobs:
   stress:
-    name: Stress (${{ matrix.label }})
+    name: Stress (fixed waits, traced)
     runs-on: macos-26
     timeout-minutes: 180
-    strategy:
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        include:
-          - label: voice-live before
-            suite: voice-live
-            iterations: 40
-            before: true
-          - label: voice-live after
-            suite: voice-live
-            iterations: 40
-            before: false
-          - label: shard 1 rest
-            suite: shard1-rest
-            iterations: 3
-            before: false
     steps:
       - uses: actions/checkout@v7
 
-      - name: Use main's voice test files
-        if: matrix.before
-        run: |
-          set -euo pipefail
-          git fetch --depth=1 origin "$BASE_SHA"
-          git checkout FETCH_HEAD -- ConduitTests/GeminiLiveVoiceTests.swift ConduitTests/GrokLiveVoiceTests.swift
-          git status --short
+      - name: Trace the condition waits (stress only)
+        run: git apply .github/stress-tmp/settle-trace.patch
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -85,5 +61,9 @@ jobs:
           BUILD_CACHE: stress
         run: bash scripts/ci-hosted-build.sh
 
-      - name: Run the tests repeatedly under CPU load
-        run: bash .github/stress-tmp/run-stress.sh "${{ matrix.suite }}" "${{ matrix.iterations }}" "${{ matrix.label }}"
+      - name: Shard 1 batch 2 as CI runs it, 4 times
+        run: bash .github/stress-tmp/run-stress.sh ci-batch 2 4 "batch 2 x4"
+
+      - name: Voice-live tests, 20 iterations
+        if: ${{ !cancelled() }}
+        run: bash .github/stress-tmp/run-stress.sh voice-live 20 "voice-live x20"
