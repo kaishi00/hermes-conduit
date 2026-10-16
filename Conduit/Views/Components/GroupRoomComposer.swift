@@ -439,9 +439,14 @@ struct GroupRoomComposer: View {
                 Haptics.error()
                 return
             }
-            // Left for another room while the files went up: they never
-            // go to the room open now, and stay with this room's draft.
-            guard appState.activeRoomSurface?.room.roomID == roomID else { return }
+            // Left for another room while the files went up: they never go
+            // to the room open now. The typed text stays in this room's
+            // draft; the picked files went with the composer, so their local
+            // copies are dropped.
+            guard appState.activeRoomSurface?.room.roomID == roomID else {
+                files.forEach(ComposerBar.discardStagedFile)
+                return
+            }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
             if draft == text { draft = "" }
