@@ -1066,12 +1066,8 @@ struct VoiceSettingsView: View {
                 valueColor: isReady ? .green : .secondary,
                 statusDot: isReady ? .green : nil
             )
-            ForEach(readiness.requiredCredentials) { credential in
-                VoiceAPIKeyRow(
-                    service: service,
-                    keys: [credential.key],
-                    note: credential.description == credential.key ? nil : credential.description
-                )
+            ForEach(Self.keyGroups(readiness.requiredCredentials)) { group in
+                VoiceAPIKeyRow(service: service, keys: group.keys, note: group.note)
             }
         }
         if descriptor.id == "openai", descriptor.kind == .tts {
@@ -1128,8 +1124,8 @@ struct VoiceSettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                ForEach(others) { credential in
-                    VoiceAPIKeyRow(service: service, keys: [credential.key])
+                ForEach(Self.keyGroups(others)) { group in
+                    VoiceAPIKeyRow(service: service, keys: group.keys)
                 }
             }
         }
@@ -1144,7 +1140,20 @@ struct VoiceSettingsView: View {
 
     private func providerKeys(_ kind: VoiceProviderDescriptor.Kind, _ providers: [VoiceProviderConfiguration]) -> [String] {
         let provider = providers.first { $0.descriptor.id == selectedProvider(kind) } ?? providers.first
-        return provider?.readiness?.requiredCredentials.map(\.key) ?? []
+        return Self.keyGroups(provider?.readiness?.requiredCredentials ?? []).flatMap(\.keys)
+    }
+
+    /// One row per key Hermes reads, with variables it reads in order kept
+    /// together, so a save goes to the one it reads first and a shared
+    /// fallback (OPENAI_API_KEY, also used for chat) is never overwritten.
+    static func keyGroups(_ credentials: [VoiceCredentialStatus]) -> [VoiceKeyGroup] {
+        var groups: [VoiceKeyGroup] = []
+        for credential in credentials {
+            let keys = [openAIVoiceKeys, geminiKeys].first { $0.contains(credential.key) } ?? [credential.key]
+            guard !groups.contains(where: { $0.keys == keys }) else { continue }
+            groups.append(.init(keys: keys, note: credential.description == credential.key ? nil : credential.description))
+        }
+        return groups
     }
 
     private var spokenControlsSection: some View {
@@ -1359,6 +1368,13 @@ struct VoiceSettingsView: View {
 /// that command category — defaults are not forced back). Every save
 /// canonicalizes through `VoiceSpokenCommands` so duplicates and blanks never
 /// reach persistence.
+/// Variables Hermes reads in order for one key, shown as one row.
+struct VoiceKeyGroup: Equatable, Identifiable {
+    let keys: [String]
+    let note: String?
+    var id: String { keys.joined(separator: ",") }
+}
+
 struct WakePhraseSettingsModel {
     var phrases: [String]
     var suggestedPhrase: String

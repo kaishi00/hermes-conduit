@@ -1193,6 +1193,20 @@ extension HermesVoiceConfigurationServiceTests {
     }
 }
 
+extension HermesVoiceConfigurationServiceTests {
+    func testProviderKeysThatShareAFallbackBecomeOneRowWritingTheFirst() {
+        let groups = VoiceSettingsView.keyGroups([
+            .init(key: "OPENAI_API_KEY", isSet: true, description: "OpenAI key"),
+            .init(key: "VOICE_TOOLS_OPENAI_KEY", isSet: false, description: "VOICE_TOOLS_OPENAI_KEY"),
+            .init(key: "STEPFUN_API_KEY", isSet: false, description: "STEPFUN_API_KEY")
+        ])
+
+        XCTAssertEqual(groups.map(\.keys), [["VOICE_TOOLS_OPENAI_KEY", "OPENAI_API_KEY"], ["STEPFUN_API_KEY"]])
+        XCTAssertEqual(groups.first?.note, "OpenAI key")
+        XCTAssertNil(groups.last?.note)
+    }
+}
+
 @MainActor
 private final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     var routes: [String: [String: Any]] = [:]
