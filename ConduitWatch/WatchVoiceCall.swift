@@ -236,6 +236,7 @@ final class WatchVoiceCall: ObservableObject {
         caption = nil
         transcript = []
         liveSince = nil
+        endedAt = nil
     }
 
     func scenePhaseChanged(_ newPhase: ScenePhase) {
@@ -294,7 +295,9 @@ final class WatchVoiceCall: ObservableObject {
         guard startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
         // Back from the background is an open, however soon after a call
         // ended: reading the summary with the wrist down and up again
-        // never leaves inactive, so it never comes here.
+        // never leaves inactive. Return to Clock running out on the summary
+        // does background the app; opening it after that is an open too
+        // (the call is saved on the iPhone).
         // The microphone prompt is left to a tap on Start.
         guard WatchAudio.hasPermission else {
             if !loggedOpenSkip {

@@ -39,7 +39,7 @@ struct TalkToHermesIntent: AppIntent {
 /// Where a call asked for from outside the app goes: the Watch app sets
 /// it at launch; the widget extension has none and only opens the app.
 enum WatchCallRequests {
-    @MainActor static var handler: ((String) -> Void)?
+    @MainActor static var handler: (@MainActor (String) -> Void)?
 }
 
 /// The URL the watch face complication opens the app with.
