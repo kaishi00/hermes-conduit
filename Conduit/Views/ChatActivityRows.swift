@@ -29,6 +29,12 @@ struct ChatStepStyle: Equatable {
 
     static let thinking = (symbol: "sparkle", tint: Color.conduitVoice)
 
+    /// Where an opened row's text starts, under its title: the row's inset,
+    /// the icon disc and the gap after it.
+    static let contentInset: CGFloat = 14 + iconSize + 11
+
+    static let iconSize: CGFloat = 26
+
     /// Conduit's own phone tools all read as "Using your iPhone"; their
     /// icons tell them apart.
     private static let phoneTools: [String: (String, Color)] = [
@@ -98,11 +104,16 @@ enum ChatStepSubject {
         "prompt", "question", "title", "name", "text", "action",
     ]
 
+    /// Past this, a JSON input isn't parsed: one line of it is shown as is.
+    /// Tool output can run to megabytes, and rows render on the main thread.
+    static let parseLimit = 4096
+
     static func line(from input: String?) -> String? {
         guard let input else { return nil }
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        if trimmed.hasPrefix("{"),
+        if trimmed.utf8.count <= parseLimit,
+           trimmed.hasPrefix("{"),
            let data = trimmed.data(using: .utf8),
            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
             let value = preferredKeys.lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }
@@ -113,7 +124,7 @@ enum ChatStepSubject {
     }
 
     private static func oneLine(_ text: String) -> String? {
-        let line = text
+        let line = String(text.prefix(400))
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !line.isEmpty else { return nil }
@@ -130,7 +141,7 @@ struct ChatStepIcon: View {
         Image(systemName: symbol)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(tint)
-            .frame(width: 26, height: 26)
+            .frame(width: ChatStepStyle.iconSize, height: ChatStepStyle.iconSize)
             .background(tint.opacity(0.16), in: Circle())
             .conduitFixedGlyph()
             .accessibilityHidden(true)
@@ -188,7 +199,7 @@ struct ChatWorkingLine: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name) is working")
+        .accessibilityLabel(AppLocalization.string("\(name) is working"))
         .accessibilityValue(phrase)
     }
 }

@@ -115,7 +115,8 @@ struct ChatView: View {
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
-        for message in messages.reversed().prefix(12) {
+        // Back to the turn's start: a long turn can run many tools.
+        for message in messages.reversed() {
             if message.role == .user { return nil }
             if message.role == .tool, let tool = message.tool, tool.status == .running {
                 return tool.name
@@ -1960,10 +1961,12 @@ struct SettledThinkingCardContent: View, Equatable {
             } label: {
                 HStack(spacing: 11) {
                     ChatStepIcon(symbol: ChatStepStyle.thinking.symbol, tint: ChatStepStyle.thinking.tint)
-                    Text(AppLocalization.string("Thinking"))
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                    MessageTimestampLabel(timestamp: message.timestamp)
+                    AdaptiveStack(spacing: 6) {
+                        Text(AppLocalization.string("Thinking"))
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                        MessageTimestampLabel(timestamp: message.timestamp)
+                    }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
@@ -1983,7 +1986,7 @@ struct SettledThinkingCardContent: View, Equatable {
                     font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
                     textColor: .secondaryLabel
                 )
-                .padding(.leading, 51)
+                .padding(.leading, ChatStepStyle.contentInset)
                 .padding(.trailing, 14)
                 .padding(.bottom, 12)
                 .transition(.opacity)
@@ -2079,6 +2082,7 @@ private struct SettledToolCardContent: View, Equatable {
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     @Environment(\.chatRowDisclosure) private var disclosure
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Nil until tapped here; see SettledThinkingCardContent.
     @State private var tapped: Bool?
 
@@ -2115,11 +2119,13 @@ private struct SettledToolCardContent: View, Equatable {
                         ChatStepIcon(symbol: style.symbol, tint: style.tint)
 
                         VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
+                            // Large text: the time goes under the words
+                            // instead of squeezing them.
+                            AdaptiveStack(spacing: 6) {
                                 Text(running ? style.runningTitle : style.doneTitle)
                                     .font(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
-                                    .lineLimit(1)
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                                 MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                             }
                             if !expanded, let subject = ChatStepSubject.line(from: tool.input ?? tool.output) {
@@ -2158,7 +2164,7 @@ private struct SettledToolCardContent: View, Equatable {
                             .foregroundStyle(.tertiary)
                         if let input = tool.input, !input.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Input")
+                                Text(AppLocalization.string("Input"))
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
@@ -2172,7 +2178,7 @@ private struct SettledToolCardContent: View, Equatable {
                         }
                         if let output = tool.output, !output.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Output")
+                                Text(AppLocalization.string("Output"))
                                     .font(.caption2.bold())
                                     .foregroundStyle(.tertiary)
                                 SelectableTextView(
@@ -2189,7 +2195,7 @@ private struct SettledToolCardContent: View, Equatable {
                     .padding(.vertical, 9)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.leading, 51)
+                    .padding(.leading, ChatStepStyle.contentInset)
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))

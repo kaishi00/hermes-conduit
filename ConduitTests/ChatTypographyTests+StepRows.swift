@@ -36,6 +36,10 @@ extension ChatTypographyTests {
         XCTAssertNil(ChatStepSubject.line(from: "   "))
         XCTAssertNil(ChatStepSubject.line(from: #"{"count": 3}"#))
         XCTAssertNil(ChatStepSubject.line(from: nil))
+        // A huge input isn't parsed: its start is shown as one line.
+        let huge = #"{"query": "x", "blob": ""# + String(repeating: "a", count: ChatStepSubject.parseLimit) + #""}"#
+        XCTAssertEqual(ChatStepSubject.line(from: huge)?.hasPrefix(#"{"query""#), true)
+        XCTAssertLessThanOrEqual(ChatStepSubject.line(from: huge)?.count ?? 0, 200)
     }
 
     @MainActor
