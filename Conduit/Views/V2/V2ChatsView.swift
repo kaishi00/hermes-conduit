@@ -605,7 +605,7 @@ struct V2ChatsView: View {
                     Text("Read-only copies from your last connection.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .padding(.leading, 32)
+                        .padding(.leading, 16)
                         .padding(.top, 8)
                         .padding(.bottom, 10)
                         .listRowBackground(Color.clear)
@@ -669,7 +669,7 @@ struct V2ChatsView: View {
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
-            .padding(.leading, 32)
+            .padding(.leading, 16)
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(EdgeInsets())
@@ -802,7 +802,7 @@ struct V2ChatsView: View {
         let readToggle = SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread)
 
         sessionRowButton(node.session, isUnread: signals.isUnread, parentTitle: nil, hasNestBelow: hasChildren)
-            .v2ListRow(divider: !hasChildren)
+            .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
             .sessionActions(
                 session: node.session,
                 nest: readToggle,
@@ -812,12 +812,12 @@ struct V2ChatsView: View {
 
         if hasChildren {
             nestDisclosure(node, key: key, isExpanded: isExpanded)
-                .v2ListRow(divider: !isExpanded)
+                .v2ListRow(divider: !isExpanded, dividerInset: V2SessionRow.iconTextInset)
             if isExpanded {
                 let descendants = Self.flatten(node.children, depth: 0)
                 ForEach(Array(descendants.enumerated()), id: \.element.node.id) { index, entry in
                     childRow(entry.node.session, depth: entry.depth, parentTitle: node.session.title)
-                        .v2ListRow(divider: index == descendants.count - 1)
+                        .v2ListRow(divider: index == descendants.count - 1, dividerInset: V2SessionRow.iconTextInset)
                         .sessionActions(
                             session: entry.node.session,
                             nest: nil,
@@ -854,6 +854,7 @@ struct V2ChatsView: View {
                 status: appState.v2RowStatus(for: session),
                 isUnread: isUnread,
                 isSelected: session.id == appState.activeSessionId,
+                icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasNestBelow
             )
         }
@@ -885,7 +886,7 @@ struct V2ChatsView: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
-            .padding(.leading, 32)
+            .padding(.leading, V2SessionRow.iconTextInset)
             .padding(.bottom, 11)
             .frame(minHeight: 30)
             .contentShape(Rectangle())
@@ -930,7 +931,7 @@ struct V2ChatsView: View {
                 Rectangle()
                     .fill(Color.primary.opacity(0.16))
                     .frame(width: 1.5)
-                    .padding(.leading, 21 + CGFloat(min(depth, 3)) * 14)
+                    .padding(.leading, 34 + CGFloat(min(depth, 3)) * 14)
                     .padding(.trailing, 6)
                 V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
                 Text(session.title)
@@ -976,14 +977,15 @@ struct V2ChatsView: View {
                 time: isSaved ? session.displayUpdatedLabel() : "",
                 preview: isSaved ? "" : AppLocalization.string("Not saved offline"),
                 status: .none,
-                isSelected: presentation.displayedSessionID == session.id
+                isSelected: presentation.displayedSessionID == session.id,
+                icon: .chat
             )
         }
         .buttonStyle(.plain)
         .disabled(!isSaved)
         .opacity(isSaved ? 1 : 0.5)
         .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
-        .v2ListRow()
+        .v2ListRow(dividerInset: V2SessionRow.iconTextInset)
     }
 
     // MARK: - Reveal
@@ -1033,7 +1035,7 @@ struct V2ChatsView: View {
                 Section {
                     ForEach(pinned) { session in
                         sessionRowButton(session, isUnread: appState.isSessionUnread(session), parentTitle: nil)
-                            .v2ListRow()
+                            .v2ListRow(dividerInset: V2SessionRow.iconTextInset)
                             .sessionActions(
                                 session: session,
                                 nest: nil,

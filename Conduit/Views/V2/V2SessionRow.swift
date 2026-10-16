@@ -4,9 +4,10 @@
 //
 //  The V2 session row: no card, two lines, about 66 pt tall, with more room
 //  between rows than between a row's own lines so each conversation reads
-//  as one block. Line one is the title and time; line two a status glyph, a
-//  dimmer one-line preview, and an action word only when the row needs one
-//  (Running, Approve). Unread is a gold dot in the leading column.
+//  as one block. A Chats row leads with a round icon for where the
+//  conversation came from, the gold unread dot on its corner. Line one is
+//  the title and time; line two a dimmer one-line preview, and a status
+//  glyph and action word only when the row needs one (Running, Approve).
 //
 
 import SwiftUI
@@ -106,7 +107,49 @@ struct V2StatusGlyph: View {
     }
 }
 
+/// A Chats row's icon: where the conversation came from, in that source's
+/// color on a faint disc of it, with the gold unread dot on its corner.
+struct V2SessionIcon: View {
+    let source: SessionSource
+    var isUnread = false
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.callout.weight(.semibold))
+            .conduitFixedGlyph()
+            .foregroundStyle(tint)
+            .frame(width: 38, height: 38)
+            .background(tint.opacity(0.16), in: Circle())
+            .overlay(alignment: .topTrailing) {
+                if isUnread {
+                    Circle()
+                        .fill(Color.conduitAccent)
+                        .frame(width: 12, height: 12)
+                        .offset(x: 1, y: -1)
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    /// The disc is already a circle, so a job gets the plain bolt rather
+    /// than the circled one used elsewhere.
+    private var symbol: String {
+        switch source {
+        case .voiceJob: return "bolt.horizontal.fill"
+        default: return source.iconName
+        }
+    }
+
+    private var tint: Color {
+        V2SessionStatus(liveStatus: nil, category: source).color
+    }
+}
+
 struct V2SessionRow: View {
+    /// Where a Chats row's text starts (16 pt in, the 38 pt icon, 12 pt):
+    /// its hairline and nest summary line up here.
+    static let iconTextInset: CGFloat = 66
+
     let title: String
     let time: String
     let preview: String
@@ -117,6 +160,10 @@ struct V2SessionRow: View {
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
     var leadingGlyph = false
+    /// Chats rows: the round icon for where the conversation came from (a
+    /// waveform for a call, a bubble for a typed chat), carrying the unread
+    /// dot. Nil keeps the narrow unread column (project pages).
+    var icon: SessionSource? = nil
     /// A Chats row with its "3 jobs" summary under it: the summary sits
     /// close, as part of this row, rather than a row's gap away.
     var hasNestBelow = false
@@ -124,33 +171,14 @@ struct V2SessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // The unread column: always reserved, so titles align.
-            ZStack {
-                if leadingGlyph && status != .none {
-                    V2StatusGlyph(status: status)
-                        .overlay(alignment: .topTrailing) {
-                            // Unread still shows beside a status glyph.
-                            if isUnread {
-                                Circle()
-                                    .fill(Color.conduitAccent)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 4, y: -3)
-                            }
-                        }
-                } else if isUnread {
-                    Circle()
-                        .fill(Color.conduitAccent)
-                        .frame(width: 10, height: 10)
-                }
+        HStack(alignment: icon == nil ? .top : .center, spacing: 0) {
+            if let icon {
+                V2SessionIcon(source: icon, isUnread: isUnread)
+                    .padding(.leading, 16)
+                    .padding(.trailing, 12)
+            } else {
+                unreadColumn
             }
-            .frame(width: leadingGlyph ? 20 : 12)
-            .frame(minHeight: 21)
-            // A Chats row starts at the screen edge: the dot sits in from it,
-            // and the title lines up with the nest summary and the hairline
-            // at 32 pt. A project page draws its own thread line there.
-            .padding(.leading, leadingGlyph ? 0 : 16)
-            .padding(.trailing, leadingGlyph ? 8 : 4)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -166,7 +194,7 @@ struct V2SessionRow: View {
                         .layoutPriority(1)
                 }
                 HStack(alignment: .center, spacing: 5) {
-                    if status != .none && !leadingGlyph {
+                    if showsLineGlyph {
                         V2StatusGlyph(status: status)
                     }
                     Text(preview)
@@ -198,6 +226,42 @@ struct V2SessionRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text(accessibilityValue))
+    }
+
+    /// The glyph before the preview. Beside an icon that already names the
+    /// source, only the live states (running, waiting on approval) keep one.
+    private var showsLineGlyph: Bool {
+        guard status != .none, !leadingGlyph else { return false }
+        return icon == nil || status == .running || status == .approval
+    }
+
+    /// Without an icon: the narrow unread column, always reserved so titles
+    /// align.
+    private var unreadColumn: some View {
+        ZStack {
+            if leadingGlyph && status != .none {
+                V2StatusGlyph(status: status)
+                    .overlay(alignment: .topTrailing) {
+                        // Unread still shows beside a status glyph.
+                        if isUnread {
+                            Circle()
+                                .fill(Color.conduitAccent)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 4, y: -3)
+                        }
+                    }
+            } else if isUnread {
+                Circle()
+                    .fill(Color.conduitAccent)
+                    .frame(width: 10, height: 10)
+            }
+        }
+        .frame(width: leadingGlyph ? 20 : 12)
+        .frame(minHeight: 21)
+        // A row without an icon starting at the screen edge keeps the dot
+        // in from it. A project page draws its own thread line there.
+        .padding(.leading, leadingGlyph ? 0 : 16)
+        .padding(.trailing, leadingGlyph ? 8 : 4)
     }
 
     private var accessibilityValue: String {
