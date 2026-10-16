@@ -1029,17 +1029,17 @@ struct V2ChatsListItem: Identifiable {
 
     /// A row with nothing nested under it (the pinned chats over Projects).
     static func leaf(_ session: SessionSummary) -> V2ChatsListItem {
-        V2ChatsListItem(id: "row:" + session.id, kind: .session(SessionNesting.Node(session: session, children: [])))
+        V2ChatsListItem(id: session.id, kind: .session(SessionNesting.Node(session: session, children: [])))
     }
 
     /// The rows of `nodes` in list order: each node, its "3 jobs" line
     /// when it has children, and, when `expanded` holds its nest key, its
-    /// descendants depth first.
+    /// descendants depth first. A conversation's row keeps its id whether
+    /// it sits at the top or in a nest, so moving between them is a move.
     static func items(_ nodes: [SessionNesting.Node], expanded: Set<String>) -> [V2ChatsListItem] {
         var items: [V2ChatsListItem] = []
-        items.reserveCapacity(nodes.count)
         for node in nodes {
-            items.append(V2ChatsListItem(id: "row:" + node.id, kind: .session(node)))
+            items.append(V2ChatsListItem(id: node.id, kind: .session(node)))
             guard !node.children.isEmpty else { continue }
             let key = SessionNesting.nestKey(of: node.session)
             let isExpanded = expanded.contains(key)
@@ -1048,7 +1048,7 @@ struct V2ChatsListItem: Identifiable {
             let descendants = descendants(of: node.children, depth: 0)
             for (index, entry) in descendants.enumerated() {
                 items.append(V2ChatsListItem(
-                    id: "child:" + entry.session.id,
+                    id: entry.session.id,
                     kind: .child(
                         entry.session,
                         depth: entry.depth,

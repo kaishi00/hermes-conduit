@@ -191,7 +191,7 @@ extension SidebarLayoutTests {
         // descendants depth first, a closed one only its "3 jobs" line.
         XCTAssertEqual(
             items.map(\.id),
-            ["row:call", "nest:call", "child:job", "child:job-of-job", "child:job-2", "row:chat", "row:closed", "nest:closed"]
+            ["call", "nest:call", "job", "job-of-job", "job-2", "chat", "closed", "nest:closed"]
         )
         XCTAssertEqual(Set(items.map(\.id)).count, items.count)
 
@@ -212,6 +212,17 @@ extension SidebarLayoutTests {
         // Only the nest's last row draws the hairline that closes it.
         XCTAssertEqual(children.map(\.isLast), [false, false, true])
 
-        XCTAssertEqual(V2ChatsListItem.leaf(filterRow("pinned", source: .chat)).id, "row:pinned")
+        XCTAssertEqual(V2ChatsListItem.leaf(filterRow("pinned", source: .chat)).id, "pinned")
+
+        // A nest opens by its stored id, which outlives the runtime id the
+        // row is listed under.
+        var reconciled = filterRow("runtime", source: .chat)
+        reconciled.storedSessionId = "stored"
+        let renamed = [SessionNesting.Node(session: reconciled, children: [node("its-job")])]
+        XCTAssertEqual(
+            V2ChatsListItem.items(renamed, expanded: ["stored"]).map(\.id),
+            ["runtime", "nest:runtime", "its-job"]
+        )
+        XCTAssertEqual(V2ChatsListItem.items(renamed, expanded: ["runtime"]).map(\.id), ["runtime", "nest:runtime"])
     }
 }
