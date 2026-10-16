@@ -34,6 +34,7 @@ extension GroupChatModelsTests {
         XCTAssertThrowsError(try GroupRoomFilesClient.reference(from: ["ok": false, "path": "/x"]))
     }
 
+    @MainActor
     func testRoomMessageShowsLeadingFileReferencesAsFiles() {
         let text = AppState.promptText("Look at this", fileReferences: [
             "@file:/h/conduit/room-files/a/photo.jpg",

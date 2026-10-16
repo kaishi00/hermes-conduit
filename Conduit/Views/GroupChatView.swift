@@ -455,7 +455,7 @@ struct GroupEventRow: View {
     }
 
     /// Two rows in a row from one member (or both from the user).
-    static func sameSpeaker(_ previous: GroupEvent, _ next: GroupEvent) -> Bool {
+    nonisolated static func sameSpeaker(_ previous: GroupEvent, _ next: GroupEvent) -> Bool {
         if previous.isUserMessage && next.isUserMessage { return true }
         guard previous.isMemberMessage, next.isMemberMessage else { return false }
         let key = previous.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)

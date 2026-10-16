@@ -2403,7 +2403,7 @@ final class HermesClient: ObservableObject {
 
     /// Quotes a reference value that holds whitespace, brackets or quotes so
     /// Hermes reads it back whole (its `format_reference_value`).
-    static func formatReferenceValue(_ value: String) -> String {
+    nonisolated static func formatReferenceValue(_ value: String) -> String {
         guard value.rangeOfCharacter(from: referenceValueQuotingCharacters) != nil else { return value }
         for quote in ["`", "\"", "'"] where !value.contains(quote) {
             return "\(quote)\(value)\(quote)"
@@ -2411,7 +2411,7 @@ final class HermesClient: ObservableObject {
         return value
     }
 
-    private static let referenceValueQuotingCharacters = CharacterSet.whitespacesAndNewlines
+    nonisolated private static let referenceValueQuotingCharacters = CharacterSet.whitespacesAndNewlines
         .union(CharacterSet(charactersIn: "()[]{}<>\"'`"))
 
     // MARK: - Cron
