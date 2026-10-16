@@ -361,6 +361,7 @@ struct KanbanView: View {
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2Shell) private var shell
     /// iPhone-native interaction: one selected lane rendered as a vertical
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
@@ -798,7 +799,11 @@ struct KanbanView: View {
         .onChange(of: store.board) { _, _ in
             pruneSelectionAgainstBoard()
         }
-        .task(id: liveEventsKey) {
+        // V2 keeps a visited Tasks tab mounted behind the selected one: the
+        // board listens and polls only while it shows, and catches up when it
+        // comes back. Outside V2 the board is always active.
+        .task(id: "\(liveEventsKey)|\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
             await runLiveEventStream()
         }
         .task(id: pollingKey) {
@@ -808,6 +813,14 @@ struct KanbanView: View {
                 serverIdentity: appState.dashboardTicketBridge?.baseURL ?? ""
             )
             await store.reload(includeArchived: includeArchived)
+        }
+        .task(id: "\(pollingKey)|\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
+            // Back on the tab: refresh what changed while it was hidden. The
+            // first load is the configure task's own.
+            if store.loadedBoardSlug != nil {
+                await store.poll(includeArchived: includeArchived)
+            }
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardIntervalNanoseconds)

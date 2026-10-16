@@ -21,7 +21,7 @@ struct V2BotsView: View {
 
     var body: some View {
         ZStack {
-            V2Backdrop()
+            V2Backdrop(isTabRoot: true)
             BotRosterView(createRequest: $createRequest)
                 .opacity(shell.contentFaded ? 0 : 1)
         }

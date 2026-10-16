@@ -200,7 +200,7 @@ final class KanbanStore: ObservableObject {
         // /boards returns and invalid-selection validation runs, so the fetch
         // below always carries an explicit ?board= that matches what we record.
         isLoading = true
-        errorMessage = nil
+        setIfChanged(\.errorMessage, nil)
         defer {
             if generation == loadGeneration { isLoading = false }
         }
@@ -209,8 +209,8 @@ final class KanbanStore: ObservableObject {
             let boardResponse = try await service.fetchBoards()
             guard generation == loadGeneration else { return }
 
-            boards = boardResponse.boards
-            currentServerBoardSlug = boardResponse.current
+            setIfChanged(\.boards, boardResponse.boards)
+            setIfChanged(\.currentServerBoardSlug, boardResponse.current)
 
             if !selectedBoardSlug.isEmpty && !boards.contains(where: { $0.slug == selectedBoardSlug }) {
                 selectedBoardSlug = ""
@@ -234,12 +234,14 @@ final class KanbanStore: ObservableObject {
             let resolvedOrchestration = await loadedOrchestration
             guard generation == loadGeneration else { return }
 
-            board = resolvedBoard
+            // A poll usually brings back the same snapshot; only what changed
+            // is written, since every @Published write redraws the board.
+            setIfChanged(\.board, resolvedBoard)
             // Exactly the slug used in GET /board?board=... above.
-            loadedBoardSlug = resolvedSlug
-            if let resolvedProfiles { profiles = resolvedProfiles }
-            if let resolvedProjects { projects = resolvedProjects }
-            if let resolvedOrchestration { orchestration = resolvedOrchestration }
+            setIfChanged(\.loadedBoardSlug, resolvedSlug)
+            if let resolvedProfiles { setIfChanged(\.profiles, resolvedProfiles) }
+            if let resolvedProjects { setIfChanged(\.projects, resolvedProjects) }
+            if let resolvedOrchestration { setIfChanged(\.orchestration, resolvedOrchestration) }
         } catch is CancellationError {
             return
         } catch {
@@ -247,6 +249,12 @@ final class KanbanStore: ObservableObject {
             // Keep the last successful board visible during refresh failures.
             errorMessage = UserFacingError.message(for: error)
         }
+    }
+
+    /// @Published fires on equal writes too, so a background reload writes
+    /// only the values that changed.
+    private func setIfChanged<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<KanbanStore, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
 
     func poll(includeArchived: Bool = false) async {

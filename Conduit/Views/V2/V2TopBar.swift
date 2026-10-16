@@ -245,10 +245,17 @@ struct V2Backdrop: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     var drifts = true
+    /// A tab root's backdrop (Chats, Bots): it also holds still while a chat
+    /// or page is pushed over the root, which draws its own.
+    var isTabRoot = false
 
     var body: some View {
         // A capsule tab hidden behind the selected one holds still.
-        ConduitBackdrop(drifts: drifts && shell.isTabActive, glowTint: appState.profileGlowTint(appState.activeProfile))
+        let covered = isTabRoot && shell.isRootCovered
+        ConduitBackdrop(
+            drifts: drifts && shell.isTabActive && !covered,
+            glowTint: appState.profileGlowTint(appState.activeProfile)
+        )
     }
 }
 

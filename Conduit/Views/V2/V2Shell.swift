@@ -72,12 +72,26 @@ enum V2Route: Hashable {
 
 /// What the shell hands its tabs: the profile switch (with its fade) and
 /// whether content is faded out for one.
-struct V2ShellContext {
+///
+/// Equal when the values are: the shell rebuilds `pickProfile` on every
+/// render, and a closure never compares equal, so without this every
+/// AppState publish would redraw every view that reads the context, the
+/// hidden tabs included. Every copy of the closure does the same thing.
+struct V2ShellContext: Equatable {
     var pickProfile: (String) -> Void = { _ in }
     var contentFaded = false
     /// False while this tab sits hidden behind the selected one (the capsule
     /// bar keeps visited tabs alive), so its polling can stop.
     var isTabActive = true
+    /// True while a screen is pushed over this tab's root (a chat, a project
+    /// page), so the root's backdrop can hold still under it.
+    var isRootCovered = false
+
+    static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
+        lhs.contentFaded == rhs.contentFaded
+            && lhs.isTabActive == rhs.isTabActive
+            && lhs.isRootCovered == rhs.isRootCovered
+    }
 }
 
 private struct V2ShellContextKey: EnvironmentKey {
@@ -115,6 +129,15 @@ struct V2Shell: View {
         switch selectedTab {
         case .chats: return chatsPath.last == .conversation
         case .bots: return botsPath.last == .conversation
+        case .tasks, .settings: return false
+        }
+    }
+
+    /// Whether a screen is pushed over the tab's root.
+    private func isRootCovered(_ tab: V2Tab) -> Bool {
+        switch tab {
+        case .chats: return !chatsPath.isEmpty
+        case .bots: return !botsPath.isEmpty
         case .tasks, .settings: return false
         }
     }
@@ -203,8 +226,12 @@ struct V2Shell: View {
             ForEach(V2Tab.destinations) { tab in
                 if visitedTabs.contains(tab) {
                     let isSelected = selectedTab == tab
+                    let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
-                        .transformEnvironment(\.v2Shell) { $0.isTabActive = isSelected }
+                        .transformEnvironment(\.v2Shell) {
+                            $0.isTabActive = isSelected
+                            $0.isRootCovered = rootCovered
+                        }
                         .opacity(isSelected ? 1 : 0)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)

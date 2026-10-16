@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -367,6 +368,28 @@ final class KanbanTests: XCTestCase {
         } catch {
             XCTAssertTrue(store.mutationErrorMessage?.contains("beta write failed") == true)
         }
+    }
+
+    // MARK: - Background polls
+
+    func testPollReturningTheSameSnapshotOnlyTogglesLoading() async {
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        let store = makeStore(requester: requester)
+        await store.reload()
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        let boardBefore = store.board
+
+        var changes = 0
+        let subscription = store.objectWillChange.sink { changes += 1 }
+        await store.poll()
+        subscription.cancel()
+
+        // Loading on, then off. The unchanged boards, board, profiles,
+        // projects and orchestration aren't written again: each write would
+        // redraw the whole board.
+        XCTAssertEqual(changes, 2)
+        XCTAssertEqual(store.board, boardBefore)
+        XCTAssertFalse(store.isLoading)
     }
 
     // MARK: - Mutation reconciliation vs passive poll ordering

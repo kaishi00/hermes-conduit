@@ -285,7 +285,7 @@ struct V2ChatsView: View {
 
     var body: some View {
         ZStack {
-            V2Backdrop()
+            V2Backdrop(isTabRoot: true)
             Group {
                 if showingProjects {
                     projectsList
