@@ -24219,9 +24219,15 @@ final class AppState: ObservableObject {
             }
             return updated
         }
-        sessions = sessions.map(updated)
-        cronSessions = cronSessions.map(updated)
-        archivedSessions = archivedSessions.map(updated)
+        // Assigned only on a change: each publish redraws every screen that
+        // observes AppState, the open chat included, and a background chat's
+        // title event usually names a title the list already shows.
+        let retitled = sessions.map(updated)
+        if retitled != sessions { sessions = retitled }
+        let retitledCron = cronSessions.map(updated)
+        if retitledCron != cronSessions { cronSessions = retitledCron }
+        let retitledArchived = archivedSessions.map(updated)
+        if retitledArchived != archivedSessions { archivedSessions = retitledArchived }
         // Catalog rows may carry the recovered title either way, but the
         // ACTIVE ordinary persisted title must not: a .sessionTitle event
         // for a canonical Bot Chat would otherwise displace the bot's
@@ -24346,7 +24352,7 @@ final class AppState: ObservableObject {
         let cleared = serverCompactingSessionIDs.filter {
             composerSessionIDsAreEquivalent($0, sessionId)
         }
-        serverCompactingSessionIDs.subtract(cleared)
+        if !cleared.isEmpty { serverCompactingSessionIDs.subtract(cleared) }
         serverCompactionClaims = serverCompactionClaims.filter {
             !composerSessionIDsAreEquivalent($0.key, sessionId)
         }
@@ -24517,9 +24523,12 @@ final class AppState: ObservableObject {
         guard let activeSessionId, !sessionId.isEmpty else { return false }
         if sessionId == activeSessionId { return true }
 
-        if let activeSession = (sessions + cronSessions).first(where: {
-            $0.id == activeSessionId || $0.alternateIds.contains(activeSessionId)
-        }) {
+        // Every delta of a chat running in the background lands here: search
+        // the two lists in place rather than copying them into one.
+        func isActive(_ session: SessionSummary) -> Bool {
+            session.id == activeSessionId || session.alternateIds.contains(activeSessionId)
+        }
+        if let activeSession = sessions.first(where: isActive) ?? cronSessions.first(where: isActive) {
             let activeIDs = Set([activeSession.id] + activeSession.alternateIds)
             if activeIDs.contains(sessionId) { return true }
         }

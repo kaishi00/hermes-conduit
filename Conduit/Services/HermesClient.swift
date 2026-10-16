@@ -45,13 +45,28 @@ private struct JsonRpcRequest: Encodable {
 /// client's own requests echo its integer ids; server→client requests
 /// (`tui_gateway/server_requests.py`) carry string ids (`srq-<hex>`), so a
 /// string id must decode instead of dropping the whole frame.
-private enum JsonRpcID: Decodable, Equatable {
+private enum JsonRpcID: Decodable, Equatable, Sendable {
     case int(Int)
     case string(String)
     /// Any other scalar (JSON-RPC forbids them): decoded so the rest of the
     /// frame is not lost. It never matches a request of ours and is never
     /// answered (requests need a string id).
     case other
+
+    /// From a `JSONSerialization` value. Nil for an absent or null id, as
+    /// the Decodable path reads it.
+    init?(jsonObject value: Any?) {
+        guard let value, !(value is NSNull) else { return nil }
+        switch value {
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber where !AnyCodable.isBoolean(number):
+            let int = number.intValue
+            self = Double(int) == number.doubleValue ? .int(int) : .other
+        default:
+            self = .other
+        }
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -89,15 +104,63 @@ private final class ResumeOnce: @unchecked Sendable {
     }
 }
 
-private struct JsonRpcResponse: Decodable {
+private struct JsonRpcResponse: Decodable, Sendable {
     let id: JsonRpcID?
     let result: AnyCodable?
     let error: RpcError?
     let method: String?
     let params: AnyCodable?
+
+    /// Reads an inbound frame with `JSONSerialization`. `JSONDecoder` finds
+    /// each `AnyCodable` value's type by trying to decode it as every type
+    /// in turn, and on the main actor that cost a frame's worth of time for
+    /// a large tool result, even one from a chat in the background. Nil for
+    /// anything the Decodable path would refuse.
+    init?(frame data: Data) {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return nil
+        }
+        var method: String?
+        if let value = object["method"], !(value is NSNull) {
+            guard let string = value as? String else { return nil }
+            method = string
+        }
+        var error: RpcError?
+        if let value = object["error"], !(value is NSNull) {
+            guard let fields = value as? [String: Any],
+                  let parsed = RpcError(jsonObject: fields) else { return nil }
+            error = parsed
+        }
+        self.id = JsonRpcID(jsonObject: object["id"])
+        self.result = AnyCodable(optionalJSONObject: object["result"])
+        self.error = error
+        self.method = method
+        self.params = AnyCodable(optionalJSONObject: object["params"])
+    }
 }
 
-struct RpcError: Decodable, Error, LocalizedError {
+/// An inbound frame, read and (for a stream event) parsed in one place, so
+/// a large one can be done off the main actor. Immutable once built, and
+/// handed to the main actor once.
+private struct DecodedFrame: @unchecked Sendable {
+    let response: JsonRpcResponse?
+    /// The parsed stream event, for an `event` notification.
+    let event: StreamEvent?
+    let byteCount: Int
+
+    init(_ data: Data) {
+        let response = JsonRpcResponse(frame: data)
+        self.response = response
+        if response?.method == "event", let params = response?.params {
+            event = StreamEventParser.parse(params: params)
+        } else {
+            event = nil
+        }
+        byteCount = data.count
+    }
+}
+
+struct RpcError: Decodable, Error, LocalizedError, Sendable {
     let code: Int?
     let message: String
     /// Machine-readable refusal reason from the error's `data.reason`
@@ -122,6 +185,19 @@ struct RpcError: Decodable, Error, LocalizedError {
 extension RpcError {
     private enum CodingKeys: String, CodingKey { case code, message, data }
 
+    /// From a `JSONSerialization` object, refusing what `init(from:)` does.
+    fileprivate init?(jsonObject object: [String: Any]) {
+        guard let message = object["message"] as? String else { return nil }
+        var code: Int?
+        if let value = object["code"], !(value is NSNull) {
+            guard let number = value as? NSNumber, !AnyCodable.isBoolean(number),
+                  Double(number.intValue) == number.doubleValue else { return nil }
+            code = number.intValue
+        }
+        let data = AnyCodable(optionalJSONObject: object["data"])
+        self.init(code: code, message: message, reason: data?.objectValue?["reason"]?.stringValue)
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let data = try? container.decodeIfPresent(AnyCodable.self, forKey: .data)
@@ -134,7 +210,7 @@ extension RpcError {
 }
 
 // Type-erased Codable for dynamic JSON
-enum AnyCodable: Codable, Equatable {
+enum AnyCodable: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
     case number(Double)
@@ -144,21 +220,51 @@ enum AnyCodable: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+        // Each miss below throws and builds an error, so the common kinds go
+        // first. JSONDecoder never reads a number or a bool as a string, or
+        // the reverse, so the order doesn't change any value.
         if container.decodeNil() {
             self = .null
+        } else if let v = try? container.decode(String.self) {
+            self = .string(v)
+        } else if let v = try? container.decode([String: AnyCodable].self) {
+            self = .object(v)
         } else if let v = try? container.decode(Bool.self) {
             self = .bool(v)
         } else if let v = try? container.decode(Double.self) {
             self = .number(v)
-        } else if let v = try? container.decode(String.self) {
-            self = .string(v)
         } else if let v = try? container.decode([AnyCodable].self) {
             self = .array(v)
-        } else if let v = try? container.decode([String: AnyCodable].self) {
-            self = .object(v)
         } else {
             self = .null
         }
+    }
+
+    /// From a `JSONSerialization` value.
+    init(jsonObject value: Any) {
+        switch value {
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber:
+            self = Self.isBoolean(number) ? .bool(number.boolValue) : .number(number.doubleValue)
+        case let object as [String: Any]:
+            self = .object(object.mapValues(AnyCodable.init(jsonObject:)))
+        case let array as [Any]:
+            self = .array(array.map(AnyCodable.init(jsonObject:)))
+        default:
+            self = .null
+        }
+    }
+
+    /// Nil for an absent or null value, as `decodeIfPresent` reads it.
+    init?(optionalJSONObject value: Any?) {
+        guard let value, !(value is NSNull) else { return nil }
+        self.init(jsonObject: value)
+    }
+
+    /// `JSONSerialization` hands back true and false as NSNumber too.
+    static func isBoolean(_ number: NSNumber) -> Bool {
+        CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1047,14 +1153,27 @@ final class HermesClient: ObservableObject {
                 // otherwise fire `onEvent`/resolve pending RPCs for the new
                 // connection. Same guard the catch uses below.
                 guard self.socket === socket else { break }
+                let data: Data
                 switch message {
-                case .data(let data):
-                    handleMessage(data: data)
+                case .data(let bytes):
+                    data = bytes
                 case .string(let text):
-                    handleMessage(data: Data(text.utf8))
+                    data = Data(text.utf8)
                 @unknown default:
-                    break
+                    continue
                 }
+                let frame: DecodedFrame
+                if data.count >= Self.backgroundDecodeThreshold {
+                    // A big frame (a resume, a history page, a tool's
+                    // output, often from a chat in the background) is read
+                    // off the main actor so it can't stall a scroll. The
+                    // loop waits for it, so frames still apply in order.
+                    frame = await Self.decodeInBackground(data)
+                    guard self.socket === socket else { break }
+                } else {
+                    frame = DecodedFrame(data)
+                }
+                handleMessage(frame)
             } catch {
                 // Socket closed or errored
                 logger.error("WebSocket receive failed: \(error.localizedDescription, privacy: .public)")
@@ -1082,9 +1201,17 @@ final class HermesClient: ObservableObject {
         }
     }
 
-    private func handleMessage(data: Data) {
-        guard let json = try? JSONDecoder().decode(JsonRpcResponse.self, from: data) else {
-            logger.error("Dropped undecodable inbound WebSocket frame (\(data.count) bytes)")
+    /// Frames this size or larger are decoded off the main actor. Stream
+    /// deltas and RPC acks are far smaller and stay on the fast path.
+    static let backgroundDecodeThreshold = 16 * 1024
+
+    nonisolated private static func decodeInBackground(_ data: Data) async -> DecodedFrame {
+        DecodedFrame(data)
+    }
+
+    private func handleMessage(_ frame: DecodedFrame) {
+        guard let json = frame.response else {
+            logger.error("Dropped undecodable inbound WebSocket frame (\(frame.byteCount) bytes)")
             return
         }
 
@@ -1152,7 +1279,9 @@ final class HermesClient: ObservableObject {
             default:
                 break
             }
-            handleStreamEvent(params: params)
+            if let event = frame.event {
+                onEvent?(event)
+            }
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
         }
