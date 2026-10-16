@@ -96,7 +96,7 @@
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment.</string>
+	<string>Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment, or to scan a dashboard's sign-in code.</string>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>When you let Hermes set alarms and timers, Conduit sets the ones your agent asks for, after you approve them unless you chose to add without asking.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

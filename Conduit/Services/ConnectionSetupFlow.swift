@@ -71,6 +71,8 @@ enum ConnectionSetupPrompt: CaseIterable {
     case lanDetails
     case tailscaleServe
     case reverseProxyDetails
+    /// A `conduit://connect` sign-in code to scan (DashboardConnectLink).
+    case signInCode
 
     var title: String {
         switch self {
@@ -81,6 +83,7 @@ enum ConnectionSetupPrompt: CaseIterable {
         case .lanDetails: return AppLocalization.string("Ask Hermes for your connection details")
         case .tailscaleServe: return AppLocalization.string("Ask Hermes to configure Tailscale Serve")
         case .reverseProxyDetails: return AppLocalization.string("Ask Hermes to confirm your HTTPS address")
+        case .signInCode: return AppLocalization.string("Ask Hermes for a sign-in code")
         }
     }
 
@@ -103,6 +106,10 @@ enum ConnectionSetupPrompt: CaseIterable {
             return AppLocalization.string("Please check whether the Hermes dashboard is running. Make sure Tailscale is available on this machine, then configure Tailscale Serve so I can securely access the dashboard from my iPhone or iPad. Keep dashboard authentication enabled. When it is ready, tell me the hostname/address and port I should use with Hermes Conduit.")
         case .reverseProxyDetails:
             return AppLocalization.string("Please confirm the HTTPS URL I should use to access the Hermes dashboard through my existing reverse proxy, including any custom port or path prefix. Also confirm that dashboard authentication remains enabled.")
+        case .signInCode:
+            // The code carries the password: a terminal QR code keeps it out
+            // of a chat's history, which a link sent in a chat can't.
+            return AppLocalization.string("Please make me a sign-in code for Hermes Conduit. It is this link, with each value percent-encoded: conduit://connect?url=ADDRESS&username=USERNAME&password=PASSWORD. For ADDRESS, use the full dashboard address my iPhone reaches, with http:// or https://, such as its Tailscale or local network address, never localhost. Leave out the password if you don't know it. If we are talking in a terminal, show the link there as a QR code so the password stays out of chat history; otherwise send me the link. Keep dashboard authentication enabled.")
         }
     }
 }

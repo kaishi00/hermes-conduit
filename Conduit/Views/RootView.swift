@@ -36,6 +36,13 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: appState.showLogin)
+        // A sign-in code link asks here, above both the sign-in screen and
+        // the app, so it survives the sign-in screen giving way to the app
+        // while a saved dashboard connects at launch.
+        .sheet(item: $appState.pendingConnectLink) { link in
+            ConnectLinkSheet(link: link)
+                .environmentObject(appState)
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // Only the primary window drives the process-wide lifecycle: a
             // transient duplicate window's .background must never suspend a

@@ -185,85 +185,85 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit verwendet die Kamera nur, wenn du ein Foto aufnehmen möchtest, etwa für dein Profilbild oder einen Chat-Anhang."
+            "value" : "Conduit verwendet die Kamera nur, wenn du ein Foto aufnehmen möchtest, etwa für dein Profilbild oder einen Chat-Anhang, oder den Anmeldecode eines Dashboards scannen möchtest."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment."
+            "value" : "Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment, or to scan a dashboard's sign-in code."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit usa la cámara solo cuando eliges hacer una foto, por ejemplo para tu foto de perfil o para adjuntarla a un chat."
+            "value" : "Conduit usa la cámara solo cuando eliges hacer una foto, por ejemplo para tu foto de perfil o para adjuntarla a un chat, o escanear el código de inicio de sesión de un panel."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit utilise l'appareil photo uniquement lorsque vous choisissez de prendre une photo, par exemple pour votre photo de profil ou une pièce jointe de discussion."
+            "value" : "Conduit utilise l'appareil photo uniquement lorsque vous choisissez de prendre une photo, par exemple pour votre photo de profil ou une pièce jointe de discussion, ou de scanner le code de connexion d'un tableau de bord."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit menggunakan kamera hanya saat Anda memilih untuk mengambil foto, misalnya untuk foto profil atau lampiran obrolan."
+            "value" : "Conduit menggunakan kamera hanya saat Anda memilih untuk mengambil foto, misalnya untuk foto profil atau lampiran obrolan, atau memindai kode masuk dasbor."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit usa la fotocamera solo quando scegli di scattare una foto, ad esempio per l'immagine del profilo o un allegato della chat."
+            "value" : "Conduit usa la fotocamera solo quando scegli di scattare una foto, ad esempio per l'immagine del profilo o un allegato della chat, o di scansionare il codice di accesso di una dashboard."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduitは、プロフィール写真やチャットの添付ファイル用など、写真を撮ることを選んだときにだけカメラを使用します。"
+            "value" : "Conduitは、プロフィール写真やチャットの添付ファイル用など写真を撮るとき、またはダッシュボードのサインインコードをスキャンするときにだけカメラを使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit은 프로필 사진이나 채팅 첨부 파일처럼 사진을 찍기로 선택했을 때만 카메라를 사용해요."
+            "value" : "Conduit은 프로필 사진이나 채팅 첨부 파일처럼 사진을 찍거나 대시보드의 로그인 코드를 스캔하기로 선택했을 때만 카메라를 사용해요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit używa aparatu tylko wtedy, gdy zdecydujesz się zrobić zdjęcie, na przykład do zdjęcia profilowego lub załącznika w czacie."
+            "value" : "Conduit używa aparatu tylko wtedy, gdy zdecydujesz się zrobić zdjęcie, na przykład do zdjęcia profilowego lub załącznika w czacie, albo zeskanować kod logowania do panelu."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Conduit usa a câmera somente quando você escolhe tirar uma foto, como para sua foto de perfil ou um anexo de chat."
+            "value" : "O Conduit usa a câmera somente quando você escolhe tirar uma foto, como para sua foto de perfil ou um anexo de chat, ou escanear o código de login de um painel."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit использует камеру, только когда вы решаете сделать снимок, например для фото профиля или вложения в чат."
+            "value" : "Conduit использует камеру, только когда вы решаете сделать снимок, например для фото профиля или вложения в чат, или отсканировать код для входа в дашборд."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit, kamerayı yalnızca profil resminiz veya bir sohbet eki gibi bir fotoğraf çekmeyi seçtiğinizde kullanır."
+            "value" : "Conduit, kamerayı yalnızca profil resminiz veya bir sohbet eki gibi bir fotoğraf çekmeyi ya da bir panelin giriş kodunu taramayı seçtiğinizde kullanır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅当你选择拍照时（例如用作头像或聊天附件），Conduit 才会使用相机。"
+            "value" : "仅当你选择拍照（例如用作头像或聊天附件）或扫描仪表板的登录码时，Conduit 才会使用相机。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "只有在你選擇拍照時（例如用於個人照片或聊天附件），Conduit 才會使用相機。"
+            "value" : "只有在你選擇拍照（例如用於個人照片或聊天附件）或掃描儀表板的登入碼時，Conduit 才會使用相機。"
           }
         }
       }

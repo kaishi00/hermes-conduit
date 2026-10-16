@@ -25,6 +25,9 @@
 //  `conduit://settings/location` opens Location sharing. Only inside the
 //  app, like a bot link.
 //
+//  `conduit://connect?url=…` is a dashboard sign-in code, read by
+//  DashboardConnectLink before these, inside the app and from outside.
+//
 
 import Foundation
 

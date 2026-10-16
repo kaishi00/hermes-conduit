@@ -230,6 +230,8 @@ struct ConduitApp: App {
             // open inside the app; every other link goes to the system.
             .environment(\.openURL, OpenURLAction { url in
                 if appState.routeWidgetLaunchURL(url) { return .handled }
+                // A sign-in code Hermes sent in a chat asks before it signs in.
+                if appState.routeConnectLink(url) { return .handled }
                 guard let link = ConduitAppLink(url: url) else {
                     // The scheme is registered, so the system would hand a
                     // conduit link Conduit can't read straight back to it.
@@ -248,6 +250,9 @@ struct ConduitApp: App {
             // the same route as an in-app link once Hermes is connected.
             .onOpenURL { url in
                 if appState.routeWidgetLaunchURL(url) { return }
+                // A sign-in code tapped in another app (a Telegram chat with
+                // Hermes): Conduit asks before it signs in.
+                if appState.routeConnectLink(url) { return }
                 guard let link = ConduitAppLink(externalURL: url) else { return }
                 pendingExternalLink = link
             }

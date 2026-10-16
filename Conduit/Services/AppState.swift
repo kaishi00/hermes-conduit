@@ -1685,6 +1685,10 @@ final class AppState: ObservableObject {
     /// once by LoginView; never read by the connected composer banner, so a
     /// sign-in failure cannot resurface stale over a healthy session.
     @Published var pendingLoginFailure: ConnectionFailurePresentation?
+    /// A sign-in code link that opened Conduit or was tapped in a chat
+    /// (DashboardConnectLink.swift). RootView asks about it in a sheet,
+    /// over the sign-in screen or a connected app alike.
+    @Published var pendingConnectLink: DashboardConnectLink?
     /// Round 6: the classified failure of the most recent failed connection
     /// attempt (saved-credential reconnect, repair activation, or a failed
     /// explicit connect). Typed — never recovered from user-facing strings —

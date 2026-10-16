@@ -212,6 +212,9 @@ final class LoginFlowModel: ObservableObject {
     @Published var connectionRepairContext: ConnectionRepairContext?
     @Published var showsExtraHeaders = false
     @Published var extraHeadersRevision = 0
+    @Published var showsScanner = false
+    /// A scanned sign-in code, asked about in its own sheet.
+    @Published var pendingLink: DashboardConnectLink?
 
     /// Runs once a sign-in has handed its session to AppState (the Add
     /// sheet closes there).
@@ -225,6 +228,11 @@ final class LoginFlowModel: ObservableObject {
     /// Where the running action's failures belong, also for the ones AppState
     /// hands over after the session starts.
     private var runningPlace: LoginFailurePlace?
+    /// What the scanner read, handled once its sheet has closed.
+    private var scanResult: DashboardConnectLink.Scan?
+    /// The flow signs in from a sign-in code: its retry signs in again
+    /// rather than stopping at the sign-in step.
+    private var signsInFromLink = false
 
     func attach(_ appState: AppState) {
         self.appState = appState
@@ -332,7 +340,12 @@ final class LoginFlowModel: ObservableObject {
 
     func retry() async {
         switch failurePlace {
-        case .address: await continueFromAddress()
+        case .address:
+            if signsInFromLink {
+                await signInFromLink()
+            } else {
+                await continueFromAddress()
+            }
         case .credentials: await signIn()
         case .dashboard(let id):
             guard let dashboard = appState?.savedDashboardRegistry.dashboard(with: id) else { return }
@@ -389,7 +402,9 @@ final class LoginFlowModel: ObservableObject {
 
     // MARK: The address step
 
-    func continueFromAddress() async {
+    /// `opensSignInStep` false leaves a password dashboard's sign-in step
+    /// closed, for a sign-in code that already carries the password.
+    func continueFromAddress(opensSignInStep: Bool = true) async {
         guard let appState, !isWorking else { return }
         // A typed sign-in abandons the repair context of an earlier failed
         // saved connection: Repair is for the connection that failed.
@@ -436,7 +451,8 @@ final class LoginFlowModel: ObservableObject {
                     baseURL: baseURL,
                     label: saved?.label ?? SavedDashboardLabel.derive(from: baseURL),
                     cloudflare: cloudflare,
-                    place: .address
+                    place: .address,
+                    opensSignInStep: opensSignInStep
                 )
                 return
             } catch is CancellationError {
@@ -454,14 +470,15 @@ final class LoginFlowModel: ObservableObject {
         baseURL: String,
         label: String,
         cloudflare: CloudflareAccessCredentials?,
-        place: LoginFailurePlace
+        place: LoginFailurePlace,
+        opensSignInStep: Bool = true
     ) {
         switch route {
         case .password(let nativeOAuth):
             if let previous = target, previous.baseURL != baseURL { password = "" }
             target = LoginTarget(baseURL: baseURL, label: label, cloudflare: cloudflare, nativeOAuth: nativeOAuth)
             prefillUsername(for: baseURL)
-            showsCredentials = true
+            if opensSignInStep { showsCredentials = true }
         case .nativeOAuth(let choice):
             startNativeOAuth(baseURL: baseURL, provider: choice.provider, cloudflare: cloudflare, place: place)
         case .browser:
@@ -544,6 +561,62 @@ final class LoginFlowModel: ObservableObject {
         guard let target, let choice = target.nativeOAuth else { return }
         clearFailure()
         startNativeOAuth(baseURL: target.baseURL, provider: choice.provider, cloudflare: target.cloudflare, place: .credentials)
+    }
+
+    // MARK: Sign-in codes
+
+    /// The scanner read a code. Returns false when it isn't one Conduit can
+    /// sign in to, so the scanner keeps looking.
+    func scanned(_ text: String) -> Bool {
+        let result = DashboardConnectLink.scan(text)
+        if case .unreadable = result { return false }
+        scanResult = result
+        showsScanner = false
+        return true
+    }
+
+    /// Handles the scan once the scanner has closed: a sign-in code opens
+    /// its own sheet, which can't show over the scanner's.
+    func scannerDismissed() {
+        guard let result = scanResult else { return }
+        scanResult = nil
+        switch result {
+        case .link(let link):
+            pendingLink = link
+        case .address(let scanned):
+            address = scanned
+            if LoginAddress.isOnlyOnHermesComputer(scanned) {
+                show(Self.onlyOnHermesComputerNotice, at: .address)
+                return
+            }
+            clearFailure()
+            Task { await continueFromAddress() }
+        case .unreadable:
+            return
+        }
+    }
+
+    /// A sign-in code naming localhost: the computer running Hermes.
+    static var onlyOnHermesComputerNotice: ConnectionFailurePresentation {
+        .notice(
+            title: AppLocalization.string("This address only works on the computer running Hermes."),
+            message: AppLocalization.string("Ask Hermes for its Tailscale or network address instead.")
+        )
+    }
+
+    /// A sign-in code's Sign in: the dashboard check, then the password
+    /// sign-in straight away when the code carries a username and password.
+    /// A refused password opens the sign-in step to correct it.
+    func signInFromLink() async {
+        guard !isWorking else { return }
+        signsInFromLink = true
+        let hasPassword = !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+        target = nil
+        await continueFromAddress(opensSignInStep: !hasPassword)
+        guard hasPassword, failure == nil, target != nil,
+              nativeOAuthRequest == nil, browserRequest == nil else { return }
+        await signIn()
+        if failurePlace == .credentials { showsCredentials = true }
     }
 
     // MARK: Browser sign-ins
