@@ -328,11 +328,4 @@ enum CapabilityFormat {
     static func uses(_ count: Int) -> String {
         "×" + count.formatted(.number.notation(.compactName))
     }
-
-    /// Two letters for a server with no logo: `github` reads "GI".
-    static func initials(_ name: String) -> String {
-        let words = name.split { !$0.isLetter && !$0.isNumber }
-        let letters = words.count > 1 ? words.prefix(2).compactMap(\.first) : Array(name.filter { $0.isLetter || $0.isNumber }.prefix(2))
-        return String(letters).uppercased()
-    }
 }

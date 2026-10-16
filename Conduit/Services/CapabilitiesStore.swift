@@ -232,12 +232,13 @@ final class CapabilitiesStore: ObservableObject {
     // MARK: Tools
 
     /// Per-tool calls over a year, which orders the Tools list. A failed
-    /// read leaves the counts empty, so the list falls back to A-Z.
+    /// read keeps the counts already read (none at first, so the list falls
+    /// back to A-Z and the next visit asks again).
     func loadToolCalls() async {
         let token = generation
-        let response = try? await request(scoped("/api/analytics/usage?days=365"), timeout: 30_000)
-        guard token == generation else { return }
-        toolCalls = response.map(CapabilityToolsetOrdering.toolCallCounts) ?? [:]
+        guard let response = try? await request(scoped("/api/analytics/usage?days=365"), timeout: 30_000),
+              token == generation else { return }
+        toolCalls = CapabilityToolsetOrdering.toolCallCounts(from: response)
     }
 
     func toolsetConfig(name: String) async throws -> ToolsetConfig {
@@ -325,6 +326,8 @@ final class CapabilitiesStore: ObservableObject {
     }
 
     func probe(_ name: String) async {
+        // Each test starts the server on the host: one at a time.
+        guard !probing.contains(name) else { return }
         let token = generation
         probing.insert(name)
         let probe: ConnectorProbe
@@ -468,9 +471,22 @@ final class CapabilitiesStore: ObservableObject {
         pluginsLoaded = true
     }
 
+    /// Hermes' plugin routes act on the dashboard's own (default) profile
+    /// whatever profile asks, so other profiles only read.
+    var canManagePlugins: Bool { profile == "default" }
+
+    private func requirePluginProfile() throws {
+        guard canManagePlugins else {
+            throw CapabilitiesStoreError.declined(
+                AppLocalization.string("Hermes installs plugins for the host's default profile. Switch to it to change them.")
+            )
+        }
+    }
+
     /// Turns a plugin on or off. Turning one on loads it live when the
     /// gateway answers; turning one off always waits for a restart.
     func setPluginEnabled(_ plugin: AgentPluginRow, enabled: Bool) async throws {
+        try requirePluginProfile()
         let token = generation
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
@@ -489,6 +505,7 @@ final class CapabilitiesStore: ObservableObject {
     }
 
     func updatePlugin(_ plugin: AgentPluginRow, acceptCapabilities: Bool = false) async throws -> PluginUpdateOutcome {
+        try requirePluginProfile()
         let token = generation
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
@@ -502,7 +519,8 @@ final class CapabilitiesStore: ObservableObject {
             let lines = (response["delta_lines"] as? [Any])?.compactMap { $0 as? String } ?? []
             return .needsConsent(lines: lines.isEmpty ? [response["error"] as? String ?? ""].filter { !$0.isEmpty } : lines)
         }
-        guard token == generation else { return .upToDate }
+        // A profile or dashboard switch discards the answer.
+        guard token == generation else { throw CancellationError() }
         if response["unchanged"] as? Bool == true {
             return .upToDate
         }
@@ -515,6 +533,7 @@ final class CapabilitiesStore: ObservableObject {
     }
 
     func removePlugin(_ plugin: AgentPluginRow) async throws {
+        try requirePluginProfile()
         let token = generation
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
@@ -531,6 +550,7 @@ final class CapabilitiesStore: ObservableObject {
     }
 
     func installPlugin(_ entry: PluginCatalogEntry) async throws -> PluginInstallOutcome {
+        try requirePluginProfile()
         let token = generation
         pluginBusy.insert(entry.name)
         defer { if token == generation { pluginBusy.remove(entry.name) } }

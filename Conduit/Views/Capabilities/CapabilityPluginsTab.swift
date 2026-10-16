@@ -21,7 +21,7 @@ struct CapabilityPluginsTab: View {
 
     /// Hermes applies plugin changes to the dashboard's own profile, so they
     /// are made from the default profile only.
-    private var canManage: Bool { store.profile == "default" }
+    private var canManage: Bool { store.canManagePlugins }
 
     private var installed: [AgentPluginRow] {
         store.plugins.filter { plugin in
@@ -449,6 +449,8 @@ struct AgentPluginDetailPage: View {
                 case .needsConsent(let lines):
                     consent = PluginConsent(plugin: plugin, lines: lines)
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 message = UserFacingError.message(for: error)
             }

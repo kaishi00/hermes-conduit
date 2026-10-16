@@ -302,6 +302,31 @@ extension KanbanTests {
         XCTAssertEqual(requester.calls.last?.method, "POST")
         XCTAssertTrue(store.pluginBusy.isEmpty)
     }
+
+    func testCapabilitiesStoreChangesPluginsOnlyFromTheDefaultProfile() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/dashboard/agent-plugins/Weather/enable": ["ok": true],
+            "/api/analytics/usage": ["tools": [["tool": "terminal", "count": 4]]],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        XCTAssertFalse(store.canManagePlugins)
+        let weather = AgentPluginRow.list(from: ["plugins": [["name": "Weather", "source": "git"]]])[0]
+        do {
+            try await store.setPluginEnabled(weather, enabled: true)
+            XCTFail("Hermes would apply it to the default profile")
+        } catch {
+            XCTAssertTrue(error is CapabilitiesStoreError)
+        }
+        XCTAssertTrue(requester.calls.isEmpty)
+
+        // Counts already read survive a failed refresh.
+        await store.loadToolCalls()
+        XCTAssertEqual(store.toolCalls, ["terminal": 4])
+        requester.responses["/api/analytics/usage"] = nil
+        await store.loadToolCalls()
+        XCTAssertEqual(store.toolCalls, ["terminal": 4])
+    }
 }
 
 @MainActor

@@ -32,10 +32,7 @@ struct CapabilityConnectorsTab: View {
             states: states,
             query: query
         )
-        CapabilityTabScroll(refresh: {
-            await store.loadConnectors()
-            await store.probeServers(force: true)
-        }) {
+        CapabilityTabScroll(refresh: { await reload(force: true) }) {
             if !store.connectorsLoaded {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -46,7 +43,7 @@ struct CapabilityConnectorsTab: View {
                     symbol: "exclamationmark.triangle",
                     message: error
                 ) {
-                    Task { await store.loadConnectors() }
+                    Task { await reload(force: false) }
                 }
             } else if groups.connected.isEmpty && groups.available.isEmpty && groups.off.isEmpty {
                 CapabilityEmptyState(
@@ -122,6 +119,13 @@ struct CapabilityConnectorsTab: View {
                 actionError = error
             }
         }
+    }
+
+    /// Reads the servers again, then tests them: all of them on a pull to
+    /// refresh, the ones not tested lately otherwise.
+    private func reload(force: Bool) async {
+        await store.loadConnectors()
+        await store.probeServers(force: force)
     }
 
     /// An entry that asks for nothing installs in one tap; one with keys

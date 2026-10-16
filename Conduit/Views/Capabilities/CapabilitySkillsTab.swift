@@ -36,7 +36,10 @@ struct CapabilitySkillsTab: View {
     var body: some View {
         let installed = self.installed
         let available = self.available
-        CapabilityTabScroll(refresh: refresh) {
+        CapabilityTabScroll(refresh: {
+            await refresh()
+            await store.loadOfficialSkills()
+        }) {
             if installed.isEmpty && available.isEmpty {
                 CapabilityEmptyState(
                     title: query.isEmpty ? AppLocalization.string("No skills yet") : AppLocalization.string("No matching skills"),
