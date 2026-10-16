@@ -58,6 +58,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
     func testOwnVoiceServerExcludesOpenAIHost() {
         XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer(""))
         XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("   "))
+        XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("http://"))
         XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("https://api.openai.com/v1"))
         XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("api.openai.com/v1"))
         XCTAssertFalse(VoiceSettingsView.isOwnVoiceServer("https://API.OpenAI.com./v1"))

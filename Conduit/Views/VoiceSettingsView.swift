@@ -837,7 +837,7 @@ struct VoiceSettingsView: View {
         let withScheme = trimmed.contains("://") ? trimmed : "http://" + trimmed
         let host = (URL(string: withScheme)?.host?.lowercased() ?? "")
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        return !trimmed.isEmpty && host != "api.openai.com"
+        return !host.isEmpty && host != "api.openai.com"
     }
 
     /// OpenAI speech is only picked once a private Base URL is saved, so
@@ -858,7 +858,10 @@ struct VoiceSettingsView: View {
         return VStack(alignment: .leading, spacing: 8) {
             TextField(AppLocalization.string("Voice server address"), text: Binding(
                 get: { voiceServerDraft ?? "" },
-                set: { voiceServerDraft = $0 }
+                set: {
+                    voiceServerDraft = $0
+                    voiceServerSaveError = nil
+                }
             ), prompt: Text(verbatim: "http://192.168.1.20:4123/v1"))
                 .textContentType(.URL)
                 .keyboardType(.URL)
@@ -882,9 +885,10 @@ struct VoiceSettingsView: View {
                     voiceServerSaveError = nil
                     withAnimation(.snappy) { voiceServerDraft = nil }
                 }
+                .disabled(savingField != nil)
                 Spacer()
                 Button { saveVoiceServerAddress() } label: {
-                    if savingField != nil { ProgressView() } else { Text(AppLocalization.string("Save and use")) }
+                    if savingField == "tts.openai.base_url" { ProgressView() } else { Text(AppLocalization.string("Save and use")) }
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Save and use")))
                 .buttonStyle(.borderedProminent)
