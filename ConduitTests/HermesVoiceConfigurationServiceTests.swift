@@ -1205,6 +1205,15 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(groups.first?.note, "OpenAI key")
         XCTAssertNil(groups.last?.note)
     }
+
+    func testAGroupKeepsTheFirstUsefulNote() {
+        let groups = VoiceSettingsView.keyGroups([
+            .init(key: "VOICE_TOOLS_OPENAI_KEY", isSet: false, description: "VOICE_TOOLS_OPENAI_KEY"),
+            .init(key: "OPENAI_API_KEY", isSet: true, description: "OpenAI API key")
+        ])
+
+        XCTAssertEqual(groups, [.init(keys: ["VOICE_TOOLS_OPENAI_KEY", "OPENAI_API_KEY"], note: "OpenAI API key")])
+    }
 }
 
 @MainActor

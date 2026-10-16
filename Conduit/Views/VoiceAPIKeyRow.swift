@@ -12,6 +12,7 @@ import SwiftUI
 
 struct VoiceAPIKeyRow: View {
     @ObservedObject var service: HermesVoiceConfigurationService
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     /// Variables Hermes reads, in its order. The first set one is shown; a
     /// new or replacement key is always saved under the first, which Hermes
     /// reads ahead of the rest, so a shared fallback such as OPENAI_API_KEY
@@ -150,6 +151,7 @@ struct VoiceAPIKeyRow: View {
 /// A live mode's key card, shown under that mode's settings.
 struct VoiceAPIKeySection: View {
     @ObservedObject var service: HermesVoiceConfigurationService
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     let keys: [String]
     var note: String? = nil
 

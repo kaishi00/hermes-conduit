@@ -1150,8 +1150,12 @@ struct VoiceSettingsView: View {
         var groups: [VoiceKeyGroup] = []
         for credential in credentials {
             let keys = [openAIVoiceKeys, geminiKeys].first { $0.contains(credential.key) } ?? [credential.key]
-            guard !groups.contains(where: { $0.keys == keys }) else { continue }
-            groups.append(.init(keys: keys, note: credential.description == credential.key ? nil : credential.description))
+            let note = credential.description == credential.key ? nil : credential.description
+            if let index = groups.firstIndex(where: { $0.keys == keys }) {
+                if groups[index].note == nil, let note { groups[index] = .init(keys: keys, note: note) }
+                continue
+            }
+            groups.append(.init(keys: keys, note: note))
         }
         return groups
     }
@@ -1363,11 +1367,6 @@ struct VoiceSettingsView: View {
     private static let speechServerProviderID = "conduit_speech_server"
 }
 
-/// Compact phrase-list editor for one spoken-command category: view, add,
-/// edit, and delete entries, including down to an empty list (which disables
-/// that command category — defaults are not forced back). Every save
-/// canonicalizes through `VoiceSpokenCommands` so duplicates and blanks never
-/// reach persistence.
 /// Variables Hermes reads in order for one key, shown as one row.
 struct VoiceKeyGroup: Equatable, Identifiable {
     let keys: [String]
@@ -1375,6 +1374,11 @@ struct VoiceKeyGroup: Equatable, Identifiable {
     var id: String { keys.joined(separator: ",") }
 }
 
+/// Compact phrase-list editor for one spoken-command category: view, add,
+/// edit, and delete entries, including down to an empty list (which disables
+/// that command category — defaults are not forced back). Every save
+/// canonicalizes through `VoiceSpokenCommands` so duplicates and blanks never
+/// reach persistence.
 struct WakePhraseSettingsModel {
     var phrases: [String]
     var suggestedPhrase: String
