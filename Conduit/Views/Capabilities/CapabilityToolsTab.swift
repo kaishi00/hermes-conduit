@@ -194,6 +194,7 @@ struct CapabilityToolsetDetailPage: View {
     @State private var config: ToolsetConfig?
     @State private var configError: String?
     @State private var backends: [TerminalBackendOption]?
+    @State private var backendsError: String?
     @State private var working: String?
     @State private var notice: String?
     @State private var keyPrompt: ToolsetConfig.EnvVar?
@@ -370,6 +371,11 @@ struct CapabilityToolsetDetailPage: View {
                     .accessibilityAddTraits(backend.active ? .isSelected : [])
                 }
             }
+        } else if let backendsError {
+            Text(verbatim: backendsError)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
         }
     }
 
@@ -481,7 +487,12 @@ struct CapabilityToolsetDetailPage: View {
     private func load() async {
         async let configLoad = try? store.toolsetConfig(name: name)
         if name == "terminal" {
-            backends = try? await store.terminalBackends()
+            if let fresh = try? await store.terminalBackends() {
+                backends = fresh
+                backendsError = nil
+            } else if backends == nil {
+                backendsError = AppLocalization.string("Couldn't read where the terminal runs.")
+            }
         }
         let loaded = await configLoad
         if let loaded {

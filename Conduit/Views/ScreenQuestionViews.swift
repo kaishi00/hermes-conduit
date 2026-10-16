@@ -141,9 +141,8 @@ struct ScreenQuestionSettingsSection: View {
                     isOpeningShortcut ? AppLocalization.string("Opening…") : AppLocalization.string("Add the shortcut"),
                     systemImage: "plus.square.on.square"
                 )
-                .font(.footnote.weight(.semibold))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.settings)
             .disabled(isOpeningShortcut)
             .accessibilityIdentifier("voice.screenQuestionAddShortcut")
             Text("Opens Shortcuts. Tap Add Shortcut there.")

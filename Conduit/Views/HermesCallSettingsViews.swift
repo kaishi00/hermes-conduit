@@ -278,6 +278,7 @@ struct HermesCallSettingsSection: View {
                 Button(AppLocalization.string("Try again")) {
                     Task { await load() }
                 }
+                .buttonStyle(.settings)
             } else {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -368,11 +369,8 @@ struct HermesCallSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
                 Label(AppLocalization.string("Try a test call"), systemImage: "phone.fill")
-                    .font(.subheadline.weight(.semibold))
             }
-            // Bordered, so it reads as a button and not a caption.
-            .buttonStyle(.bordered)
-            .tint(.conduitAccent)
+            .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsTest")
             Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
                 .font(.caption)
@@ -384,10 +382,8 @@ struct HermesCallSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
                 Label(AppLocalization.string("Have Hermes watch for this"), systemImage: "binoculars.fill")
-                    .font(.subheadline.weight(.semibold))
             }
-            .buttonStyle(.bordered)
-            .tint(.conduitAccent)
+            .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsWatch")
             Text("Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up scheduled checks that call you when it happens. After you change the note, tap it again to bring the checks up to date.")
                 .font(.caption)

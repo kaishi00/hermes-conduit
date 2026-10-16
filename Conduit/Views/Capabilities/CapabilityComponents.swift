@@ -220,6 +220,22 @@ struct CapabilityTabScroll<Content: View>: View {
     }
 }
 
+/// A refresh that failed while the tab still shows what it read before.
+struct CapabilityRefreshBanner: View {
+    let message: String
+
+    var body: some View {
+        Text(verbatim: AppLocalization.string("Refresh failed: \(message)"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(maxWidth: .infinity)
+    }
+}
+
 /// A tab with nothing to show: a symbol, a line and what to do.
 struct CapabilityEmptyState: View {
     let title: String

@@ -265246,88 +265246,6 @@
         }
       }
     },
-    "The new version adds what the installed one doesn't have. Apply it only if you trust it:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die neue Version bringt Dinge mit, die die installierte nicht hat. Wende sie nur an, wenn du ihr vertraust:"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La nueva versión añade lo que la instalada no tiene. Aplícala solo si confías en ella:"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La nouvelle version ajoute ce que la version installée n'a pas. Ne l'appliquez que si vous lui faites confiance :"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Versi baru menambahkan hal yang tidak ada di versi terpasang. Terapkan hanya jika Anda memercayainya:"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La nuova versione aggiunge ciò che quella installata non ha. Applicala solo se ti fidi:"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新しいバージョンには、インストール済みのものにはない内容が追加されています。信頼できる場合のみ適用してください:"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "새 버전에는 설치된 버전에 없는 항목이 추가됩니다. 신뢰할 때만 적용하세요:"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nowa wersja dodaje to, czego nie ma zainstalowana. Zastosuj ją tylko, jeśli jej ufasz:"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A nova versão adiciona o que a instalada não tem. Aplique-a só se confiar nela:"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Новая версия добавляет то, чего нет в установленной. Применяйте её, только если доверяете ей:"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni sürüm, yüklü sürümde olmayanları ekliyor. Yalnızca güveniyorsanız uygulayın:"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新版本加入了已安装版本没有的内容。仅在你信任它时才应用："
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新版本加入了已安裝版本沒有的內容。僅在你信任它時才套用："
-          }
-        }
-      }
-    },
     "The server leaves this profile's config on your host. Its keys stay in .env." : {
       "localizations" : {
         "de" : {
@@ -267538,6 +267456,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Hermes 主機上的 edge-tts 套件已過時，因此 Microsoft 拒絕了 Edge TTS。請在主機上更新（pip install -U edge-tts）並重新啟動 Hermes，或在「設定」>「語音」中選擇其他語音服務。"
+          }
+        }
+      }
+    },
+    "The new version adds what the installed one doesn't have. Apply it only if you trust it:\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die neue Version bringt Dinge mit, die die installierte nicht hat. Wende sie nur an, wenn du ihr vertraust:\n\n%@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nueva versión añade lo que la instalada no tiene. Aplícala solo si confías en ella:\n\n%@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nouvelle version ajoute ce que la version installée n'a pas. Ne l'appliquez que si vous lui faites confiance :\n\n%@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versi baru menambahkan hal yang tidak ada di versi terpasang. Terapkan hanya jika Anda memercayainya:\n\n%@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nuova versione aggiunge ciò che quella installata non ha. Applicala solo se ti fidi:\n\n%@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいバージョンには、インストール済みのものにはない内容が追加されています。信頼できる場合のみ適用してください:\n\n%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 버전에는 설치된 버전에 없는 항목이 추가됩니다. 신뢰할 때만 적용하세요:\n\n%@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowa wersja dodaje to, czego nie ma zainstalowana. Zastosuj ją tylko, jeśli jej ufasz:\n\n%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A nova versão adiciona o que a instalada não tem. Aplique-a só se confiar nela:\n\n%@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новая версия добавляет то, чего нет в установленной. Применяйте её, только если доверяете ей:\n\n%@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni sürüm, yüklü sürümde olmayanları ekliyor. Yalnızca güveniyorsanız uygulayın:\n\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新版本加入了已安装版本没有的内容。仅在你信任它时才应用：\n\n%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新版本加入了已安裝版本沒有的內容。僅在你信任它時才套用：\n\n%@"
+          }
+        }
+      }
+    },
+    "Couldn't read where the terminal runs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es konnte nicht gelesen werden, wo das Terminal läuft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer dónde se ejecuta la terminal."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lire où s'exécute le terminal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat membaca tempat terminal berjalan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere dove viene eseguito il terminale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルの実行先を読み込めませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "터미널이 실행되는 위치를 읽을 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać, gdzie działa terminal."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível ler onde o terminal é executado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать, где работает терминал."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminalin nerede çalıştığı okunamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取终端的运行位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取終端機的執行位置。"
+          }
+        }
+      }
+    },
+    "The new version adds what the installed one doesn't have. Apply it only if you trust it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die neue Version bringt Dinge mit, die die installierte nicht hat. Wende sie nur an, wenn du ihr vertraust."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nueva versión añade lo que la instalada no tiene. Aplícala solo si confías en ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nouvelle version ajoute ce que la version installée n'a pas. Ne l'appliquez que si vous lui faites confiance."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versi baru menambahkan hal yang tidak ada di versi terpasang. Terapkan hanya jika Anda memercayainya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La nuova versione aggiunge ciò che quella installata non ha. Applicala solo se ti fidi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいバージョンには、インストール済みのものにはない内容が追加されています。信頼できる場合のみ適用してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 버전에는 설치된 버전에 없는 항목이 추가됩니다. 신뢰할 때만 적용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowa wersja dodaje to, czego nie ma zainstalowana. Zastosuj ją tylko, jeśli jej ufasz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A nova versão adiciona o que a instalada não tem. Aplique-a só se confiar nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новая версия добавляет то, чего нет в установленной. Применяйте её, только если доверяете ей."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni sürüm, yüklü sürümde olmayanları ekliyor. Yalnızca güveniyorsanız uygulayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新版本加入了已安装版本没有的内容。仅在你信任它时才应用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新版本加入了已安裝版本沒有的內容。僅在你信任它時才套用。"
           }
         }
       }

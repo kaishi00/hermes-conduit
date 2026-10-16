@@ -982,12 +982,26 @@ struct SteerMessageContent: View, Equatable {
     /// Explicit chat text-size input — see UserMessageContent.
     let chatTextSize: ChatTextSize
 
+    /// One line of the reply's body text, for the icon's box.
+    private var bodyLineHeight: CGFloat {
+        ChatTypography.font(
+            for: .body,
+            chatSize: chatTextSize,
+            compatibleWith: UITraitCollection(
+                preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
+            )
+        ).lineHeight
+    }
+
     var body: some View {
         let reply = ReplyQuoteEnvelope.parse(message.content)
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        // Markdown draws in UIKit text views, which give SwiftUI no text
+        // baseline: top-align the icon in a box one body line tall.
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: BusyInputMode.steer.symbol)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitAura)
+                .frame(height: bodyLineHeight)
                 .accessibilityHidden(true)
             if let reply {
                 VStack(alignment: .leading, spacing: 8) {

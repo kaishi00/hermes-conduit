@@ -134,8 +134,8 @@ struct GatewayDiagnosticsSheet: View {
                     copiedTimelineReport = report
                 } label: {
                     Label("Copy", systemImage: copiedTimelineReport == report ? "checkmark" : "doc.on.doc")
-                        .font(.footnote.weight(.semibold))
                 }
+                .buttonStyle(.settings)
                 .accessibilityLabel("Copy connection timeline")
                 .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
                 if copiedTimelineReport == report {
@@ -145,7 +145,6 @@ struct GatewayDiagnosticsSheet: View {
                 }
                 Spacer()
             }
-            .buttonStyle(.borderless)
         } else {
             Text("No connection has been timed since Conduit opened.")
                 .font(.footnote)

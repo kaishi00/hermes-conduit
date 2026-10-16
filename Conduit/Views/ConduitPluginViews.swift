@@ -313,9 +313,7 @@ struct NotifierPluginUpdateStatusView: View {
                         .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
                     } else {
                         Button(AppLocalization.string("Cancel")) { appState.cancelNotifierPluginUpdate() }
-                            .buttonStyle(.borderless)
-                            .font(.subheadline)
-                            .frame(minHeight: 44)
+                            .buttonStyle(.settings)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

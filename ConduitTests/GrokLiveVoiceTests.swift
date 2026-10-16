@@ -464,10 +464,7 @@ extension VoiceConversationControllerTests {
             reconnectDelay: { _ in }
         )
         session.start()
-        for _ in 0..<50 {
-            await grokSettle(20)
-            if case .failed = session.state { break }
-        }
+        await grokSettle(until: { session.state.isFailed })
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Grok Live.")))
         XCTAssertEqual(sockets.count, 1 + GrokLiveSession.maximumReconnectAttempts)
         XCTAssertTrue(sockets.allSatisfy(\.closed))
@@ -500,7 +497,7 @@ extension VoiceConversationControllerTests {
         session.send(.textTurn("third"), onSent: { lost.append("sent") }, onFailure: { lost.append("failed") })
         await grokSettle()
         socket.serverClose(nil)
-        await grokSettle(120)
+        await grokSettle(until: { !lost.isEmpty })
         XCTAssertEqual(lost, ["failed"], "the connection ended before its request went out")
         session.stop()
     }
@@ -548,9 +545,10 @@ extension VoiceConversationControllerTests {
         await grokSettle(40)
 
         session.send(.textTurn("second"))
-        await grokSettle(40)
-        XCTAssertEqual(socket.sent.filter { $0["type"] as? String == "response.create" }.count, 2,
-                       "a response that never finished no longer holds the next one")
+        let creates = { socket.sent.filter { $0["type"] as? String == "response.create" }.count }
+        // The stall is noticed by a timer task, not within a count of yields.
+        await grokSettle(until: { creates() == 2 })
+        XCTAssertEqual(creates(), 2, "a response that never finished no longer holds the next one")
         session.stop()
     }
 
@@ -583,7 +581,7 @@ extension VoiceConversationControllerTests {
         await grokSettle()
         let socket = try XCTUnwrap(sockets().first)
         socket.serverClose(.init(code: 4503, reason: "Grok Live needs xAI on the Hermes host"))
-        await grokSettle(120)
+        await grokSettle(until: { session.state.isFailed })
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Grok Live refused the connection: \(GeminiLiveServerClose(code: 4503, reason: "Grok Live needs xAI on the Hermes host").summary)")))
         XCTAssertEqual(sockets().count, 1)
     }
