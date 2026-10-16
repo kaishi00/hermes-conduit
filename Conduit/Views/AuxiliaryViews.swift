@@ -2375,6 +2375,12 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle(AppLocalization.string("Approval cards in pushes"), detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
                 }
 
+                // #115: which sources' replies notify, per profile on the host.
+                if notifications.preferences.responseReady, appState.activeDashboardID != nil,
+                   appState.notifierPlugin.reports(ReplySourcesClient.capability) {
+                    ReplySourcesSettingsSection()
+                }
+
                 // Everything here is the ACTIVE dashboard's: its host's
                 // notifier and its pairings. Other dashboards' pairings
                 // share this iPhone's relay list but never stand in for it.
