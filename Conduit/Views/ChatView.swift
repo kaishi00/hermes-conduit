@@ -1013,19 +1013,24 @@ struct UserMessageContent: View, Equatable {
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 11)
-        .background(
-            LinearGradient(
-                colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
-        )
+        .background {
+            // The shadow is the bubble shape's own. Cast by the whole bubble,
+            // it was worked out again from the text's UIKit views on every
+            // frame the chat scrolled.
+            RoundedRectangle(cornerRadius: 21, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
-        .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
         .textSelection(.enabled)
     }
 }
