@@ -469,7 +469,7 @@ struct GroupRoomComposer: View {
             // second tap can't send them twice.
             // Typed on after it while the files went up: only the sent
             // text leaves the draft.
-            let handedOver = draft.hasPrefix(text)
+            let handedOver = !text.isEmpty && draft.hasPrefix(text)
             if handedOver {
                 draft = String(draft.dropFirst(text.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -478,7 +478,7 @@ struct GroupRoomComposer: View {
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {
-                if handedOver { draft = draft.isEmpty ? text : text + "\n" + draft }
+                if handedOver, !text.isEmpty { draft = draft.isEmpty ? text : text + "\n" + draft }
                 attachments = files + attachments
             }
         }
