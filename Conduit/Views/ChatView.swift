@@ -107,6 +107,23 @@ struct ChatView: View {
         Self.bottomAnchorID(for: activeOrFallbackScrollSessionKey)
     }
 
+    /// The tool running in this turn, for the working line. Looks back only
+    /// to the turn's own rows.
+    private var runningToolName: String? {
+        guard appState.isBusy else { return nil }
+        return Self.runningToolName(in: appState.messages)
+    }
+
+    static func runningToolName(in messages: [ChatMessage]) -> String? {
+        for message in messages.reversed().prefix(12) {
+            if message.role == .user { return nil }
+            if message.role == .tool, let tool = message.tool, tool.status == .running {
+                return tool.name
+            }
+        }
+        return nil
+    }
+
     /// Whether "Load earlier messages" is offered right now. AppState owns
     /// the complete truth — window state, transcript content, and
     /// active-conversation ownership — the exact predicate
@@ -355,7 +372,8 @@ struct ChatView: View {
                 ChatLiveTurnRows(
                     projection: appState.liveTurn,
                     isBusy: appState.isBusy,
-                    author: appState.activeProfile
+                    author: appState.activeProfile,
+                    currentToolName: runningToolName
                 )
 
                 // Fallback target for ScrollViewProxy before the engine has
@@ -1911,8 +1929,6 @@ private struct VoiceCallMarkerCard: View {
 /// contract is directly testable.
 struct SettledThinkingCardContent: View, Equatable {
     let message: ChatMessage
-    let displayName: String
-    let avatarURL: URL?
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
@@ -1928,48 +1944,52 @@ struct SettledThinkingCardContent: View, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
-            && lhs.displayName == rhs.displayName
-            && lhs.avatarURL == rhs.avatarURL
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ConduitAgentMark(
-                avatarURL: avatarURL,
-                displayName: displayName
-            )
-
-            DisclosureGroup(isExpanded: Binding(
-                get: { isExpanded },
-                set: { newValue in
-                    guard newValue != isExpanded else { return }
-                    disclosure?.willToggle(message.id, to: newValue)
-                    expanded = newValue
+        // V2: a quiet step row on the full reading column, no avatar column.
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                let opens = !isExpanded
+                disclosure?.willToggle(message.id, to: opens)
+                withAnimation(ConduitMotion.response) {
+                    expanded = opens
                 }
-            )) {
+            } label: {
+                HStack(spacing: 11) {
+                    ChatStepIcon(symbol: ChatStepStyle.thinking.symbol, tint: ChatStepStyle.thinking.tint)
+                    Text(AppLocalization.string("Thinking"))
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                    MessageTimestampLabel(timestamp: message.timestamp)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+
+            if isExpanded {
                 SelectableTextView(
                     text: message.content,
                     font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
                     textColor: .secondaryLabel
                 )
-                    .padding(.top, 4)
-            } label: {
-                HStack(spacing: 6) {
-                    Label("Thinking", systemImage: "brain.head.profile")
-                    MessageTimestampLabel(timestamp: message.timestamp)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .padding(.leading, 51)
+                .padding(.trailing, 14)
+                .padding(.bottom, 12)
+                .transition(.opacity)
             }
-            .tint(.conduitAccent)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
-
-            Spacer(minLength: 28)
         }
+        .chatStepCard()
     }
 }
 
@@ -1983,8 +2003,6 @@ struct ThinkingCard: View {
         if appState.displayPreferences.showReasoning, !message.content.isEmpty {
             SettledThinkingCardContent(
                 message: message,
-                displayName: appState.profileDisplayName(appState.activeProfile),
-                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
                 sizeCategory: sizeCategory,
                 chatTextSize: chatTextSize
             )
@@ -2079,6 +2097,8 @@ private struct SettledToolCardContent: View, Equatable {
 
     var body: some View {
         if let tool = message.tool {
+            let style = ChatStepStyle(toolName: tool.name)
+            let running = tool.status == .running
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -2088,51 +2108,54 @@ private struct SettledToolCardContent: View, Equatable {
                         tapped = opens
                     }
                 } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 8) {
-                            Image(systemName: tool.status == .running ? "gear" : "checkmark.circle")
-                                .font(.system(size: 13))
-                                .foregroundStyle(tool.status == .running ? .orange : .green)
-                                .rotationEffect(.degrees(tool.status == .running ? 360 : 0))
-                                .animation(tool.status == .running ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: tool.status)
+                    // V2: plain words for what the step did, what it was
+                    // about underneath, and the tool's own name only once
+                    // it is opened.
+                    HStack(spacing: 11) {
+                        ChatStepIcon(symbol: style.symbol, tint: style.tint)
 
-                            Text(tool.name)
-                                .font(.system(.caption, design: .monospaced).bold())
-                                .foregroundStyle(.secondary)
-
-                            MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
-
-                            Spacer()
-
-                            if expanded {
-                                Image(systemName: "chevron.up")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            } else {
-                                Image(systemName: "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                Text(running ? style.runningTitle : style.doneTitle)
+                                    .font(.body)
+                                    .foregroundStyle(running ? Color.conduitAccent : Color.primary)
+                                    .lineLimit(1)
+                                MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                            }
+                            if !expanded, let subject = ChatStepSubject.line(from: tool.input ?? tool.output) {
+                                Text(subject)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
                         }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
 
-                if !expanded, let preview = collapsedPreview(for: tool) {
-                    SelectableTextView(
-                        text: preview,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .regular),
-                        textColor: UIColor(Color.primary.opacity(0.74)),
-                        maximumNumberOfLines: 1
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                        Spacer(minLength: 8)
+
+                        if running {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(Color.conduitAccent)
+                        }
+
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(expanded ? 180 : 0))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
 
                 if expanded {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text(tool.name)
+                            .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(.tertiary)
                         if let input = tool.input, !input.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Input")
@@ -2162,21 +2185,18 @@ private struct SettledToolCardContent: View, Equatable {
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.leading, 51)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .conduitGlassSurface(cornerRadius: 18, tint: tool.status == .running ? .conduitAccent.opacity(0.10) : .clear)
+            .chatStepCard()
         }
-    }
-
-    private func collapsedPreview(for tool: ToolActivity) -> String? {
-        let raw = (tool.input?.isEmpty == false ? tool.input : tool.output) ?? ""
-        let preview = raw
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return preview.isEmpty ? nil : preview
     }
 }
 
@@ -3033,6 +3053,8 @@ struct ChatLiveTurnRows: View {
     @ObservedObject var projection: LiveTurnProjection
     let isBusy: Bool
     let author: String
+    /// The tool running now, named on the working line.
+    var currentToolName: String?
 
     var body: some View {
         // Live reasoning renders from the projection, not the settled
@@ -3062,7 +3084,11 @@ struct ChatLiveTurnRows: View {
         }
 
         if isBusy && projection.streamingText.isEmpty {
-            TypingIndicator().id("typing")
+            ChatWorkingLine(
+                currentToolName: currentToolName,
+                isThinking: projection.reasoningSegment != nil
+            )
+            .id("typing")
         }
     }
 }
@@ -3114,83 +3140,6 @@ struct StreamingBubble: View {
     }
 }
 
-// MARK: - Typing Indicator
-
-struct TypingIndicator: View {
-    @EnvironmentObject var appState: AppState
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ConduitAgentMark(
-                isActive: true,
-                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                displayName: appState.profileDisplayName(appState.activeProfile)
-            )
-
-            WorkingStatusLabel()
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.07))
-                .accessibilityLabel("\(appState.profileDisplayName(appState.activeProfile)) is working")
-
-            Spacer()
-        }
-    }
-}
-
-private struct WorkingStatusLabel: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let text = AppLocalization.string("Working…")
-    private let cycleDuration = 1.9
-    private let sweepFraction = 0.72
-
-    var body: some View {
-        Group {
-            if reduceMotion {
-                label
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-                    let cycle = timeline.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
-                    let progress = CGFloat(min(cycle / sweepFraction, 1))
-
-                    label
-                        .overlay {
-                            GeometryReader { proxy in
-                                let highlightWidth = max(proxy.size.width * 0.45, 18)
-                                LinearGradient(
-                                    colors: [
-                                        .clear,
-                                        Color.conduitAccent.opacity(0.18),
-                                        Color.conduitAccentSoft,
-                                        Color.conduitAccent.opacity(0.18),
-                                        .clear
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                                .frame(width: highlightWidth)
-                                .offset(
-                                    x: -highlightWidth
-                                        + (proxy.size.width + highlightWidth) * progress
-                                )
-                            }
-                            .mask { label }
-                        }
-                }
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-    }
-
-    private var label: some View {
-        Text(text)
-    }
-}
-
 // MARK: - Empty State
 
 struct EmptyChatState: View {
@@ -3218,6 +3167,8 @@ struct ConduitAgentMark: View {
     var isActive = false
     var avatarURL: URL?
     var displayName = "Hermes"
+    /// The ring and breath color: the profile's glow, else the gold accent.
+    var glow: Color?
 
     /// One breath in and out: 1.1 s each way, eased at both ends.
     static let breathDuration: TimeInterval = 2.2
@@ -3242,12 +3193,13 @@ struct ConduitAgentMark: View {
     }
 
     private func mark(breath: CGFloat) -> some View {
-        ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
+        let color = glow ?? .conduitAccent
+        return ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
             .overlay {
                 Circle()
-                    .strokeBorder(Color.conduitAccent.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
+                    .strokeBorder(color.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
             }
-            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
+            .shadow(color: color.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
             .scaleEffect(1 + 0.06 * breath)
     }
 }
