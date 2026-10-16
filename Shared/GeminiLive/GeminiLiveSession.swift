@@ -201,7 +201,8 @@ final class GeminiLiveSession {
     }
 
     /// Retries after a connection attempt fails, for the first connect and
-    /// every reconnect alike (so at most 1 + 3 attempts in a row).
+    /// every reconnect alike (so at most 1 + 3 attempts in a row, plus the
+    /// one fresh start a lost session gets).
     static let maximumReconnectAttempts = 3
 
     private(set) var state: State = .idle {
@@ -589,8 +590,9 @@ final class GeminiLiveSession {
 
     /// Google refused the connection. A spent quota while Search is on is
     /// most likely Search's own, so the same attempt runs again without it
-    /// after the usual backoff; any other refusal (or a quota one without
-    /// Search) is final.
+    /// after the usual backoff. A resumption Google lost starts fresh once
+    /// (`startFreshIfResumptionRefused`); any other refusal (or a quota
+    /// one without Search) is final.
     private func refused(_ close: GeminiLiveServerClose, attempt: Int) {
         if close.isQuotaExhausted, googleSearch {
             geminiLiveLogger.notice("Gemini Live refused for quota; retrying without Google Search")
@@ -611,7 +613,8 @@ final class GeminiLiveSession {
 
     /// A setup that carried a resumption handle was refused because Google
     /// lost or expired that session (1008 "BidiGenerateContent session not
-    /// found or expired"); any other refusal fails as before. The
+    /// found or expired"); any other refusal fails as before. No backoff:
+    /// the server answered, it just has nothing to resume. The
     /// handle is dropped and the same attempt runs again as a new
     /// session, once: with no handle left, a second refusal fails as any
     /// other would.

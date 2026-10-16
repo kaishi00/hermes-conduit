@@ -1441,6 +1441,7 @@ final class GeminiLiveConversationController: ObservableObject {
         old.onEvent = nil
         old.onStateChange = nil
         old.onConnectionReplaced = nil
+        old.onFreshSession = nil
         old.stop()
     }
 
