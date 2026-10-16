@@ -1204,7 +1204,10 @@ struct AddDashboardSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // A sign-in under way finishes or fails first, as the
+                    // swipe down waits for it.
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(flow.isWorking)
                         .accessibilityIdentifier("add-dashboard.cancel")
                 }
             }
@@ -1224,5 +1227,8 @@ struct AddDashboardSheet: View {
             seeded = true
             if let seed { flow.apply(seed) }
         }
+        // Cancel leaves nothing behind: a browser or single sign-on attempt
+        // saves its dashboard before anyone signs in.
+        .onDisappear { flow.discardUnfinishedDashboards() }
     }
 }

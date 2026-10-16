@@ -133,6 +133,46 @@ final class AppStateMultiDashboardTests: XCTestCase {
         )
     }
 
+    // MARK: - Add a dashboard closed without signing in
+
+    func testClosingAddForgetsTheDashboardAnUnfinishedSignInSaved() throws {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        let flow = LoginFlowModel()
+        flow.attach(appState)
+        let url = "https://new.example.com"
+        flow.noteUnsavedSignIn(at: url)
+        // The single sign-on sheet saves the dashboard and its token as it opens.
+        let id = track(try XCTUnwrap(appState.resolveDashboardID(forURL: url, registerIfMissing: true)))
+        let token = try XCTUnwrap(CloudflareAccessCredentials.from(clientID: "cf-id", clientSecret: "cf-secret"))
+        KeychainHelper.saveCloudflareAccess(token, origin: url, dashboardID: id)
+
+        flow.discardUnfinishedDashboards()
+
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: id))
+        XCTAssertNil(KeychainHelper.loadCloudflareAccess(dashboardID: id, for: url))
+    }
+
+    func testClosingAddKeepsDashboardsSavedBeforeOrSignedIn() throws {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        let savedURL = "https://saved.example.com"
+        let saved = track(try XCTUnwrap(appState.resolveDashboardID(forURL: savedURL, registerIfMissing: true)))
+        let flow = LoginFlowModel()
+        flow.attach(appState)
+        flow.noteUnsavedSignIn(at: savedURL)
+        let signedInURL = "https://signed-in.example.com"
+        flow.noteUnsavedSignIn(at: signedInURL)
+        let signedIn = track(try XCTUnwrap(appState.resolveDashboardID(forURL: signedInURL, registerIfMissing: true)))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: signedInURL, username: "eric", password: "p", requiresFaceID: false),
+            dashboardID: signedIn
+        )
+
+        flow.discardUnfinishedDashboards()
+
+        XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: saved))
+        XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: signedIn))
+    }
+
     // MARK: - Server-change identity (the boundary)
 
     func testSameDashboardUUIDIsNotAServerSwitch() {

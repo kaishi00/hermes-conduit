@@ -233,6 +233,9 @@ final class LoginFlowModel: ObservableObject {
     /// The flow signs in from a sign-in code: its retry signs in again
     /// rather than stopping at the sign-in step.
     private var signsInFromLink = false
+    /// Addresses a browser or single sign-on attempt saved before anyone
+    /// signed in to them: the sheets need the dashboard to exist first.
+    private var unfinishedAddresses: Set<String> = []
 
     func attach(_ appState: AppState) {
         self.appState = appState
@@ -548,7 +551,7 @@ final class LoginFlowModel: ObservableObject {
             }
             appState.prepareInteractiveSignIn(baseURL: target.baseURL)
             await appState.connect(with: HermesConnection(baseUrl: target.baseURL, ticket: authenticated.ticket))
-            onSignedIn()
+            finishSignIn(at: target.baseURL)
         } catch is CancellationError {
             return
         } catch {
@@ -628,6 +631,7 @@ final class LoginFlowModel: ObservableObject {
         place: LoginFailurePlace
     ) {
         guard let appState else { return }
+        noteUnsavedSignIn(at: baseURL)
         guard let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
             show(.notice(title: AppLocalization.string("Could not save this dashboard.")), at: place)
             return
@@ -646,6 +650,7 @@ final class LoginFlowModel: ObservableObject {
         // otherwise a fresh store for this new sign-in. Never the default
         // store: sibling-host cookies must not cross dashboards.
         let storeID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) ?? UUID()
+        noteUnsavedSignIn(at: baseURL)
         // The service token belongs to the dashboard it opens; resolve (or
         // pre-register) it so the scoped write can't land on another record.
         if let cloudflare, let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) {
@@ -657,6 +662,38 @@ final class LoginFlowModel: ObservableObject {
 
     /// Where a browser sign-in's failure shows once its sheet reports one.
     private var browserPlace: LoginFailurePlace = .address
+
+    /// Remembers an address with no saved dashboard yet, before a browser or
+    /// single sign-on sheet saves one for it.
+    func noteUnsavedSignIn(at baseURL: String) {
+        guard let appState, appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) == nil else { return }
+        unfinishedAddresses.insert(baseURL)
+    }
+
+    /// A sign-in finished: its dashboard stays whatever happens to the sheet.
+    private func finishSignIn(at baseURL: String) {
+        if let appState, let id = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
+            unfinishedAddresses = unfinishedAddresses.filter {
+                appState.resolveDashboardID(forURL: $0, registerIfMissing: false) != id
+            }
+        }
+        onSignedIn()
+    }
+
+    /// Add a dashboard closed: forgets the dashboards its browser or single
+    /// sign-on attempts saved when nobody signed in to them, with the
+    /// Cloudflare token saved for the attempt.
+    func discardUnfinishedDashboards() {
+        guard let appState else { return }
+        let addresses = unfinishedAddresses
+        unfinishedAddresses = []
+        for address in addresses {
+            guard let id = appState.resolveDashboardID(forURL: address, registerIfMissing: false),
+                  id != appState.activeDashboardID,
+                  appState.savedSignIn(for: id) == .signInNeeded else { continue }
+            appState.removeDashboard(id)
+        }
+    }
 
     func nativeOAuthSucceeded(_ result: NativeOAuthLoginResult, request: LoginNativeOAuthRequest) async {
         guard let appState else { return }
@@ -671,7 +708,7 @@ final class LoginFlowModel: ObservableObject {
         if request.cloudflare == nil {
             KeychainHelper.clearCloudflareAccess(dashboardID: request.dashboardID)
         }
-        onSignedIn()
+        finishSignIn(at: request.baseURL)
     }
 
     func nativeOAuthFailed(_ error: Error) {
@@ -694,7 +731,7 @@ final class LoginFlowModel: ObservableObject {
         appState.rememberDashboardURL(baseURL)
         appState.prepareInteractiveSignIn(baseURL: baseURL)
         await appState.connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket))
-        onSignedIn()
+        finishSignIn(at: baseURL)
     }
 
     func browserFailed(_ classifiedFailure: ConnectionFailure, detail: String) {
