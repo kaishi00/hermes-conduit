@@ -417,8 +417,10 @@ struct SpeechServerStatus: Equatable {
         AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.")
     }
 
-    static let pluginMissing = SpeechServerStatus(
-        configured: false, available: false, url: nil, hasKey: false, reason: pluginMissingReason, pluginMissing: true)
+    static var pluginMissing: SpeechServerStatus {
+        SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                           reason: pluginMissingReason, pluginMissing: true)
+    }
 
     init(configured: Bool, available: Bool, url: String?, hasKey: Bool, reason: String?, pluginMissing: Bool) {
         self.configured = configured

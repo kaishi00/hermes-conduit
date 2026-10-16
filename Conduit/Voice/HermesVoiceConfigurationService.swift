@@ -352,7 +352,9 @@ final class HermesVoiceConfigurationService: ObservableObject {
             status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
                                         reason: UserFacingError.message(for: error), pluginMissing: false)
         }
-        speechServer = status
+        // A profile switch cancels the older read; it must not overwrite the
+        // newer profile's status.
+        if !Task.isCancelled { speechServer = status }
         return status
     }
 

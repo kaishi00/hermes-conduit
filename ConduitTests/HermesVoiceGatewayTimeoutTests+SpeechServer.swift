@@ -44,6 +44,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(sawPartial)
         socket.deliver(#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"a","transcript":" turn on the lights "}"#)
         socket.deliver(#"{"type":"input_audio_buffer.speech_started","item_id":"b"}"#)
+        // The second segment is under way (its delta follows speech_started)
+        // before the end of speech.
+        socket.deliver(#"{"type":"conversation.item.input_audio_transcription.delta","item_id":"b","delta":"in the"}"#)
+        let sawSecond = await Self.speechServerEventually { partials.last == "turn on the lights in the" }
+        XCTAssertTrue(sawSecond)
 
         let finishing = Task { await live.finish() }
         let committed = await Self.speechServerEventually { socket.sentTypes.last == "input_audio_buffer.commit" }
