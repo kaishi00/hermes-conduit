@@ -556,6 +556,11 @@ struct ChatView: View {
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
                 scrollEngine.trackMessageVisibility(of: id)
             }
+            // An Artifacts screen's "Show in chat": once the row is in and
+            // any restore is done.
+            .onChange(of: appState.chatTranscriptRevision) { _, _ in revealPendingArtifact() }
+            .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
+            .onAppear { revealPendingArtifact() }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
@@ -565,6 +570,19 @@ struct ChatView: View {
             .onChange(of: followsLatest) { _, _ in
                 scrollEventRouter.saveChatScrollPosition(for: renderedScrollSessionKey)
             }
+    }
+
+    private func revealPendingArtifact() {
+        guard let reveal = appState.pendingArtifactReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingArtifactReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              let id = ArtifactReveal.rowID(for: reveal.messageID, in: appState.messages) else { return }
+        appState.pendingArtifactReveal = nil
+        // After this update's layout, so the engine knows the row.
+        DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
     }
 
     private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {

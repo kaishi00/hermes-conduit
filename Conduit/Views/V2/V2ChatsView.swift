@@ -378,8 +378,8 @@ struct V2ChatsView: View {
 
     // MARK: - Top bar controls
 
-    /// One glass capsule: Sessions/Projects toggle, Filter (amber dot while
-    /// approvals wait), New chat.
+    /// One glass capsule: Sessions/Projects toggle, Artifacts, Filter (amber
+    /// dot while approvals wait), New chat.
     private var trailingControls: some View {
         V2ControlCapsule {
             Button {
@@ -392,6 +392,13 @@ struct V2ChatsView: View {
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+
+            NavigationLink(value: V2Route.artifacts) {
+                V2CapsuleIcon(systemImage: "square.grid.2x2")
+            }
+            .buttonStyle(PressableButtonStyle())
+            .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
+            .accessibilityLabel(AppLocalization.string("Artifacts"))
 
             filterMenu
 

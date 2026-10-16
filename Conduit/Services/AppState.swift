@@ -764,6 +764,9 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     @Published private(set) var chatTranscriptRevision: UInt64 = 0
+    /// A message an Artifacts screen asked to show; the chat scrolls to it
+    /// once its transcript has the row (AppState+Artifacts).
+    @Published var pendingArtifactReveal: ArtifactReveal?
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
     @Published var messages: [ChatMessage] = [] {
@@ -3922,7 +3925,7 @@ final class AppState: ObservableObject {
     /// id. Never the scroll identity's aliases or a reconciliation's ids:
     /// a new chat, or one opened from another, keeps the previous chat's
     /// ids there, and that chat's calls would show in this one.
-    private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
+    func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
         let durable = confirmedDurableSessionID(forRuntime: sessionId)

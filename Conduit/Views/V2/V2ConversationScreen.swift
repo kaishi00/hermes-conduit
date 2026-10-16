@@ -40,6 +40,8 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    /// The open chat's ids while its Artifacts sheet shows.
+    @State private var artifactSessionIDs: ArtifactSheetIDs?
 
     private var parent: SessionSummary? {
         guard appState.activeRoomSurface == nil,
@@ -126,9 +128,14 @@ struct V2ConversationScreen: View {
                 V2ConversationMenu(
                     onRename: { chatTitlePendingRename = $0 },
                     onDelete: { chatTitlePendingDeletion = $0 },
-                    onDisbandRoom: { confirmsRoomDisband = true }
+                    onDisbandRoom: { confirmsRoomDisband = true },
+                    onArtifacts: { artifactSessionIDs = ArtifactSheetIDs(ids: appState.activeChatArtifactSessionIDs) }
                 )
             }
+        }
+        .sheet(item: $artifactSessionIDs) { sheet in
+            ChatArtifactsSheet(sessionIDs: sheet.ids)
+                .environmentObject(appState)
         }
         .sheet(item: $chatTitlePendingRename) { session in
             RenameSheet.conversation(session) { title in
@@ -220,6 +227,7 @@ private struct V2ConversationMenu: View {
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     let onDisbandRoom: () -> Void
+    let onArtifacts: () -> Void
 
     private var statusColor: Color {
         if appState.isConnected { return .green }
@@ -242,6 +250,11 @@ private struct V2ConversationMenu: View {
                     Label(AppLocalization.string("Refresh conversation"), systemImage: "arrow.clockwise")
                 }
                 .disabled(!appState.isConnected || appState.isChatRefreshing)
+                Button(action: onArtifacts) {
+                    Label(AppLocalization.string("Artifacts"), systemImage: "square.grid.2x2")
+                }
+                // A saved copy has no host to ask.
+                .disabled(appState.activeChatArtifactSessionIDs.isEmpty)
                 if let session = appState.activeChatSessionSummary {
                     Section {
                         SessionActionMenuItems(
@@ -304,4 +317,10 @@ private struct V2PreGlassToolbarControl: ViewModifier {
             content.conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
         }
     }
+}
+
+/// The ids a chat's Artifacts sheet reads, as a sheet item.
+private struct ArtifactSheetIDs: Identifiable {
+    let id = UUID()
+    let ids: [String]
 }

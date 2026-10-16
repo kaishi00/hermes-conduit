@@ -50,10 +50,13 @@ enum V2Route: Hashable {
     case conversation
     /// A project's page, its sessions drawn as a tree.
     case project(ProjectSummary)
+    /// What the active profile's chats produced (Chats bar).
+    case artifacts
 
     static func == (lhs: V2Route, rhs: V2Route) -> Bool {
         switch (lhs, rhs) {
         case (.conversation, .conversation): return true
+        case (.artifacts, .artifacts): return true
         case let (.project(left), .project(right)): return left.id == right.id
         default: return false
         }
@@ -66,6 +69,8 @@ enum V2Route: Hashable {
         case .project(let project):
             hasher.combine(1)
             hasher.combine(project.id)
+        case .artifacts:
+            hasher.combine(2)
         }
     }
 }
@@ -358,6 +363,8 @@ struct V2Shell: View {
             V2ConversationScreen()
         case .project(let project):
             tabBarClearance(V2ProjectPage(project: project))
+        case .artifacts:
+            tabBarClearance(V2ArtifactsPage())
         }
     }
 
