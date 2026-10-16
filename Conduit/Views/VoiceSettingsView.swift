@@ -897,8 +897,8 @@ struct VoiceSettingsView: View {
     }
 
     /// Saves the address, then picks OpenAI speech and opens its section
-    /// for the key. A failed save keeps the field; its error shows in Set
-    /// up voice.
+    /// for the key. A failed save keeps the field, with Hermes' error under
+    /// it.
     private func saveVoiceServerAddress() {
         let address = (voiceServerDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard savingField == nil, Self.isOwnVoiceServer(address) else { return }
@@ -1201,7 +1201,9 @@ struct VoiceSettingsView: View {
                 ) {
                     Text("Provider").foregroundStyle(.secondary)
                 }
-                .disabled(service.isLoading || savingField == "\(kind.rawValue).provider")
+                // Any save in flight, including a Private voice pick of the
+                // other kind, holds both pickers so picks never overlap.
+                .disabled(service.isLoading || savingField != nil)
                 .accessibilityHint(kind == .stt ? AppLocalization.string("Choose on-device Apple speech or a provider reported by Hermes") : AppLocalization.string("Provider options are reported by Hermes for this profile"))
 
                 if kind == .stt, transcriptionMode == .appleOnDevice {
@@ -1486,7 +1488,7 @@ struct VoiceSettingsView: View {
 
     private func selectProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind, force: Bool = false) {
         // `force` re-runs a selection already shown, to ask iOS again.
-        guard force || provider != selectedProviderChoice(kind) else { return }
+        guard savingField == nil, force || provider != selectedProviderChoice(kind) else { return }
         Task { await applyProvider(provider, kind: kind) }
     }
 
