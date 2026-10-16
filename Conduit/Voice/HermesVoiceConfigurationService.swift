@@ -335,6 +335,34 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// The user's own speech server as the notifier reads it
+    /// (`voice.speech_server`). A plugin without the route predates it.
+    func speechServerStatus() async -> SpeechServerStatus {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerTranscription.statusPath), method: "GET", body: nil)
+            return SpeechServerStatus(response: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return .pluginMissing
+        } catch {
+            return SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                                      reason: UserFacingError.message(for: error), pluginMissing: false)
+        }
+    }
+
+    /// Asks the Hermes host to dial the speech server and report back.
+    func testSpeechServer() async -> SpeechServerTestResult {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerTranscription.testPath), method: "POST", body: [:])
+            return SpeechServerTestResult(response: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: SpeechServerStatus.pluginMissingReason)
+        } catch {
+            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: UserFacingError.message(for: error))
+        }
+    }
+
     /// This deliberately never requests `/api/env/reveal`; the only read
     /// state in Conduit is whether a credential is configured.
     func saveCredential(_ value: String, key: String) async -> Bool {

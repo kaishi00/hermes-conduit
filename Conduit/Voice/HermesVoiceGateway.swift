@@ -28,8 +28,8 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     let profile: String
-    private let bridge: DashboardTicketBridge
-    private let baseURL: String
+    let bridge: DashboardTicketBridge
+    let baseURL: String
 
     init(bridge: DashboardTicketBridge, baseURL: String, profile: String) {
         self.bridge = bridge

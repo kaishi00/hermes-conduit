@@ -484,6 +484,9 @@ enum GeminiLiveSearchSource: Equatable {
 enum VoiceTranscriptionMode: String, Codable, Equatable {
     case hermes
     case appleOnDevice
+    /// The user's own speech server (voice.speech_server), reached through
+    /// the notifier's relay on the Hermes host.
+    case speechServer
 }
 
 enum AppleSpeechRecognitionAvailability: Equatable {

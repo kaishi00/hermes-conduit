@@ -172,6 +172,8 @@ final class VoiceConversationController: ObservableObject {
     /// This profile has no live speech-to-text (stt.streaming off, an old
     /// Hermes): stop asking until the conversation ends or the gateway changes.
     private var liveTranscriptionUnavailable = false
+    /// Why the user's speech server failed this utterance, for the error.
+    private var speechServerFailure: String?
     private var bargeInTask: Task<Void, Never>?
     private var speechDrainTask: Task<Void, Never>?
     private var speechDrainRevision: UInt64 = 0
@@ -1212,6 +1214,31 @@ final class VoiceConversationController: ObservableObject {
         case .appleOnDevice:
             live?.cancel()
             return try await deviceTranscriber.transcribe(audio)
+        case .speechServer:
+            // No upload fallback: the user chose their own server so their
+            // voice stays off other services. A session that wasn't open
+            // yet (a short utterance) gets the whole recording now.
+            var session = live
+            if session == nil, let serverGateway = gateway as? SpeechServerTranscriptionGateway {
+                speechServerFailure = nil
+                session = await serverGateway.openSpeechServerTranscription(
+                    sampleRate: audio.sampleRate,
+                    onPartial: { _ in },
+                    onFailure: { [weak self] reason in self?.speechServerFailure = reason }
+                )
+                session?.push(audio.pcm16Data)
+            }
+            guard let server = session else {
+                throw VoiceSpeechServerError.message(speechServerFailure
+                    ?? AppLocalization.string("Could not reach your speech server through Hermes."))
+            }
+            finishingLiveTranscription = server
+            let text = await server.finish()
+            if finishingLiveTranscription === server { finishingLiveTranscription = nil }
+            try Task.checkCancellation()
+            if let text { return text }
+            throw VoiceSpeechServerError.message(speechServerFailure
+                ?? AppLocalization.string("Your speech server didn't hear any words."))
         }
     }
 
@@ -1238,20 +1265,40 @@ final class VoiceConversationController: ObservableObject {
     /// a silent window never opens a socket. Hermes transcription only.
     private func openLiveTranscriptionIfNeeded() {
         guard liveTranscriptionAttemptedWindow != liveTranscriptionWindow,
-              !liveTranscriptionUnavailable, !isProviderTestRunning,
-              preferences.resolvedTranscriptionMode == .hermes,
-              let liveGateway = gateway as? VoiceLiveTranscriptionGateway else { return }
+              !isProviderTestRunning else { return }
+        let mode = preferences.resolvedTranscriptionMode
+        let opener: (@MainActor (@escaping @MainActor (String) -> Void) async -> VoiceLiveTranscription?)
+        switch mode {
+        case .hermes:
+            guard !liveTranscriptionUnavailable,
+                  let liveGateway = gateway as? VoiceLiveTranscriptionGateway else { return }
+            opener = { [weak self] onPartial in
+                await liveGateway.openLiveTranscription(
+                    sampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
+                    onPartial: onPartial,
+                    onUnavailable: { [weak self] in self?.liveTranscriptionUnavailable = true }
+                )
+            }
+        case .speechServer:
+            guard let serverGateway = gateway as? SpeechServerTranscriptionGateway else { return }
+            speechServerFailure = nil
+            opener = { [weak self] onPartial in
+                await serverGateway.openSpeechServerTranscription(
+                    sampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
+                    onPartial: onPartial,
+                    onFailure: { [weak self] reason in self?.speechServerFailure = reason }
+                )
+            }
+        case .appleOnDevice:
+            return
+        }
         let window = liveTranscriptionWindow
         liveTranscriptionAttemptedWindow = window
         liveTranscriptionOpening = Task { [weak self] in
-            let session = await liveGateway.openLiveTranscription(
-                sampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
-                onPartial: { [weak self] text in
-                    guard let self, self.liveTranscriptionWindow == window else { return }
-                    self.liveTranscript = text
-                },
-                onUnavailable: { [weak self] in self?.liveTranscriptionUnavailable = true }
-            )
+            let session = await opener { [weak self] text in
+                guard let self, self.liveTranscriptionWindow == window else { return }
+                self.liveTranscript = text
+            }
             guard let self, !Task.isCancelled, self.liveTranscriptionWindow == window else {
                 session?.cancel()
                 return

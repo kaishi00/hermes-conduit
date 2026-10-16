@@ -26899,6 +26899,8 @@ final class AppState: ObservableObject {
         switch voiceTranscriptionMode {
         case .hermes: return voiceCapabilitySnapshot.supportsTranscription
         case .appleOnDevice: return appleSpeechAvailability.canAttemptRecognition
+        // Whether the server answers is learnt per utterance and in Settings' test.
+        case .speechServer: return true
         }
     }
 
