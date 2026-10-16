@@ -2403,7 +2403,7 @@ final class HermesClient: ObservableObject {
 
     /// Quotes a reference value that holds whitespace, brackets or quotes so
     /// Hermes reads it back whole (its `format_reference_value`).
-    static func formatReferenceValue(_ value: String) -> String {
+    nonisolated static func formatReferenceValue(_ value: String) -> String {
         guard value.rangeOfCharacter(from: referenceValueQuotingCharacters) != nil else { return value }
         for quote in ["`", "\"", "'"] where !value.contains(quote) {
             return "\(quote)\(value)\(quote)"
@@ -2411,7 +2411,7 @@ final class HermesClient: ObservableObject {
         return value
     }
 
-    private static let referenceValueQuotingCharacters = CharacterSet.whitespacesAndNewlines
+    nonisolated private static let referenceValueQuotingCharacters = CharacterSet.whitespacesAndNewlines
         .union(CharacterSet(charactersIn: "()[]{}<>\"'`"))
 
     // MARK: - Cron
@@ -3923,7 +3923,7 @@ enum MessageNormalizer {
 
     /// The run of `@file:` lines a prompt opens with becomes document
     /// attachments; a reference typed inside the text stays where it is.
-    private static func splitLeadingFileReferences(
+    static func splitLeadingFileReferences(
         _ text: String,
         messageId: String
     ) -> (content: String, attachments: [Attachment]) {

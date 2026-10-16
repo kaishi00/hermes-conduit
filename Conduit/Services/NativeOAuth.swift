@@ -224,6 +224,7 @@ final class NativeOAuthAPIClient {
         path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
+        encodedBody: Data? = nil,
         accessToken: String,
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
@@ -233,7 +234,10 @@ final class NativeOAuthAPIClient {
         request.timeoutInterval = TimeInterval(max(1_000, timeoutMilliseconds)) / 1_000
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        if let body {
+        if let encodedBody {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = encodedBody
+        } else if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
@@ -362,6 +366,7 @@ final class NativeOAuthSession {
         path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
+        encodedBody: Data? = nil,
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
@@ -373,6 +378,7 @@ final class NativeOAuthSession {
                 path: path,
                 method: method,
                 body: body,
+                encodedBody: encodedBody,
                 accessToken: tokens.accessToken,
                 timeoutMilliseconds: timeoutMilliseconds,
                 maxResponseBytes: maxResponseBytes
@@ -396,6 +402,7 @@ final class NativeOAuthSession {
                     path: path,
                     method: method,
                     body: body,
+                    encodedBody: encodedBody,
                     accessToken: tokens.accessToken,
                     timeoutMilliseconds: timeoutMilliseconds,
                     maxResponseBytes: maxResponseBytes

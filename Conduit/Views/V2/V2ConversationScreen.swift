@@ -39,6 +39,7 @@ struct V2ConversationScreen: View {
     @State private var composerExpanded = false
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
+    @State private var confirmsRoomDisband = false
 
     private var parent: SessionSummary? {
         guard appState.activeRoomSurface == nil,
@@ -53,6 +54,7 @@ struct V2ConversationScreen: View {
                 // Keyed by room: another room starts with its own draft.
                 GroupChatView()
                     .id(appState.activeRoomSurface?.room.roomID)
+                    .environment(\.v2ComposerRests, true)
             } else {
                 ChatView()
                     .environment(\.v2ComposerRests, true)
@@ -123,7 +125,8 @@ struct V2ConversationScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 V2ConversationMenu(
                     onRename: { chatTitlePendingRename = $0 },
-                    onDelete: { chatTitlePendingDeletion = $0 }
+                    onDelete: { chatTitlePendingDeletion = $0 },
+                    onDisbandRoom: { confirmsRoomDisband = true }
                 )
             }
         }
@@ -144,6 +147,22 @@ struct V2ConversationScreen: View {
             Button("Cancel", role: .cancel) { chatTitlePendingDeletion = nil }
         } message: {
             Text("This permanently deletes the conversation and cannot be undone.")
+        }
+        // On the screen, not the menu: a dialog raised as a menu closes
+        // may never show.
+        .confirmationDialog(
+            AppLocalization.string("Disband this group chat?"),
+            isPresented: $confirmsRoomDisband,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Disband"), role: .destructive) {
+                Task { await appState.disbandActiveRoom() }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+        } message: {
+            Text(AppLocalization.string(
+                "The room, its history, and every member's session end permanently. This cannot be undone."
+            ))
         }
     }
 }
@@ -200,6 +219,7 @@ private struct V2ConversationMenu: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    let onDisbandRoom: () -> Void
 
     private var statusColor: Color {
         if appState.isConnected { return .green }
@@ -213,8 +233,9 @@ private struct V2ConversationMenu: View {
 
     var body: some View {
         Menu {
-            // An open room has its own actions in its header.
-            if appState.activeRoomSurface == nil {
+            if appState.activeRoomSurface != nil {
+                GroupRoomActionItems(onDisband: onDisbandRoom)
+            } else {
                 Button {
                     Task { await appState.refreshActiveSession() }
                 } label: {
