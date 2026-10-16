@@ -12,6 +12,8 @@ struct DictationSettingsSection: View {
     @AppStorage(DictationEngine.preferenceKey) private var engineRaw = DictationEngine.apple.rawValue
     @State private var words = DictationCustomWords.load()
     @State private var draft = ""
+    /// The word Edit put in the field; saving replaces it in place.
+    @State private var editingWord: String?
 
     private var engine: DictationEngine {
         DictationEngine.resolved(engineRaw, isSupported: { $0.isSupportedOnThisDevice })
@@ -48,14 +50,18 @@ struct DictationSettingsSection: View {
                     Text(verbatim: word)
                         .font(.subheadline)
                     Spacer()
-                    Button {
+                    SettingsRowMenu(itemName: word, onEdit: {
+                        draft = word
+                        editingWord = word
+                    }, onDelete: {
+                        // Deleting the word in the field ends that edit, so Add
+                        // can't put it straight back.
+                        if editingWord == word {
+                            editingWord = nil
+                            draft = ""
+                        }
                         save(words.filter { $0 != word })
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(Text("Delete \(word)"))
+                    })
                 }
                 .padding(.vertical, 2)
             }
@@ -70,8 +76,9 @@ struct DictationSettingsSection: View {
                     .autocorrectionDisabled()
                     .onSubmit(add)
                     .accessibilityIdentifier("voice.dictationWordField")
-                Button(AppLocalization.string("Add"), action: add)
-                    .disabled(DictationCustomWords.canonicalized(draft).isEmpty || words.count >= DictationCustomWords.maximumCount)
+                Button(editingWord == nil ? AppLocalization.string("Add") : AppLocalization.string("Save"), action: add)
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(DictationCustomWords.canonicalized(draft).isEmpty || (editingWord == nil && words.count >= DictationCustomWords.maximumCount))
             }
         }
         .accessibilityElement(children: .contain)
@@ -87,9 +94,21 @@ struct DictationSettingsSection: View {
 
     private func add() {
         let word = DictationCustomWords.canonicalized(draft)
-        guard !word.isEmpty, words.count < DictationCustomWords.maximumCount else { return }
-        save(words + [word])
+        guard !word.isEmpty else { return }
+        if let editingWord {
+            // Save while editing only ever replaces; a word that has gone
+            // meanwhile ends the edit without adding one.
+            if let index = words.firstIndex(of: editingWord) {
+                var updated = words
+                updated[index] = word
+                save(updated)
+            }
+        } else {
+            guard words.count < DictationCustomWords.maximumCount else { return }
+            save(words + [word])
+        }
         draft = ""
+        editingWord = nil
     }
 
     private func save(_ updated: [String]) {

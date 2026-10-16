@@ -184,13 +184,12 @@ struct AgentSettingsReviewSheet: View {
                 Button(AppLocalization.string("Apply")) {
                     appState.resolveAgentSettings([item], apply: true)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.settingsPrimary)
                 Button(AppLocalization.string("Dismiss")) {
                     appState.resolveAgentSettings([item], apply: false)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.settings)
             }
-            .font(.subheadline)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)

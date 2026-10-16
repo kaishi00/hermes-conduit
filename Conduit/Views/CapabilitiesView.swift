@@ -130,11 +130,8 @@ struct CapabilitiesView: View {
                 skillsOrTools
                     .overlay(alignment: .top) {
                         if let banner {
-                            Text("Refresh failed: \(banner)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: Capsule())
+                            CapabilityRefreshBanner(message: banner)
+                                .padding(.horizontal, 16)
                                 .padding(.top, 6)
                         }
                     }

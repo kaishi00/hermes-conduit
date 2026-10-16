@@ -42,7 +42,7 @@ struct ReplySourcesSettingsSection: View {
                     Button(AppLocalization.string("Try again")) {
                         Task { await load(key) }
                     }
-                    .font(.footnote)
+                    .buttonStyle(.settings)
                 }
             }
         }

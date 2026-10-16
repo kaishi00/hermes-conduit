@@ -50,7 +50,7 @@ struct VoiceAPIKeyRow: View {
                 Spacer(minLength: 8)
                 if configured != nil, !isEditing {
                     Button(AppLocalization.string("Replace")) { isEditing = true }
-                        .font(.subheadline)
+                        .buttonStyle(.settings)
                         .disabled(isSaving)
                         .accessibilityIdentifier("voice.apiKey.\(targetKey).replace")
                 }
@@ -71,6 +71,7 @@ struct VoiceAPIKeyRow: View {
                             saveError = nil
                             isEditing = false
                         }
+                        .buttonStyle(.settings)
                         .disabled(isSaving)
                     }
                     Spacer()
@@ -83,7 +84,7 @@ struct VoiceAPIKeyRow: View {
                             Text(configured == nil ? AppLocalization.string("Add key") : AppLocalization.string("Save key"))
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.settingsPrimary)
                     .disabled(isSaving || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("voice.apiKey.\(targetKey).save")
                 }

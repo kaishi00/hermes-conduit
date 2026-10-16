@@ -64,10 +64,7 @@ struct CapabilityPluginsTab: View {
                 }
             } else {
                 if let error = store.pluginsError {
-                    Text("Refresh failed: \(error)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
+                    CapabilityRefreshBanner(message: error)
                 }
                 if !canManage {
                     Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
@@ -434,8 +431,12 @@ struct AgentPluginDetailPage: View {
             Button(AppLocalization.string("Apply Update")) { update(consent.plugin, accept: true) }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { consent in
-            Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it:")
-                + "\n\n" + consent.lines.joined(separator: "\n"))
+            let added = consent.lines.joined(separator: "\n")
+            if added.isEmpty {
+                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it."))
+            } else {
+                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it:\n\n\(added)"))
+            }
         }
     }
 

@@ -99,7 +99,7 @@ struct WatchSettingsSection: View {
                 Spacer()
                 if gptLive.canPrepare {
                     Button(AppLocalization.string("Set up")) { gptLive.prepare() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.settings)
                         .accessibilityIdentifier("voice.watchGPTLiveSetup")
                 }
             }

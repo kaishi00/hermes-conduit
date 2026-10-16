@@ -423,9 +423,8 @@ struct VoiceSettingsView: View {
                 Task { await load() }
             } label: {
                 Label(service.isLoading ? AppLocalization.string("Checking…") : AppLocalization.string("Check again"), systemImage: "arrow.clockwise")
-                    .font(.footnote.weight(.semibold))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.settings)
             .disabled(service.isLoading || isApplyingDefaults)
         }
     }
@@ -600,8 +599,7 @@ struct VoiceSettingsView: View {
             Spacer(minLength: 8)
             if let fix {
                 Button(fix.label, action: fix.action)
-                    .font(.footnote.weight(.semibold))
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.settings)
                     .disabled(savingField != nil || isApplyingDefaults)
             }
         }
@@ -1423,9 +1421,8 @@ struct VoiceSettingsView: View {
                     endPhrasesCustomized = false
                 } label: {
                     Label(AppLocalization.string("Use the built-in phrases"), systemImage: "arrow.counterclockwise")
-                        .font(.footnote.weight(.semibold))
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.settings)
                 .accessibilityIdentifier("voice.spokenPhrasesReset")
             }
         }
@@ -1796,6 +1793,7 @@ private struct SpokenPhraseListEditor: View {
                     .onSubmit(commitDraft)
                     .accessibilityLabel(Text(editingIndex == nil ? AppLocalization.string("Add \(title)") : AppLocalization.string("Edit \(title)")))
                 Button(editingIndex == nil ? AppLocalization.string("Add") : AppLocalization.string("Save"), action: commitDraft)
+                    .buttonStyle(.settingsPrimary)
                     .disabled(draftCanonicalized.isEmpty)
             }
         }
@@ -1811,22 +1809,12 @@ private struct SpokenPhraseListEditor: View {
             Text(phrase)
                 .font(.subheadline)
             Spacer()
-            Button {
+            SettingsRowMenu(itemName: phrase, onEdit: {
                 draft = phrase
                 editingIndex = phrases.firstIndex(of: phrase)
-            } label: {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text(AppLocalization.string("Edit phrase \(phrase)")))
-            Button {
+            }, onDelete: {
                 deletePhrase(phrase)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text("Delete phrase \(phrase)"))
+            })
         }
         .padding(.vertical, 2)
     }

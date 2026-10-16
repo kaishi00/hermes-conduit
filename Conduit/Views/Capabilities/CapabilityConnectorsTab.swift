@@ -55,10 +55,7 @@ struct CapabilityConnectorsTab: View {
                 )
             } else {
                 if let error = store.connectorsError {
-                    Text("Refresh failed: \(error)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
+                    CapabilityRefreshBanner(message: error)
                 }
                 if let actionError {
                     Text(verbatim: actionError)
@@ -348,7 +345,15 @@ struct ConnectorDetailPage: View {
                 await store.probe(name)
             }
         }
-        .onDisappear { signInTask?.cancel() }
+        .onDisappear {
+            // The host finishes a sign-in on its own; this page stops
+            // waiting for it, so it mustn't come back still saying so.
+            signInTask?.cancel()
+            if signInFlow != nil {
+                signInFlow = nil
+                message = nil
+            }
+        }
         .confirmationDialog(
             Text("Remove \(name)?"),
             isPresented: $confirmingRemove,
@@ -516,6 +521,9 @@ struct ConnectorDetailPage: View {
         signInTask = Task {
             do {
                 let flow = try await store.startSignIn(name)
+                // Leaving the page cancels this task; a request that finishes
+                // anyway must not bring the wait back.
+                try Task.checkCancellation()
                 signInFlow = flow.flowID
                 message = AppLocalization.string("Finish the sign-in in your browser.")
                 openURL(flow.url)
@@ -523,6 +531,7 @@ struct ConnectorDetailPage: View {
                     try await Task.sleep(for: .seconds(2))
                     guard signInFlow == flow.flowID else { return }
                     let status = try await store.signInStatus(flow.flowID)
+                    try Task.checkCancellation()
                     if status.status == "approved" {
                         signInFlow = nil
                         message = AppLocalization.string("Signed in.")
@@ -541,6 +550,7 @@ struct ConnectorDetailPage: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 signInFlow = nil
                 message = UserFacingError.message(for: error)
             }
@@ -561,11 +571,12 @@ struct ConnectorDetailPage: View {
             do {
                 try await store.removeServer(name)
                 Haptics.success()
+                removing = false
                 dismiss()
             } catch {
                 message = UserFacingError.message(for: error)
+                removing = false
             }
-            removing = false
         }
     }
 }

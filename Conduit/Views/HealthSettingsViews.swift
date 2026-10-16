@@ -234,12 +234,13 @@ struct HealthSettingsPage: View {
 
     private var historySection: some View {
         ConduitSettingsSection(title: AppLocalization.string("History"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
-            Picker("Share history from", selection: historyBinding) {
-                ForEach(HealthHistoryDepth.allCases) { depth in
-                    Text(depth.title).tag(depth)
-                }
+            ConduitMenuPicker(
+                value: historyBinding.wrappedValue,
+                choices: HealthHistoryDepth.allCases.map { (id: $0, title: $0.title) },
+                onSelect: { historyBinding.wrappedValue = $0 }
+            ) {
+                Text("Share history from").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Text("How far back the first sync reaches. A long history comes in over a few days in the background. Hourly detail covers the last 30 days; older history is daily.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -151,7 +151,7 @@ final class LiveTurnActivities {
 
     /// A prompt Conduit sent was accepted: the turn gets an activity, and an
     /// older one for the same chat ends.
-    func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?) {
+    func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil) {
         adoptExisting()
         let held = early.first { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
             .map { LiveTurnProgress.newTurnEvents($0.events) } ?? []
@@ -165,7 +165,9 @@ final class LiveTurnActivities {
             startedAt: Date(),
             language: AppLanguageStore.shared.selection.rawValue,
             link: ConduitAppLink.session(id: primaryID, profile: profile).url,
-            sessionIDs: Array(sessionIDs).sorted()
+            sessionIDs: Array(sessionIDs).sorted(),
+            profileName: profileName,
+            glowHex: glowHex
         )
         let state = HermesTurnAttributes.ContentState(phase: .thinking)
         do {

@@ -96,4 +96,28 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(HermesTurnCopy.statusKey(State(phase: .tool, tool: .web)), "Searching the web")
         XCTAssertEqual(HermesTurnCopy.statusKey(State(phase: .done)), "Finished")
     }
+
+    /// The card's profile glow: `#rrggbb` parses, anything else falls back
+    /// to gold, and an activity an older build started (no profile keys)
+    /// still decodes.
+    func testLiveTurnProfileGlowParsesAndOlderAttributesDecode() throws {
+        let link = try XCTUnwrap(URL(string: "conduit://session/s"))
+        var attributes = HermesTurnAttributes(chatTitle: "Chat", startedAt: now, language: "system", link: link, sessionIDs: ["s"], profileName: "Hermes", glowHex: "#c83a3a")
+        let glow = try XCTUnwrap(attributes.glowColor)
+        XCTAssertEqual(glow.red, 200.0 / 255, accuracy: 0.0001)
+        XCTAssertEqual(glow.green, 58.0 / 255, accuracy: 0.0001)
+        XCTAssertEqual(glow.blue, 58.0 / 255, accuracy: 0.0001)
+        attributes.glowHex = "#C83A3A\n"
+        XCTAssertEqual(try XCTUnwrap(attributes.glowColor).red, 200.0 / 255, accuracy: 0.0001, "uppercase and a trailing newline parse")
+        attributes.glowHex = "nope"
+        XCTAssertNil(attributes.glowColor)
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(attributes)) as? [String: Any])
+        object["profileName"] = nil
+        object["glowHex"] = nil
+        let older = try JSONDecoder().decode(HermesTurnAttributes.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(older.chatTitle, "Chat")
+        XCTAssertNil(older.profileName)
+        XCTAssertNil(older.glowColor)
+    }
 }

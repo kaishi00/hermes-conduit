@@ -135,12 +135,13 @@ struct PhoneSettingsPage: View {
 
     private var calendarSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calendar and reminders"), symbol: "calendar", tint: .conduitAccent) {
-            Picker("Calendar", selection: binding(\.calendar)) {
-                ForEach(PhoneCalendarAccess.allCases) { access in
-                    Text(access.title).tag(access)
-                }
+            ConduitMenuPicker(
+                value: choices.calendar,
+                choices: PhoneCalendarAccess.allCases.map { (id: $0, title: $0.title) },
+                onSelect: { binding(\.calendar).wrappedValue = $0 }
+            ) {
+                Text("Calendar").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityIdentifier("settings.phone.calendar")
             Text(choices.calendar == .writeOnly
                  ? AppLocalization.string("Hermes can ask to add events but can't read your calendar.")
@@ -148,12 +149,13 @@ struct PhoneSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if choices.calendar == .full {
-                Picker("Share", selection: binding(\.window)) {
-                    ForEach(PhoneCalendarWindow.allCases) { window in
-                        Text(window.title).tag(window)
-                    }
+                ConduitMenuPicker(
+                    value: choices.window,
+                    choices: PhoneCalendarWindow.allCases.map { (id: $0, title: $0.title) },
+                    onSelect: { binding(\.window).wrappedValue = $0 }
+                ) {
+                    Text("Share").foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
             }
             Toggle(isOn: binding(\.reminders)) {
                 Label("Reminders", systemImage: "checklist")
@@ -185,11 +187,16 @@ struct PhoneSettingsPage: View {
 
     private var changesSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Changes from Hermes"), symbol: "calendar.badge.plus", tint: .conduitAccent) {
-            Picker("New events and reminders", selection: binding(\.autoAdd)) {
-                Text("Ask me each time").tag(false)
-                Text("Add without asking").tag(true)
+            ConduitMenuPicker(
+                value: choices.autoAdd,
+                choices: [
+                    (id: false, title: AppLocalization.string("Ask me each time")),
+                    (id: true, title: AppLocalization.string("Add without asking"))
+                ],
+                onSelect: { binding(\.autoAdd).wrappedValue = $0 }
+            ) {
+                Text("New events and reminders").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             .accessibilityIdentifier("settings.phone.auto-add")
             Text("Hermes always asks before it changes or deletes anything. Without asking, new items go in when Conduit next runs, with Undo. In a voice call, Hermes asks you out loud.")
                 .font(.caption)

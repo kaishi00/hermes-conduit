@@ -10,54 +10,95 @@ struct HermesTurnLiveActivity: Widget {
         ActivityConfiguration(for: HermesTurnAttributes.self) { context in
             HermesTurnLockScreenView(attributes: context.attributes, state: context.state, isStale: context.isStale)
                 .widgetURL(context.attributes.link)
-                .activityBackgroundTint(nil)
+                .activityBackgroundTint(HermesTurnStyle.glass)
+                .activitySystemActionForegroundColor(HermesTurnStyle.gold)
         } dynamicIsland: { context in
             let attributes = context.attributes
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    HermesTurnPhaseIcon(state: state)
-                        .font(.title2)
-                        .padding(.leading, 4)
+                    HermesTurnPhaseDisc(state: state, size: 40)
+                        .padding(.leading, 2)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     HermesTurnElapsed(attributes: attributes, state: state)
-                        .font(.callout.monospacedDigit().weight(.semibold))
-                        .frame(maxWidth: 72, alignment: .trailing)
-                        .padding(.trailing, 4)
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(HermesTurnStyle.timerTint(for: state.turnPhase))
+                        .frame(maxWidth: 76, alignment: .trailing)
+                        .padding(.trailing, 2)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(verbatim: attributes.chatTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .privacySensitive()
+                    HermesTurnHeadline(attributes: attributes, state: state)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .environment(\.colorScheme, .dark)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(verbatim: HermesTurnCopy.status(state, language: attributes.language))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        HermesTurnDetails(attributes: attributes, state: state)
+                    if HermesTurnFooter.hasContent(state) {
+                        HermesTurnFooter(attributes: attributes, state: state)
+                            .padding(.horizontal, 2)
+                            .padding(.top, 4)
+                            .environment(\.colorScheme, .dark)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
                 }
             } compactLeading: {
                 HermesTurnPhaseIcon(state: state)
+                    .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
             } compactTrailing: {
                 HermesTurnElapsed(attributes: attributes, state: state)
                     .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(HermesTurnStyle.timerTint(for: state.turnPhase))
                     .frame(maxWidth: 48)
             } minimal: {
                 HermesTurnPhaseIcon(state: state)
+                    .font(.footnote.weight(.semibold))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(verbatim: HermesTurnCopy.status(state, language: attributes.language)))
             }
             .widgetURL(attributes.link)
-            .keylineTint(HermesTurnPhaseIcon.tint(for: state.turnPhase))
+            .keylineTint(HermesTurnStyle.tint(for: state.turnPhase))
+        }
+    }
+}
+
+/// V2's colors, here because the widget extension doesn't build Theme.swift.
+/// The card is always dark glass, so these are the dark values of
+/// Theme.swift's conduitAdaptiveAccent (gold), conduitAdaptiveAccentSoft,
+/// conduitAdaptiveAttention and conduitAdaptiveSuccess: keep them in step.
+enum HermesTurnStyle {
+    static let gold = Color(red: 0.88, green: 0.67, blue: 0.28)
+    static let goldSoft = Color(red: 0.98, green: 0.83, blue: 0.48)
+    static let attention = Color(red: 0.96, green: 0.65, blue: 0.24)
+    static let success = Color(red: 0.38, green: 0.80, blue: 0.50)
+    static let failure = Color(red: 0.96, green: 0.42, blue: 0.40)
+    static let glass = Color(red: 0.09, green: 0.075, blue: 0.08).opacity(0.62)
+
+    static func tint(for phase: HermesTurnPhase) -> Color {
+        switch phase {
+        case .approval, .input: attention
+        case .failed: failure
+        case .done: success
+        case .stopped: .secondary
+        case .thinking, .writing, .tool: gold
+        }
+    }
+
+    /// The timer stays gold while the turn runs and turns plain once it ends.
+    static func timerTint(for phase: HermesTurnPhase) -> Color {
+        if phase.isFinished { return .primary }
+        return phase.waitsOnUser ? attention : gold
+    }
+
+    /// The glow behind the card: the profile's color while Hermes works,
+    /// the phase's color once it needs you or is done.
+    static func glow(_ attributes: HermesTurnAttributes, phase: HermesTurnPhase) -> Color {
+        switch phase {
+        case .thinking, .writing, .tool:
+            if let rgb = attributes.glowColor { return Color(red: rgb.red, green: rgb.green, blue: rgb.blue) }
+            return gold
+        case .stopped: return .gray
+        case .approval, .input, .done, .failed: return tint(for: phase)
         }
     }
 }
@@ -68,48 +109,151 @@ private struct HermesTurnLockScreenView: View {
     let isStale: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HermesTurnPhaseIcon(state: state)
-                .font(.title2)
-                .frame(width: 32)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: attributes.chatTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .privacySensitive()
-                Text(verbatim: HermesTurnCopy.status(state, language: attributes.language))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                HermesTurnDetails(attributes: attributes, state: state)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                HermesTurnPhaseDisc(state: state, size: 40)
+                HermesTurnHeadline(attributes: attributes, state: state)
+                Spacer(minLength: 0)
+                HermesTurnElapsed(attributes: attributes, state: state)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(HermesTurnStyle.timerTint(for: state.turnPhase))
+                    .frame(maxWidth: 88, alignment: .trailing)
             }
-            Spacer(minLength: 0)
-            HermesTurnElapsed(attributes: attributes, state: state)
-                .font(.title3.monospacedDigit().weight(.semibold))
-                .frame(maxWidth: 88, alignment: .trailing)
+            if HermesTurnFooter.hasContent(state) {
+                HermesTurnFooter(attributes: attributes, state: state)
+            }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(alignment: .leading) {
+            // The V2 backdrop glow, rising from behind the status disc.
+            GeometryReader { proxy in
+                RadialGradient(
+                    colors: [HermesTurnStyle.glow(attributes, phase: state.turnPhase).opacity(0.34), .clear],
+                    center: UnitPoint(x: 0.08, y: 0.35),
+                    startRadius: 0,
+                    endRadius: proxy.size.width * 0.62
+                )
+            }
+        }
+        .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .combine)
         .opacity(isStale && !state.turnPhase.isFinished ? 0.6 : 1)
     }
 }
 
-/// Tool count and context use, when there is something to say.
-private struct HermesTurnDetails: View {
+/// The profile and chat on one quiet line, the status under it.
+private struct HermesTurnHeadline: View {
     let attributes: HermesTurnAttributes
     let state: HermesTurnAttributes.ContentState
 
     var body: some View {
-        let parts = [
-            state.tools > 0 ? HermesTurnCopy.tools(state.tools, language: attributes.language) : nil,
-            state.context.map { HermesTurnCopy.context($0, language: attributes.language) },
-        ].compactMap { $0 }
-        if !parts.isEmpty {
-            Text(verbatim: parts.joined(separator: " · "))
+        VStack(alignment: .leading, spacing: 2) {
+            whoLine
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            Text(verbatim: HermesTurnCopy.status(state, language: attributes.language))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
         }
+    }
+
+    @ViewBuilder
+    private var whoLine: some View {
+        if let name = attributes.profileName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            (Text(verbatim: name).fontWeight(.semibold).foregroundStyle(.primary)
+                + Text(verbatim: " · ")
+                + Text(verbatim: attributes.chatTitle))
+                .privacySensitive()
+        } else {
+            Text(verbatim: attributes.chatTitle)
+                .privacySensitive()
+        }
+    }
+}
+
+/// Under the headline: what to do when Hermes waits on you, else the tool
+/// count and a context meter. The pill is a hint, not a button: tapping
+/// the card opens the chat, where the approval or answer happens.
+private struct HermesTurnFooter: View {
+    let attributes: HermesTurnAttributes
+    let state: HermesTurnAttributes.ContentState
+
+    static func hasContent(_ state: HermesTurnAttributes.ContentState) -> Bool {
+        state.turnPhase.waitsOnUser || state.tools > 0 || state.context != nil
+    }
+
+    var body: some View {
+        if state.turnPhase.waitsOnUser {
+            Text(verbatim: WidgetLocalization.string(state.turnPhase == .approval ? "Review" : "Open chat", language: attributes.language))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.black.opacity(0.85))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(HermesTurnStyle.attention, in: Capsule())
+        } else if state.tools > 0 || state.context != nil {
+            HStack(spacing: 10) {
+                if state.tools > 0 {
+                    Text(verbatim: HermesTurnCopy.tools(state.tools, language: attributes.language))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.10), in: Capsule())
+                        .fixedSize()
+                }
+                if let context = state.context {
+                    HermesTurnContextMeter(percent: context, isFinished: state.turnPhase.isFinished)
+                    Text(verbatim: HermesTurnCopy.context(context, language: attributes.language))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .lineLimit(1)
+        }
+    }
+}
+
+/// How full the context is, as a thin gold bar (grey once the turn ended).
+private struct HermesTurnContextMeter: View {
+    let percent: Int
+    let isFinished: Bool
+
+    var body: some View {
+        let fraction = Double(max(0, min(100, percent))) / 100
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.12))
+                if fraction > 0 {
+                    Capsule()
+                        .fill(isFinished
+                            ? AnyShapeStyle(Color.secondary)
+                            : AnyShapeStyle(LinearGradient(colors: [HermesTurnStyle.gold, HermesTurnStyle.goldSoft], startPoint: .leading, endPoint: .trailing)))
+                        .frame(width: max(4, proxy.size.width * fraction))
+                }
+            }
+        }
+        .frame(height: 4)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The status symbol on a faint disc of its color, like a V2 chat row.
+private struct HermesTurnPhaseDisc: View {
+    let state: HermesTurnAttributes.ContentState
+    let size: CGFloat
+
+    var body: some View {
+        let tint = HermesTurnStyle.tint(for: state.turnPhase)
+        HermesTurnPhaseIcon(state: state)
+            .font(.system(size: size * 0.45, weight: .semibold))
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.18), in: Circle())
     }
 }
 
@@ -137,18 +281,8 @@ private struct HermesTurnPhaseIcon: View {
 
     var body: some View {
         Image(systemName: Self.symbol(for: state))
-            .foregroundStyle(Self.tint(for: state.turnPhase))
+            .foregroundStyle(HermesTurnStyle.tint(for: state.turnPhase))
             .accessibilityHidden(true)
-    }
-
-    static func tint(for phase: HermesTurnPhase) -> Color {
-        switch phase {
-        case .approval, .input: .orange
-        case .failed: .red
-        case .done: .green
-        case .stopped: .secondary
-        case .thinking, .writing, .tool: .accentColor
-        }
     }
 
     static func symbol(for state: HermesTurnAttributes.ContentState) -> String {
@@ -157,9 +291,9 @@ private struct HermesTurnPhaseIcon: View {
         case .writing: "text.cursor"
         case .approval: "hand.raised.fill"
         case .input: "questionmark.bubble.fill"
-        case .done: "checkmark.circle.fill"
+        case .done: "checkmark"
         case .failed: "exclamationmark.triangle.fill"
-        case .stopped: "stop.circle.fill"
+        case .stopped: "stop.fill"
         case .tool: toolSymbol(state.toolCategory ?? .tool)
         }
     }

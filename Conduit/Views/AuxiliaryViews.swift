@@ -1305,8 +1305,7 @@ private struct ProfileSettingsDetail: View {
                         name = appState.defaultProfileName
                         didSave = true
                     }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.conduitAccent)
+                        .buttonStyle(.settingsPrimary)
                 }
             }
         }
@@ -2172,7 +2171,7 @@ struct ProfileConfigSettingsPage: View {
                 else if case .number = field.control { error = AppLocalization.string("Enter a valid number for \(field.label).") }
                 else { save(field, value: .text(raw)) }
             }
-            .buttonStyle(.borderedProminent).tint(.conduitAccent).disabled(savingKey != nil)
+            .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
         }
     }
 
@@ -2268,7 +2267,7 @@ private struct GatewaySettingsDetail: View {
                         .textFieldStyle(.roundedBorder)
                     SecureField("Client Secret", text: $clientSecret).textFieldStyle(.roundedBorder)
                     Button("Save token") { saveCloudflareAccess(clientID, clientSecret); clientSecret = "" }
-                        .buttonStyle(.borderedProminent).tint(.conduitAccent)
+                        .buttonStyle(.settingsPrimary)
                     Text("The secret is stored only in Keychain. Reconnect after changing it.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -3188,6 +3187,89 @@ extension View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
             }
+    }
+}
+
+/// Settings' action buttons: a gold capsule that shrinks a little on V2's
+/// overshoot spring while pressed. `.settings` is any action in a card
+/// (Add the shortcut, Check again, Set up); `.settingsPrimary` is the one
+/// that commits what was typed (Save, Add key, Apply).
+struct SettingsButtonStyle: ButtonStyle {
+    var isPrimary = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        SettingsButtonLabel(configuration: configuration, isPrimary: isPrimary)
+    }
+}
+
+extension ButtonStyle where Self == SettingsButtonStyle {
+    static var settings: SettingsButtonStyle { SettingsButtonStyle() }
+    static var settingsPrimary: SettingsButtonStyle { SettingsButtonStyle(isPrimary: true) }
+}
+
+private struct SettingsButtonLabel: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let configuration: ButtonStyleConfiguration
+    let isPrimary: Bool
+
+    /// Dark text on the bright dark-mode gold; white on the light-mode
+    /// brown, where dark text read poorly.
+    private var primaryText: Color {
+        colorScheme == .dark ? Color.black.opacity(0.85) : .white
+    }
+
+    var body: some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isPrimary ? primaryText : Color.conduitAccent)
+            .padding(.horizontal, isPrimary ? 16 : 14)
+            .frame(minHeight: isPrimary ? 38 : 36)
+            .background(isPrimary ? Color.conduitAccent : Color.conduitAccent.opacity(0.15), in: Capsule())
+            .overlay {
+                if !isPrimary {
+                    Capsule().strokeBorder(Color.conduitAccent.opacity(0.4), lineWidth: 0.5)
+                }
+            }
+            // A 44 pt touch target around the smaller capsule.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .opacity(configuration.isPressed && reduceMotion ? 0.7 : 1)
+            .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: configuration.isPressed)
+    }
+}
+
+/// A settings list row's ⋯ menu (Edit, Delete) in place of a gold pencil
+/// and a red minus on every row.
+struct SettingsRowMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The row's name, so VoiceOver says which row the menu acts on.
+    let itemName: String
+    var onEdit: (() -> Void)?
+    let onDelete: () -> Void
+
+    var body: some View {
+        Menu {
+            if let onEdit {
+                Button(action: onEdit) {
+                    Label(AppLocalization.string("Edit"), systemImage: "pencil")
+                }
+            }
+            Button(role: .destructive, action: onDelete) {
+                Label(AppLocalization.string("Delete"), systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text(AppLocalization.string("More")))
+        .accessibilityValue(Text(verbatim: itemName))
     }
 }
 

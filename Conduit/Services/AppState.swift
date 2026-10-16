@@ -19176,7 +19176,9 @@ final class AppState: ObservableObject {
                         sessionIDs: submissionSessionIDs,
                         primaryID: sessionId,
                         title: activeSessionTitle,
-                        profile: activeProfile
+                        profile: activeProfile,
+                        profileName: profileDisplayName(activeProfile),
+                        glowHex: profileGlowColors()[activeProfile]?.hex
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,

@@ -69,9 +69,11 @@ struct CarPlaySettingsSection: View {
                     HStack {
                         if editingID != nil {
                             Button("Cancel", action: clearDraft)
+                                .buttonStyle(.settings)
                         }
                         Spacer()
                         Button(editingID == nil ? AppLocalization.string("Add") : AppLocalization.string("Save"), action: commitDraft)
+                            .buttonStyle(.settingsPrimary)
                             .disabled(!canCommit)
                     }
                 } else {
@@ -99,24 +101,14 @@ struct CarPlaySettingsSection: View {
                     .lineLimit(2)
             }
             Spacer()
-            Button {
+            SettingsRowMenu(itemName: shortcut.title, onEdit: {
                 editingID = shortcut.id
                 draftTitle = shortcut.title
                 draftPrompt = shortcut.prompt
-            } label: {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text(AppLocalization.string("Edit shortcut \(shortcut.title)")))
-            Button {
+            }, onDelete: {
                 preferences.delete(id: shortcut.id)
                 if editingID == shortcut.id { clearDraft() }
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text(AppLocalization.string("Delete shortcut \(shortcut.title)")))
+            })
         }
         .padding(.vertical, 2)
     }
