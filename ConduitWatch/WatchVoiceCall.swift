@@ -238,7 +238,11 @@ final class WatchVoiceCall: ObservableObject {
         bridge.scenePhaseChanged(newPhase)
         // Opened: the first active since launch, or the first since the
         // app went to the background (either can pass through inactive on
-        // the way). A wrist raise never left inactive and starts nothing.
+        // the way). A wrist raise never left inactive and starts nothing:
+        // watchOS keeps the app frontmost (inactive) with the wrist down,
+        // and only backgrounds it on a press of the crown or once Return
+        // to Clock runs out (WatchKit, "Taking advantage of frontmost app
+        // state").
         if newPhase == .background { wasBackgrounded = true }
         if newPhase == .active {
             if !hasBeenActive || wasBackgrounded { startOnOpenIfWanted() }
@@ -250,14 +254,12 @@ final class WatchVoiceCall: ObservableObject {
         WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
     }
 
-    static let openAfterEndPause: TimeInterval = 120
-
     private func startOnOpenIfWanted() {
         // A call from Hermes ringing or answered is the call.
         guard startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
-        // Back in front soon after a call ended (the wrist went down on
-        // its summary): the user is reading it, not calling again.
-        if let endedAt, Date().timeIntervalSince(endedAt) < Self.openAfterEndPause { return }
+        // Back from the background is an open, however soon after a call
+        // ended: reading the summary with the wrist down and up again
+        // never leaves inactive, so it never comes here.
         // The microphone prompt is left to a tap on Start.
         guard WatchAudio.hasPermission else {
             if !loggedOpenSkip {
