@@ -1,0 +1,84 @@
+import Foundation
+
+/// Files sent into a group chat room. A room is not a session, so Hermes'
+/// attach RPCs (which stage into a session's workspace) can't take them: the
+/// host's notifier plugin stores each upload (plugin 0.38+, capability
+/// `room-files`) and hands back the `@file:` reference that goes on its own
+/// line above the message, as a chat's staged files do.
+final class GroupRoomFilesClient {
+    static let capability = "room-files"
+    static let path = "/api/plugins/conduit_push/room-files"
+    /// Base64 of a file near the host's 50 MB cap takes a while to send.
+    static let timeoutMilliseconds = 180_000
+
+    typealias Request = @MainActor (_ path: String, _ body: [String: Any]) async throws -> [String: Any]
+
+    enum Failure: LocalizedError, Equatable {
+        case unreadable(String)
+        case malformed
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadable(let name):
+                return AppLocalization.string("Could not prepare \(name) for upload.")
+            case .malformed:
+                return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+            }
+        }
+    }
+
+    private let request: Request
+
+    init(request: @escaping Request) {
+        self.request = request
+    }
+
+    /// Uploads each attachment in order; returns their `@file:` references.
+    @MainActor
+    func upload(_ attachments: [Attachment]) async throws -> [String] {
+        var references: [String] = []
+        for attachment in attachments {
+            let base64 = await AttachmentHelper.toBase64(attachment)
+            guard !base64.isEmpty else { throw Failure.unreadable(attachment.name) }
+            let response = try await request(Self.path, ["name": attachment.name, "data_base64": base64])
+            references.append(try Self.reference(from: response))
+        }
+        return references
+    }
+
+    /// The host's `ref_text`, else one built from the stored path.
+    static func reference(from response: [String: Any]) throws -> String {
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
+        if let text = (response["ref_text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           text.hasPrefix("@file:"), text.count > "@file:".count {
+            return text
+        }
+        guard let path = (response["path"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else { throw Failure.malformed }
+        return "@file:\(HermesClient.formatReferenceValue(path))"
+    }
+}
+
+extension AppState {
+    /// The room composer offers files only when the host can store them.
+    var canAttachRoomFiles: Bool {
+        notifierPlugin.reports(GroupRoomFilesClient.capability)
+    }
+
+    /// Uploads a room message's files and returns the text the room gets:
+    /// their references, a blank line, then what was typed.
+    func roomMessageText(_ text: String, attachments: [Attachment]) async throws -> String {
+        guard !attachments.isEmpty else { return text }
+        let client = GroupRoomFilesClient(request: { [weak self] path, body in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(
+                path: path,
+                method: "POST",
+                body: body,
+                timeoutMilliseconds: GroupRoomFilesClient.timeoutMilliseconds
+            )
+        })
+        let references = try await client.upload(attachments)
+        return Self.promptText(text.trimmingCharacters(in: .whitespacesAndNewlines), fileReferences: references)
+    }
+}

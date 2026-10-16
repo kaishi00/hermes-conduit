@@ -1847,7 +1847,7 @@ struct ComposerBar: View {
     /// Copies one picked item into the staging folder under its real name
     /// and type. Videos stay files end to end; images in a format model
     /// providers can't read (HEIC...) are re-encoded as JPEG.
-    nonisolated private static func stagePickedItem(_ item: PhotosPickerItem, ordinal: Int, limitMegabytes: Int) async -> StagedImport {
+    nonisolated static func stagePickedItem(_ item: PhotosPickerItem, ordinal: Int, limitMegabytes: Int) async -> StagedImport {
         let pickedType = item.supportedContentTypes.first
         let fallbackName = AttachmentTypePolicy.filename(suggested: nil, type: pickedType, ordinal: ordinal)
         if let file = try? await item.loadTransferable(type: PickedMediaFile.self) {
@@ -1870,7 +1870,7 @@ struct ComposerBar: View {
         }
     }
 
-    nonisolated private static func discardStagedFile(_ attachment: Attachment) {
+    nonisolated static func discardStagedFile(_ attachment: Attachment) {
         guard let url = URL(string: attachment.uri), url.isFileURL else { return }
         try? FileManager.default.removeItem(at: url)
     }
@@ -1942,7 +1942,7 @@ struct ComposerBar: View {
 
     /// Stages a file from the document picker the same way as a picked
     /// photo: size checked before it is read, copied rather than loaded.
-    nonisolated private static func stageDocument(at url: URL, limitMegabytes: Int) -> StagedImport {
+    nonisolated static func stageDocument(at url: URL, limitMegabytes: Int) -> StagedImport {
         let name = url.lastPathComponent
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }

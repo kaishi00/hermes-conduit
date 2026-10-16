@@ -3921,7 +3921,7 @@ enum MessageNormalizer {
 
     /// The run of `@file:` lines a prompt opens with becomes document
     /// attachments; a reference typed inside the text stays where it is.
-    private static func splitLeadingFileReferences(
+    static func splitLeadingFileReferences(
         _ text: String,
         messageId: String
     ) -> (content: String, attachments: [Attachment]) {

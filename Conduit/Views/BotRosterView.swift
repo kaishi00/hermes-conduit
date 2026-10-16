@@ -43,6 +43,7 @@ struct BotRosterView: View {
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
+                .environmentObject(appState)
         }
         .sheet(item: $editorMode) { mode in
             BotEditorSheet(mode: mode) { createdName, warning in

@@ -8,23 +8,29 @@ import UIKit
 struct GroupChatView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
-    @State private var draft = ""
+    /// Set by V2's conversation screen: the composer floats over the
+    /// transcript under soft edges, and the header's menu holds the room's
+    /// actions.
+    @Environment(\.v2ComposerRests) private var isV2
     @State private var showingDisbandConfirmation = false
-    @FocusState private var composerFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            pendingApprovals
-            MinimisedLiveVoiceBar()
-            composer
+        Group {
+            if isV2 {
+                transcript
+                    .v2EdgeBar(.bottom) {
+                        bottomBar
+                            .modifier(V2LegacyScrollEdge(edge: .bottom))
+                    }
+            } else {
+                VStack(spacing: 0) {
+                    transcript
+                    bottomBar
+                }
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .toolbar { toolbarContent }
-        // The view is keyed by room, so appear/change bracket exactly one
-        // room: the draft comes back on reopen and is kept as it changes.
-        .onAppear { draft = appState.activeRoomDraft() }
-        .onChange(of: draft) { _, text in appState.saveActiveRoomDraft(text) }
         .confirmationDialog(
             AppLocalization.string("Disband this group chat?"),
             isPresented: $showingDisbandConfirmation,
@@ -41,6 +47,14 @@ struct GroupChatView: View {
         }
     }
 
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
+            pendingApprovals
+            MinimisedLiveVoiceBar()
+            GroupRoomComposer(members: members)
+        }
+    }
+
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
 
     private var members: [GroupMember] { surface?.room.members ?? [] }
@@ -54,34 +68,25 @@ struct GroupChatView: View {
     /// The member whose turn is running (memoized by AppState).
     private var respondingMember: GroupMember? { appState.activeRoomResponder }
 
-    private var mentionQuery: String? { MentionAutocomplete.activeQuery(in: draft) }
-
-    private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard composerFocused, let query = mentionQuery else { return [] }
-        return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
-    }
-
     // MARK: - Transcript
 
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 let rendered = self.visibleEvents
-                LazyVStack(spacing: 10) {
-                    ForEach(rendered) { event in
-                        GroupEventRow(event: event, members: members)
+                LazyVStack(spacing: 14) {
+                    ForEach(Array(rendered.enumerated()), id: \.element.id) { index, event in
+                        // A member's run of replies shows its picture and
+                        // name once, like a group thread in Messages.
+                        let previous = index > 0 ? rendered[index - 1] : nil
+                        GroupEventRow(
+                            event: event,
+                            members: members,
+                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
+                        )
                     }
                     if let pending = appState.pendingRoomMessage {
-                        GroupChatBubble(
-                            alignment: .trailing,
-                            speaker: AppLocalization.string("You"),
-                            timestamp: nil,
-                            tint: .conduitAccent.opacity(0.14)
-                        ) {
-                            // Same renderer as a delivered event, so the
-                            // mentions do not restyle when it lands.
-                            GroupMentionTextRenderer.render(pending.text, members: surface?.room.members ?? [])
-                                .foregroundStyle(.primary)
+                        GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
                                     .font(.caption2)
@@ -101,24 +106,31 @@ struct GroupChatView: View {
                                     .font(.caption.weight(.semibold))
                                 }
                                 .buttonStyle(.plain)
+                                .foregroundStyle(Color.conduitAccent)
                             }
                         }
                         .id("pending-row")
                     }
                     if let responder = respondingMember {
-                        GroupRespondingRow(name: GroupRoomTurns.displayName(of: responder))
+                        GroupRespondingRow(member: responder)
                             .id("responding-row")
                     }
                     if rendered.isEmpty && appState.pendingRoomMessage == nil && respondingMember == nil {
-                        Text(AppLocalization.string("No messages yet. Say something to the room."))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 32)
+                        emptyState
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 18)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .modifier(V2SoftTopScrollEdge(isOn: isV2))
+            .simultaneousGesture(TapGesture().onEnded {
+                // A tap on the transcript puts the keyboard away.
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                )
+            })
             .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
@@ -128,6 +140,18 @@ struct GroupChatView: View {
             .onAppear { scrollToBottom(proxy) }
         }
         .background(Color.clear)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            GroupMemberAvatarStack(members: members, size: 44)
+            Text(AppLocalization.string("No messages yet. Say something to the room."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 48)
     }
 
     /// The bottom-most row: the responding member, else the pending send,
@@ -142,107 +166,6 @@ struct GroupChatView: View {
         }
     }
 
-    // MARK: - Composer
-
-    private var composer: some View {
-        VStack(spacing: 6) {
-            if appState.activeRoomSendInFlight, appState.pendingRoomMessage == nil {
-                // A poll can show the message delivered before the send's
-                // own answer returns; Send stays off until it does.
-                Text(AppLocalization.string("Sending…"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-            }
-            if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
-                // The pending row owns the composer; say why Send is off
-                // instead of leaving a silently disabled button.
-                Text(AppLocalization.string(
-                    "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
-                ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-            }
-            if let error = appState.errorMessage, !error.isEmpty {
-                // The session surface's error banner lives inside ChatView,
-                // which this room surface replaces — room errors must render
-                // HERE, or every failure below is invisible.
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-            }
-            if !mentionCandidates.isEmpty {
-                MentionSuggestionList(candidates: mentionCandidates) { candidate in
-                    draft = MentionAutocomplete.completing(draft, with: candidate)
-                }
-                .padding(.horizontal, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField(
-                    AppLocalization.string("Message the room"),
-                    text: $draft,
-                    axis: .vertical
-                )
-                .lineLimit(1...5)
-                .focused($composerFocused)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.05),
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .submitLabel(.send)
-                .onSubmit { sendDraft() }
-
-                Button {
-                    sendDraft()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(canSend ? Color.conduitAccent : Color.secondary.opacity(0.4))
-                }
-                .disabled(!canSend)
-                .accessibilityLabel(Text(AppLocalization.string("Send")))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-    }
-
-    private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !appState.activeRoomSendInFlight
-            // An ambiguous-outcome pending message owns the composer: retry
-            // it explicitly (same event id) or it stays visible — a NEW
-            // message typed meanwhile would be silently swallowed.
-            && appState.pendingRoomMessage == nil
-            && appState.groupCapabilities?.supports("groups.send") == true
-            && surface?.room.isDisbanded == false
-    }
-
-    private func sendDraft() {
-        guard canSend else { return }
-        let text = draft
-        draft = ""
-        Haptics.light()
-        Task {
-            // The pending row owns the text only once AppState REGISTERS
-            // the send. A declined send (connection or room changed before
-            // the guards ran) hands the text back to the composer, unless
-            // the user already started typing something new.
-            let registered = await appState.sendGroupRoomMessage(text)
-            if !registered && draft.isEmpty {
-                draft = text
-            }
-        }
-    }
-
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -251,47 +174,30 @@ struct GroupChatView: View {
             Button {
                 appState.closeGroupRoom()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.subheadline.weight(.semibold))
+                // V2 pushes the room like a chat: Back, not Close.
+                Image(systemName: isV2 ? "chevron.backward" : "xmark")
+                    .font(isV2 ? .body.weight(.semibold) : .subheadline.weight(.semibold))
             }
             .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
         }
         ToolbarItem(placement: .principal) {
-            VStack(spacing: 1) {
-                Text(surface?.room.name ?? "")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(memberSummary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            // The navigation bar doesn't grow; touch and hold shows it large.
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .accessibilityElement(children: .combine)
-            .accessibilityShowsLargeContentViewer()
+            GroupRoomTitle(
+                name: surface?.room.name ?? "",
+                subtitle: memberSummary,
+                members: members
+            )
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                if appState.groupCapabilities?.supports("groups.stop") == true,
-                   let driver = appState.activeRoomDriverStatus,
-                   driver.running || driver.working {
-                    Button {
-                        Task { await appState.stopActiveRoomWork() }
-                    } label: {
-                        Label(AppLocalization.string("Stop"), systemImage: "stop.fill")
-                    }
-                }
-                Button(role: .destructive) {
-                    showingDisbandConfirmation = true
+        if !isV2 {
+            // V2's conversation menu carries these with the gateway's state.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    GroupRoomActionItems(onDisband: { showingDisbandConfirmation = true })
                 } label: {
-                    Label(AppLocalization.string("Disband Group"), systemImage: "trash")
+                    Image(systemName: "ellipsis.circle")
+                        .font(.callout.weight(.semibold))
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.callout.weight(.semibold))
+                .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
             }
-            .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
         }
     }
 
@@ -349,6 +255,65 @@ struct GroupChatView: View {
             return AppLocalization.string("\(count) members · working…")
         }
         return AppLocalization.string("\(count) members")
+    }
+}
+
+/// The open room's actions: Stop while its members are working, and
+/// Disband. In the room's own menu (drawer shell) or V2's conversation menu.
+struct GroupRoomActionItems: View {
+    @EnvironmentObject private var appState: AppState
+    let onDisband: () -> Void
+
+    var body: some View {
+        if appState.groupCapabilities?.supports("groups.stop") == true,
+           let driver = appState.activeRoomDriverStatus,
+           driver.running || driver.working {
+            Button {
+                Task { await appState.stopActiveRoomWork() }
+            } label: {
+                Label(AppLocalization.string("Stop"), systemImage: "stop.fill")
+            }
+        }
+        Button(role: .destructive) {
+            onDisband()
+        } label: {
+            Label(AppLocalization.string("Disband Group"), systemImage: "trash")
+        }
+    }
+}
+
+/// The room's title in the header: its members' pictures and its name in
+/// one glass capsule, with who is talking under the name.
+struct GroupRoomTitle: View {
+    let name: String
+    let subtitle: String
+    let members: [GroupMember]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            GroupMemberAvatarStack(members: members, size: 22)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+            }
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 14)
+        .padding(.vertical, 5)
+        .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.06))
+        // The navigation bar doesn't grow; touch and hold shows it large.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(name))
+        .accessibilityValue(Text(subtitle))
+        .accessibilityShowsLargeContentViewer { Text(name) }
     }
 }
 
@@ -455,35 +420,30 @@ struct GroupApprovalCard: View {
 
 // MARK: - Event rows
 
-/// One room-log event, rendered by actor kind: user bubbles trail, member
-/// bubbles lead, and every other (or unknown future) kind is a compact
-/// system caption — a room this client predates still renders, never crashes.
+/// One room-log event, rendered by actor kind: the user's messages trail in
+/// the accent bubble a chat uses, members' lead with their picture, and
+/// every other (or unknown future) kind is a compact system caption — a room
+/// this client predates still renders, never crashes.
 struct GroupEventRow: View {
     let event: GroupEvent
     let members: [GroupMember]
+    /// The previous row is the same speaker's: no picture or name again.
+    var continuesRun = false
 
     var body: some View {
         if event.isUserMessage {
-            GroupChatBubble(
-                alignment: .trailing,
-                speaker: AppLocalization.string("You"),
-                timestamp: event.createdAt,
-                tint: .conduitAccent.opacity(0.14)
-            ) {
-                mentionText
-                    .textSelection(.enabled)
+            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
+                EmptyView()
             }
         } else if event.isMemberMessage {
-            GroupChatBubble(
-                alignment: .leading,
-                speaker: speakerLabel,
+            GroupMemberBubble(
+                member: GroupRoomTurns.member(for: event, members: members),
+                name: speakerLabel,
+                text: event.messageText ?? "",
+                members: members,
                 timestamp: event.createdAt,
-                tint: Color.primary.opacity(0.05),
-                copyText: event.messageText
-            ) {
-                mentionText
-                    .textSelection(.enabled)
-            }
+                continuesRun: continuesRun
+            )
         } else {
             GroupSystemEventCaption(event: event, members: members)
         }
@@ -494,11 +454,167 @@ struct GroupEventRow: View {
         return label.isEmpty ? AppLocalization.string("Member") : label
     }
 
-    /// Recognized mentions render as inline accent references; unknown
-    /// `@words` and e-mail addresses stay plain (presentation mirrors the
-    /// gateway's routing classification, upstream `group-mention-text`).
-    private var mentionText: Text {
-        GroupMentionTextRenderer.render(event.messageText ?? "", members: members)
+    /// Two rows in a row from one member (or both from the user).
+    static func sameSpeaker(_ previous: GroupEvent, _ next: GroupEvent) -> Bool {
+        if previous.isUserMessage && next.isUserMessage { return true }
+        guard previous.isMemberMessage, next.isMemberMessage else { return false }
+        let key = previous.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !key.isEmpty && key == next.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// A message's files and text. Files a message opens with (`@file:` lines,
+/// how Conduit sends a room its uploads) show as chips above the text.
+struct GroupMessageParts {
+    let text: String
+    let files: [Attachment]
+
+    init(_ source: String) {
+        let split = MessageNormalizer.splitLeadingFileReferences(source, messageId: "room")
+        text = split.content
+        files = split.attachments
+    }
+}
+
+private struct GroupMessageFiles: View {
+    let files: [Attachment]
+    var onAccent = false
+
+    var body: some View {
+        ForEach(files) { file in
+            HStack(spacing: 8) {
+                Image(systemName: AttachmentTypePolicy.symbolName(for: file))
+                    .font(.callout)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                Text(file.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .foregroundStyle(onAccent ? Color.white : Color.primary)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(AppLocalization.string("Attached: \(file.name)")))
+        }
+    }
+}
+
+/// The user's message: the chat's accent bubble on the trailing side, its
+/// time and a Copy button under it. `footer` carries a pending send's state.
+struct GroupUserBubble<Footer: View>: View {
+    let text: String
+    let members: [GroupMember]
+    let timestamp: Double?
+    @ViewBuilder let footer: Footer
+
+    var body: some View {
+        let parts = GroupMessageParts(text)
+        HStack {
+            Spacer(minLength: 48)
+            VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .leading, spacing: 8) {
+                    GroupMessageFiles(files: parts.files, onAccent: true)
+                    if !parts.text.isEmpty {
+                        GroupMentionTextRenderer.render(parts.text, members: members, onAccent: true)
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 15)
+                .padding(.vertical, 10)
+                .background(
+                    LinearGradient(
+                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 21, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                }
+                .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
+                HStack(spacing: 2) {
+                    footer
+                    if let timestamp {
+                        Text(GroupBubbleTime.text(timestamp))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if !parts.text.isEmpty {
+                        GroupMessageCopyButton(text: parts.text, label: .message)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+/// A member's message: its picture beside a soft bubble, its name and time
+/// above (once per run), and the Copy button under it.
+struct GroupMemberBubble: View {
+    let member: GroupMember?
+    let name: String
+    let text: String
+    let members: [GroupMember]
+    let timestamp: Double?
+    var continuesRun = false
+
+    static let avatarSize: CGFloat = 30
+
+    var body: some View {
+        let parts = GroupMessageParts(text)
+        HStack(alignment: .top, spacing: 9) {
+            Group {
+                if continuesRun {
+                    Color.clear
+                } else {
+                    GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+                }
+            }
+            .frame(width: Self.avatarSize, height: Self.avatarSize)
+            VStack(alignment: .leading, spacing: 3) {
+                if !continuesRun {
+                    HStack(spacing: 6) {
+                        Text(name)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        if let timestamp {
+                            Text(GroupBubbleTime.text(timestamp))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    GroupMessageFiles(files: parts.files)
+                    if !parts.text.isEmpty {
+                        GroupMentionTextRenderer.render(parts.text, members: members)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 19, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                }
+                if !parts.text.isEmpty {
+                    GroupMessageCopyButton(text: parts.text, label: .response)
+                        .padding(.leading, 4)
+                }
+            }
+            Spacer(minLength: 32)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -551,29 +667,209 @@ struct GroupSystemEventCaption: View {
     }
 }
 
+
 /// The member whose turn is running, as a placeholder bubble where their
 /// reply will land.
 struct GroupRespondingRow: View {
-    let name: String
+    let member: GroupMember
 
     var body: some View {
-        GroupChatBubble(
-            alignment: .leading,
-            speaker: name,
-            timestamp: nil,
-            tint: Color.primary.opacity(0.05)
-        ) {
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text(AppLocalization.string("Responding…"))
-                    .font(.footnote)
+        let name = GroupRoomTurns.displayName(of: member)
+        HStack(alignment: .top, spacing: 9) {
+            GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(AppLocalization.string("Responding…"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
             }
+            Spacer(minLength: 32)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AppLocalization.string("\(name) is responding…")))
         .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+/// A room member's picture: the bot's own (its profile's avatar), else its
+/// colored initial.
+struct GroupMemberAvatar: View {
+    @EnvironmentObject private var appState: AppState
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+
+    /// The roster bot this member is: by profile, else (a Desktop group's
+    /// member, which has none) by name.
+    private var bot: BotProfile? {
+        let roster = appState.botRoster
+        if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+           let bot = roster.first(where: { $0.name == profile }) {
+            return bot
+        }
+        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return nil }
+        return roster.first { $0.displayLabel == label || $0.name == label }
+    }
+
+    var body: some View {
+        if let bot {
+            BotAvatarView(
+                name: bot.name,
+                label: bot.displayLabel,
+                colorString: bot.appearanceColor,
+                image: appState.botAvatarImage(for: bot),
+                size: size
+            )
+            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)") {
+                await appState.loadBotAvatarRetrying(bot)
+            }
+            .accessibilityHidden(true)
+        } else {
+            BotAvatarView(name: name, label: name, colorString: nil, image: nil, size: size)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Up to three members' pictures overlapping, then a count of the rest.
+struct GroupMemberAvatarStack: View {
+    let members: [GroupMember]
+    let size: CGFloat
+
+    var body: some View {
+        let shown = Array(members.prefix(3))
+        HStack(spacing: -size * 0.32) {
+            ForEach(shown.indices, id: \.self) { index in
+                let member = shown[index]
+                GroupMemberAvatar(member: member, name: GroupRoomTurns.displayName(of: member), size: size)
+                    .overlay { Circle().strokeBorder(Color.black.opacity(0.25), lineWidth: 1) }
+                    .zIndex(Double(shown.count - index))
+            }
+            if members.count > shown.count {
+                Text(verbatim: "+\(members.count - shown.count)")
+                    .font(.system(size: max(9, size * 0.4), weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(width: size, height: size)
+                    .background(Color.primary.opacity(0.10), in: Circle())
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Copies a whole message, mirroring a single chat's response Copy button
+/// (same icon, haptic, and brief checkmark).
+struct GroupMessageCopyButton: View {
+    enum Kind { case response, message }
+
+    let text: String
+    let label: Kind
+    @State private var copied = false
+    @State private var resetTask: Task<Void, Never>?
+
+    private var copiedTitle: String {
+        label == .response ? AppLocalization.string("Response copied") : AppLocalization.string("Message copied")
+    }
+
+    private var title: String {
+        label == .response ? AppLocalization.string("Copy response") : AppLocalization.string("Copy message")
+    }
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = text
+            Haptics.light()
+            copied = true
+            UIAccessibility.post(notification: .announcement, argument: copiedTitle)
+            resetTask?.cancel()
+            resetTask = Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                guard !Task.isCancelled else { return }
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.footnote.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
+        .accessibilityLabel(copied ? copiedTitle : title)
+    }
+}
+
+/// MainActor-confined view code, so the shared formatter is safe.
+enum GroupBubbleTime {
+    // A fresh DateFormatter per bubble per render is brutally expensive
+    // across a 200-event LazyVStack.
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static func text(_ value: Double) -> String {
+        formatter.string(from: Date(timeIntervalSince1970: value))
+    }
+}
+
+// MARK: - Mention text rendering
+
+enum GroupMentionTextRenderer {
+    /// Inline Markdown (bold, italics, code, links) with recognized mention
+    /// spans tinted. Kind tints differ: agent mentions (member handles),
+    /// broadcast (@all/@everyone), and the human handoff (@user). On the
+    /// user's accent bubble, mentions are white on a light wash instead.
+    static func render(_ text: String, members: [GroupMember], onAccent: Bool = false) -> Text {
+        var attributed = (try? AttributedString(
+            markdown: text,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(text)
+        guard let regex = GroupRoomMentions.mentionScanRegex else { return Text(attributed) }
+        // Markdown markup is gone from the parsed text, so mentions are found
+        // in what shows and mapped back by character offset.
+        let plain = String(attributed.characters)
+        let range = NSRange(plain.startIndex..., in: plain)
+        for match in regex.matches(in: plain, range: range).reversed() {
+            guard match.numberOfRanges > 1,
+                  let tokenRange = Range(match.range(at: 1), in: plain),
+                  let fullRange = Range(match.range, in: plain) else { continue }
+            let token = String(plain[tokenRange])
+            guard let kind = GroupRoomMentions.classify(token: token, members: members) else { continue }
+            let lower = plain.distance(from: plain.startIndex, to: fullRange.lowerBound)
+            let length = plain.distance(from: fullRange.lowerBound, to: fullRange.upperBound)
+            let characters = attributed.characters
+            guard lower + length <= characters.count else { continue }
+            let start = characters.index(characters.startIndex, offsetBy: lower)
+            let end = characters.index(start, offsetBy: length)
+            let attrRange = start..<end
+            // Color only: the enclosing Text keeps its own font and size.
+            if onAccent {
+                attributed[attrRange].foregroundColor = .white
+                attributed[attrRange].backgroundColor = .white.opacity(0.22)
+                continue
+            }
+            attributed[attrRange].foregroundColor = .conduitAccent
+            switch kind {
+            case .agent: attributed[attrRange].backgroundColor = .conduitAccent.opacity(0.10)
+            case .broadcast: attributed[attrRange].backgroundColor = .orange.opacity(0.10)
+            case .human: attributed[attrRange].backgroundColor = .yellow.opacity(0.12)
+            }
+        }
+        return Text(attributed)
     }
 }
 
@@ -631,125 +927,6 @@ struct MentionSuggestionList: View {
     }
 }
 
-/// One chat bubble: speaker label + content, leading or trailing. A bubble
-/// given `copyText` also shows the one-tap Copy button that a single chat
-/// puts under each response; callers make message text selectable.
-struct GroupChatBubble<Content: View>: View {
-    let alignment: HorizontalAlignment
-    let speaker: String
-    let timestamp: Double?
-    let tint: Color
-    var copyText: String? = nil
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        HStack {
-            if alignment == .trailing { Spacer(minLength: 36) }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(speaker)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if let timestamp {
-                        Text(Self.timestampText(timestamp))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                content
-                if let copyText, !copyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    GroupMessageCopyButton(text: copyText)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: 320, alignment: .leading)
-            .background(tint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            if alignment == .leading { Spacer(minLength: 36) }
-        }
-        .frame(maxWidth: .infinity, alignment: alignment == .trailing ? .trailing : .leading)
-    }
-
-    static func timestampText(_ value: Double) -> String {
-        let date = Date(timeIntervalSince1970: value)
-        // Cached (non-generic enum: generic types cannot store static
-        // properties): a fresh DateFormatter per bubble per render is
-        // brutally expensive across a 200-event LazyVStack.
-        return GroupBubbleTimeFormatter.shared.string(from: date)
-    }
-}
-
-/// Copies a member's whole reply, mirroring a single chat's response Copy
-/// button (same icon, haptic, and brief checkmark).
-private struct GroupMessageCopyButton: View {
-    let text: String
-    @State private var copied = false
-    @State private var resetTask: Task<Void, Never>?
-
-    var body: some View {
-        Button {
-            UIPasteboard.general.string = text
-            Haptics.light()
-            copied = true
-            UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Response copied"))
-            resetTask?.cancel()
-            resetTask = Task {
-                try? await Task.sleep(for: .seconds(1.4))
-                guard !Task.isCancelled else { return }
-                copied = false
-            }
-        } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
-        .padding(.leading, -9)
-        .padding(.vertical, -4)
-        .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
-    }
-}
-
-/// MainActor-confined view code, so the shared formatter is safe.
-private enum GroupBubbleTimeFormatter {
-    static let shared: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter
-    }()
-}
-
-// MARK: - Mention text rendering
-
-enum GroupMentionTextRenderer {
-    /// Split `text` into plain prose and recognized mention spans. Kind tints
-    /// differ: agent mentions (member handles), broadcast (@all/@everyone),
-    /// and the human handoff (@user).
-    static func render(_ text: String, members: [GroupMember]) -> Text {
-        var attributed = AttributedString(text)
-        guard let regex = GroupRoomMentions.mentionScanRegex else { return Text(text) }
-        let range = NSRange(text.startIndex..., in: text)
-        for match in regex.matches(in: text, range: range).reversed() {
-            guard match.numberOfRanges > 1,
-                  let tokenRange = Range(match.range(at: 1), in: text),
-                  let fullRange = Range(match.range, in: text),
-                  let attrRange = Range(fullRange, in: attributed) else { continue }
-            let token = String(text[tokenRange])
-            guard let kind = GroupRoomMentions.classify(token: token, members: members) else { continue }
-            // Color only: the enclosing Text keeps its own font and size.
-            attributed[attrRange].foregroundColor = .conduitAccent
-            switch kind {
-            case .agent: attributed[attrRange].backgroundColor = .conduitAccent.opacity(0.10)
-            case .broadcast: attributed[attrRange].backgroundColor = .orange.opacity(0.10)
-            case .human: attributed[attrRange].backgroundColor = .yellow.opacity(0.12)
-            }
-        }
-        return Text(attributed)
-    }
-}
 
 // MARK: - Create sheet
 
@@ -1017,22 +1194,27 @@ struct DesktopGroupChatView: View {
     @ViewBuilder
     private func messageRow(_ message: DesktopGroupChat.Message) -> some View {
         let speaker = message.speaker.trimmingCharacters(in: .whitespacesAndNewlines)
-        GroupChatBubble(
-            alignment: message.isMember ? .leading : .trailing,
-            speaker: message.isMember
-                ? (speaker.isEmpty ? AppLocalization.string("Member") : speaker)
-                : AppLocalization.string("You"),
-            timestamp: message.timestamp,
-            tint: message.isMember ? Color.primary.opacity(0.05) : .conduitAccent.opacity(0.14),
-            copyText: message.isMember ? message.text : nil
-        ) {
-            GroupMentionTextRenderer.render(message.text, members: mentionMembers)
-                .textSelection(.enabled)
+        VStack(alignment: message.isMember ? .leading : .trailing, spacing: 2) {
+            if message.isMember {
+                GroupMemberBubble(
+                    member: nil,
+                    name: speaker.isEmpty ? AppLocalization.string("Member") : speaker,
+                    text: message.text,
+                    members: mentionMembers,
+                    timestamp: message.timestamp
+                )
+            } else {
+                GroupUserBubble(text: message.text, members: mentionMembers, timestamp: message.timestamp) {
+                    EmptyView()
+                }
+            }
             if message.truncated {
                 Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .padding(.leading, message.isMember ? GroupMemberBubble.avatarSize + 9 : 0)
             }
         }
+        .frame(maxWidth: .infinity, alignment: message.isMember ? .leading : .trailing)
     }
 }

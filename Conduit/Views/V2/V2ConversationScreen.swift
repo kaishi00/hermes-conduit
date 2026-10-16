@@ -53,6 +53,7 @@ struct V2ConversationScreen: View {
                 // Keyed by room: another room starts with its own draft.
                 GroupChatView()
                     .id(appState.activeRoomSurface?.room.roomID)
+                    .environment(\.v2ComposerRests, true)
             } else {
                 ChatView()
                     .environment(\.v2ComposerRests, true)
@@ -200,6 +201,7 @@ private struct V2ConversationMenu: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    @State private var confirmsRoomDisband = false
 
     private var statusColor: Color {
         if appState.isConnected { return .green }
@@ -213,8 +215,9 @@ private struct V2ConversationMenu: View {
 
     var body: some View {
         Menu {
-            // An open room has its own actions in its header.
-            if appState.activeRoomSurface == nil {
+            if appState.activeRoomSurface != nil {
+                GroupRoomActionItems(onDisband: { confirmsRoomDisband = true })
+            } else {
                 Button {
                     Task { await appState.refreshActiveSession() }
                 } label: {
@@ -266,6 +269,20 @@ private struct V2ConversationMenu: View {
             .modifier(V2PreGlassToolbarControl())
         }
         .menuIndicator(.hidden)
+        .confirmationDialog(
+            AppLocalization.string("Disband this group chat?"),
+            isPresented: $confirmsRoomDisband,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Disband"), role: .destructive) {
+                Task { await appState.disbandActiveRoom() }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+        } message: {
+            Text(AppLocalization.string(
+                "The room, its history, and every member's session end permanently. This cannot be undone."
+            ))
+        }
         .accessibilityLabel(AppLocalization.string("Conversation options"))
         .accessibilityValue(statusWord)
         .accessibilityIdentifier("conversation.menu")
