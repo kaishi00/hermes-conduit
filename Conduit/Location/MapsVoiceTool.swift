@@ -37,22 +37,24 @@ enum MapsVoiceTool {
             + "somewhere (default near the user). lookup: one named place or address, best match first. reverse_geocode: "
             + "what is at a place (default the user's position). directions: routes with times, distances and turns from "
             + "one place to another (default from the user). travel_times: how long from one place to up to 10 others. "
+            + "navigate: open Apple Maps with directions to one place from where the user is, when they ask to go there "
+            + "or to open it in Maps (on the car screen in CarPlay; behind a notification when the phone is locked). "
             + "Places are \"me\" (where the user is), one of their saved places by name, an address or a place's name, "
             + "\"lat,lon\", or \"place_id:<id>\" from an earlier answer. Times are about: say them rounded, by ear.",
         parameters: [
             "type": "object",
             "properties": [
-                "action": ["type": "string", "enum": ["search", "lookup", "reverse_geocode", "directions", "travel_times"]],
+                "action": ["type": "string", "enum": ["search", "lookup", "reverse_geocode", "directions", "travel_times", "navigate"]],
                 "query": ["type": "string", "description": "search: what to find, like pharmacy or EV charger. lookup: the place or address."],
                 "near": ["type": "string", "description": "search, lookup, reverse_geocode: where. search and reverse_geocode default to me."],
                 "from": ["type": "string", "description": "directions, travel_times: the start; default me."],
                 "to": [
                     "type": "string",
                     "list": true,
-                    "description": "directions: the destination. travel_times: one place, or up to 10 as a JSON list like [\"Home\", \"Heathrow Terminal 5\"].",
+                    "description": "directions, navigate: the destination. travel_times: one place, or up to 10 as a JSON list like [\"Home\", \"Heathrow Terminal 5\"].",
                 ],
                 "mode": ["type": "string", "enum": ["driving", "walking", "transit", "cycling"],
-                         "description": "directions, travel_times: default driving. transit gives times only."],
+                         "description": "directions, travel_times, navigate: default driving. transit gives times only."],
                 "depart_at": ["type": "string", "description": "directions, travel_times: leaving at this local time, like 2026-10-16T08:30. Optional."],
                 "arrive_by": ["type": "string", "description": "directions, travel_times: arriving by this local time; the answer says when to leave. Optional."],
                 "limit": ["type": "integer", "description": "search: how many places, 1 to 25; default 10."],
@@ -76,12 +78,15 @@ enum MapsVoiceTool {
     /// is shared with; elsewhere only lookups between named places run.
     static func run(_ arguments: [String: Any], mode: LiveVoiceModeName,
                     controller: LocationSharingController, sharedHere: Bool) async -> [String: String] {
-        guard let actionName = arguments["action"] as? String, let action = MapsRequest.Action(rawValue: actionName) else {
-            return ["error": "action is search, lookup, reverse_geocode, directions or travel_times."]
-        }
         // Checked at each call: the user may have turned it off mid-call.
         let locationAllowed = sharedHere && controller.letsVoiceRead(mode) && controller.settings.talking
         let places = locationAllowed ? controller.places : []
+        if (arguments["action"] as? String)?.lowercased() == "navigate" {
+            return await navigate(arguments, mode: mode, controller: controller, places: places, locationAllowed: locationAllowed)
+        }
+        guard let actionName = arguments["action"] as? String, let action = MapsRequest.Action(rawValue: actionName) else {
+            return ["error": "action is search, lookup, reverse_geocode, directions, travel_times or navigate."]
+        }
         let built = makeRequest(action: action, arguments: arguments, places: places, meByDefault: locationAllowed)
         let request: MapsRequest
         switch built {
@@ -111,6 +116,44 @@ enum MapsVoiceTool {
             return ["error": "\(failure.code): \(failure.note)"]
         case .result(let result):
             return modelResult(result)
+        }
+    }
+
+    /// Opens Apple Maps with directions to `to`. Opening Maps reveals
+    /// nothing to the model; a saved place still needs the location consent
+    /// (its name stands for where it is), and "nearest" text is looked for
+    /// near the user only with it.
+    static func navigate(_ arguments: [String: Any], mode: LiveVoiceModeName, controller: LocationSharingController,
+                         places: [LocationSavedPlace], locationAllowed: Bool) async -> [String: String] {
+        let targets = destinations(arguments["to"])
+        guard targets.count == 1, let place = ref(targets[0], places: places) else {
+            return ["error": "navigate needs one place in to."]
+        }
+        if place == .me { return ["error": "Directions start from where the user is; give where to go."] }
+        if !locationAllowed, case .saved? = Self.ref(targets[0], places: controller.places) { return ["error": notShared] }
+        var travel = MapsRequest.Mode.driving
+        if let modeName = arguments["mode"] as? String {
+            guard let chosen = MapsRequest.Mode(rawValue: modeName.lowercased()) else {
+                return ["error": "mode is driving, walking, transit or cycling."]
+            }
+            travel = chosen
+        }
+        var hint: CLLocationCoordinate2D?
+        if locationAllowed, controller.settings.talkingPrecision != .places {
+            hint = await controller.fixes.currentFix(accuracy: LocationFixProvider.desiredAccuracy(for: .area),
+                                                     maxAge: 300, timeout: .seconds(2))?.coordinate
+        }
+        let outcome = await MapsNavigator.open(place, mode: travel, places: places, near: hint)
+        HealthVoiceReadLog.record(mode: mode, action: "maps navigate", key: HealthVoiceReadLog.locationStorageKey)
+        switch outcome {
+        case .openedInCar(let name):
+            return ["result": "Apple Maps is open on the car screen with directions to \(name). The call keeps going."]
+        case .opened(let name):
+            return ["result": "Apple Maps is open on the phone with directions to \(name); tell the user to tap Go there. The call keeps going."]
+        case .notified(let name):
+            return ["result": "The phone isn't unlocked in Conduit, so a notification is waiting: tapping it opens Apple Maps with directions to \(name). Tell the user."]
+        case .failed(let failure):
+            return ["error": "\(failure.code): \(failure.note)"]
         }
     }
 

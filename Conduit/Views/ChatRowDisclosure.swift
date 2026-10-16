@@ -43,6 +43,24 @@ final class ChatRowDisclosure {
         states[id] = expanded
     }
 
+    /// A turn's run of steps opens and closes as one card, drawn by all of
+    /// its rows, so this one tells them: `groupToggles` publishes.
+    let groupToggles = ChatStepGroupToggles()
+
+    func isGroupExpanded(_ id: String, default defaultValue: Bool) -> Bool {
+        followConversation()
+        return states[Self.groupKey(id)] ?? defaultValue
+    }
+
+    func willToggleGroup(_ id: String, to expanded: Bool) {
+        engine?.userWillToggleRow()
+        followConversation()
+        states[Self.groupKey(id)] = expanded
+        groupToggles.revision &+= 1
+    }
+
+    private static func groupKey(_ id: String) -> String { "steps:" + id }
+
     private func followConversation() {
         let current = currentConversation()
         let switched = current.profile != conversation.profile
@@ -61,6 +79,13 @@ extension ChatRowDisclosure: Equatable {
     nonisolated static func == (lhs: ChatRowDisclosure, rhs: ChatRowDisclosure) -> Bool {
         lhs === rhs
     }
+}
+
+/// Observed by the step rows only, so opening or closing a run re-renders
+/// them and nothing else in the transcript.
+@MainActor
+final class ChatStepGroupToggles: ObservableObject {
+    @Published var revision: UInt64 = 0
 }
 
 private struct ChatRowDisclosureKey: EnvironmentKey {

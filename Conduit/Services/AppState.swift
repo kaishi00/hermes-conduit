@@ -18497,6 +18497,9 @@ final class AppState: ObservableObject {
     lazy var agentSettings = AgentSettingsSync(defaults: defaults)
     /// Confirmations Hermes asks this iPhone to present (PresentedScreens.swift).
     lazy var presentedScreens = PresentedScreensSync(defaults: defaults)
+    /// The Go confirmation for Apple Maps that opens without a tap, and
+    /// until when: Hermes was just seen asking for it in the chat on screen.
+    var mapsNavigateExpected: (promptID: String, until: Date)?
 
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
@@ -24488,6 +24491,14 @@ final class AppState: ObservableObject {
             if name.lowercased() == "conduit_settings" { Task { await syncAgentSettings() } }
             // A confirmation Hermes just asked for shows without waiting on the push.
             if name.lowercased() == "conduit_present" { Task { await syncPresentedScreens() } }
+            // Hermes asked to open Apple Maps from the chat on screen.
+            // Only a result seen for the first time: a replay after a
+            // reconnect finds its card already complete.
+            if name.lowercased() == "conduit_maps", let promptID = Self.mapsNavigatePromptID(output),
+               let callID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines), !callID.isEmpty,
+               !messages.contains(where: { $0.role == .tool && $0.tool?.id == callID && $0.tool?.status == .complete }) {
+                noteMapsNavigateExpected(promptID)
+            }
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -24558,7 +24569,10 @@ final class AppState: ObservableObject {
                     name: name,
                     input: existing?.input,
                     output: output,
-                    status: .complete
+                    status: .complete,
+                    // The card was stamped when the call started.
+                    duration: existing?.duration
+                        ?? ChatStepTiming.elapsed(from: messages[index].timestamp, to: Date())
                 )
             } else {
                 messages.append(ChatMessage(
@@ -25338,13 +25352,15 @@ final class AppState: ObservableObject {
             // reflects the profile at settle time (indistinguishable unless
             // the profile switches mid-stream).
             TranscriptPerf.note(.reasoningTranscriptMutation)
-            messages.append(ChatMessage(
+            var settled = ChatMessage(
                 id: id,
                 role: .reasoning,
                 content: content,
                 timestamp: timestamp,
                 author: activeProfile
-            ))
+            )
+            settled.stepDuration = ChatStepTiming.elapsed(from: timestamp, to: Date())
+            messages.append(settled)
             reasoningBuffer = ""
             activeReasoningMessageId = nil
             liveReasoningSegment = nil

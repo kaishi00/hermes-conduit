@@ -14,6 +14,9 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     /// per body evaluation) and still report stable row order to the
     /// viewport geometry.
     let order: Int
+    /// Where this row sits in its turn's run of thinking and tool steps, so
+    /// the run can draw as one card. Nil for every other row.
+    var step: ChatStepPlacement? = nil
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
@@ -87,6 +90,7 @@ struct ChatMessageScrollTargetCache: Equatable {
                 )
             }
             targets.replaceSubrange(suffixStart..., with: replacement)
+            placeSteps(from: suffixStart)
             renderingRevision &+= 1
             return .renderingChanged
         }
@@ -113,6 +117,7 @@ struct ChatMessageScrollTargetCache: Equatable {
             )
             fingerprints.replaceSubrange(suffixStart..., with: suffixFingerprints)
             targets.replaceSubrange(suffixStart..., with: suffixTargets)
+            placeSteps(from: suffixStart)
             renderingRevision &+= 1
             return .semanticsChanged
         }
@@ -129,8 +134,40 @@ struct ChatMessageScrollTargetCache: Equatable {
             for: messages,
             fingerprints: updatedFingerprints
         )
+        placeSteps(from: 0)
         renderingRevision &+= 1
         return .semanticsChanged
+    }
+
+    /// Re-place the runs of steps from `index` on, starting at the run
+    /// that reaches it: a change at the end can grow that run, settle its
+    /// steps, or end it.
+    private mutating func placeSteps(from index: Int) {
+        var start = min(index, targets.count)
+        while start > 0, ChatStepGroup.isStep(targets[start - 1].message) {
+            start -= 1
+        }
+        var i = start
+        while i < targets.count {
+            guard ChatStepGroup.isStep(targets[i].message) else {
+                if targets[i].step != nil { targets[i].step = nil }
+                i += 1
+                continue
+            }
+            var end = i
+            while end < targets.count, ChatStepGroup.isStep(targets[end].message) {
+                end += 1
+            }
+            let group = ChatStepGroup(
+                members: targets[i..<end].map { ChatStepGroupMember($0.message) },
+                isTrailing: end == targets.count
+            )
+            for k in i..<end {
+                let placement = ChatStepPlacement(group: group, index: k - i)
+                if targets[k].step != placement { targets[k].step = placement }
+            }
+            i = end
+        }
     }
 
     private static func fingerprintedBytes(of messages: [ChatMessage]) -> Int {

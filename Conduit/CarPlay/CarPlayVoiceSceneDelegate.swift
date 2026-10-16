@@ -20,6 +20,7 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         // UISceneDelegate callbacks run on the main thread.
         MainActor.assumeIsolated {
             interfaceController.delegate = self
+            CarPlayMapsHandoff.scene = templateApplicationScene
             CarPlayVoiceCoordinator.shared.handleConnect(interfaceController)
         }
     }
@@ -44,6 +45,7 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         didDisconnect interfaceController: CPInterfaceController
     ) {
         MainActor.assumeIsolated {
+            CarPlayMapsHandoff.scene = nil
             CarPlayVoiceCoordinator.shared.handleDisconnect()
         }
     }

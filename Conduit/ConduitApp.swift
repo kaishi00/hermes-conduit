@@ -105,6 +105,16 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // Only the notification Conduit posted itself, never a push carrying the key.
+        if request.identifier == MapsNavigator.notificationIdentifier, !(request.trigger is UNPushNotificationTrigger),
+           let maps = MapsNavigator.url(fromNotification: request.content.userInfo) {
+            // Directions Conduit couldn't open from the background: done once Maps opened.
+            Task { @MainActor in
+                _ = await UIApplication.shared.open(maps)
+                completionHandler()
+            }
+            return
+        }
         Task { @MainActor in
             if AppState.isPhoneChangesPush(request.content.userInfo) {
                 // A calendar change Hermes asked for: its card shows once fetched.
@@ -115,8 +125,8 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 // Conduit posts only "Hermes wants to talk" itself (#449).
                 PushNotificationService.shared.receiveLocalCallNotification(request.content.userInfo)
             }
+            completionHandler()
         }
-        completionHandler()
     }
 
     func userNotificationCenter(
@@ -136,6 +146,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(userInfo)
             }
             completionHandler([])
+            return
+        }
+        // Directions to tap: posted from the background, kept if Conduit
+        // came to the front before it showed.
+        if notification.request.identifier == MapsNavigator.notificationIdentifier {
+            completionHandler([.banner, .list, .sound])
             return
         }
         if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {

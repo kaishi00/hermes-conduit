@@ -27,7 +27,8 @@ struct PresentedConfirmOverlay: View {
                     prompt: prompt,
                     inCall: inCall,
                     onAnswer: { onAnswer(prompt, $0) },
-                    onEdit: onEdit.map { edit in { () -> Void in edit(prompt) } }
+                    // Directions have nothing to edit.
+                    onEdit: prompt.maps == nil ? onEdit.map { edit in { () -> Void in edit(prompt) } } : nil
                 )
                 .id(prompt.id)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
