@@ -311,14 +311,14 @@ struct VoiceSettingsView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .modifier(V2SoftTopScrollEdge(isOn: true))
                 // The Private voice card's buttons open Advanced, then bring
-                // the provider section they set up into view.
-                .onChange(of: scrollTarget) { _, target in
-                    guard let target else { return }
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(250))
-                        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
-                        scrollTarget = nil
-                    }
+                // the provider section they set up into view. A newer tap or
+                // leaving the screen cancels a pending scroll.
+                .task(id: scrollTarget) {
+                    guard let target = scrollTarget else { return }
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                    scrollTarget = nil
                 }
             }
         }
@@ -795,30 +795,36 @@ struct VoiceSettingsView: View {
                     title: AppLocalization.string("Your speech server"),
                     detail: AppLocalization.string("Understands what you say. For example, the speech-to-speech server Hermes Live Voice runs."),
                     inUse: transcriptionMode == .speechServer,
+                    chosen: transcriptionMode == .speechServer,
                     identifier: "voice.private.speechServer"
                 ) { usePrivateProvider(Self.speechServerProviderID, kind: .stt) }
                 privateVoiceRow(
                     title: AppLocalization.string("Your voice server"),
                     detail: AppLocalization.string("Speaks the replies. Any OpenAI-compatible speech server, such as Chatterbox."),
                     inUse: usesOwnVoiceServer,
+                    chosen: service.snapshot.selectedTTSProvider == "openai",
                     identifier: "voice.private.voiceServer"
                 ) { usePrivateProvider("openai", kind: .tts) }
             }
         }
     }
 
-    /// OpenAI speech pointed at a server other than OpenAI's.
+    /// OpenAI speech pointed at a server other than OpenAI's, as saved on
+    /// Hermes (not an unsaved draft).
     private var usesOwnVoiceServer: Bool {
-        let baseURL = values["tts.openai.base_url"] ?? service.snapshot.values["tts.openai.base_url"] ?? ""
+        let baseURL = service.snapshot.values["tts.openai.base_url"] ?? ""
         return service.snapshot.selectedTTSProvider == "openai"
             && !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func privateVoiceRow(
-        title: String, detail: String, inUse: Bool, identifier: String,
+        title: String, detail: String, inUse: Bool, chosen: Bool, identifier: String,
         action: @escaping () -> Void
     ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        // Once picked, the button leads to the rest of setup (for the voice
+        // server, its Base URL) rather than offering to pick it again.
+        let buttonTitle = chosen || inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use")
+        return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title).font(.subheadline.weight(.semibold))
                 Text(verbatim: detail)
@@ -832,9 +838,10 @@ struct VoiceSettingsView: View {
                 }
             }
             Spacer(minLength: 8)
-            Button(inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use"), action: action)
+            Button(buttonTitle, action: action)
                 .buttonStyle(.bordered)
                 .disabled(service.isLoading || savingField != nil)
+                .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
                 .accessibilityIdentifier(identifier)
         }
         .accessibilityElement(children: .contain)
