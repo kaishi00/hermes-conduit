@@ -160,6 +160,9 @@ struct VoiceSettingsView: View {
     @State private var values: [String: String] = [:]
     @State private var savingField: String?
     @State private var scrollTarget: String?
+    /// The voice server address typed into the Private voice card before
+    /// OpenAI speech is picked; nil while the field is hidden.
+    @State private var voiceServerDraft: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
     @State private var isRecordingASRTest = false
@@ -315,14 +318,12 @@ struct VoiceSettingsView: View {
                 // the provider section they set up into view. A newer tap or
                 // leaving the screen cancels a pending scroll.
                 .task(id: scrollTarget) {
-                    // Scrolls once Advanced has opened, then again in case
-                    // layout ran long; the second is a no-op if already there.
+                    // One scroll once Advanced has opened, so a user who then
+                    // scrolls away is never pulled back.
                     guard let target = scrollTarget else { return }
-                    for delay in [250, 600] {
-                        try? await Task.sleep(for: .milliseconds(delay))
-                        guard !Task.isCancelled else { return }
-                        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
-                    }
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
                     scrollTarget = nil
                     // Tell VoiceOver the page moved under it.
                     UIAccessibility.post(notification: .layoutChanged, argument: nil)
@@ -803,6 +804,7 @@ struct VoiceSettingsView: View {
                     detail: AppLocalization.string("Understands what you say. For example, the speech-to-speech server Hermes Live Voice runs."),
                     inUse: transcriptionMode == .speechServer,
                     chosen: transcriptionMode == .speechServer,
+                    available: true,
                     identifier: "voice.private.speechServer"
                 ) { usePrivateProvider(Self.speechServerProviderID, kind: .stt) }
                 privateVoiceRow(
@@ -810,8 +812,10 @@ struct VoiceSettingsView: View {
                     detail: AppLocalization.string("Speaks the replies. Any OpenAI-compatible speech server, such as Chatterbox."),
                     inUse: usesOwnVoiceServer,
                     chosen: service.snapshot.selectedTTSProvider == Self.openAITTSProviderID,
+                    available: service.snapshot.ttsProviders.contains { $0.descriptor.id == Self.openAITTSProviderID },
                     identifier: "voice.private.voiceServer"
-                ) { usePrivateProvider(Self.openAITTSProviderID, kind: .tts) }
+                ) { useVoiceServer() }
+                if voiceServerDraft != nil { voiceServerAddressField }
             }
         }
     }
@@ -822,16 +826,84 @@ struct VoiceSettingsView: View {
     /// Hermes (not an unsaved draft). The managed Nous row shares the
     /// tts.openai section but is the gateway's own voice, so it never counts.
     private var usesOwnVoiceServer: Bool {
-        let baseURL = (service.snapshot.values["tts.openai.base_url"] ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let host = URL(string: baseURL)?.host?.lowercased() ?? ""
-        return service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
-            && !baseURL.isEmpty
-            && host != "api.openai.com"
+        service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+            && Self.isOwnVoiceServer(service.snapshot.values["tts.openai.base_url"] ?? "")
+    }
+
+    /// A Base URL that isn't empty and isn't OpenAI's own API.
+    static func isOwnVoiceServer(_ baseURL: String) -> Bool {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = URL(string: trimmed)?.host?.lowercased() ?? ""
+        return !trimmed.isEmpty && host != "api.openai.com"
+    }
+
+    /// OpenAI speech is only picked once a private Base URL is saved, so
+    /// no reply is ever sent to OpenAI's cloud on the way to setting it up.
+    /// Without one, the card asks for the address first.
+    private func useVoiceServer() {
+        guard savingField == nil else { return }
+        let chosen = service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+        if chosen || Self.isOwnVoiceServer(service.snapshot.values["tts.openai.base_url"] ?? "") {
+            usePrivateProvider(Self.openAITTSProviderID, kind: .tts)
+        } else {
+            withAnimation(.snappy) { voiceServerDraft = voiceServerDraft ?? "" }
+        }
+    }
+
+    private var voiceServerAddressField: some View {
+        let draft = (voiceServerDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 8) {
+            TextField(AppLocalization.string("Voice server address"), text: Binding(
+                get: { voiceServerDraft ?? "" },
+                set: { voiceServerDraft = $0 }
+            ), prompt: Text(verbatim: "http://192.168.1.20:4123/v1"))
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .onSubmit { saveVoiceServerAddress() }
+                .accessibilityIdentifier("voice.private.voiceServer.address")
+            if !draft.isEmpty, !Self.isOwnVoiceServer(draft) {
+                Text(AppLocalization.string("Enter your own server's address, not OpenAI's."))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            HStack {
+                Button(AppLocalization.string("Cancel"), role: .cancel) {
+                    withAnimation(.snappy) { voiceServerDraft = nil }
+                }
+                Spacer()
+                Button { saveVoiceServerAddress() } label: {
+                    if savingField != nil { ProgressView() } else { Text(AppLocalization.string("Save and use")) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(savingField != nil || !Self.isOwnVoiceServer(draft))
+                .accessibilityIdentifier("voice.private.voiceServer.save")
+            }
+        }
+    }
+
+    /// Saves the address, then picks OpenAI speech and opens its section
+    /// for the key. A failed save keeps the field; its error shows in Set
+    /// up voice.
+    private func saveVoiceServerAddress() {
+        let address = (voiceServerDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard savingField == nil, Self.isOwnVoiceServer(address) else { return }
+        let key = "tts.openai.base_url"
+        savingField = key
+        Task { @MainActor in
+            let saved = await service.save(value: address, for: key)
+            values[key] = service.snapshot.values[key]
+            savingField = nil
+            guard saved, Self.isOwnVoiceServer(service.snapshot.values[key] ?? "") else { return }
+            voiceServerDraft = nil
+            usePrivateProvider(Self.openAITTSProviderID, kind: .tts)
+        }
     }
 
     private func privateVoiceRow(
-        title: String, detail: String, inUse: Bool, chosen: Bool, identifier: String,
+        title: String, detail: String, inUse: Bool, chosen: Bool, available: Bool, identifier: String,
         action: @escaping () -> Void
     ) -> some View {
         // Once picked, the button leads to the rest of setup (for the voice
@@ -858,7 +930,7 @@ struct VoiceSettingsView: View {
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             Button(action: action) { Text(verbatim: buttonTitle) }
                 .buttonStyle(.bordered)
-                .disabled(service.isLoading || savingField != nil)
+                .disabled(service.isLoading || savingField != nil || !available)
                 .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
                 .accessibilityIdentifier(identifier)
         }
