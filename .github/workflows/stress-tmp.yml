@@ -16,18 +16,13 @@ env:
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
 
 jobs:
-  stress:
-    name: Stress (${{ matrix.suite }})
+  voice-live:
+    name: Stress (voice-live)
     runs-on: macos-26
     timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: voice-live
-            iterations: 40
-          - suite: shard1
-            iterations: 3
+    env:
+      SUITE: voice-live
+      ITERATIONS: "40"
     steps:
       - uses: actions/checkout@v7
 
@@ -66,21 +61,22 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the tests repeatedly under CPU load
-        env:
-          SUITE: ${{ matrix.suite }}
-          ITERATIONS: ${{ matrix.iterations }}
         run: |
           set -uo pipefail
+          voice=$(python3 .github/stress-tmp/list-tests.py ConduitTests/GeminiLiveVoiceTests.swift ConduitTests/GrokLiveVoiceTests.swift ConduitTests/GPTLiveVoiceTests.swift)
+          skips=()
           if [ "$SUITE" = voice-live ]; then
-            ids=$(python3 .github/stress-tmp/list-tests.py ConduitTests/GeminiLiveVoiceTests.swift ConduitTests/GrokLiveVoiceTests.swift ConduitTests/GPTLiveVoiceTests.swift)
-            batches=("$ids")
+            batches=("$voice")
           else
+            # Shard 1's classes in the CI's two batches, minus the voice-live tests.
             python3 scripts/plan-tests.py hosted --repo-root . --suite scripts/hosted-suite.json --out "$RUNNER_TEMP/hosted.json" >/dev/null
             IFS=',' read -r -a classes <<< "$(jq -r '.unit_shards[0]' "$RUNNER_TEMP/hosted.json")"
             half=$(( (${#classes[@]} + 1) / 2 ))
             first=$(printf 'ConduitTests/%s,' "${classes[@]:0:$half}")
             second=$(printf 'ConduitTests/%s,' "${classes[@]:$half}")
             batches=("${first%,}" "${second%,}")
+            IFS=',' read -r -a voice_ids <<< "$voice"
+            for id in "${voice_ids[@]}"; do skips+=("-skip-testing:$id"); done
           fi
           ncpu=$(sysctl -n hw.ncpu)
           echo "CPU hogs: $ncpu"
@@ -101,7 +97,98 @@ jobs:
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance 180 \
               -test-iterations "$ITERATIONS" \
-              "${args[@]}" > "$log" 2>&1
+              "${args[@]}" ${skips[@]+"${skips[@]}"} > "$log" 2>&1
+            echo "xcodebuild exit $?"
+            grep -E "error: -\[|' failed \(|Restarting after|Executed [0-9]+ tests" "$log" | tail -n 60
+            echo "::endgroup::"
+            python3 .github/stress-tmp/stress-summary.py "$log" "$SUITE batch $n (x$ITERATIONS)"
+          done
+          pkill yes || true
+
+  shard1-rest:
+    name: Stress (shard 1 rest)
+    needs: voice-live
+    if: ${{ !cancelled() }}
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      SUITE: shard1-rest
+      ITERATIONS: "3"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Pick the build cache
+        id: cache-key
+        run: |
+          set -euo pipefail
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          echo "prefix=dd-v1-slim-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-slim-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Build and boot the simulator in parallel
+        env:
+          BUILD_TIMEOUT_SECS: 1200
+          BUILD_CACHE: stress
+        run: bash scripts/ci-hosted-build.sh
+
+      - name: Run the tests repeatedly under CPU load
+        run: |
+          set -uo pipefail
+          voice=$(python3 .github/stress-tmp/list-tests.py ConduitTests/GeminiLiveVoiceTests.swift ConduitTests/GrokLiveVoiceTests.swift ConduitTests/GPTLiveVoiceTests.swift)
+          skips=()
+          if [ "$SUITE" = voice-live ]; then
+            batches=("$voice")
+          else
+            # Shard 1's classes in the CI's two batches, minus the voice-live tests.
+            python3 scripts/plan-tests.py hosted --repo-root . --suite scripts/hosted-suite.json --out "$RUNNER_TEMP/hosted.json" >/dev/null
+            IFS=',' read -r -a classes <<< "$(jq -r '.unit_shards[0]' "$RUNNER_TEMP/hosted.json")"
+            half=$(( (${#classes[@]} + 1) / 2 ))
+            first=$(printf 'ConduitTests/%s,' "${classes[@]:0:$half}")
+            second=$(printf 'ConduitTests/%s,' "${classes[@]:$half}")
+            batches=("${first%,}" "${second%,}")
+            IFS=',' read -r -a voice_ids <<< "$voice"
+            for id in "${voice_ids[@]}"; do skips+=("-skip-testing:$id"); done
+          fi
+          ncpu=$(sysctl -n hw.ncpu)
+          echo "CPU hogs: $ncpu"
+          for _ in $(seq 1 "$ncpu"); do yes > /dev/null & done
+          n=0
+          for batch in "${batches[@]}"; do
+            n=$((n + 1))
+            args=()
+            IFS=',' read -r -a ids <<< "$batch"
+            for id in "${ids[@]}"; do args+=("-only-testing:$id"); done
+            echo "::group::$SUITE batch $n (${#ids[@]} selections x $ITERATIONS)"
+            log="$RUNNER_TEMP/stress-$n.log"
+            xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 180 \
+              -test-iterations "$ITERATIONS" \
+              "${args[@]}" ${skips[@]+"${skips[@]}"} > "$log" 2>&1
             echo "xcodebuild exit $?"
             grep -E "error: -\[|' failed \(|Restarting after|Executed [0-9]+ tests" "$log" | tail -n 60
             echo "::endgroup::"
