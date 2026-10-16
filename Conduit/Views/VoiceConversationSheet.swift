@@ -450,6 +450,8 @@ extension VoiceConversationSheet {
             .buttonStyle(.plain)
             .conduitGlassControl(cornerRadius: 22)
             .accessibilityLabel(Text("Close"))
+            // Unlike a live call's chevron, this ends the conversation.
+            .accessibilityHint(Text("Your conversation also continues in chat. Close ends this voice session."))
 
             VStack(spacing: 2) {
                 Text(verbatim: v2Title)
@@ -470,7 +472,9 @@ extension VoiceConversationSheet {
             .accessibilityAddTraits(.isHeader)
 
             // Balances the close button so the title stays centred.
-            Color.clear.frame(width: 44, height: 44)
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
