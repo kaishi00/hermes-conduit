@@ -59,8 +59,6 @@ struct LiveVoiceCallSheet: View {
     @State private var showsTranscript = false
     /// V2 draws the call as level bars and large captions instead of the orb.
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
-    @ScaledMetric(relativeTo: .title) private var currentLineSize: CGFloat = 28
-    @ScaledMetric(relativeTo: .title3) private var previousLineSize: CGFloat = 19
     @State private var selection: Selection?
     /// The job chat to open once the result sheet has gone, so the call
     /// sheet isn't dismissed while its child is still animating out.
@@ -305,24 +303,8 @@ struct LiveVoiceCallSheet: View {
         .transition(.opacity)
     }
 
-    /// The line before at 19 pt, faded; the line being said at 28 pt.
     private var v2Captions: some View {
-        let lines = Self.captionLines(from: transcript)
-        return VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(lines.enumerated()), id: \.element.id) { index, entry in
-                let isLatest = index == lines.count - 1
-                Text(verbatim: entry.text)
-                    .font(isLatest ? .system(size: currentLineSize, weight: .semibold) : .system(size: previousLineSize))
-                    .foregroundStyle(Color.primary.opacity(isLatest ? 1 : 0.42))
-                    .lineLimit(isLatest ? 5 : 2)
-                    .truncationMode(.head)
-                    .minimumScaleFactor(0.6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(label(for: entry))
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .bottomLeading)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: lines.map(\.id))
+        V2CallCaptions(lines: Self.captionLines(from: transcript), label: label(for:))
     }
 
     private var captions: some View {
@@ -586,7 +568,9 @@ private struct LiveVoiceAskFirstButton: View {
     }
 }
 
-private struct LiveVoiceCallButton: View {
+/// One of the call screen's round controls, the icon over its name. Classic
+/// voice's V2 screen uses the same row.
+struct LiveVoiceCallButton: View {
     enum Style {
         case normal
         case selected
@@ -879,6 +863,51 @@ struct V2CallHeaderTitle: View {
     }
 }
 
+/// V2's call captions: the line before at 19 pt, faded; the line being
+/// said at 28 pt. `pending` is speech still being recognised, drawn after
+/// them at 38%.
+struct V2CallCaptions: View {
+    let lines: [VoiceConversationTranscriptEntry]
+    var pending: String? = nil
+    /// The VoiceOver label for a line.
+    let label: (VoiceConversationTranscriptEntry) -> String
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title) private var currentLineSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .title3) private var previousLineSize: CGFloat = 19
+
+    var body: some View {
+        // With words still arriving, the last said line is the previous one.
+        let shown = pending == nil ? lines : Array(lines.suffix(1))
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in
+                let isLatest = pending == nil && index == shown.count - 1
+                Text(verbatim: entry.text)
+                    .font(isLatest ? .system(size: currentLineSize, weight: .semibold) : .system(size: previousLineSize))
+                    .foregroundStyle(Color.primary.opacity(isLatest ? 1 : 0.42))
+                    .lineLimit(isLatest ? 5 : 2)
+                    .truncationMode(.head)
+                    .minimumScaleFactor(0.6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(label(entry))
+            }
+            if let pending {
+                Text(verbatim: pending)
+                    .font(.system(size: currentLineSize, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.38))
+                    .lineLimit(5)
+                    .truncationMode(.head)
+                    .minimumScaleFactor(0.6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("You: \(pending)")))
+                    .accessibilityHint(Text("Still listening"))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .bottomLeading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: shown.map(\.id))
+    }
+}
+
 /// V2's call level: thirty thin bars over a soft glow, coloured by state
 /// (blue listening, gold speaking, grey muted, red failed). No engine feeds
 /// a common audio level, so the bars move with the phase, like the orb did.
@@ -889,6 +918,9 @@ struct V2CallLevelBars: View {
     /// Five for the minimised bar's small version.
     var barCount = 30
     var glows = true
+    /// The microphone's level, 0...1, where the engine has one (classic
+    /// voice): while listening the bars rise with the user's voice.
+    var inputFraction: Double? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var motionEnabled = true
@@ -948,6 +980,12 @@ struct V2CallLevelBars: View {
         let arch = 0.25 + 0.5 * sin(position * .pi)
         guard moves else { return CGFloat(phase == .muted || phase == .idle ? 0.08 : arch * 0.6) }
         let swing = motion.amplitude * 8
+        if phase == .listening, let inputFraction {
+            // Low and gently rippling in silence, up to the full arch at speech.
+            let ripple = 0.5 + 0.5 * sin(time * motion.speed * 2 + position * 9)
+            let lift = 0.2 + 0.8 * inputFraction
+            return CGFloat(max(0.06, min(1, arch * lift * (0.75 + 0.25 * ripple))))
+        }
         let ripple = 0.6 * sin(time * motion.speed * 2 + position * 9) + 0.4 * sin(time * motion.speed * 3.1 + position * 23)
         return CGFloat(max(0.06, min(1, arch + ripple * swing * arch)))
     }
