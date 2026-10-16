@@ -9,7 +9,13 @@ final class GroupRoomFilesClient {
     static let capability = "room-files"
     static let path = "/api/plugins/conduit_push/room-files"
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
-    static let timeoutMilliseconds = 180_000
+    static let minimumTimeoutMilliseconds = 180_000
+
+    /// At least the minimum, plus about 1 s for every 64 KB of body (about
+    /// 0.5 Mbit/s), so a slow link can still finish a large upload.
+    static func timeoutMilliseconds(forBodyBytes count: Int) -> Int {
+        max(minimumTimeoutMilliseconds, count / 64)
+    }
 
     /// Sends one upload's JSON body, already encoded.
     typealias Request = @MainActor (_ path: String, _ body: Data) async throws -> [String: Any]
@@ -82,7 +88,7 @@ extension AppState {
             return try await bridge.requestEncodedJSON(
                 path: path,
                 encodedBody: body,
-                timeoutMilliseconds: GroupRoomFilesClient.timeoutMilliseconds
+                timeoutMilliseconds: GroupRoomFilesClient.timeoutMilliseconds(forBodyBytes: body.count)
             )
         })
         let references = try await client.upload(attachments)
