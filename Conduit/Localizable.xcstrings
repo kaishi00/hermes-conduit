@@ -258533,37 +258533,37 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu servidor de voz"
+            "value" : "Tu servidor de síntesis de voz"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre serveur vocal"
+            "value" : "Votre serveur de synthèse vocale"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Server suara Anda"
+            "value" : "Server sintesis suara Anda"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il tuo server vocale"
+            "value" : "Il tuo server di sintesi vocale"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自分の音声サーバー"
+            "value" : "自分の音声合成サーバー"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "내 음성 서버"
+            "value" : "내 음성 합성 서버"
           }
         },
         "pl" : {
@@ -258575,7 +258575,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seu servidor de voz"
+            "value" : "Seu servidor de síntese de voz"
           }
         },
         "ru" : {
@@ -258587,19 +258587,19 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ses sunucunuz"
+            "value" : "Ses sentezi sunucunuz"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的语音服务器"
+            "value" : "你的语音合成服务器"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的語音伺服器"
+            "value" : "你的語音合成伺服器"
           }
         }
       }

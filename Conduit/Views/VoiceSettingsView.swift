@@ -324,6 +324,8 @@ struct VoiceSettingsView: View {
                         withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
                     }
                     scrollTarget = nil
+                    // Tell VoiceOver the page moved under it.
+                    UIAccessibility.post(notification: .layoutChanged, argument: nil)
                 }
             }
         }
@@ -817,7 +819,8 @@ struct VoiceSettingsView: View {
     static let openAITTSProviderID = "openai"
 
     /// OpenAI speech pointed at a server other than OpenAI's, as saved on
-    /// Hermes (not an unsaved draft).
+    /// Hermes (not an unsaved draft). The managed Nous row shares the
+    /// tts.openai section but is the gateway's own voice, so it never counts.
     private var usesOwnVoiceServer: Bool {
         let baseURL = (service.snapshot.values["tts.openai.base_url"] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
