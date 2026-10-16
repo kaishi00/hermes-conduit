@@ -13,6 +13,7 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
 struct GroupRoomComposer: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
@@ -24,6 +25,8 @@ struct GroupRoomComposer: View {
     @State private var attachments: [Attachment] = []
     @FocusState private var isFocused: Bool
     @State private var isUploading = false
+    /// The upload in flight, cancelled when the composer goes away.
+    @State private var uploadTask: Task<Void, Never>?
     @State private var composerError: String?
     @State private var showPhotoPicker = false
     @State private var photoItems: [PhotosPickerItem] = []
@@ -143,7 +146,10 @@ struct GroupRoomComposer: View {
             // Voice took the microphone: dictation steps aside.
             if inUse { dictation.cancel() }
         }
-        .onDisappear { dictation.cancel() }
+        .onDisappear {
+            dictation.cancel()
+            uploadTask?.cancel()
+        }
         .photosPicker(
             isPresented: $showPhotoPicker,
             selection: $photoItems,
@@ -429,12 +435,16 @@ struct GroupRoomComposer: View {
         }
         isUploading = true
         let roomID = surface?.room.roomID
-        Task {
+        uploadTask = Task {
             defer { isUploading = false }
             let message: String
             do {
                 message = try await appState.roomMessageText(text, attachments: files)
             } catch {
+                if Task.isCancelled {
+                    files.forEach(ComposerBar.discardStagedFile)
+                    return
+                }
                 composerError = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 Haptics.error()
                 return
@@ -443,7 +453,7 @@ struct GroupRoomComposer: View {
             // to the room open now. The typed text stays in this room's
             // draft; the picked files went with the composer, so their local
             // copies are dropped.
-            guard appState.activeRoomSurface?.room.roomID == roomID else {
+            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else {
                 files.forEach(ComposerBar.discardStagedFile)
                 return
             }
