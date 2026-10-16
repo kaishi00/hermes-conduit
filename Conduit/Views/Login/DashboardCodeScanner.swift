@@ -8,6 +8,7 @@
 //
 
 import AVFoundation
+import os
 import SwiftUI
 import Vision
 import VisionKit
@@ -157,6 +158,7 @@ struct DashboardCodeScannerSheet: View {
 /// VisionKit's live scanner: a QR code is taken as soon as it is seen; a
 /// URL in text waits for a tap, so a half-read line is never used.
 struct DashboardCodeScanner: UIViewControllerRepresentable {
+    private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
     let onRead: (String) -> Void
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
@@ -176,7 +178,13 @@ struct DashboardCodeScanner: UIViewControllerRepresentable {
     func updateUIViewController(_ scanner: DataScannerViewController, context: Context) {
         context.coordinator.onRead = onRead
         if !scanner.isScanning {
-            try? scanner.startScanning()
+            do {
+                try scanner.startScanning()
+            } catch {
+                // The sheet checked the camera first, so this is rare; the
+                // next update tries again.
+                Self.logger.error("Code scanner didn't start: \(String(describing: type(of: error)), privacy: .public)")
+            }
         }
     }
 

@@ -33,7 +33,10 @@ struct ConnectLinkSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // A sign-in under way finishes or fails first, as the
+                    // swipe down waits for it.
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(flow.isWorking)
                         .accessibilityIdentifier("connect-link.cancel")
                 }
             }
@@ -65,6 +68,9 @@ struct ConnectLinkSheet: View {
             // Face ID may have been set up meanwhile.
             if phase == .active { flow.refreshBiometrics() }
         }
+        // Cancel leaves nothing behind, as on Add a dashboard: a browser or
+        // single sign-on attempt saves its dashboard before anyone signs in.
+        .onDisappear { flow.discardUnfinishedDashboards() }
     }
 
     // MARK: What the code says
