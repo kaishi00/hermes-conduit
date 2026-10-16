@@ -174,6 +174,7 @@ struct VoiceSettingsView: View {
     /// elsewhere while this page is open is kept too.
     let savedTranscriptionModeChosen: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var voiceMode: VoiceMode
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
@@ -824,7 +825,12 @@ struct VoiceSettingsView: View {
         // Once picked, the button leads to the rest of setup (for the voice
         // server, its Base URL) rather than offering to pick it again.
         let buttonTitle = chosen || inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use")
-        return HStack(alignment: .center, spacing: 12) {
+        // At accessibility text sizes the button goes under the text so
+        // neither is squeezed.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+        return layout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title).font(.subheadline.weight(.semibold))
                 Text(verbatim: detail)
@@ -837,7 +843,7 @@ struct VoiceSettingsView: View {
                         .foregroundStyle(.green)
                 }
             }
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             Button(buttonTitle, action: action)
                 .buttonStyle(.bordered)
                 .disabled(service.isLoading || savingField != nil)
@@ -848,17 +854,27 @@ struct VoiceSettingsView: View {
     }
 
     /// Picks the provider when it isn't already, then opens its section
-    /// under Advanced, where its address and key are set.
+    /// under Advanced, where its address and key are set. A failed pick
+    /// stays put: its error shows in Set up voice, just above the card.
     private func usePrivateProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind) {
-        withAnimation(.snappy) { advancedExpanded = true }
-        Task { @MainActor in
-            let providers = kind == .stt ? service.snapshot.sttProviders : service.snapshot.ttsProviders
-            let selectable = provider == Self.speechServerProviderID || providers.contains { $0.descriptor.id == provider }
-            if selectable, provider != selectedProviderChoice(kind) {
+        // One pick at a time; the buttons are also disabled while saving.
+        guard savingField == nil else { return }
+        let providers = kind == .stt ? service.snapshot.sttProviders : service.snapshot.ttsProviders
+        let selectable = provider == Self.speechServerProviderID || providers.contains { $0.descriptor.id == provider }
+        if selectable, provider != selectedProviderChoice(kind) {
+            savingField = "\(kind.rawValue).provider"
+            Task { @MainActor in
                 await applyProvider(provider, kind: kind)
+                if provider == selectedProviderChoice(kind) { openProviderSection(kind) }
             }
-            scrollTarget = kind == .stt ? Self.sttSectionID : Self.ttsSectionID
+        } else {
+            openProviderSection(kind)
         }
+    }
+
+    private func openProviderSection(_ kind: VoiceProviderDescriptor.Kind) {
+        withAnimation(.snappy) { advancedExpanded = true }
+        scrollTarget = kind == .stt ? Self.sttSectionID : Self.ttsSectionID
     }
 
     /// Keys each live mode reads on the Hermes host, in the host's order.
