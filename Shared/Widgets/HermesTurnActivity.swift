@@ -48,6 +48,20 @@ struct HermesTurnAttributes: ActivityAttributes {
     /// Every id the chat is known under (runtime, stored, lineage), so the
     /// app can tell which chat's events update it after a relaunch.
     var sessionIDs: [String]
+    /// The profile's name and its backdrop glow color (`#rrggbb`), so the
+    /// card is lit like the app. Optional: activities started by an older
+    /// build decode without them.
+    var profileName: String? = nil
+    var glowHex: String? = nil
+
+    /// The glow color (`#rrggbb` only, as `ProfileGlowRGB.hex` writes it),
+    /// nil when there is none or it doesn't parse.
+    var glowColor: (red: Double, green: Double, blue: Double)? {
+        guard var hex = glowHex?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return nil }
+        return (Double((value >> 16) & 0xff) / 255, Double((value >> 8) & 0xff) / 255, Double(value & 0xff) / 255)
+    }
 }
 
 enum HermesTurnPhase: String, Codable, CaseIterable {

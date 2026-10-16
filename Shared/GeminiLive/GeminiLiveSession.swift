@@ -47,6 +47,12 @@ struct GeminiLiveServerClose: Equatable {
             || text.contains("resource has been exhausted")
     }
 
+    /// Google no longer has the session a resumption handle named.
+    var isResumptionLost: Bool {
+        let text = reason.lowercased()
+        return ["session not found", "session expired", "session has expired", "expired session"].contains { text.contains($0) }
+    }
+
     /// What the user is shown: the first line of Google's reason (capped),
     /// or the code when there is none.
     var summary: String {
@@ -195,7 +201,8 @@ final class GeminiLiveSession {
     }
 
     /// Retries after a connection attempt fails, for the first connect and
-    /// every reconnect alike (so at most 1 + 3 attempts in a row).
+    /// every reconnect alike (so at most 1 + 3 attempts in a row, plus the
+    /// one fresh start a lost session gets).
     static let maximumReconnectAttempts = 3
 
     private(set) var state: State = .idle {
@@ -212,6 +219,17 @@ final class GeminiLiveSession {
     /// Counts connections that took over: a function call made under one
     /// value can't be answered once it changes.
     private(set) var connectionGeneration = 0
+    /// Google refused to resume the conversation ("session not found or
+    /// expired") and a fresh session took over: it knows nothing said so
+    /// far. `heardDropout` is false when the old connection kept serving
+    /// (a GoAway handoff), so the user heard no break. Only when this is
+    /// set does a refused resumption start fresh; otherwise it fails the
+    /// session as before. Called just before `.ready` is (re-)announced.
+    var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)?
+    /// The connection being set up replaces a session Google wouldn't
+    /// resume; reported through `onFreshSession` once it is ready. nil: no
+    /// fresh start pending; otherwise whether the user heard a dropout.
+    private var startingFresh: Bool?
 
     private let tokens: GeminiLiveTokenProviding
     private let openSocket: @MainActor (URL) -> GeminiLiveSocket
@@ -279,6 +297,7 @@ final class GeminiLiveSession {
     func start() {
         guard state == .idle || state == .stopped || isFailed else { return }
         resumptionHandle = nil
+        startingFresh = nil
         lastSetupClose = nil
         googleSearch = usesGoogleSearch
         hasConnectedOnce = false
@@ -457,6 +476,10 @@ final class GeminiLiveSession {
                 connectionGeneration += 1
                 onConnectionReplaced?()
             }
+            if let heardDropout = startingFresh {
+                startingFresh = nil
+                onFreshSession?(heardDropout)
+            }
             if state == .ready {
                 // A handoff never left `ready`; say it again so listeners
                 // treat the new connection as freshly ready.
@@ -556,7 +579,10 @@ final class GeminiLiveSession {
             return
         }
         if let serverClose, serverClose.isRefusal {
-            fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
+            // The current connection keeps serving while a fresh session
+            // sets up to take over.
+            if startFreshIfResumptionRefused(serverClose, attempt: attempt, heardDropout: false) { return }
+            fail(Self.refusalMessage(serverClose))
             return
         }
         if let serverClose { lastSetupClose = serverClose }
@@ -565,8 +591,9 @@ final class GeminiLiveSession {
 
     /// Google refused the connection. A spent quota while Search is on is
     /// most likely Search's own, so the same attempt runs again without it
-    /// after the usual backoff; any other refusal (or a quota one without
-    /// Search) is final.
+    /// after the usual backoff. A resumption Google lost starts fresh once
+    /// (`startFreshIfResumptionRefused`); any other refusal (or a quota
+    /// one without Search) is final.
     private func refused(_ close: GeminiLiveServerClose, attempt: Int) {
         if close.isQuotaExhausted, googleSearch {
             geminiLiveLogger.notice("Gemini Live refused for quota; retrying without Google Search")
@@ -581,7 +608,39 @@ final class GeminiLiveSession {
             }
             return
         }
-        fail(AppLocalization.string("Gemini Live refused the connection: \(close.summary)"))
+        // A GoAway handoff whose setup send was refused: the old connection
+        // still serves, so the user heard no break.
+        let heardDropout = !(isHandingOff && socket != nil)
+        if startFreshIfResumptionRefused(close, attempt: attempt, heardDropout: heardDropout) { return }
+        fail(Self.refusalMessage(close))
+    }
+
+    /// A setup that carried a resumption handle was refused because Google
+    /// lost or expired that session (1008 "BidiGenerateContent session not
+    /// found or expired"); any other refusal fails as before. No backoff:
+    /// the server answered, it just has nothing to resume. The
+    /// handle is dropped and the same attempt runs again as a new
+    /// session, once: with no handle left, a second refusal fails as any
+    /// other would.
+    private func startFreshIfResumptionRefused(_ close: GeminiLiveServerClose, attempt: Int, heardDropout: Bool) -> Bool {
+        guard onFreshSession != nil, resumptionHandle != nil, close.isResumptionLost else { return false }
+        geminiLiveLogger.notice("Gemini Live refused to resume (closeCode=\(close.code, privacy: .public)); starting a fresh session")
+        resumptionHandle = nil
+        // Only one fresh connection is ever pending: the handle is gone now.
+        startingFresh = heardDropout
+        if heardDropout, state == .ready { state = .reconnecting }
+        connectTask?.cancel()
+        connectTask = Task { [weak self] in await self?.connect(attempt: attempt) }
+        return true
+    }
+
+    /// What a final refusal says: plain words for the cases people hit,
+    /// Google's own reason for the rest.
+    static func refusalMessage(_ close: GeminiLiveServerClose) -> String {
+        if close.isResumptionLost {
+            return AppLocalization.string("Gemini Live lost this conversation on its side. Tap Try again to start a new one.")
+        }
+        return AppLocalization.string("Gemini Live refused the connection: \(close.summary)")
     }
 
     private func retry(after attempt: Int, error: Error) async {

@@ -267378,6 +267378,170 @@
         }
       }
     },
+    "Gemini Live lost this conversation on its side. Tap Try again to start a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live hat dieses Gespräch auf seiner Seite verloren. Tippe auf „Erneut versuchen“, um ein neues zu beginnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live perdió esta conversación por su parte. Toca Reintentar para empezar una nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live a perdu cette conversation de son côté. Touchez Réessayer pour en commencer une nouvelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live kehilangan percakapan ini di sisinya. Ketuk Coba lagi untuk memulai yang baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live ha perso questa conversazione dal suo lato. Tocca Riprova per iniziarne una nuova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live側でこの会話が失われました。「再試行」をタップして新しい会話を始めてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 쪽에서 이 대화가 사라졌어요. ‘다시 시도’를 탭해 새 대화를 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live utracił tę rozmowę po swojej stronie. Stuknij Spróbuj ponownie, aby zacząć nową."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Gemini Live perdeu esta conversa do lado dele. Toque em Tentar novamente para começar uma nova."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live потерял этот разговор на своей стороне. Нажмите «Повторить», чтобы начать новый."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live bu sohbeti kendi tarafında kaybetti. Yenisini başlatmak için Yeniden Dene'ye dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 那边丢失了这段对话。轻点“重试”开始新的对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 那端遺失了這段對話。點一下「再試一次」開始新的對話。"
+          }
+        }
+      }
+    },
+    "Microsoft turned away Edge TTS because the edge-tts package on your Hermes host is out of date. Update it there (pip install -U edge-tts) and restart Hermes, or choose another speech provider in Settings > Voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft hat Edge TTS abgewiesen, weil das Paket edge-tts auf deinem Hermes-Host veraltet ist. Aktualisiere es dort (pip install -U edge-tts) und starte Hermes neu, oder wähle unter „Einstellungen“ > „Sprachmodus“ einen anderen Sprachanbieter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft rechazó Edge TTS porque el paquete edge-tts de tu host de Hermes está desactualizado. Actualízalo allí (pip install -U edge-tts) y reinicia Hermes, o elige otro proveedor de voz en Ajustes > Voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft a refusé Edge TTS, car le paquet edge-tts de votre hôte Hermes est obsolète. Mettez-le à jour sur l'hôte (pip install -U edge-tts) et redémarrez Hermes, ou choisissez un autre fournisseur vocal dans Réglages > Voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft menolak Edge TTS karena paket edge-tts di host Hermes Anda sudah usang. Perbarui di sana (pip install -U edge-tts) lalu mulai ulang Hermes, atau pilih penyedia suara lain di Pengaturan > Suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft ha rifiutato Edge TTS perché il pacchetto edge-tts sul tuo host Hermes non è aggiornato. Aggiornalo lì (pip install -U edge-tts) e riavvia Hermes, oppure scegli un altro fornitore vocale in Impostazioni > Voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesホストのEdge-ttsパッケージが古いため、MicrosoftがEdge TTSを拒否しました。ホストで更新（pip install -U edge-tts）してHermesを再起動するか、「設定」>「音声」で別の音声プロバイダを選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트의 edge-tts 패키지가 오래되어 Microsoft가 Edge TTS를 거부했어요. 호스트에서 업데이트(pip install -U edge-tts)한 뒤 Hermes를 다시 시작하거나, ‘설정’ > ‘음성’에서 다른 음성 제공자를 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft odrzucił Edge TTS, ponieważ pakiet edge-tts na hoście Hermes jest nieaktualny. Zaktualizuj go tam (pip install -U edge-tts) i uruchom ponownie Hermes albo wybierz innego dostawcę mowy w sekcji Ustawienia > Głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Microsoft recusou o Edge TTS porque o pacote edge-tts no seu host do Hermes está desatualizado. Atualize-o lá (pip install -U edge-tts) e reinicie o Hermes, ou escolha outro provedor de voz em Ajustes > Voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft отклонил Edge TTS, потому что пакет edge-tts на вашем хосте Hermes устарел. Обновите его там (pip install -U edge-tts) и перезапустите Hermes или выберите другого поставщика речи в «Настройки › Голос»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ana makinenizdeki edge-tts paketi eski olduğu için Microsoft, Edge TTS'i reddetti. Paketi orada güncelleyin (pip install -U edge-tts) ve Hermes'i yeniden başlatın ya da Ayarlar > Ses bölümünden başka bir konuşma sağlayıcısı seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机上的 edge-tts 软件包已过时，因此 Microsoft 拒绝了 Edge TTS。请在主机上更新（pip install -U edge-tts）并重启 Hermes，或在「设置」>「语音」中选择其他语音服务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主機上的 edge-tts 套件已過時，因此 Microsoft 拒絕了 Edge TTS。請在主機上更新（pip install -U edge-tts）並重新啟動 Hermes，或在「設定」>「語音」中選擇其他語音服務。"
+          }
+        }
+      }
+    },
     "Add a dashboard" : {
       "localizations" : {
         "de" : {

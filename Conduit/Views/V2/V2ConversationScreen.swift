@@ -86,9 +86,6 @@ struct V2ConversationScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        // An open room supplies its own leading Leave button, which also
-        // ends this screen; a second leading control would be ambiguous.
-        .navigationBarBackButtonHidden(appState.activeRoomSurface != nil)
         .toolbar {
             // Session-only controls: an open room owns the title and actions.
             if appState.activeRoomSurface == nil {

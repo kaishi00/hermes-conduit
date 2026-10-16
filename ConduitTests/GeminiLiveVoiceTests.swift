@@ -114,6 +114,7 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (GeminiLiveSession.State) -> Void)?
     var onConnectionReplaced: (@MainActor () -> Void)?
+    var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)?
     var isReady = false
     var connectionGeneration = 0
     private(set) var started = 0
@@ -535,6 +536,179 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("models/gemini-3.8-live is not found")")))
         XCTAssertEqual(sockets().count, 1, "a refused setup is not retried")
         XCTAssertEqual(tokens.issued, 1)
+    }
+
+    private var resumptionLost: GeminiLiveServerClose {
+        GeminiLiveServerClose(code: 1008, reason: "BidiGenerateContent session not found or expired")
+    }
+
+    private func resumptionHandle(_ socket: FakeGeminiLiveSocket) -> String? {
+        ((socket.attempted.first?["setup"] as? [String: Any])?["sessionResumption"] as? [String: Any])?["handle"] as? String
+    }
+
+    /// Build 208: a dropped call came back with its handle and Google
+    /// answered "session not found or expired". The call goes on as a new
+    /// session instead of failing.
+    func testGeminiLiveRefusedResumptionStartsAFreshSessionOnce() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        var fresh: [Bool] = []
+        session.onFreshSession = { fresh.append($0) }
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        await settle()
+        first.serverClose(nil)
+        await settle(until: { sockets().count == 2 })
+        XCTAssertEqual(resumptionHandle(sockets()[1]), "h-1")
+
+        sockets()[1].serverClose(resumptionLost)
+        await settle(until: { sockets().count == 3 })
+        XCTAssertEqual(sockets().count, 3, "a lost session is started again, not failed")
+        XCTAssertNil(resumptionHandle(sockets()[2]), "the new session carries no handle")
+        XCTAssertTrue(fresh.isEmpty, "reported once the new session is ready")
+
+        sockets()[2].deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertEqual(session.state, .ready)
+        XCTAssertEqual(fresh, [true])
+        session.stop()
+    }
+
+    func testGeminiLiveRefusedFreshSessionAfterALostResumptionFails() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.onFreshSession = { _ in }
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        await settle()
+        first.serverClose(nil)
+        await settle(until: { sockets().count == 2 })
+        sockets()[1].serverClose(resumptionLost)
+        await settle(until: { sockets().count == 3 })
+        sockets()[2].serverClose(resumptionLost)
+        await settle(80)
+
+        XCTAssertEqual(sockets().count, 3, "only one fresh start per lost session")
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live lost this conversation on its side. Tap Try again to start a new one.")))
+    }
+
+    /// A GoAway handoff whose setup Google won't resume: the old connection
+    /// keeps serving while a fresh session sets up, and the user heard no
+    /// break.
+    func testGeminiLiveRefusedHandoffResumptionStartsFreshWhileTheOldConnectionServes() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        var fresh: [Bool] = []
+        session.onFreshSession = { fresh.append($0) }
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        first.deliver(["goAway": ["timeLeft": "5s"]])
+        await settle(until: { sockets().dropFirst().first?.sent.first != nil })
+        XCTAssertEqual(resumptionHandle(sockets()[1]), "h-1")
+
+        sockets()[1].serverClose(resumptionLost)
+        await settle(until: { sockets().count == 3 })
+        XCTAssertNil(resumptionHandle(sockets()[2]))
+        XCTAssertEqual(session.state, .ready, "the old connection still serves")
+        XCTAssertFalse(first.closed)
+
+        sockets()[2].deliver(["setupComplete": [String: Any]()])
+        await settle(until: { first.closed })
+        XCTAssertTrue(first.closed)
+        XCTAssertEqual(session.state, .ready)
+        XCTAssertEqual(fresh, [false])
+        session.stop()
+    }
+
+    func testGeminiLiveFreshSessionAfterAHandoffDoesNotMentionAReconnection() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscription("what's the weather"))
+        session.onEvent?(.outputTranscription("Sunny all day."))
+        session.onEvent?(.turnComplete)
+
+        session.onFreshSession?(false)
+        session.becomeReady()
+        current += GeminiLiveConversationController.userQuietInterval + GeminiLiveConversationController.modelQuietInterval + 1
+        controller.flushPendingTextIfIdle()
+        let recap = session.textTurns.last ?? ""
+        XCTAssertTrue(recap.contains("User: what's the weather"), recap)
+        XCTAssertTrue(recap.contains("don't mention a reconnection"), recap)
+        controller.stop()
+    }
+
+    /// The lost session was mid-answer during a handoff: its turn never
+    /// completes, so the fresh start closes it and the recap still goes out.
+    func testGeminiLiveFreshSessionMidTurnClosesTheDeadTurnAndSendsTheRecap() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscription("what's the weather"))
+        session.onEvent?(.outputTranscription("Sunny all"))
+
+        session.onFreshSession?(false)
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .listening)
+        current += GeminiLiveConversationController.userQuietInterval + GeminiLiveConversationController.modelQuietInterval + 1
+        controller.flushPendingTextIfIdle()
+        let recap = session.textTurns.last ?? ""
+        XCTAssertTrue(recap.contains("You: Sunny all"), recap)
+
+        // The new session's answer is a line of its own.
+        session.onEvent?(.outputTranscription("Sunny all day."))
+        XCTAssertEqual(controller.transcript.filter { $0.speaker == .assistant }.map(\.text), ["Sunny all", "Sunny all day."])
+        controller.stop()
+    }
+
+    func testGeminiLiveOtherRefusalOfAResumptionFailsWithoutAFreshStart() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.onFreshSession = { _ in XCTFail("only a lost session starts fresh") }
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        await settle()
+        first.serverClose(nil)
+        await settle(until: { sockets().count == 2 })
+        sockets()[1].serverClose(.init(code: 1008, reason: "API key expired. Please renew the API key."))
+        await settle(80)
+
+        XCTAssertEqual(sockets().count, 2)
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("API key expired. Please renew the API key.")")))
+    }
+
+    func testGeminiLiveFreshSessionTellsTheModelWhatWasSaid() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscription("what's the weather"))
+        session.onEvent?(.outputTranscription("Sunny all day."))
+        session.onEvent?(.turnComplete)
+
+        session.onFreshSession?(true)
+        session.becomeReady()
+        current += GeminiLiveConversationController.userQuietInterval + GeminiLiveConversationController.modelQuietInterval + 1
+        controller.flushPendingTextIfIdle()
+        let recap = session.textTurns.last ?? ""
+        XCTAssertTrue(recap.contains("User: what's the weather"), recap)
+        XCTAssertTrue(recap.contains("You: Sunny all day."), recap)
+        XCTAssertTrue(recap.contains("you're back"), recap)
+        controller.stop()
     }
 
     private func searches(_ socket: FakeGeminiLiveSocket) -> Bool {

@@ -19,6 +19,27 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
         XCTAssertEqual(HermesVoiceGateway.transcriptionTimeoutMillisecondsPerDataURLCharacter, 0.1)
     }
 
+    /// Hermes's own Edge TTS error, as build 208 showed it on the call screen.
+    private static let edgeRefusal = "TTS chunk 1 failed (edge): TTS generation failed (edge): 403, message='Invalid response status', url='wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=a597e9a3&Sec-MS-GEC=65458096&Sec-MS-GEC-Version=1-143.0.3650.75'"
+
+    func testEdgeRefusalSaysToUpdateEdgeTTSWithoutTheURL() {
+        let message = HermesSpeechFailure.message(Self.edgeRefusal)
+        XCTAssertTrue(message.contains("pip install -U edge-tts"), message)
+        XCTAssertFalse(message.contains("TrustedClientToken"))
+        XCTAssertFalse(message.contains("bing.com"))
+    }
+
+    func testOtherSpeechErrorsLoseLinksAndTokens() {
+        let message = HermesSpeechFailure.message("TTS generation failed (openai): 500, message='Server error', url='https://api.example.com/v1/audio?key=secret'")
+        XCTAssertEqual(message, "TTS generation failed (openai): 500, message='Server error'")
+        XCTAssertEqual(HermesSpeechFailure.message("Fetch https://host/x?token=abc failed"), "Fetch failed")
+        XCTAssertEqual(HermesSpeechFailure.message("No voice configured"), "No voice configured")
+        XCTAssertEqual(HermesSpeechFailure.message("bad data_url='x'"), "bad data_url='x'")
+        XCTAssertEqual(HermesSpeechFailure.message("TTS generation failed (edge): timeout after 4030 ms"), "TTS generation failed (edge): timeout after 4030 ms")
+        XCTAssertEqual(HermesSpeechFailure.message("TTS generation failed (edge): timeout after 403 ms"), "TTS generation failed (edge): timeout after 403 ms")
+        XCTAssertNotEqual(HermesSpeechFailure.message("TTS failed (edge): HTTP 401 Unauthorized"), "TTS failed (edge): HTTP 401 Unauthorized")
+    }
+
     func testShortRecordingsGetAtLeastTheNewMinimum() {
         // A typical 10s clip (16kHz mono 16-bit ≈ 320KB → ~427k base64
         // characters) would budget ~43s from the payload alone, but the 180s

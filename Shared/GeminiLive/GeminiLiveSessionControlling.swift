@@ -14,6 +14,9 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)? { get set }
     var onStateChange: (@MainActor (GeminiLiveSession.State) -> Void)? { get set }
     var onConnectionReplaced: (@MainActor () -> Void)? { get set }
+    /// A new server session replaced one Google wouldn't resume, so the
+    /// model lost the conversation (see `GeminiLiveSession.onFreshSession`).
+    var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)? { get set }
     var isReady: Bool { get }
     /// Changes whenever a new connection takes over; calls made before
     /// the change can't be answered after it.
@@ -29,6 +32,12 @@ protocol GeminiLiveSessionControlling: AnyObject {
 
 extension GeminiLiveSessionControlling {
     var connectionGeneration: Int { 0 }
+    /// Sessions that never resume (Grok Live) never start one fresh, so
+    /// setting this on them does nothing, on purpose.
+    var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)? {
+        get { nil }
+        set {}
+    }
     var stateDescription: String { "" }
     func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {

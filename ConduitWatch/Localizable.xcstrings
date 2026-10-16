@@ -8380,6 +8380,88 @@
           }
         }
       }
+    },
+    "Gemini Live lost this conversation on its side. Tap Try again to start a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live hat dieses Gespräch auf seiner Seite verloren. Tippe auf „Erneut versuchen“, um ein neues zu beginnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live perdió esta conversación por su parte. Toca Reintentar para empezar una nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live a perdu cette conversation de son côté. Touchez Réessayer pour en commencer une nouvelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live kehilangan percakapan ini di sisinya. Ketuk Coba lagi untuk memulai yang baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live ha perso questa conversazione dal suo lato. Tocca Riprova per iniziarne una nuova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live側でこの会話が失われました。「再試行」をタップして新しい会話を始めてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 쪽에서 이 대화가 사라졌어요. ‘다시 시도’를 탭해 새 대화를 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live utracił tę rozmowę po swojej stronie. Stuknij Spróbuj ponownie, aby zacząć nową."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Gemini Live perdeu esta conversa do lado dele. Toque em Tentar novamente para começar uma nova."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live потерял этот разговор на своей стороне. Нажмите «Повторить», чтобы начать новый."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live bu sohbeti kendi tarafında kaybetti. Yenisini başlatmak için Yeniden Dene'ye dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 那边丢失了这段对话。轻点“重试”开始新的对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 那端遺失了這段對話。點一下「再試一次」開始新的對話。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

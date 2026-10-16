@@ -50,7 +50,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
                 dataURLCharacterCount: dataURL.utf8.count
             )
         )
-        if let error = response["error"] as? String, !error.isEmpty { throw DashboardTicketBridgeError.requestFailed(error) }
+        if let error = response["error"] as? String, !error.isEmpty {
+            throw DashboardTicketBridgeError.requestFailed(HermesSpeechFailure.message(error))
+        }
         guard let rawTranscript = response["transcript"] as? String ?? response["text"] as? String else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes didn't send back what you said. Try again."))
         }
@@ -124,7 +126,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
             timeoutMilliseconds: 90_000,
             maxResponseBytes: DataURLLimits.maxJSONResponseBytes
         )
-        if let error = response["error"] as? String, !error.isEmpty { throw DashboardTicketBridgeError.requestFailed(error) }
+        if let error = response["error"] as? String, !error.isEmpty {
+            throw DashboardTicketBridgeError.requestFailed(HermesSpeechFailure.message(error))
+        }
         guard let dataURL = response["data_url"] as? String ?? response["dataUrl"] as? String,
               let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes returned invalid fallback audio."))
@@ -392,7 +396,8 @@ final class HermesSpeechStream: VoiceSpeechStream {
             task.cancel(with: .goingAway, reason: nil)
             startFallbackIfNeeded()
         case "error":
-            complete(.failure(DashboardTicketBridgeError.requestFailed(object["message"] as? String ?? AppLocalization.string("Hermes speech stream failed."))))
+            let message = (object["message"] as? String).map(HermesSpeechFailure.message)
+            complete(.failure(DashboardTicketBridgeError.requestFailed(message ?? AppLocalization.string("Hermes speech stream failed."))))
         default:
             break
         }
@@ -440,5 +445,38 @@ final class HermesSpeechStream: VoiceSpeechStream {
         let continuation = completed
         completed = nil
         continuation?.resume(with: result)
+    }
+}
+
+/// Hermes passes its speech provider's error through as is, which can be
+/// a whole library exception: for Edge TTS that includes the Microsoft URL
+/// with its client token. People see what went wrong and what to do; links
+/// and tokens never reach the screen.
+enum HermesSpeechFailure {
+    static func message(_ raw: String) -> String {
+        let lowered = raw.lowercased()
+        let isEdge = lowered.contains("(edge)") || lowered.contains("speech.platform.bing.com")
+        // The handshake status as aiohttp words it ("403, message=…"), or
+        // spelled out; not any 401/403 that happens to be in the text.
+        let refusal = #"\b40[13],|\b(status|code|http)\W{0,3}40[13]\b|\b40[13] (forbidden|unauthorized)"#
+        if isEdge, lowered.range(of: refusal, options: .regularExpression) != nil {
+            // Microsoft changes Edge's read-aloud handshake from time to
+            // time and refuses older edge-tts releases (7.2.x stopped working
+            // in October 2026; 7.3.0 follows the new one).
+            return AppLocalization.string("Microsoft turned away Edge TTS because the edge-tts package on your Hermes host is out of date. Update it there (pip install -U edge-tts) and restart Hermes, or choose another speech provider in Settings > Voice.")
+        }
+        return cleaned(raw)
+    }
+
+    /// The text without links (and whatever query they carry), Python's
+    /// `url='…'` wrapper, or more than one short paragraph.
+    static func cleaned(_ raw: String) -> String {
+        var text = raw
+        for pattern in [#",?\s*(?<![\w-])url=(['"]).*?\1"#, #"\b(?:wss?|https?)://\S+"#] {
+            text = text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        }
+        text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard text.count > 240 else { return text.isEmpty ? AppLocalization.string("Hermes speech stream failed.") : text }
+        return String(text.prefix(240)) + "…"
     }
 }
