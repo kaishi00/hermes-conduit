@@ -623,6 +623,9 @@ struct LoginDashboardsScreen: View {
                 } label: {
                     Label(AppLocalization.string("Remove Dashboard"), systemImage: "trash")
                 }
+                // Not while it connects: the connection would register it
+                // again.
+                .disabled(isConnecting(dashboard))
             }
             if let failure {
                 LoginFailureCard(failure: failure, flow: flow, isInline: true)
@@ -642,7 +645,7 @@ struct LoginDashboardsScreen: View {
             || (dashboard.id == appState.activeDashboardID && appState.isConnecting && !flow.isWorking)
     }
 
-    private func status(for dashboard: SavedDashboard) -> LoginRowLabel.Status {
+    private func status(for dashboard: SavedDashboard) -> LoginRowLabel.Status? {
         var text: String
         let icon: String
         var tint: Color = Color.primary.opacity(0.58)
@@ -650,7 +653,10 @@ struct LoginDashboardsScreen: View {
             text = AppLocalization.string("Connecting…")
             icon = "arrow.triangle.2.circlepath"
         } else {
-            switch signIns[dashboard.id] ?? .signInNeeded {
+            // Unknown until the first Keychain read: no line, rather than
+            // a "Sign in needed" that is wrong for a moment.
+            guard let kind = signIns[dashboard.id] else { return nil }
+            switch kind {
             case .biometric:
                 if biometricKind == .touchID {
                     text = AppLocalization.string("Signs in with Touch ID")
