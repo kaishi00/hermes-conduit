@@ -38,6 +38,8 @@ final class GroupRoomFilesClient {
     func upload(_ attachments: [Attachment]) async throws -> [String] {
         var references: [String] = []
         for attachment in attachments {
+            // A composer that went away stops before the next file.
+            try Task.checkCancellation()
             // Reading and encoding a large file stays off the main actor.
             let base64 = await Task.detached(priority: .userInitiated) {
                 await AttachmentHelper.toBase64(attachment)

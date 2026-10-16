@@ -426,10 +426,12 @@ struct GroupRoomComposer: View {
             Task {
                 // The pending row owns the text only once AppState REGISTERS
                 // the send. A declined send (connection or room changed
-                // before the guards ran) hands the text back, unless the
-                // user already started typing something new.
+                // before the guards ran) hands the text back.
                 let registered = await appState.sendGroupRoomMessage(text)
-                if !registered && draft.isEmpty { draft = text }
+                if !registered {
+                    // Anything typed since goes after the text handed back.
+                    draft = draft.isEmpty ? text : text + "\n" + draft
+                }
             }
             return
         }
@@ -459,13 +461,14 @@ struct GroupRoomComposer: View {
             }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
-            if draft == text { draft = "" }
+            let handedOver = draft == text
+            if handedOver { draft = "" }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
             let registered = await appState.sendGroupRoomMessage(message)
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {
-                if draft.isEmpty { draft = text }
+                if handedOver { draft = draft.isEmpty ? text : text + "\n" + draft }
                 attachments = files + attachments
             }
         }
