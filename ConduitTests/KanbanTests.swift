@@ -412,6 +412,24 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
     }
 
+    func testSwitchingBoardsDropsTheLastBoardsErrorAtOnce() async {
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        let store = makeStore(requester: requester)
+        await store.reload()
+        requester.errorsByPath["/api/plugins/kanban/boards"] = MockRequestError.failed("dashboard unreachable")
+        await store.poll()
+        let message = store.errorMessage
+        XCTAssertNotNil(message)
+
+        var seen: [String?] = []
+        let subscription = store.$errorMessage.dropFirst().sink { seen.append($0) }
+        await store.selectBoard(slug: "beta")
+        subscription.cancel()
+
+        // The switch starts without the old error; its own failure then shows.
+        XCTAssertEqual(seen, [nil, message])
+    }
+
     // MARK: - Mutation reconciliation vs passive poll ordering
 
     func testMutationReconciliationSupersedesInFlightPassivePoll() async throws {

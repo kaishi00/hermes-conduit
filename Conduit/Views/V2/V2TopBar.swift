@@ -105,7 +105,8 @@ struct V2ProfileStrip: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    // The selected chip never shows a dot.
+                    // The selected chip never shows a dot. Exact match, as
+                    // the chip's own `isSelected`.
                     let unread = appState.profilesWithUnread(among: profiles.filter { $0 != appState.activeProfile })
                     ForEach(profiles, id: \.self) { profile in
                         chip(profile, unread: unread.contains(profile))

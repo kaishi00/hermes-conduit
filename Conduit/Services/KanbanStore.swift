@@ -200,6 +200,9 @@ final class KanbanStore: ObservableObject {
         // /boards returns and invalid-selection validation runs, so the fetch
         // below always carries an explicit ?board= that matches what we record.
         isLoading = true
+        // An explicit switch starts a new context, so the last one's error
+        // goes now. A background poll keeps it until a load succeeds.
+        if superseding { setIfChanged(\.errorMessage, nil) }
         defer {
             if generation == loadGeneration { isLoading = false }
         }
