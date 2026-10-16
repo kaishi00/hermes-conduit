@@ -41,14 +41,15 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         XCTAssertTrue(stageRow(app, Identity.stageAuthentication).waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["round4-private-fixture"].exists)
 
-        // The Round-3 typed handoff is unchanged: fields populate, nothing
-        // connects automatically.
+        // The Round-3 typed handoff: the address fills in, nothing connects
+        // automatically.
         tapVisible(app.buttons[Identity.useSettings], in: app)
         let server = app.textFields["login.server-url"]
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
-        XCTAssertEqual(app.textFields["login.username"].value as? String, "round4-user")
-        XCTAssertTrue(app.buttons["Connect"].isEnabled)
+        // The username and password wait for the sign-in step, which
+        // Continue opens once the dashboard says it takes a password.
+        XCTAssertTrue(app.buttons["login.connect"].isEnabled)
         XCTAssertFalse(app.staticTexts["Connecting…"].exists)
     }
 
@@ -153,14 +154,15 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         tapVisible(app.buttons[Identity.testContinue], in: app)
         XCTAssertTrue(app.staticTexts["setup.test.interactive-ready"].waitForExistence(timeout: 5))
 
-        // The Round-3 typed handoff is unchanged: fields populate, nothing
-        // connects automatically.
+        // The Round-3 typed handoff: the address fills in, nothing connects
+        // automatically.
         tapVisible(app.buttons[Identity.useSettings], in: app)
         let server = app.textFields["login.server-url"]
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
-        XCTAssertEqual(app.textFields["login.username"].value as? String, "round4-user")
-        XCTAssertTrue(app.buttons["Connect"].isEnabled)
+        // The username and password wait for the sign-in step, which
+        // Continue opens once the dashboard says it takes a password.
+        XCTAssertTrue(app.buttons["login.connect"].isEnabled)
         XCTAssertFalse(app.staticTexts["Connecting…"].exists)
     }
 

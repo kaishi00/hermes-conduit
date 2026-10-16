@@ -6,6 +6,7 @@
 //  management surface. Rows show each saved dashboard with its live state;
 //  per-row actions are Switch (reusable auth exists), Sign In (none), and —
 //  via the context menu — Sign Out of This Dashboard and Remove Dashboard.
+//  Add Dashboard opens the Add a dashboard sheet (Views/Login).
 //  All connection work is delegated to AppState.switchDashboard /
 //  signOutDashboard / removeDashboard; this view owns no auth logic.
 //
@@ -20,6 +21,7 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var rows: [SavedDashboardRowModel] = []
     @State private var isSwitchingTo: UUID?
     @State private var pendingRemoval: SavedDashboardRowModel?
+    @State private var showsAddDashboard = false
 
     struct SavedDashboardRowModel: Identifiable {
         let dashboard: SavedDashboard
@@ -77,6 +79,12 @@ struct SavedDashboardsSettingsDetail: View {
             }
         } message: {
             Text("This dashboard's saved sign-in and cookies will be deleted from this device. Other dashboards are not affected.")
+        }
+        // Adding a dashboard is a sheet over this page: Cancel leaves the
+        // current dashboard and chat as they were.
+        .sheet(isPresented: $showsAddDashboard) {
+            AddDashboardSheet(onSignedIn: { close() })
+                .environmentObject(appState)
         }
     }
 
@@ -196,8 +204,7 @@ struct SavedDashboardsSettingsDetail: View {
     }
 
     private func addDashboard() {
-        appState.showLogin = true
-        close()
+        showsAddDashboard = true
     }
 
     private func signOut(_ row: SavedDashboardRowModel) {

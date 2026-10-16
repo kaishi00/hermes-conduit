@@ -1,0 +1,631 @@
+//
+//  LoginFlowModel.swift
+//  Conduit
+//
+//  The sign-in flow behind the sign-in screen and the Add a dashboard sheet:
+//  the address first, then only what that dashboard needs (a username and
+//  password, or its browser sign-in). A saved dashboard signs in from its
+//  row. The auth sequence is the one LoginView ran before the V2 screens;
+//  only where the fields live changed.
+//
+
+import Foundation
+import os
+
+/// Where a failure is shown: under the step or the dashboard it happened to.
+enum LoginFailurePlace: Equatable {
+    case address
+    case credentials
+    case dashboard(UUID)
+}
+
+/// How a dashboard signs in, from its provider discovery.
+enum LoginRoute: Equatable {
+    /// Username and password. `nativeOAuth` is set when the dashboard also
+    /// offers its single sign-on in the browser.
+    case password(nativeOAuth: NativeOAuthChoice?)
+    case nativeOAuth(NativeOAuthChoice)
+    /// The dashboard's own sign-in page in the in-app browser.
+    case browser
+
+    struct NativeOAuthChoice: Equatable {
+        let provider: String?
+    }
+
+    /// The same decisions LoginView made before the address came first,
+    /// without typed credentials to weigh: a dashboard that takes a password
+    /// gets the password step, and its single sign-on becomes the step's
+    /// "Sign in with browser instead".
+    static func discover(using client: NativeAuthClient) async throws -> LoginRoute {
+        switch try await client.authProviderDiscovery() {
+        case .interactiveSignInRequired, .unrecognized:
+            return .browser
+        case .providers(let providers):
+            let supportsPassword = HermesProviderCheck.supportsPassword(providers)
+            let supportsOAuth = HermesProviderCheck.hasNativeOAuthProvider(providers)
+            let choice = NativeOAuthChoice(provider: HermesProviderCheck.nativeOAuthProvider(providers))
+            if supportsPassword {
+                // A failed capability check only hides the browser choice;
+                // it never routes single sign-on into the embedded browser.
+                guard supportsOAuth, (try? await client.supportsNativeOAuth()) == true else {
+                    return .password(nativeOAuth: nil)
+                }
+                return .password(nativeOAuth: choice)
+            }
+            if supportsOAuth, try await client.supportsNativeOAuth() {
+                return .nativeOAuth(choice)
+            }
+            return .browser
+        }
+    }
+}
+
+/// The dashboard a sign-in step is for, once its address checked out.
+struct LoginTarget {
+    let baseURL: String
+    let label: String
+    let cloudflare: CloudflareAccessCredentials?
+    let nativeOAuth: LoginRoute.NativeOAuthChoice?
+}
+
+/// A native single sign-on sheet to present.
+struct LoginNativeOAuthRequest: Identifiable {
+    let id = UUID()
+    let baseURL: String
+    let provider: String?
+    let dashboardID: UUID
+    let cloudflare: CloudflareAccessCredentials?
+}
+
+/// An in-app browser sign-in to present.
+struct LoginBrowserRequest: Identifiable {
+    let id = UUID()
+    let baseURL: String
+    let cloudflare: CloudflareAccessCredentials?
+    /// The WebKit session store for this sign-in (#148): the saved
+    /// dashboard's own when one exists, else a fresh one for a new dashboard.
+    let webKitStoreID: UUID
+}
+
+/// What the Connection Setup assistant (or a later scan) fills in.
+struct LoginSeed: Identifiable {
+    let id = UUID()
+    var address: String
+    var username: String
+    var password: String
+    var cloudflare: LoginCloudflareState
+
+    /// Nothing filled in.
+    static var blank: LoginSeed {
+        LoginSeed(address: "", username: "", password: "", cloudflare: LoginCloudflareState(isEnabled: false, clientID: "", clientSecret: ""))
+    }
+}
+
+// MARK: - Address
+
+/// Turns what was typed into the addresses to try, so the address can be
+/// typed without its scheme.
+enum LoginAddress {
+    /// The candidates for a typed address, best first. One with a scheme is
+    /// used as typed. Without one, https comes first; plain http joins only
+    /// for hosts where Conduit allows it (localhost, private LAN, Tailscale),
+    /// and leads for IP addresses and localhost, which are usually Hermes'
+    /// own plain port.
+    static func candidates(_ typed: String) -> [String] {
+        let trimmed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        if trimmed.contains("://") { return [trimmed] }
+        let bare = trimmed.hasPrefix("//") ? String(trimmed.dropFirst(2)) : trimmed
+        let secure = "https://" + bare
+        let plain = "http://" + bare
+        guard (try? ConnectionURLPolicy.normalizedBaseURL(plain)) != nil else { return [secure] }
+        return prefersPlainHTTP(plain) ? [plain, secure] : [secure, plain]
+    }
+
+    private static func prefersPlainHTTP(_ url: String) -> Bool {
+        guard let host = URLComponents(string: url)?.host?.lowercased() else { return false }
+        if host == "localhost" || host.contains(":") { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts.allSatisfy { part in !part.isEmpty && part.allSatisfy(\.isNumber) }
+    }
+
+    /// Whether a failed check is worth repeating at the next candidate. A
+    /// wrong scheme fails fast (a TLS error, a refused connection, a page
+    /// that isn't Hermes); a host that doesn't answer at all, or no network,
+    /// won't answer the other scheme either.
+    static func shouldTryNextCandidate(after error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .notConnectedToInternet, .cancelled, .dataNotAllowed, .internationalRoamingOff:
+                return false
+            default:
+                return true
+            }
+        }
+        if let authError = error as? AuthClientError, case .cloudflareServiceTokenRejected = authError {
+            return false
+        }
+        return true
+    }
+
+    /// The address as the lists show it: the host, its port and any path.
+    static func displayHost(_ url: String) -> String {
+        guard let components = URLComponents(string: url), let host = components.host, !host.isEmpty else {
+            return url
+        }
+        var shown = host
+        if let port = components.port { shown += ":\(port)" }
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if !path.isEmpty { shown += "/" + path }
+        return shown
+    }
+
+    /// The first candidate that passes the address policy, for tools that
+    /// need a whole address before the check runs (extra headers, Connection
+    /// Setup). Falls back to what was typed.
+    static func bestGuess(_ typed: String) -> String {
+        for candidate in candidates(typed) {
+            if let normalized = try? ConnectionURLPolicy.normalizedBaseURL(candidate) { return normalized }
+        }
+        return typed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Flow
+
+@MainActor
+final class LoginFlowModel: ObservableObject {
+    private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
+
+    // The address step.
+    @Published var address = ""
+    @Published var cloudflareEnabled = false
+    @Published var cloudflareClientID = ""
+    @Published var cloudflareClientSecret = ""
+    @Published var showsAdvanced = false
+
+    // The sign-in step.
+    @Published var username = ""
+    @Published var password = ""
+    @Published var saveSignIn = true
+    @Published var useBiometrics = false
+    @Published private(set) var biometrics = BiometricAuth.Status(kind: nil, isAvailable: false)
+    @Published var showsCredentials = false
+    @Published private(set) var target: LoginTarget?
+
+    // Progress and failures.
+    @Published private(set) var isWorking = false
+    /// The saved dashboard whose row is signing in.
+    @Published private(set) var workingDashboardID: UUID?
+    @Published private(set) var failure: ConnectionFailurePresentation?
+    @Published private(set) var failurePlace: LoginFailurePlace?
+    /// Whether the failed saved connection can be repaired, worked out when
+    /// the failure arrives (the takeover itself waits for the tap).
+    @Published private(set) var savedRepairAvailable = false
+
+    // What the screens present.
+    @Published var nativeOAuthRequest: LoginNativeOAuthRequest?
+    @Published var browserRequest: LoginBrowserRequest?
+    @Published var connectionSetupDestination: ConnectionHelpDestination?
+    @Published var connectionRepairContext: ConnectionRepairContext?
+    @Published var showsExtraHeaders = false
+    @Published var extraHeadersRevision = 0
+
+    /// Runs once a sign-in has handed its session to AppState (the Add
+    /// sheet closes there).
+    var onSignedIn: () -> Void = {}
+
+    private weak var appState: AppState?
+    private var biometricsLoaded = false
+    /// The username the flow filled in itself, replaced when the next
+    /// dashboard has its own.
+    private var prefilledUsername: String?
+    /// Where the running action's failures belong, also for the ones AppState
+    /// hands over after the session starts.
+    private var runningPlace: LoginFailurePlace?
+
+    func attach(_ appState: AppState) {
+        self.appState = appState
+    }
+
+    // MARK: Fields
+
+    var typedCloudflare: CloudflareAccessCredentials? {
+        guard cloudflareEnabled else { return nil }
+        return CloudflareAccessCredentials.from(clientID: cloudflareClientID, clientSecret: cloudflareClientSecret)
+    }
+
+    var cloudflareState: LoginCloudflareState {
+        LoginCloudflareState(isEnabled: cloudflareEnabled, clientID: cloudflareClientID, clientSecret: cloudflareClientSecret)
+    }
+
+    var canContinue: Bool {
+        LoginView.hasConnectableInput(serverURL: address) && !isWorking
+    }
+
+    var canSignIn: Bool {
+        target != nil && !isWorking
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func setSaveSignIn(_ saves: Bool) {
+        saveSignIn = saves
+        if !saves { useBiometrics = false }
+    }
+
+    /// Reads the phone's Face ID or Touch ID state. The switch starts on
+    /// when the phone has one, and turns off when it goes away.
+    func refreshBiometrics() {
+        biometrics = BiometricAuth.status
+        if !biometricsLoaded {
+            biometricsLoaded = true
+            useBiometrics = biometrics.isAvailable && saveSignIn
+        } else if !biometrics.isAvailable {
+            useBiometrics = false
+        }
+    }
+
+    func apply(_ seed: LoginSeed) {
+        cloudflareEnabled = seed.cloudflare.isEnabled
+        cloudflareClientID = seed.cloudflare.clientID
+        cloudflareClientSecret = seed.cloudflare.clientSecret
+        if cloudflareEnabled { showsAdvanced = true }
+        address = seed.address
+        username = seed.username
+        password = seed.password
+        prefilledUsername = nil
+        clearFailure()
+    }
+
+    /// The Connection Setup assistant's result, through the tested mapping
+    /// that drops an in-memory Cloudflare token when the origin changes.
+    func applySetupResult(_ result: ConnectionSetupResult) {
+        let handoff = LoginCloudflareHandoff.apply(result, to: LoginAddress.bestGuess(address), keeping: cloudflareState)
+        apply(LoginSeed(address: handoff.serverURL, username: handoff.username, password: handoff.password, cloudflare: handoff.cloudflare))
+    }
+
+    func clearFailure() {
+        failure = nil
+        failurePlace = nil
+        savedRepairAvailable = false
+    }
+
+    private func show(_ presentation: ConnectionFailurePresentation, at place: LoginFailurePlace) {
+        failure = presentation
+        failurePlace = place
+        savedRepairAvailable = false
+    }
+
+    private func show(error: Error, at place: LoginFailurePlace) {
+        // The classification only: the raw error can carry server text.
+        let classified = ConnectionFailureClassifier.classify(error)
+        Self.logger.error("Sign-in failed: \(String(describing: classified), privacy: .public)")
+        show(.presenting(classified), at: place)
+    }
+
+    /// A failure AppState hands over (a saved sign-in that was refused, a
+    /// session that didn't start). It shows under the dashboard it was for.
+    func receive(_ pending: ConnectionFailurePresentation) {
+        guard let appState else { return }
+        let place: LoginFailurePlace
+        if let runningPlace {
+            place = runningPlace
+        } else if let active = appState.activeDashboardID,
+                  appState.savedDashboardRegistry.dashboard(with: active) != nil {
+            place = .dashboard(active)
+        } else {
+            place = .address
+        }
+        failure = pending
+        failurePlace = place
+        savedRepairAvailable = appState.makeSavedConnectionRepairContext() != nil
+    }
+
+    func failure(at place: LoginFailurePlace) -> ConnectionFailurePresentation? {
+        failurePlace == place ? failure : nil
+    }
+
+    // MARK: Retry
+
+    func retry() async {
+        switch failurePlace {
+        case .address: await continueFromAddress()
+        case .credentials: await signIn()
+        case .dashboard(let id):
+            guard let dashboard = appState?.savedDashboardRegistry.dashboard(with: id) else { return }
+            await open(dashboard)
+        case nil: return
+        }
+    }
+
+    func beginRepair() {
+        connectionRepairContext = appState?.beginSavedConnectionRepair()
+    }
+
+    // MARK: A saved dashboard
+
+    /// A row's tap: its saved sign-in when it has one (Face ID asks first
+    /// when it guards it), otherwise straight to what its sign-in needs,
+    /// with its username and Cloudflare token filled in.
+    func open(_ dashboard: SavedDashboard) async {
+        guard let appState, !isWorking else { return }
+        clearFailure()
+        isWorking = true
+        workingDashboardID = dashboard.id
+        runningPlace = .dashboard(dashboard.id)
+        defer {
+            isWorking = false
+            workingDashboardID = nil
+            runningPlace = nil
+        }
+        if appState.savedSignIn(for: dashboard.id).canSignInWithoutTyping {
+            await appState.switchDashboard(to: dashboard.id)
+            if appState.isConnected || !appState.showLogin { return }
+            // A refused saved sign-in shows under its row; a dismissed Face
+            // ID prompt leaves the row as it was. Only a dashboard with
+            // nothing left to sign in with goes on to its sign-in.
+            if failure != nil || appState.pendingLoginFailure != nil
+                || appState.savedSignIn(for: dashboard.id).canSignInWithoutTyping {
+                return
+            }
+        }
+        appState.lastConnectionFailure = nil
+        let cloudflare = appState.dashboardScopedCloudflareAccess(for: dashboard.normalizedURL)
+        do {
+            let route = try await LoginRoute.discover(using: NativeAuthClient(baseURL: dashboard.normalizedURL, cloudflareAccess: cloudflare))
+            follow(route, baseURL: dashboard.normalizedURL, label: dashboard.label, cloudflare: cloudflare, place: .dashboard(dashboard.id))
+        } catch is CancellationError {
+            return
+        } catch {
+            show(error: error, at: .dashboard(dashboard.id))
+        }
+    }
+
+    // MARK: The address step
+
+    func continueFromAddress() async {
+        guard let appState, !isWorking else { return }
+        // A typed sign-in abandons the repair context of an earlier failed
+        // saved connection: Repair is for the connection that failed.
+        appState.lastConnectionFailure = nil
+        let candidates = LoginAddress.candidates(address)
+        guard !candidates.isEmpty else {
+            show(.notice(title: AppLocalization.string("Enter a valid dashboard URL.")), at: .address)
+            return
+        }
+        // Keep WHICH address rule failed: a malformed address and plain http
+        // to a remote host are different mistakes with different fixes.
+        var addresses: [String] = []
+        var policyError: Error?
+        for candidate in candidates {
+            do {
+                addresses.append(try ConnectionURLPolicy.normalizedBaseURL(candidate))
+            } catch {
+                policyError = policyError ?? error
+            }
+        }
+        guard !addresses.isEmpty else {
+            show(error: policyError ?? ConnectionURLPolicyError.invalidURL, at: .address)
+            return
+        }
+        clearFailure()
+        isWorking = true
+        runningPlace = .address
+        defer {
+            isWorking = false
+            runningPlace = nil
+        }
+        var firstError: Error?
+        for baseURL in addresses {
+            // A saved dashboard at this address lends its Cloudflare token
+            // when none was typed.
+            let cloudflare = typedCloudflare ?? appState.dashboardScopedCloudflareAccess(for: baseURL)
+            do {
+                let route = try await LoginRoute.discover(using: NativeAuthClient(baseURL: baseURL, cloudflareAccess: cloudflare))
+                address = baseURL
+                appState.rememberDashboardURL(baseURL)
+                let saved = appState.savedDashboardRegistry.dashboard(atNormalizedURL: baseURL)
+                follow(
+                    route,
+                    baseURL: baseURL,
+                    label: saved?.label ?? SavedDashboardLabel.derive(from: baseURL),
+                    cloudflare: cloudflare,
+                    place: .address
+                )
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                firstError = firstError ?? error
+                guard LoginAddress.shouldTryNextCandidate(after: error) else { break }
+            }
+        }
+        if let firstError { show(error: firstError, at: .address) }
+    }
+
+    private func follow(
+        _ route: LoginRoute,
+        baseURL: String,
+        label: String,
+        cloudflare: CloudflareAccessCredentials?,
+        place: LoginFailurePlace
+    ) {
+        switch route {
+        case .password(let nativeOAuth):
+            if let previous = target, previous.baseURL != baseURL { password = "" }
+            target = LoginTarget(baseURL: baseURL, label: label, cloudflare: cloudflare, nativeOAuth: nativeOAuth)
+            prefillUsername(for: baseURL)
+            showsCredentials = true
+        case .nativeOAuth(let choice):
+            startNativeOAuth(baseURL: baseURL, provider: choice.provider, cloudflare: cloudflare, place: place)
+        case .browser:
+            startBrowserSignIn(baseURL: baseURL, cloudflare: cloudflare, place: place)
+        }
+    }
+
+    /// The username for the next sign-in: what was typed, else the one that
+    /// last signed in to this dashboard. A password behind Face ID keeps its
+    /// username to itself until Face ID opens it.
+    private func prefillUsername(for baseURL: String) {
+        guard let appState else { return }
+        let typed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard typed.isEmpty || username == prefilledUsername else { return }
+        guard let id = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) else {
+            if prefilledUsername != nil { username = "" }
+            prefilledUsername = nil
+            return
+        }
+        var remembered = appState.savedDashboardRegistry.dashboard(with: id)?.username
+        if remembered?.isEmpty ?? true,
+           let credentials = KeychainHelper.loadCredentials(dashboardID: id), !credentials.requiresFaceID {
+            remembered = credentials.username
+        }
+        username = remembered ?? ""
+        prefilledUsername = remembered
+    }
+
+    // MARK: The sign-in step
+
+    func signIn() async {
+        guard let appState, let target, !isWorking else { return }
+        appState.lastConnectionFailure = nil
+        guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            show(.notice(title: AppLocalization.string("Enter your dashboard username and password.")), at: .credentials)
+            return
+        }
+        clearFailure()
+        isWorking = true
+        runningPlace = .credentials
+        defer {
+            isWorking = false
+            runningPlace = nil
+        }
+        do {
+            let client = NativeAuthClient(baseURL: target.baseURL, cloudflareAccess: target.cloudflare)
+            let authenticated = try await client.connect(username: username, password: password)
+            if let dashboardID = appState.resolveDashboardID(forURL: target.baseURL, registerIfMissing: true) {
+                if saveSignIn {
+                    KeychainHelper.saveCredentials(DashboardCredentials(
+                        baseURL: target.baseURL,
+                        username: username,
+                        password: password,
+                        requiresFaceID: useBiometrics
+                    ), dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                }
+                if let cloudflare = target.cloudflare {
+                    KeychainHelper.saveCloudflareAccess(cloudflare, origin: target.baseURL, dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearCloudflareAccess(dashboardID: dashboardID)
+                }
+                appState.rememberDashboardUsername(username, dashboardID: dashboardID)
+                authenticated.commitCookies(dashboardID: dashboardID)
+            }
+            appState.prepareInteractiveSignIn(baseURL: target.baseURL)
+            await appState.connect(with: HermesConnection(baseUrl: target.baseURL, ticket: authenticated.ticket))
+            onSignedIn()
+        } catch is CancellationError {
+            return
+        } catch {
+            show(error: error, at: .credentials)
+        }
+    }
+
+    /// The sign-in step's "Sign in with browser instead".
+    func signInWithBrowserInstead() {
+        guard let target, let choice = target.nativeOAuth else { return }
+        clearFailure()
+        startNativeOAuth(baseURL: target.baseURL, provider: choice.provider, cloudflare: target.cloudflare, place: .credentials)
+    }
+
+    // MARK: Browser sign-ins
+
+    private func startNativeOAuth(
+        baseURL: String,
+        provider: String?,
+        cloudflare: CloudflareAccessCredentials?,
+        place: LoginFailurePlace
+    ) {
+        guard let appState else { return }
+        guard let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
+            show(.notice(title: AppLocalization.string("Could not save this dashboard.")), at: place)
+            return
+        }
+        if let cloudflare {
+            KeychainHelper.saveCloudflareAccess(cloudflare, origin: baseURL, dashboardID: dashboardID)
+        }
+        browserPlace = place
+        nativeOAuthRequest = LoginNativeOAuthRequest(baseURL: baseURL, provider: provider, dashboardID: dashboardID, cloudflare: cloudflare)
+    }
+
+    private func startBrowserSignIn(baseURL: String, cloudflare: CloudflareAccessCredentials?, place: LoginFailurePlace) {
+        guard let appState else { return }
+        // The WebKit session is the dashboard's own: the saved dashboard's
+        // identified store when it exists (repair, signing in again),
+        // otherwise a fresh store for this new sign-in. Never the default
+        // store: sibling-host cookies must not cross dashboards.
+        let storeID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) ?? UUID()
+        // The service token belongs to the dashboard it opens; resolve (or
+        // pre-register) it so the scoped write can't land on another record.
+        if let cloudflare, let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) {
+            KeychainHelper.saveCloudflareAccess(cloudflare, origin: baseURL, dashboardID: dashboardID)
+        }
+        browserPlace = place
+        browserRequest = LoginBrowserRequest(baseURL: baseURL, cloudflare: cloudflare, webKitStoreID: storeID)
+    }
+
+    /// Where a browser sign-in's failure shows once its sheet reports one.
+    private var browserPlace: LoginFailurePlace = .address
+
+    func nativeOAuthSucceeded(_ result: NativeOAuthLoginResult, request: LoginNativeOAuthRequest) async {
+        guard let appState else { return }
+        clearFailure()
+        guard await appState.connectWithNativeOAuth(result, baseURL: request.baseURL) else {
+            show(.notice(
+                title: AppLocalization.string("Sign-in failed."),
+                message: AppLocalization.string("Please try again.")
+            ), at: browserPlace)
+            return
+        }
+        if request.cloudflare == nil {
+            KeychainHelper.clearCloudflareAccess(dashboardID: request.dashboardID)
+        }
+        onSignedIn()
+    }
+
+    func nativeOAuthFailed(_ error: Error) {
+        Self.logger.error("Native OAuth sign-in failed: \(String(describing: type(of: error)), privacy: .public)")
+        show(.notice(
+            title: AppLocalization.string("Sign-in failed."),
+            message: (error as? LocalizedError)?.errorDescription ?? AppLocalization.string("Please try again.")
+        ), at: browserPlace)
+    }
+
+    func browserDeliveredTicket(_ ticket: String, baseURL: String) async {
+        guard let appState else { return }
+        browserRequest = nil
+        // Browser and single sign-on logins leave no password Conduit can
+        // reuse.
+        if let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) {
+            KeychainHelper.clearCredentials(dashboardID: dashboardID)
+            KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+        }
+        appState.rememberDashboardURL(baseURL)
+        appState.prepareInteractiveSignIn(baseURL: baseURL)
+        await appState.connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket))
+        onSignedIn()
+    }
+
+    func browserFailed(_ classifiedFailure: ConnectionFailure, detail: String) {
+        // Fixed classified copy only: the dashboard's detail text is logged
+        // for diagnosis (redacted in release builds) and never shown.
+        Self.logger.error(
+            "Auth WebView sign-in error: \(String(describing: classifiedFailure), privacy: .public) detail: \(detail)"
+        )
+        show(.presenting(classifiedFailure), at: browserPlace)
+    }
+}

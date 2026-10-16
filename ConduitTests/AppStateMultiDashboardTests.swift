@@ -307,6 +307,89 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(appState.activeDashboardID, mac.id)
     }
 
+    func testSignOutKeepsTheUsernameAndCloudflareTokenForTheNextSignIn() throws {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]))
+        let token = try XCTUnwrap(CloudflareAccessCredentials.from(clientID: "cf-id", clientSecret: "cf-secret"))
+        for entry in [mac, vps] {
+            KeychainHelper.saveCredentials(
+                DashboardCredentials(baseURL: entry.normalizedURL, username: "eric-\(entry.label)", password: "p", requiresFaceID: false),
+                dashboardID: entry.id
+            )
+            KeychainHelper.saveCloudflareAccess(token, origin: entry.normalizedURL, dashboardID: entry.id)
+        }
+
+        // The active dashboard takes the full disconnect; the other the
+        // scoped sign-out.
+        appState.signOutDashboard(mac.id)
+        appState.signOutDashboard(vps.id)
+
+        for entry in [mac, vps] {
+            // The password is gone; the username and the Cloudflare token
+            // stay for the next sign-in.
+            XCTAssertNil(KeychainHelper.loadCredentials(dashboardID: entry.id))
+            XCTAssertEqual(appState.savedSignIn(for: entry.id), .signInNeeded)
+            XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: entry.id)?.username, "eric-\(entry.label)")
+            XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: entry.id, for: entry.normalizedURL), token)
+        }
+        XCTAssertEqual(SavedDashboardRegistryStore.load()?.dashboard(with: mac.id)?.username, "eric-Mac")
+    }
+
+    func testRemoveDashboardDeletesItsCloudflareToken() throws {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]))
+        let token = try XCTUnwrap(CloudflareAccessCredentials.from(clientID: "cf-id", clientSecret: "cf-secret"))
+        for entry in [mac, vps] {
+            KeychainHelper.saveCloudflareAccess(token, origin: entry.normalizedURL, dashboardID: entry.id)
+        }
+
+        appState.removeDashboard(vps.id)
+        XCTAssertNil(KeychainHelper.loadCloudflareAccess(dashboardID: vps.id, for: vps.normalizedURL))
+        XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: mac.id, for: mac.normalizedURL), token)
+
+        appState.removeDashboard(mac.id)
+        XCTAssertNil(KeychainHelper.loadCloudflareAccess(dashboardID: mac.id, for: mac.normalizedURL))
+    }
+
+    func testSavedSignInNamesWhatEachDashboardCanSignInWith() {
+        let home = dashboard("Home", "https://home.example")
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let fresh = dashboard("Fresh", "https://fresh.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, mac, review, fresh]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "u", password: "p", requiresFaceID: true),
+            dashboardID: home.id
+        )
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: mac.normalizedURL, username: "u", password: "p", requiresFaceID: false),
+            dashboardID: mac.id
+        )
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: review.normalizedURL, ticket: "t"), dashboardID: review.id)
+
+        XCTAssertEqual(appState.savedSignIn(for: home.id), .biometric)
+        XCTAssertEqual(appState.savedSignIn(for: mac.id), .password)
+        XCTAssertEqual(appState.savedSignIn(for: review.id), .session)
+        XCTAssertEqual(appState.savedSignIn(for: fresh.id), .signInNeeded)
+        XCTAssertFalse(SavedSignInKind.signInNeeded.canSignInWithoutTyping)
+        XCTAssertTrue(SavedSignInKind.session.canSignInWithoutTyping)
+    }
+
+    func testASignInRemembersItsUsernameAndABlankOneNeverReplacesIt() {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac]))
+
+        appState.rememberDashboardUsername("  eric ", dashboardID: mac.id)
+        appState.rememberDashboardUsername("   ", dashboardID: mac.id)
+        // An unknown dashboard is ignored.
+        appState.rememberDashboardUsername("someone", dashboardID: UUID())
+
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: mac.id)?.username, "eric")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.count, 1)
+    }
+
     func testRemoveActiveDashboardLeavesDisconnectedWithoutAutoConnect() throws {
         let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
         let vps = dashboard("VPS", "https://hermes.example.com")

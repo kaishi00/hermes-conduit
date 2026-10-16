@@ -435,4 +435,21 @@ final class SavedDashboardRegistryTests: XCTestCase {
 
         XCTAssertEqual(KeychainHelper.loadPushRegistration(), registration)
     }
+
+    // MARK: - Remembered username
+
+    func testRegistrySavedBeforeUsernamesDecodesWithoutOne() throws {
+        let id = UUID()
+        let json = """
+        {"schemaVersion":1,"activeDashboardID":"\(id.uuidString)","dashboards":[{"id":"\(id.uuidString)","label":"Mac","normalizedURL":"https://mac.tailnet.ts.net"}]}
+        """
+        let registry = try JSONDecoder().decode(SavedDashboardRegistry.self, from: Data(json.utf8))
+        XCTAssertEqual(registry.dashboard(with: id)?.label, "Mac")
+        XCTAssertNil(registry.dashboard(with: id)?.username)
+
+        var named = registry
+        named.dashboards[0].username = "eric"
+        let reloaded = try JSONDecoder().decode(SavedDashboardRegistry.self, from: JSONEncoder().encode(named))
+        XCTAssertEqual(reloaded.dashboard(with: id)?.username, "eric")
+    }
 }

@@ -27,6 +27,25 @@ struct SavedDashboard: Codable, Equatable, Identifiable {
     let id: UUID
     var label: String
     var normalizedURL: String
+    /// The username that last signed in here, kept through Sign Out so the
+    /// next sign-in starts filled in. Registries saved before it decode
+    /// without one.
+    var username: String?
+}
+
+/// What a saved dashboard can sign in with, without typing anything.
+enum SavedSignInKind: Equatable {
+    /// A saved password behind Face ID or Touch ID.
+    case biometric
+    /// A saved password.
+    case password
+    /// A saved session from a browser or single sign-on login.
+    case session
+    /// Nothing saved: the dashboard needs a sign-in. (Not `none`, which
+    /// reads as an Optional's.)
+    case signInNeeded
+
+    var canSignInWithoutTyping: Bool { self != .signInNeeded }
 }
 
 /// The persisted multi-dashboard registry. `schemaVersion` guards future

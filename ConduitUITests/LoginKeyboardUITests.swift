@@ -20,6 +20,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// Stable XCUI handles defined in LoginView (decoupled from copy).
     private enum Identity {
         static let serverURL = "login.server-url"
+        static let advanced = "login.advanced"
         static let cloudflareToggle = "login.cloudflare-toggle"
         static let cloudflareClientID = "login.cloudflare-client-id"
         static let cloudflareClientSecret = "login.cloudflare-client-secret"
@@ -40,6 +41,12 @@ final class LoginKeyboardUITests: XCTestCase {
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
+
+        // The Cloudflare token lives under Advanced on the address step.
+        let advanced = app.buttons[Identity.advanced]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5), "Advanced row missing. Tree:\n\(app.debugDescription)")
+        XCTAssertTrue(pollHittability(of: advanced, timeout: 5))
+        advanced.tap()
 
         let cfToggle = app.switches[Identity.cloudflareToggle]
         XCTAssertTrue(
@@ -78,8 +85,8 @@ final class LoginKeyboardUITests: XCTestCase {
         )
         secret.typeText("access-client-secret")
 
-        // The Connect control itself must also remain reachable on the
-        // compact keyboard-obscured layout.
+        // Continue itself must also remain reachable on the compact
+        // keyboard-obscured layout.
         let connect = app.buttons[Identity.connect]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         let beforeScroll = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
@@ -138,23 +145,8 @@ final class LoginKeyboardUITests: XCTestCase {
         )
     }
 
-    /// Fills credentials for the password-login keyboard/focus scenarios.
-    /// Connect itself is URL-gated so OAuth-only dashboards can be discovered.
-    private func fillRequiredCredentials(_ app: XCUIApplication) throws {
-        let username = app.textFields["login.username"]
-        XCTAssertTrue(username.waitForExistence(timeout: 5), "Username field did not appear. Tree:\n\(app.debugDescription)")
-        username.tap()
-        username.typeText("ui-test-user")
-
-        let password = app.secureTextFields["login.password"]
-        XCTAssertTrue(password.waitForExistence(timeout: 5), "Password field did not appear. Tree:\n\(app.debugDescription)")
-        password.tap()
-        password.typeText("ui-test-password")
-    }
-
-    /// Types text after clearing any existing content. The login screen
-    /// prefills the server URL from the last saved dashboard address
-    /// (LoginView.onAppear), so appended typing would form an unpredictable
+    /// Types text after clearing any existing content, so a filled-in
+    /// address (a Connection Setup handoff) can never form an unpredictable
     /// value. Deletes past the start of an empty field are no-ops, so the
     /// overshooting delete count lands on exactly `text` no matter where the
     /// tap placed the cursor.
@@ -190,11 +182,11 @@ final class LoginKeyboardUITests: XCTestCase {
 
         let serverField = app.textFields[Identity.serverURL]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
-        // No scheme → invalidURL policy failure; classification never hits
-        // the network, so this stays deterministic offline. Any prefilled
-        // dashboard address is cleared first.
-        clearAndType("not-a-dashboard-url", into: serverField)
-        try fillRequiredCredentials(app)
+        // A scheme Conduit doesn't speak → invalidURL policy failure;
+        // classification never hits the network, so this stays deterministic
+        // offline. (A bare host is no longer malformed: Conduit adds https.)
+        // Any prefilled dashboard address is cleared first.
+        clearAndType("ftp://not-a-dashboard", into: serverField)
         dismissKeyboard(app)
 
         let connect = app.buttons[Identity.connect]
@@ -241,7 +233,6 @@ final class LoginKeyboardUITests: XCTestCase {
         // TEST-NET-3 documentation address: never routed, and the transport
         // policy rejects it before any connection attempt.
         clearAndType("http://203.0.113.10:9119", into: serverField)
-        try fillRequiredCredentials(app)
         dismissKeyboard(app)
 
         let connect = app.buttons[Identity.connect]

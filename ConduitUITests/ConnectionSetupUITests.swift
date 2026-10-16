@@ -83,8 +83,9 @@ final class ConnectionSetupUITests: XCTestCase {
         let server = app.textFields["login.server-url"]
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
-        XCTAssertEqual(app.textFields["login.username"].value as? String, "round3-user")
-        XCTAssertTrue(app.buttons["Connect"].isEnabled)
+        // The username and password wait for the sign-in step, which
+        // Continue opens once the dashboard says it takes a password.
+        XCTAssertTrue(app.buttons["login.connect"].isEnabled)
         XCTAssertFalse(app.staticTexts["Connecting…"].exists)
         // Reopening uses the in-memory login fields, including the password.
         openSetup(app)

@@ -9829,8 +9829,11 @@ final class AppState: ObservableObject {
         wipeOfflineChatCache(dashboardID: signingOutDashboardID)
         if let dashboardID = signingOutDashboardID {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
+            keepUsernameForNextSignIn(dashboardID: dashboardID)
             KeychainHelper.clearCredentials(dashboardID: dashboardID)
-            KeychainHelper.clearCloudflareAccess(dashboardID: dashboardID)
+            // The Cloudflare Access token stays, like the address and the
+            // extra headers: it reaches the server, it doesn't sign in.
+            // Remove Dashboard deletes it.
         }
         // The Keychain mirror of the dashboard cookies is cleared above, but
         // the live session cookies live on in WebKit's persistent default data
@@ -10009,6 +10012,39 @@ final class AppState: ObservableObject {
         return KeychainHelper.loadCredentials(dashboardID: dashboardID)
     }
 
+    /// How a saved dashboard can sign in without typing, for the sign-in
+    /// screen's list. Reads the Keychain: call it off the render path.
+    func savedSignIn(for id: UUID) -> SavedSignInKind {
+        if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
+            return credentials.requiresFaceID ? .biometric : .password
+        }
+        if KeychainHelper.loadConnection(dashboardID: id) != nil
+            || KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil {
+            return .session
+        }
+        return .signInNeeded
+    }
+
+    /// Records the username that just signed in to this dashboard, so a
+    /// later sign-in starts with it filled in.
+    func rememberDashboardUsername(_ username: String, dashboardID: UUID) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == dashboardID }),
+              savedDashboardRegistry.dashboards[index].username != trimmed else { return }
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].username = trimmed
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+    }
+
+    /// Sign Out deletes the saved password but keeps its username on the
+    /// dashboard, for sign-ins saved before the registry recorded it.
+    private func keepUsernameForNextSignIn(dashboardID: UUID) {
+        guard let credentials = KeychainHelper.loadCredentials(dashboardID: dashboardID) else { return }
+        rememberDashboardUsername(credentials.username, dashboardID: dashboardID)
+    }
+
     /// Bumped on every dashboard switch; a restore that started under an
     /// older generation must not install its connection underneath a newer
     /// switch.
@@ -10167,8 +10203,8 @@ final class AppState: ObservableObject {
         }
         removeWidgetSnapshot(dashboardID: id)
         KeychainHelper.clearConnection(dashboardID: id)
+        keepUsernameForNextSignIn(dashboardID: id)
         KeychainHelper.clearCredentials(dashboardID: id)
-        KeychainHelper.clearCloudflareAccess(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
@@ -10193,6 +10229,9 @@ final class AppState: ObservableObject {
         } else {
             signOutDashboard(id)
         }
+        // Sign Out keeps the Cloudflare token; forgetting the dashboard
+        // doesn't.
+        KeychainHelper.clearCloudflareAccess(dashboardID: id)
         var registry = savedDashboardRegistry
         registry.dashboards.removeAll { $0.id == id }
         if registry.activeDashboardID == id { registry.activeDashboardID = nil }
