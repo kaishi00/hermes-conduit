@@ -449,6 +449,17 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testBackdropGlowMatchesABlurredDisc() {
+        let radius = 181.0, blur = 72.0
+        let values = ConduitGlowProfile.computeIntensities(radius: radius, blur: blur)
+        XCTAssertEqual(values.count, ConduitGlowProfile.stopCount)
+        // A disc blurred by a Gaussian is 1 - e^(-R²/2σ²) bright at its centre.
+        XCTAssertEqual(values[0], 1 - exp(-radius * radius / (2 * blur * blur)), accuracy: 0.005)
+        XCTAssertEqual(values.last ?? 1, 0, accuracy: 0.005, "Three blurs out, the glow has faded")
+        XCTAssertEqual(zip(values, values.dropFirst()).filter { $0.0 < $0.1 }.count, 0, "Brightness only falls outwards")
+        XCTAssertEqual(ConduitGlowProfile.intensities(radius: radius, blur: blur), values)
+    }
+
     func testBackdropMotionPolicyGatesPowerAndLifecycle() {
         XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
             drifts: true,

@@ -146,13 +146,13 @@ private struct PressableButtonLabel: View {
 
 // MARK: - Living canvas
 
-/// The slow background drift is subtle, but the two full-screen blurred
-/// circles are expensive to composite continuously. Keep their motion bounded
-/// and stop scheduling frames when the app or device should conserve work.
+/// The slow background drift is subtle, but every tick redraws the backdrop
+/// and the glass sampling it. Keep the motion bounded and stop scheduling
+/// frames when the app or device should conserve work.
 enum ConduitBackdropMotionPolicy {
     /// Every frame also redraws each glass surface on top, which samples the
-    /// backdrop. The circles are blurred by 72-84 pt and drift slowly, so a
-    /// 10 fps step (about 3 pt on a phone) can't be seen.
+    /// backdrop. The glows are 72-84 pt soft and drift slowly, so a 10 fps
+    /// step (about 3 pt on a phone) can't be seen.
     static let framesPerSecond = 10
     static let cycleDuration: TimeInterval = 26
 
@@ -273,25 +273,27 @@ struct ConduitBackdrop: View {
                 GeometryReader { proxy in
                     let drift = motionClock.progress(at: ProcessInfo.processInfo.systemUptime)
                     ZStack {
-                        Circle()
+                        ConduitGlow(
                             // On the light base a dark-mode-strength glow
                             // washes out, so light mode draws it stronger.
-                            .fill(glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24))
-                            .frame(width: proxy.size.width * 0.92)
-                            .blur(radius: 72)
-                            .offset(
-                                x: (-0.18 + 0.48 * drift) * proxy.size.width,
-                                y: (-0.24 - 0.10 * drift) * proxy.size.height
-                            )
+                            color: glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24),
+                            diameter: min(proxy.size.width * 0.92, proxy.size.height),
+                            blur: 72
+                        )
+                        .offset(
+                            x: (-0.18 + 0.48 * drift) * proxy.size.width,
+                            y: (-0.24 - 0.10 * drift) * proxy.size.height
+                        )
 
-                        Circle()
-                            .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10))
-                            .frame(width: proxy.size.width * 0.84)
-                            .blur(radius: 84)
-                            .offset(
-                                x: (0.26 - 0.58 * drift) * proxy.size.width,
-                                y: (0.28 + 0.08 * drift) * proxy.size.height
-                            )
+                        ConduitGlow(
+                            color: Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10),
+                            diameter: min(proxy.size.width * 0.84, proxy.size.height),
+                            blur: 84
+                        )
+                        .offset(
+                            x: (0.26 - 0.58 * drift) * proxy.size.width,
+                            y: (0.28 + 0.08 * drift) * proxy.size.height
+                        )
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 }
@@ -304,9 +306,8 @@ struct ConduitBackdrop: View {
             )
         }
         // Flattened into one opaque image, drawn again only when the glow
-        // moves (10 fps at most) or changes color. As two live blurs, the
-        // circles were blurred again on every frame anything moved over
-        // them, every frame of a list's scroll included.
+        // moves (10 fps at most) or changes color, so nothing scrolling over
+        // it redraws it.
         .drawingGroup(opaque: true)
         .animation(.easeInOut(duration: 0.6), value: glowTint)
         .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
@@ -322,6 +323,85 @@ struct ConduitBackdrop: View {
         colorScheme == .dark
             ? Color(red: 0.045, green: 0.052, blue: 0.072)
             : Color(red: 0.94, green: 0.95, blue: 0.98)
+    }
+}
+
+/// A soft glow: a disc as it looks blurred, drawn as a radial gradient. The
+/// backdrop's glows were blurred circles, and a 72-84 pt Gaussian blur over
+/// most of the screen was redone on every drift tick, ten times a second,
+/// on the GPU the scrolling chat shares. A gradient costs almost nothing to
+/// draw and looks the same.
+struct ConduitGlow: View {
+    let color: Color
+    let diameter: CGFloat
+    /// The blur the glow imitates (a Gaussian's standard deviation, as
+    /// `.blur(radius:)` takes it).
+    let blur: CGFloat
+
+    var body: some View {
+        let reach = diameter / 2 + ConduitGlowProfile.reachInBlurs * blur
+        let intensities = ConduitGlowProfile.intensities(radius: diameter / 2, blur: blur)
+        let last = Double(max(intensities.count - 1, 1))
+        Circle()
+            .fill(RadialGradient(
+                stops: intensities.enumerated().map { index, intensity in
+                    Gradient.Stop(color: color.opacity(intensity), location: Double(index) / last)
+                },
+                center: .center,
+                startRadius: 0,
+                endRadius: reach
+            ))
+            .frame(width: 2 * reach, height: 2 * reach)
+    }
+}
+
+/// How bright a blurred disc is from its centre outwards.
+@MainActor
+enum ConduitGlowProfile {
+    /// The gradient runs out to the disc's edge plus three blurs, where a
+    /// Gaussian has all but faded.
+    static let reachInBlurs: CGFloat = 3
+    static let stopCount = 20
+
+    private struct Key: Hashable { let radius: Int; let blur: Int }
+    private static var cache: [Key: [Double]] = [:]
+
+    /// The brightness (0...1) at `stopCount` evenly spaced distances from
+    /// the centre out to the reach: the disc convolved with the Gaussian,
+    /// integrated over the disc. Cached per whole-point size, so a drift
+    /// tick only looks it up.
+    static func intensities(radius: CGFloat, blur: CGFloat) -> [Double] {
+        let key = Key(radius: Int(radius.rounded()), blur: Int(blur.rounded()))
+        if let cached = cache[key] { return cached }
+        let values = computeIntensities(radius: Double(key.radius), blur: Double(key.blur))
+        cache[key] = values
+        return values
+    }
+
+    nonisolated static func computeIntensities(radius: Double, blur: Double) -> [Double] {
+        guard radius > 0, blur > 0 else {
+            return Array(repeating: radius > 0 ? 1 : 0, count: stopCount)
+        }
+        let reach = radius + Double(reachInBlurs) * blur
+        let rings = 40, angles = 40
+        let ringStep = radius / Double(rings)
+        let angleStep = Double.pi / Double(angles)
+        let twoSigmaSquared = 2 * blur * blur
+        // Half the disc by symmetry, then doubled.
+        let scale = 2 * ringStep * angleStep / (Double.pi * twoSigmaSquared)
+        return (0..<stopCount).map { index in
+            let distance = reach * Double(index) / Double(stopCount - 1)
+            var total = 0.0
+            for ring in 0..<rings {
+                let rho = (Double(ring) + 0.5) * ringStep
+                for angle in 0..<angles {
+                    let theta = (Double(angle) + 0.5) * angleStep
+                    let squared = distance * distance + rho * rho - 2 * distance * rho * cos(theta)
+                    total += exp(-squared / twoSigmaSquared) * rho
+                }
+            }
+            return min(max(total * scale, 0), 1)
+        }
     }
 }
 
