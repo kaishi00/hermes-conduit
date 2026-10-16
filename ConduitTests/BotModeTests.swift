@@ -1992,6 +1992,38 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionTitle, "Scout")
     }
 
+    /// `activeProfileSessions` is kept between reads (the V2 chat list asks
+    /// for it many times per render); a new catalog, roster or profile still
+    /// shows on the next read.
+    func testActiveProfileSessionsFollowsCatalogRosterAndProfileChanges() async {
+        let bot = makeBot(name: "atlas", canonicalID: "stored-1")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in
+                BotRosterSnapshot(bots: [bot], supportsBotProtocol: true)
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [
+            makeSessionSummary(id: "stored-1", title: "Bot Chat"),
+            makeSessionSummary(id: "ordinary", title: "Design review")
+        ]
+        // Read before the roster arrives: nothing marks the bot's chat yet.
+        XCTAssertEqual(harness.appState.activeProfileSessions.map(\.id), ["stored-1", "ordinary"])
+
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.activeProfileSessions.map(\.id), ["ordinary"])
+
+        harness.appState.sessions.append(makeSessionSummary(id: "work-1", title: "Plan", profile: "work"))
+        harness.appState.sessions.append(makeSessionSummary(id: "later", title: "Later"))
+        XCTAssertEqual(harness.appState.activeProfileSessions.map(\.id), ["ordinary", "later"])
+
+        harness.appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(harness.appState.activeProfileSessions.map(\.id), ["work-1"])
+    }
+
     /// The `activeProfileSessions` projection (what the Sessions list renders
     /// and what a workspace considers its own) never carries a bot conversation
     /// — by reserved title or by registry identity — so a restored Bot Chat

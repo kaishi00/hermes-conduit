@@ -615,6 +615,7 @@ final class AppState: ObservableObject {
 
     @Published var sessions: [SessionSummary] = [] {
         didSet {
+            sessionsRevision &+= 1
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
             updateSessionReferenceTitles()
@@ -689,7 +690,14 @@ final class AppState: ObservableObject {
         }
         return titles
     }
-    @Published private(set) var projects: [ProjectSummary] = []
+    @Published private(set) var projects: [ProjectSummary] = [] {
+        didSet { projectPositionsBySessionID = nil }
+    }
+    /// For each conversation id a project previews, the position of the
+    /// first project that lists it. Built once per `projects` change for
+    /// `knownProjectID(for:)`, which the chat list asks for every row on
+    /// every render.
+    private var projectPositionsBySessionID: [String: Int]?
     @Published private(set) var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
@@ -1058,14 +1066,37 @@ final class AppState: ObservableObject {
     /// this LISTING (only to resume selection): a row titled "Bot Chat" that
     /// no roster evidence reserves is an ordinary conversation the user can
     /// still see and open (see `BotChatHygiene.isReservedCanonicalTitleRow`).
+    ///
+    /// The V2 chat list reads this many times per render (its rows, each
+    /// filter's count, the voice button's recents), and building it checks
+    /// every row against the bot roster, so it is kept until the catalog,
+    /// the profile or the bot evidence changes.
     var activeProfileSessions: [SessionSummary] {
+        let key = ActiveProfileSessionsKey(
+            sessionsRevision: sessionsRevision,
+            profile: activeProfile,
+            botOwnershipGeneration: botOwnershipGeneration
+        )
+        if let cached = activeProfileSessionsCache, cached.key == key { return cached.rows }
         let botOwned = botOwnedSessionIDs
-        return sessions.filter {
+        let rows = sessions.filter {
             sessionBelongsToProfile($0, profile: activeProfile)
                 && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
         }
+        activeProfileSessionsCache = (key, rows)
+        return rows
     }
+
+    private struct ActiveProfileSessionsKey: Equatable {
+        let sessionsRevision: Int
+        let profile: String
+        let botOwnershipGeneration: Int
+    }
+
+    /// Bumped on every write to `sessions`.
+    private var sessionsRevision = 0
+    private var activeProfileSessionsCache: (key: ActiveProfileSessionsKey, rows: [SessionSummary])?
 
     var activeProfileCronSessions: [SessionSummary] {
         cronSessions.filter { sessionBelongsToProfile($0, profile: activeProfile) }
@@ -23042,12 +23073,28 @@ final class AppState: ObservableObject {
     /// best-effort hint for hiding the no-op "move here" target; nil means
     /// unknown, not "in no project".
     func knownProjectID(for session: SessionSummary) -> String? {
-        let ids = Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
-        return projects.first { project in
-            !project.isHome && project.previewSessions.contains { preview in
-                ids.contains(preview.id) || preview.storedSessionId.map(ids.contains) == true
+        let index = projectPositionsIndex()
+        guard !index.isEmpty else { return nil }
+        // The first listed project holding any id the conversation answers to.
+        var first: Int?
+        for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
+            if let position = index[id], position < (first ?? .max) { first = position }
+        }
+        return first.map { projects[$0].id }
+    }
+
+    private func projectPositionsIndex() -> [String: Int] {
+        if let index = projectPositionsBySessionID { return index }
+        var index: [String: Int] = [:]
+        for (position, project) in projects.enumerated() where !project.isHome {
+            for preview in project.previewSessions {
+                for id in [preview.id, preview.storedSessionId].compactMap({ $0 }) where index[id] == nil {
+                    index[id] = position
+                }
             }
-        }?.id
+        }
+        projectPositionsBySessionID = index
+        return index
     }
 
     /// Moves a conversation into `project` by re-homing its workspace at the

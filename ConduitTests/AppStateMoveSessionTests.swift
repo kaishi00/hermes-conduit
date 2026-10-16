@@ -229,6 +229,23 @@ extension AppStateDecisionFenceTests {
         await refresh?.value
 
         XCTAssertEqual(appState.knownProjectID(for: liveSession()), "p1")
+
+        // A new tree replaces the answer, and with two projects holding the
+        // chat the first listed one (more conversations first) wins.
+        tree["projects"] = [
+            ["id": "p1", "label": "Skunkworks", "path": "/work/skunkworks", "session_count": 1,
+             "preview_sessions": [["id": "stored-1", "title": "Wrong folder"]]],
+            ["id": "p2", "label": "Atlas", "path": "/work/atlas", "session_count": 3,
+             "preview_sessions": [["id": "runtime-1", "title": "Wrong folder"]]]
+        ]
+        let second = try await nextRequest(on: socket, "the second projects.tree request") {
+            refresh = Task { await appState.refreshProjects() }
+        }
+        try respond(on: socket, to: second, with: ["result": tree])
+        await refresh?.value
+
+        XCTAssertEqual(appState.projects.map(\.id).first, "p2")
+        XCTAssertEqual(appState.knownProjectID(for: liveSession()), "p2")
         client.disconnect()
     }
 }

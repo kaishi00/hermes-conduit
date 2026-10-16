@@ -413,7 +413,9 @@ struct V2ChatsView: View {
     }
 
     private var filterMenu: some View {
-        Menu {
+        // Read once: it walks the catalog.
+        let waitingApprovalCount = self.waitingApprovalCount
+        return Menu {
             if showingProjects {
                 Button {
                     Haptics.selection()
@@ -570,9 +572,9 @@ struct V2ChatsView: View {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var nestedSections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
+    private func nestedSections(_ displayed: [SessionSummary]) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
         SessionNesting.sections(
-            displayedSessions,
+            displayed,
             query: searchText,
             statusFilterActive: selection.flattens,
             isPinned: appState.isSessionPinned,
@@ -583,11 +585,13 @@ struct V2ChatsView: View {
     // MARK: - Sessions list
 
     private var sessionsList: some View {
-        let sections = nestedSections
+        // Worked out once per render: the rows walk the whole catalog.
+        let displayed = displayedSessions
+        let sections = nestedSections(displayed)
         let layout = SidebarOfflineLayout.visibility(
             showingProjects: false,
             hasOfflineCopy: appState.offlineChatPresentation != nil,
-            displayedSessionsEmpty: displayedSessions.isEmpty
+            displayedSessionsEmpty: displayed.isEmpty
         )
         return List {
             searchField
@@ -654,7 +658,7 @@ struct V2ChatsView: View {
         }
         .onAppear { revealActiveNestAncestors() }
         .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
-        .onChange(of: displayedSessions) { _, _ in revealActiveNestAncestors() }
+        .onChange(of: displayed) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.pinnedSessionIDs) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceCallChatLinksRevision) { _, _ in revealActiveNestAncestors() }
@@ -993,12 +997,13 @@ struct V2ChatsView: View {
     /// Expands the parents of the open conversation so returning to the
     /// list shows its row (the drawer's NestRevealLatch rules).
     private func revealActiveNestAncestors() {
-        let sections = nestedSections
+        let displayed = displayedSessions
+        let sections = nestedSections(displayed)
         let nest = SessionNesting.ancestorKeys(of: appState.activeSessionId ?? "", in: sections.pinned + sections.recent)
         guard let toExpand = revealLatch.reveal(
             active: appState.activeSessionId,
             ancestors: nest.keys,
-            listHasRows: !displayedSessions.isEmpty,
+            listHasRows: !displayed.isEmpty,
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
