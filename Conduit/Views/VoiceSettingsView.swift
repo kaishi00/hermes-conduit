@@ -315,10 +315,14 @@ struct VoiceSettingsView: View {
                 // the provider section they set up into view. A newer tap or
                 // leaving the screen cancels a pending scroll.
                 .task(id: scrollTarget) {
+                    // Scrolls once Advanced has opened, then again in case
+                    // layout ran long; the second is a no-op if already there.
                     guard let target = scrollTarget else { return }
-                    try? await Task.sleep(for: .milliseconds(250))
-                    guard !Task.isCancelled else { return }
-                    withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                    for delay in [250, 600] {
+                        try? await Task.sleep(for: .milliseconds(delay))
+                        guard !Task.isCancelled else { return }
+                        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                    }
                     scrollTarget = nil
                 }
             }
@@ -803,19 +807,24 @@ struct VoiceSettingsView: View {
                     title: AppLocalization.string("Your voice server"),
                     detail: AppLocalization.string("Speaks the replies. Any OpenAI-compatible speech server, such as Chatterbox."),
                     inUse: usesOwnVoiceServer,
-                    chosen: service.snapshot.selectedTTSProvider == "openai",
+                    chosen: service.snapshot.selectedTTSProvider == Self.openAITTSProviderID,
                     identifier: "voice.private.voiceServer"
-                ) { usePrivateProvider("openai", kind: .tts) }
+                ) { usePrivateProvider(Self.openAITTSProviderID, kind: .tts) }
             }
         }
     }
 
+    static let openAITTSProviderID = "openai"
+
     /// OpenAI speech pointed at a server other than OpenAI's, as saved on
     /// Hermes (not an unsaved draft).
     private var usesOwnVoiceServer: Bool {
-        let baseURL = service.snapshot.values["tts.openai.base_url"] ?? ""
-        return service.snapshot.selectedTTSProvider == "openai"
-            && !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let baseURL = (service.snapshot.values["tts.openai.base_url"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = URL(string: baseURL)?.host?.lowercased() ?? ""
+        return service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+            && !baseURL.isEmpty
+            && host != "api.openai.com"
     }
 
     private func privateVoiceRow(
@@ -844,7 +853,7 @@ struct VoiceSettingsView: View {
                 }
             }
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-            Button(buttonTitle, action: action)
+            Button(action: action) { Text(verbatim: buttonTitle) }
                 .buttonStyle(.bordered)
                 .disabled(service.isLoading || savingField != nil)
                 .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
