@@ -250,6 +250,7 @@ struct V2ChatsView: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
     @State private var showArchivedSessions = false
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
@@ -645,6 +646,8 @@ struct V2ChatsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Scrolling the list puts the keyboard away; the search stays.
+        .scrollDismissesKeyboard(.immediately)
         .environment(\.defaultMinListRowHeight, 1)
         .refreshable {
             await appState.refreshSessionCatalog()
@@ -681,8 +684,28 @@ struct V2ChatsView: View {
     }
 
     /// The 40 pt glass search capsule, with the active filters as one
-    /// removable gold chip inside it ("Unread · Chat").
+    /// removable gold chip inside it ("Unread · Chat"). While typing, Cancel
+    /// beside it clears the search and puts the keyboard away; Search on
+    /// the keyboard or a scroll puts it away and keeps the search.
     private var searchField: some View {
+        HStack(spacing: 10) {
+            searchCapsule
+            if searchFocused {
+                Button(AppLocalization.string("Cancel")) {
+                    searchText = ""
+                    searchFocused = false
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.conduitAccent)
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: searchFocused)
+    }
+
+    private var searchCapsule: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
@@ -713,6 +736,8 @@ struct V2ChatsView: View {
                 .font(.subheadline)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -1062,6 +1087,8 @@ struct V2ChatsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Scrolling the list puts the keyboard away; the search stays.
+        .scrollDismissesKeyboard(.immediately)
         .environment(\.defaultMinListRowHeight, 1)
         .refreshable {
             await appState.refreshProjects()

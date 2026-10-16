@@ -359,6 +359,8 @@ struct KanbanView: View {
     @State private var newTaskStatus = "todo"
     @State private var includeArchived = false
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// iPhone-native interaction: one selected lane rendered as a vertical
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
@@ -904,8 +906,14 @@ struct KanbanView: View {
     /// vertically scrolling card list for the selected lane. Locked/system
     /// lanes stay visible with their counts but are marked and never offer
     /// creation, matching upstream LOCKED_COLUMNS semantics.
-    @ViewBuilder
     private var laneBoard: some View {
+        laneLayout
+            // Scrolling the board puts the search keyboard away.
+            .scrollDismissesKeyboard(.immediately)
+    }
+
+    @ViewBuilder
+    private var laneLayout: some View {
         if columnsLayout {
             columnBoard
         } else {
@@ -1794,12 +1802,35 @@ struct KanbanView: View {
     /// V3B search + filters row. Hidden while selection mode is active:
     /// selection chrome owns the top area (issue #98), and search/filters
     /// are inert for multi-select anyway.
+    /// While typing, Cancel beside it clears the search and puts the
+    /// keyboard away; Search on the keyboard or a scroll keeps the search.
     private var searchAndFilterBar: some View {
+        HStack(spacing: 10) {
+            searchAndFilterCapsule
+            if searchFocused {
+                Button(AppLocalization.string("Cancel")) {
+                    searchText = ""
+                    searchFocused = false
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.conduitAccent)
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: searchFocused)
+    }
+
+    private var searchAndFilterCapsule: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Search tasks", text: $searchText)
                 .textFieldStyle(.plain)
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
             if !searchText.isEmpty {
                 Button { searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill")
