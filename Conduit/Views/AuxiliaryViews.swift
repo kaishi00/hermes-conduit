@@ -1023,7 +1023,7 @@ private struct SettingsHome: View {
                 v2Link(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
             }
         }
-        v2Group("Hermes", symbol: "gearshape.2") {
+        v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
@@ -1100,7 +1100,6 @@ private struct SettingsHome: View {
             v2RowLabel(icon: icon, title: title, detail: detail, statusDot: statusDot, first: first)
         }
         .buttonStyle(.plain)
-        .accessibilityHint(detail)
         .accessibilityIdentifier(identifier)
     }
 
@@ -1120,7 +1119,6 @@ private struct SettingsHome: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier)
-        .accessibilityHint(detail)
     }
 
     /// A row in a V2 group: the gold glyph, the name over a short detail,
@@ -1133,6 +1131,7 @@ private struct SettingsHome: View {
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 26)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout.weight(.semibold))
@@ -1151,6 +1150,7 @@ private struct SettingsHome: View {
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -1322,7 +1322,7 @@ struct ChatSettingsDetail: View {
             save: save,
             showsNavigationTitle: false,
             optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + options.personalities],
-            fieldsHeader: "Hermes",
+            fieldsHeader: AppLocalization.string("Hermes"),
             leadingSection: AnyView(
                 VStack(spacing: 24) {
                     ChatReturnBehaviorSettings(
@@ -2100,6 +2100,8 @@ struct ProfileConfigSettingsPage: View {
                         .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
                 }
                 .disabled(savingKey != nil || choices.isEmpty).conduitGlassControl(cornerRadius: 14)
+                .accessibilityLabel(Text(field.label))
+                .accessibilityValue(Text(ProfileConfigValueDisplay.label(forFieldKey: field.key, displayedValue)))
                 if choices.isEmpty { Text("No configured choices are available.").font(.caption).foregroundStyle(.secondary) }
             case .labeledOptions(let options, let defaultValue):
                 fieldLabel(field)
@@ -2114,6 +2116,8 @@ struct ProfileConfigSettingsPage: View {
                         .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
                 }
                 .disabled(savingKey != nil || options.isEmpty).conduitGlassControl(cornerRadius: 14)
+                .accessibilityLabel(Text(field.label))
+                .accessibilityValue(Text(displayedValue))
             case .text(let defaultValue):
                 fieldLabel(field)
                 textEditor(field, defaultValue: defaultValue, keyboard: .default)
