@@ -527,6 +527,9 @@ final class GeminiLiveConversationController: ObservableObject {
                 self.tools.beginEnding()
             }
         }
+        session.onFreshSession = { [weak self] heardDropout in
+            self?.freshSessionStarted(heardDropout: heardDropout)
+        }
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
         input.onInterrupted = { [weak self] in self?.captureInterrupted() }
@@ -1073,6 +1076,19 @@ final class GeminiLiveConversationController: ObservableObject {
         pendingTextTurns.insert(Self.acknowledgementPrompt, at: 0)
         scheduleIdleFlush()
         flushPendingTextIfIdle()
+    }
+
+    /// Google wouldn't resume the conversation, so a new server session
+    /// took over without it: the model is told what was said so far (the
+    /// Watch's rejoin wording) before anything else goes out.
+    private func freshSessionStarted(heardDropout: Bool) {
+        tools.serverSessionStarted()
+        guard endRequestedAt == nil else { return }
+        let lines = transcript.map { entry in
+            WatchVoiceWire.DirectTurn(role: entry.speaker == .user ? .user : .assistant, text: entry.text, at: now())
+        }
+        pendingTextTurns.insert(WatchRejoin.prompt(lines, after: heardDropout ? .broke : .froze), at: 0)
+        scheduleIdleFlush()
     }
 
     /// Not UI copy (written for the model), so not localized.
