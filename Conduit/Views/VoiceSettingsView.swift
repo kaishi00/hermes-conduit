@@ -1120,11 +1120,11 @@ struct VoiceSettingsView: View {
         let others = service.snapshot.credentials.filter { !shown.contains($0.key) }
         if service.snapshot.credentials.isEmpty || !others.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Credentials on Hermes"), symbol: "key.fill", tint: .conduitAura) {
-                Text("Keys stay on your Hermes host. Conduit only shows the masked key Hermes reports, never the whole key.")
+                Text(AppLocalization.string("Keys stay on your Hermes host. Conduit only shows the masked key Hermes reports, never the whole key."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if service.snapshot.credentials.isEmpty {
-                    Text("No StepFun or Xiaomi credential metadata was reported by this gateway.")
+                    Text(AppLocalization.string("Hermes didn’t report any voice keys for this profile."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

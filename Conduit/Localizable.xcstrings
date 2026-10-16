@@ -109862,88 +109862,6 @@
         }
       }
     },
-    "No StepFun or Xiaomi credential metadata was reported by this gateway." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieses Gateway hat keine Metadaten zu StepFun- oder Xiaomi-Zugangsdaten gemeldet."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esta pasarela no indicó metadatos de credenciales de StepFun ni de Xiaomi."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune métadonnée d'identifiant StepFun ou Xiaomi n'a été signalée par cette passerelle."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tidak ada metadata kredensial StepFun atau Xiaomi yang dilaporkan oleh gateway ini."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Questo gateway non ha segnalato metadati di credenziali StepFun o Xiaomi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このゲートウェイからStepFunまたはXiaomiの認証情報メタデータは報告されていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 게이트웨이에서 보고된 StepFun 또는 Xiaomi 자격 증명 메타데이터가 없어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ta brama nie zgłosiła metadanych danych uwierzytelniających StepFun ani Xiaomi."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este gateway não informou metadados de credenciais da StepFun ou da Xiaomi."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Этот шлюз не сообщил метаданные учётных данных StepFun или Xiaomi."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu ağ geçidi StepFun veya Xiaomi kimlik bilgisi meta verisi bildirmedi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此网关未上报 StepFun 或 Xiaomi 凭据元数据。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此閘道沒有回報任何 StepFun 或 Xiaomi 認證資訊的中繼資料。"
-          }
-        }
-      }
-    },
     "No board changes to save." : {
       "localizations" : {
         "de" : {
@@ -256058,6 +255976,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用你的 SuperGrok 或 X Premium+ 帳號登入，或改為在語音設定的「API 金鑰」中加入 xAI 金鑰。登入資訊和金鑰都會保留在你的 Hermes 伺服器上。"
+          }
+        }
+      }
+    },
+    "Hermes didn’t report any voice keys for this profile." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat für dieses Profil keine Sprachschlüssel gemeldet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no indicó ninguna clave de voz para este perfil."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a signalé aucune clé vocale pour ce profil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak melaporkan kunci suara apa pun untuk profil ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha segnalato chiavi vocali per questo profilo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはこのプロファイルの音声キーを報告しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 프로필의 음성 키를 알려주지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie zgłosił żadnych kluczy głosowych dla tego profilu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não informou nenhuma chave de voz para este perfil."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не сообщил ни одного голосового ключа для этого профиля."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu profil için hiçbir ses anahtarı bildirmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有报告此配置文件的任何语音密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未回報此設定檔的任何語音金鑰。"
           }
         }
       }

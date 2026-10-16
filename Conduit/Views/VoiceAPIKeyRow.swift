@@ -27,6 +27,10 @@ struct VoiceAPIKeyRow: View {
     private var targetKey: String { configured?.key ?? keys.first ?? "" }
 
     var body: some View {
+        if !targetKey.isEmpty { row }
+    }
+
+    private var row: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: configured == nil ? "key" : "checkmark.shield.fill")
