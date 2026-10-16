@@ -35,7 +35,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.sttProviders.map(\.descriptor.id), ["stepfun", "xiaomi_mimo"])
     }
 
-    func testCredentialMetadataDoesNotCarryRedactedOrSecretValue() {
+    func testCredentialMetadataDropsAValueThatIsNotMasked() {
         let snapshot = VoiceConfigurationParser.parse(
             profile: "default", schema: nil,
             config: ["stt": [String: Any](), "tts": [String: Any]()],
@@ -1079,6 +1079,95 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertFalse(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.voice" } ?? true)
         XCTAssertFalse(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.model" } ?? true)
         XCTAssertTrue(elevenlabs?.fields.contains { $0.key == "tts.elevenlabs.voice_id" } ?? false)
+    }
+}
+
+// MARK: - API keys shown where a voice provider is turned on
+
+extension HermesVoiceConfigurationServiceTests {
+    func testEveryEnvironmentRowKeepsOnlyItsMaskedValue() {
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default", schema: nil,
+            config: ["stt": [String: Any](), "tts": [String: Any]()],
+            sttReadiness: nil, ttsReadiness: nil,
+            environment: [
+                "GEMINI_API_KEY": ["is_set": true, "redacted_value": "AIza...wxyz", "description": "Google key"],
+                "XAI_API_KEY": ["is_set": false, "redacted_value": NSNull()],
+                "MIMO_API_KEY": ["is_set": true, "redacted_value": "mi…123"]
+            ],
+            ttsToolsetConfigAvailable: false
+        )
+
+        XCTAssertTrue(snapshot.environmentLoaded)
+        XCTAssertEqual(snapshot.environment["GEMINI_API_KEY"]?.redactedValue, "AIza...wxyz")
+        XCTAssertEqual(snapshot.environment["XAI_API_KEY"]?.isSet, false)
+        XCTAssertNil(snapshot.environment["XAI_API_KEY"]?.redactedValue)
+        XCTAssertEqual(snapshot.credentials.first { $0.key == "MIMO_API_KEY" }?.redactedValue, "mi…123")
+    }
+
+    func testMissingEnvironmentIsNotReadAsUnset() {
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default", schema: nil,
+            config: ["stt": [String: Any](), "tts": [String: Any]()],
+            sttReadiness: nil, ttsReadiness: nil, environment: nil,
+            ttsToolsetConfigAvailable: false
+        )
+
+        XCTAssertFalse(snapshot.environmentLoaded)
+        XCTAssertTrue(snapshot.environment.isEmpty)
+    }
+
+    func testConfiguredCredentialFollowsTheHostOrder() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "openai"], "tts": ["provider": "openai"]],
+            "/api/env": [
+                "GEMINI_API_KEY": ["is_set": false],
+                "GOOGLE_API_KEY": ["is_set": true, "redacted_value": "AIza...abcd"]
+            ]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        await service.reload()
+
+        XCTAssertEqual(service.configuredCredential(among: ["GEMINI_API_KEY", "GOOGLE_API_KEY"])?.key, "GOOGLE_API_KEY")
+        XCTAssertEqual(service.configuredCredential(among: ["GEMINI_API_KEY", "GOOGLE_API_KEY"])?.redactedValue, "AIza...abcd")
+        XCTAssertNil(service.configuredCredential(among: ["XAI_API_KEY"]))
+    }
+
+    func testReadinessKnowsAKeyTheEnvironmentDoesNot() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "openai"], "tts": ["provider": "openai"]],
+            "/api/tools/toolsets/tts/config": ["providers": [[
+                "tts_provider": "openai", "status": "ready", "is_active": true,
+                "env_vars": [["key": "VOICE_TOOLS_OPENAI_KEY", "is_set": true, "prompt": "OpenAI key"]]
+            ]]],
+            "/api/env": ["VOICE_TOOLS_OPENAI_KEY": ["is_set": false]]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        await service.reload()
+
+        XCTAssertEqual(service.credential("VOICE_TOOLS_OPENAI_KEY")?.isSet, true)
+    }
+
+    func testAddingAKeyWritesItToTheProfileEnvironment() async throws {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "openai"], "tts": ["provider": "openai"]],
+            "/api/env": ["XAI_API_KEY": ["is_set": false]]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.saveCredential("  xai-secret  ", key: "XAI_API_KEY")
+
+        XCTAssertTrue(saved)
+        let put = try XCTUnwrap(requester.recorded.first { $0.method == "PUT" })
+        XCTAssertEqual(put.path, "/api/env")
+        XCTAssertEqual(put.body?["key"] as? String, "XAI_API_KEY")
+        XCTAssertFalse(requester.recorded.contains { $0.path.contains("reveal") })
     }
 }
 

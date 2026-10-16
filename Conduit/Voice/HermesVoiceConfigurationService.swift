@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Profile-scoped voice configuration is intentionally kept on the Hermes
-//  host. This client only reads redacted credential metadata and submits a new
-//  value when the user explicitly saves one.
+//  host. This client only reads credential metadata (set or not, and the
+//  masked value Hermes shows) and submits a new value when the user
+//  explicitly saves one.
 //
 
 import Combine
@@ -14,8 +15,19 @@ struct VoiceCredentialStatus: Equatable, Identifiable {
     let key: String
     let isSet: Bool
     let description: String
+    /// Hermes' masked form ("sk-p...abcd"), shown so the user can tell
+    /// which key is on the host. Never the key itself.
+    var redactedValue: String? = nil
 
     var id: String { key }
+
+    /// A masked value as Hermes sends it. Anything long with no mask in it
+    /// could be a whole key, so it is dropped rather than shown.
+    static func maskedValue(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        let masked = text.contains("…") || text.contains("...") || text.contains("*")
+        return masked || text.count < 12 ? text : nil
+    }
 }
 
 struct VoiceProviderReadiness: Equatable, Identifiable {
@@ -83,6 +95,12 @@ struct VoiceConfigurationSnapshot: Equatable {
     /// Values are explicit strings, never credential values.
     var values: [String: String]
     var credentials: [VoiceCredentialStatus]
+    /// Every `/api/env` row Hermes reported, keyed by variable name, so a
+    /// live mode's key (GEMINI_API_KEY, XAI_API_KEY…) can be shown where
+    /// that mode is turned on.
+    var environment: [String: VoiceCredentialStatus] = [:]
+    /// False when `/api/env` didn't answer: then "not set" is unknown.
+    var environmentLoaded = false
     /// `stt.streaming`: Hermes recognizes speech while the user talks
     /// (providers with a live wire), so Voice shows the words as they come.
     var liveTranscription = false
@@ -373,8 +391,24 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
-    /// This deliberately never requests `/api/env/reveal`; the only read
-    /// state in Conduit is whether a credential is configured.
+    /// The first of `keys` that is set on Hermes, else nil. Used for keys
+    /// Hermes reads in order (GEMINI_API_KEY, then GOOGLE_API_KEY).
+    func configuredCredential(among keys: [String]) -> VoiceCredentialStatus? {
+        keys.lazy.compactMap { self.credential($0) }.first(where: \.isSet)
+    }
+
+    /// The `/api/env` row, unless only a provider's readiness row knows the
+    /// key is set (Hermes can read it from outside the profile's .env).
+    func credential(_ key: String) -> VoiceCredentialStatus? {
+        let row = snapshot.environment[key]
+        let listed = snapshot.credentials.first(where: { $0.key == key })
+        if row?.isSet == true { return row }
+        if listed?.isSet == true { return listed }
+        return row ?? listed
+    }
+
+    /// This deliberately never requests `/api/env/reveal`; Conduit only
+    /// reads whether a credential is set and Hermes' masked form of it.
     func saveCredential(_ value: String, key: String) async -> Bool {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         do {
@@ -411,13 +445,16 @@ final class HermesVoiceConfigurationService: ObservableObject {
     }
 
     private func replaceCredential(_ credential: VoiceCredentialStatus) {
-        snapshot.credentials.removeAll { $0.key == credential.key }
-        snapshot.credentials.append(credential)
-        snapshot.credentials.sort { $0.key < $1.key }
+        if snapshot.credentials.contains(where: { $0.key == credential.key }) {
+            snapshot.credentials.removeAll { $0.key == credential.key }
+            snapshot.credentials.append(credential)
+            snapshot.credentials.sort { $0.key < $1.key }
+        }
+        snapshot.environment[credential.key] = credential
     }
 
     private func credentialDescription(_ key: String) -> String {
-        snapshot.credentials.first(where: { $0.key == key })?.description ?? key
+        credential(key)?.description ?? key
     }
 
     private static func message(from result: Result<[String: Any], Error>) -> String? {
@@ -468,9 +505,14 @@ enum VoiceConfigurationParser {
         let selectedSTT = nestedString(config, "stt.provider") ?? "local"
         let selectedTTS = nestedString(config, "tts.provider") ?? "edge"
         let readiness = readinessRows(sttReadiness, kind: .stt) + readinessRows(ttsReadiness, kind: .tts)
+        let environmentRows = allCredentialRows(environment)
         let credentials = mergedCredentials(
             credentialRows(environment) + readiness.flatMap(\.requiredCredentials)
-        )
+        ).map { credential in
+            var credential = credential
+            if credential.isSet { credential.redactedValue = environmentRows[credential.key]?.redactedValue }
+            return credential
+        }
         let schemaProviderIDs = providerIDs(schema)
         let sttIDs = unique(schemaProviderIDs.stt + readiness.filter { $0.kind == .stt }.map(\.id) + [selectedSTT])
         let ttsIDs = unique(schemaProviderIDs.tts + readiness.filter { $0.kind == .tts }.map(\.id) + [selectedTTS])
@@ -508,6 +550,7 @@ enum VoiceConfigurationParser {
             profile: profile, capability: capability, sttProviders: stt, ttsProviders: tts,
             selectedSTTProvider: selectedSTT, selectedTTSProvider: selectedTTS,
             values: values, credentials: credentials,
+            environment: environmentRows, environmentLoaded: environment != nil,
             liveTranscription: nestedBool(config, "stt.streaming") ?? false
         )
     }
@@ -806,6 +849,20 @@ enum VoiceConfigurationParser {
             guard let row = value as? [String: Any], key == "STEPFUN_API_KEY" || key == "MIMO_API_KEY" else { return nil }
             return .init(key: key, isSet: row["is_set"] as? Bool ?? false, description: row["description"] as? String ?? key)
         }.sorted { $0.key < $1.key }
+    }
+
+    private static func allCredentialRows(_ payload: [String: Any]?) -> [String: VoiceCredentialStatus] {
+        var rows: [String: VoiceCredentialStatus] = [:]
+        for (key, value) in payload ?? [:] {
+            guard let row = value as? [String: Any] else { continue }
+            let isSet = row["is_set"] as? Bool ?? false
+            rows[key] = .init(
+                key: key, isSet: isSet,
+                description: row["description"] as? String ?? key,
+                redactedValue: isSet ? VoiceCredentialStatus.maskedValue(row["redacted_value"]) : nil
+            )
+        }
+        return rows
     }
 
     private static func mergedCredentials(_ values: [VoiceCredentialStatus]) -> [VoiceCredentialStatus] {

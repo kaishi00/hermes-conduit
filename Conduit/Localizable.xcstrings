@@ -66907,88 +66907,6 @@
         }
       }
     },
-    "Configured on Hermes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auf Hermes konfiguriert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurado en Hermes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configuré sur Hermes"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dikonfigurasi di Hermes"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurato su Hermes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesで設定済み"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes에서 구성됨"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Skonfigurowano w Hermesie"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurado no Hermes"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Настроено в Hermes"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes'te yapılandırıldı"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已在 Hermes 上配置"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已在 Hermes 上設定"
-          }
-        }
-      }
-    },
     "Confirm %lld selected" : {
       "localizations" : {
         "de" : {
@@ -86653,88 +86571,6 @@
         }
       }
     },
-    "Enter a replacement only if needed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gib nur bei Bedarf einen Ersatz ein."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escribe un sustituto solo si es necesario."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Saisissez un remplacement uniquement si nécessaire."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Masukkan pengganti hanya jika diperlukan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inserisci un valore sostitutivo solo se necessario."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "必要な場合のみ、置き換える値を入力してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "필요한 경우에만 대체 값을 입력하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wpisz nową wartość tylko w razie potrzeby."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Digite um substituto só se necessário."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Вводите замену, только если нужно."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yalnızca gerekirse yeni bir değer girin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅在需要时输入替换值。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只在需要時輸入替代值。"
-          }
-        }
-      }
-    },
     "Enter a valid dashboard URL." : {
       "localizations" : {
         "de" : {
@@ -99305,88 +99141,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "鍵盤"
-          }
-        }
-      }
-    },
-    "Keys stay on your Hermes host. Conduit only receives whether each key is set; it never reads a key back." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schlüssel bleiben auf deinem Hermes-Host. Conduit erfährt nur, ob ein Schlüssel gesetzt ist; es liest nie einen Schlüssel aus."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las claves se quedan en tu host de Hermes. Conduit solo recibe si cada clave está definida; nunca vuelve a leer una clave."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les clés restent sur votre hôte Hermes. Conduit reçoit uniquement l'information indiquant si chaque clé est définie ; il ne relit jamais une clé."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kunci tetap di host Hermes Anda. Conduit hanya menerima informasi apakah setiap kunci sudah diatur; Conduit tidak pernah membaca kunci kembali."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le chiavi restano sul tuo host Hermes. Conduit riceve solo se ciascuna chiave è impostata; non rilegge mai una chiave."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キーはHermesホスト上に保持されます。Conduitが受け取るのは各キーが設定済みかどうかだけで、キーの内容を読み取ることはありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "키는 Hermes 호스트에 남아 있어요. Conduit은 각 키가 설정되었는지만 받으며, 키를 다시 읽지 않아요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klucze pozostają na Twoim hoście Hermes. Conduit otrzymuje tylko informację, czy dany klucz jest ustawiony; nigdy nie odczytuje kluczy."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "As chaves ficam no seu host Hermes. O Conduit só recebe a informação de se cada chave está definida; ele nunca lê uma chave de volta."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ключи остаются на вашем хосте Hermes. Conduit получает только сведения о том, задан ли каждый ключ, и никогда не считывает сами ключи."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anahtarlar Hermes ana makinenizde kalır. Conduit yalnızca her anahtarın ayarlı olup olmadığını öğrenir; bir anahtarı asla geri okumaz."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "密钥始终保留在你的 Hermes 主机上。Conduit 只接收各密钥是否已设置，绝不会读回密钥内容。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "金鑰會保留在你的 Hermes 主機上。Conduit 只會收到每個金鑰是否已設定的資訊，絕不會讀回金鑰內容。"
           }
         }
       }
@@ -113306,88 +113060,6 @@
         }
       }
     },
-    "Not configured" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nicht konfiguriert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin configurar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non configuré"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Belum dikonfigurasi"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non configurato"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未設定"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구성 안 됨"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nie skonfigurowano"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não configurado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Не настроено"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yapılandırılmadı"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未配置"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未設定"
-          }
-        }
-      }
-    },
     "Not connected" : {
       "localizations" : {
         "de" : {
@@ -127108,88 +126780,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修復連線"
-          }
-        }
-      }
-    },
-    "Replace credential" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zugangsdaten ersetzen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sustituir credencial"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remplacer l'identifiant"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ganti kredensial"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sostituisci credenziale"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "認証情報を置き換え"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자격 증명 교체"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zastąp dane uwierzytelniające"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Substituir credencial"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Заменить учётные данные"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kimlik bilgisini değiştir"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替换凭据"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "替換認證資訊"
           }
         }
       }
@@ -168678,88 +168268,6 @@
         }
       }
     },
-    "Set GEMINI_API_KEY in the active Hermes profile’s .env file. Keep the key on your Hermes server." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Setze GEMINI_API_KEY in der .env-Datei des aktiven Hermes-Profils. Bewahre den Schlüssel auf deinem Hermes-Server auf."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Define GEMINI_API_KEY en el archivo .env del perfil de Hermes activo. Mantén la clave en tu servidor Hermes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Définissez GEMINI_API_KEY dans le fichier .env du profil Hermes actif. Gardez la clé sur votre serveur Hermes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Atur GEMINI_API_KEY di file .env profil Hermes yang aktif. Simpan kunci di server Hermes Anda."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imposta GEMINI_API_KEY nel file .env del profilo Hermes attivo. Conserva la chiave sul tuo server Hermes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用中のHermesプロファイルの.envファイルにGEMINI_API_KEYを設定してください。キーはHermesサーバ上に保管してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "활성 Hermes 프로필의 .env 파일에 GEMINI_API_KEY를 설정하세요. 키는 Hermes 서버에만 보관하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ustaw GEMINI_API_KEY w pliku .env aktywnego profilu Hermes. Przechowuj klucz na swoim serwerze Hermes."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Defina GEMINI_API_KEY no arquivo .env do perfil ativo do Hermes. Mantenha a chave no seu servidor Hermes."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Задайте GEMINI_API_KEY в файле .env активного профиля Hermes. Храните ключ на вашем сервере Hermes."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etkin Hermes profilinin .env dosyasında GEMINI_API_KEY değerini ayarlayın. Anahtarı Hermes sunucunuzda tutun."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在当前 Hermes 配置的 .env 文件中设置 GEMINI_API_KEY。请将密钥保留在 Hermes 服务器上。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在目前 Hermes 設定檔的 .env 檔案中設定 GEMINI_API_KEY。請將金鑰保留在你的 Hermes 伺服器上。"
-          }
-        }
-      }
-    },
     "Set up Gemini Live" : {
       "localizations" : {
         "de" : {
@@ -171216,88 +170724,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "登入 SuperGrok"
-          }
-        }
-      }
-    },
-    "Sign in with your SuperGrok or X Premium+ account, or set XAI_API_KEY in the active Hermes profile’s .env file instead. The sign-in stays on your Hermes server." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Melde dich mit deinem SuperGrok- oder X-Premium+-Konto an oder setze stattdessen XAI_API_KEY in der .env-Datei des aktiven Hermes-Profils. Die Anmeldung bleibt auf deinem Hermes-Server."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inicia sesión con tu cuenta de SuperGrok o X Premium+, o define XAI_API_KEY en el archivo .env del perfil de Hermes activo. El inicio de sesión se queda en tu servidor Hermes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connectez-vous avec votre compte SuperGrok ou X Premium+, ou définissez plutôt XAI_API_KEY dans le fichier .env du profil Hermes actif. La connexion reste sur votre serveur Hermes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Masuk dengan akun SuperGrok atau X Premium+ Anda, atau atur XAI_API_KEY di file .env profil Hermes yang aktif sebagai gantinya. Login tetap di server Hermes Anda."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Accedi con il tuo account SuperGrok o X Premium+, oppure imposta XAI_API_KEY nel file .env del profilo Hermes attivo. L'accesso resta sul tuo server Hermes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SuperGrokまたはX Premium+アカウントでサインインするか、代わりに使用中のHermesプロファイルの.envファイルにXAI_API_KEYを設定してください。サインイン情報はHermesサーバに保持されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SuperGrok 또는 X Premium+ 계정으로 로그인하거나, 대신 활성 Hermes 프로필의 .env 파일에 XAI_API_KEY를 설정하세요. 로그인 정보는 Hermes 서버에 그대로 남아요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zaloguj się kontem SuperGrok lub X Premium+ albo zamiast tego ustaw XAI_API_KEY w pliku .env aktywnego profilu Hermes. Logowanie pozostaje na Twoim serwerze Hermes."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faça login com sua conta SuperGrok ou X Premium+, ou defina XAI_API_KEY no arquivo .env do perfil ativo do Hermes. O login fica no seu servidor Hermes."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Войдите с учётной записью SuperGrok или X Premium+ либо задайте XAI_API_KEY в файле .env активного профиля Hermes. Данные входа остаются на вашем сервере Hermes."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SuperGrok veya X Premium+ hesabınızla giriş yapın ya da bunun yerine etkin Hermes profilinin .env dosyasında XAI_API_KEY değerini ayarlayın. Giriş Hermes sunucunuzda kalır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用你的 SuperGrok 或 X Premium+ 账户登录，或者改为在当前 Hermes 配置文件的 .env 文件中设置 XAI_API_KEY。登录信息会保留在你的 Hermes 服务器上。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用你的 SuperGrok 或 X Premium+ 帳號登入，或改為在目前 Hermes 設定檔的 .env 檔案中設定 XAI_API_KEY。登入資訊會保留在你的 Hermes 伺服器上。"
           }
         }
       }
@@ -255402,6 +254828,1236 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的語音由你自己執行的伺服器辨識，例如 Hugging Face speech-to-speech 或 Hermes Live Voice 啟動的伺服器。Hermes 代 Conduit 連線到它，所以它可以在你網路中的另一部機器上執行。"
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reemplazar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplacer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganti"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sostituisci"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "置き換える"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "교체"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zastąp"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Substituir"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заменить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Değiştir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取代"
+          }
+        }
+      }
+    },
+    "Paste API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel einfügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pega la clave de API"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collez la clé API"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempel kunci API"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incolla la chiave API"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーを貼り付け"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키 붙여넣기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wklej klucz API"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cole a chave de API"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вставьте ключ API"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarını yapıştırın"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴 API 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼上 API 金鑰"
+          }
+        }
+      }
+    },
+    "Add key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir clave"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter une clé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambah kunci"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi chiave"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーを追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키 추가"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj klucz"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar chave"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить ключ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anahtar ekle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入金鑰"
+          }
+        }
+      }
+    },
+    "Save key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar clave"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer la clé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan kunci"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salva chiave"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーを保存"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키 저장"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisz klucz"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar chave"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранить ключ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anahtarı kaydet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存金鑰"
+          }
+        }
+      }
+    },
+    "Key set on Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel auf Hermes gesetzt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave configurada en Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clé définie sur Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci sudah diatur di Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiave impostata su Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesにキーが設定済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 키 설정됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucz ustawiony w Hermesie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chave definida no Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключ задан в Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anahtar Hermes'te ayarlı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上已设置密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上已設定金鑰"
+          }
+        }
+      }
+    },
+    "No key yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch kein Schlüssel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay clave"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas encore de clé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada kunci"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ancora nessuna chiave"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーはまだありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 키 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak klucza"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda sem chave"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключа пока нет"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Henüz anahtar yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無金鑰"
+          }
+        }
+      }
+    },
+    "Hermes didn’t say whether a key is set" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat nicht gemeldet, ob ein Schlüssel gesetzt ist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no indicó si hay una clave configurada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a pas indiqué si une clé est définie"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memberi tahu apakah kunci sudah diatur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha indicato se è impostata una chiave"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーが設定されているかHermesから返答がありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 키 설정 여부를 알려주지 않았습니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie podał, czy klucz jest ustawiony"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não informou se há uma chave definida"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не сообщил, задан ли ключ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir anahtarın ayarlı olup olmadığını bildirmedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有说明是否已设置密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未說明是否已設定金鑰"
+          }
+        }
+      }
+    },
+    "API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave de API"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clé API"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci API"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiave API"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucz API"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chave de API"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключ API"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 金鑰"
+          }
+        }
+      }
+    },
+    "Gemini Live connects to Google with this key on your Hermes server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live verbindet sich mit diesem Schlüssel auf deinem Hermes-Server mit Google."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live se conecta a Google con esta clave en tu servidor Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live se connecte à Google avec cette clé sur votre serveur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live terhubung ke Google dengan kunci ini di server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live si collega a Google con questa chiave sul tuo server Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Liveは、Hermesサーバー上のこのキーでGoogleに接続します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live는 Hermes 서버의 이 키로 Google에 연결합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live łączy się z Google za pomocą tego klucza na Twoim serwerze Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Gemini Live se conecta ao Google com esta chave no seu servidor Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live подключается к Google с этим ключом на вашем сервере Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live, Hermes sunucunuzdaki bu anahtarla Google'a bağlanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 使用你 Hermes 服务器上的这个密钥连接 Google。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 會使用你 Hermes 伺服器上的這組金鑰連線到 Google。"
+          }
+        }
+      }
+    },
+    "Only used for calls billed to the API key. Calls on your ChatGPT plan don't need it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird nur für Anrufe genutzt, die über den API-Schlüssel abgerechnet werden. Anrufe über dein ChatGPT-Abo brauchen ihn nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo se usa en llamadas facturadas a la clave de API. Las llamadas con tu plan de ChatGPT no la necesitan."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilisée uniquement pour les appels facturés sur la clé API. Les appels sur votre forfait ChatGPT n’en ont pas besoin."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya dipakai untuk panggilan yang ditagih ke kunci API. Panggilan dengan paket ChatGPT Anda tidak memerlukannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usata solo per le chiamate addebitate sulla chiave API. Le chiamate con il tuo piano ChatGPT non ne hanno bisogno."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーで課金される通話にのみ使います。ChatGPTプランでの通話には不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키로 청구되는 통화에만 사용됩니다. ChatGPT 요금제 통화에는 필요 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Używany tylko w połączeniach rozliczanych z klucza API. Połączenia w ramach planu ChatGPT go nie potrzebują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usada só em chamadas cobradas na chave de API. Chamadas no seu plano do ChatGPT não precisam dela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нужен только для звонков, оплачиваемых по ключу API. Звонкам по тарифу ChatGPT он не нужен."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca API anahtarına faturalanan aramalarda kullanılır. ChatGPT planınızla yapılan aramalar buna ihtiyaç duymaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅用于按 API 密钥计费的通话。使用 ChatGPT 套餐的通话不需要它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅用於以 API 金鑰計費的通話。使用 ChatGPT 方案的通話不需要它。"
+          }
+        }
+      }
+    },
+    "Not needed when your Hermes server is signed in with SuperGrok." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht nötig, wenn dein Hermes-Server mit SuperGrok angemeldet ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hace falta si tu servidor Hermes tiene la sesión iniciada con SuperGrok."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inutile si votre serveur Hermes est connecté avec SuperGrok."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak diperlukan jika server Hermes Anda sudah masuk dengan SuperGrok."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non serve se il tuo server Hermes ha effettuato l’accesso con SuperGrok."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesサーバーがSuperGrokでサインインしていれば不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 서버가 SuperGrok으로 로그인되어 있으면 필요 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niepotrzebny, gdy Twój serwer Hermes jest zalogowany przez SuperGrok."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é necessária quando seu servidor Hermes está conectado com o SuperGrok."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не нужен, если ваш сервер Hermes вошёл через SuperGrok."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuz SuperGrok ile oturum açmışsa gerekmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你的 Hermes 服务器已用 SuperGrok 登录，则不需要。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你的 Hermes 伺服器已用 SuperGrok 登入，就不需要。"
+          }
+        }
+      }
+    },
+    "Using your own OpenAI-compatible speech server, such as Chatterbox? Set its address in Base URL below. If the server doesn't check keys, any placeholder key works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzt du einen eigenen OpenAI-kompatiblen Sprachserver wie Chatterbox? Trage seine Adresse unten bei Basis-URL ein. Prüft der Server keine Schlüssel, funktioniert jeder Platzhalter-Schlüssel."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Usas tu propio servidor de voz compatible con OpenAI, como Chatterbox? Pon su dirección en URL base, más abajo. Si el servidor no comprueba claves, sirve cualquier clave de relleno."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous utilisez votre propre serveur vocal compatible OpenAI, comme Chatterbox ? Indiquez son adresse dans URL de base ci-dessous. Si le serveur ne vérifie pas les clés, n’importe quelle clé fictive fonctionne."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memakai server suara sendiri yang kompatibel dengan OpenAI, seperti Chatterbox? Isi alamatnya di URL Dasar di bawah. Jika server tidak memeriksa kunci, kunci pengganti apa pun bisa dipakai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usi un tuo server vocale compatibile con OpenAI, come Chatterbox? Inserisci il suo indirizzo in URL di base qui sotto. Se il server non controlla le chiavi, va bene qualsiasi chiave segnaposto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatterboxなど、OpenAI互換の独自音声サーバーを使っていますか？下のベースURLにそのアドレスを入力してください。サーバーがキーを確認しない場合は、任意の仮のキーで動作します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatterbox 같은 OpenAI 호환 음성 서버를 직접 운영하나요? 아래 기본 URL에 주소를 입력하세요. 서버가 키를 확인하지 않으면 아무 임시 키나 사용할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Używasz własnego serwera mowy zgodnego z OpenAI, np. Chatterbox? Wpisz jego adres w polu Bazowy adres URL poniżej. Jeśli serwer nie sprawdza kluczy, zadziała dowolny klucz zastępczy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa seu próprio servidor de voz compatível com a OpenAI, como o Chatterbox? Informe o endereço dele em URL base, abaixo. Se o servidor não verifica chaves, qualquer chave provisória funciona."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Используете свой речевой сервер, совместимый с OpenAI, например Chatterbox? Укажите его адрес ниже в поле «Базовый URL». Если сервер не проверяет ключи, подойдёт любой ключ-заглушка."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatterbox gibi OpenAI uyumlu kendi konuşma sunucunuzu mu kullanıyorsunuz? Adresini aşağıdaki Temel URL alanına girin. Sunucu anahtarları denetlemiyorsa herhangi bir yer tutucu anahtar çalışır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在用自己的 OpenAI 兼容语音服务器，比如 Chatterbox？在下方的“基础 URL”中填入它的地址。如果服务器不校验密钥，任意占位密钥都可以。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用自己的 OpenAI 相容語音伺服器，例如 Chatterbox？請在下方的「基礎 URL」填入它的位址。如果伺服器不檢查金鑰，任何預留位置金鑰都可以。"
+          }
+        }
+      }
+    },
+    "Keys stay on your Hermes host. Conduit only shows the masked key Hermes reports, never the whole key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel bleiben auf deinem Hermes-Host. Conduit zeigt nur den maskierten Schlüssel, den Hermes meldet, nie den ganzen Schlüssel."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las claves se quedan en tu host de Hermes. Conduit solo muestra la clave enmascarada que indica Hermes, nunca la clave completa."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les clés restent sur votre hôte Hermes. Conduit n’affiche que la clé masquée indiquée par Hermes, jamais la clé entière."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci tetap di host Hermes Anda. Conduit hanya menampilkan kunci tersamar yang dilaporkan Hermes, tidak pernah kunci lengkapnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiavi restano sul tuo host Hermes. Conduit mostra solo la chiave mascherata indicata da Hermes, mai la chiave intera."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーはHermesホストに保存されたままです。ConduitはHermesが返すマスク済みのキーだけを表示し、キー全体は表示しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키는 Hermes 호스트에 그대로 남습니다. Conduit는 Hermes가 알려주는 가려진 키만 보여주며 전체 키는 절대 보여주지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucze zostają na Twoim hoście Hermes. Conduit pokazuje tylko zamaskowany klucz zgłoszony przez Hermesa, nigdy cały klucz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chaves ficam no seu host do Hermes. O Conduit só mostra a chave mascarada que o Hermes informa, nunca a chave inteira."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключи остаются на вашем хосте Hermes. Conduit показывает только замаскированный ключ, который сообщает Hermes, и никогда весь ключ."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anahtarlar Hermes ana makinenizde kalır. Conduit yalnızca Hermes'in bildirdiği maskelenmiş anahtarı gösterir, asla anahtarın tamamını göstermez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥保留在你的 Hermes 主机上。Conduit 只显示 Hermes 报告的遮盖后密钥，绝不显示完整密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金鑰會保留在你的 Hermes 主機上。Conduit 只顯示 Hermes 回報的遮蔽金鑰，絕不顯示完整金鑰。"
+          }
+        }
+      }
+    },
+    "Add it in Voice settings under API key, or set GEMINI_API_KEY in the active Hermes profile’s .env file. The key stays on your Hermes server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge ihn in den Sprachmodus-Einstellungen unter API-Schlüssel hinzu oder setze GEMINI_API_KEY in der .env-Datei des aktiven Hermes-Profils. Der Schlüssel bleibt auf deinem Hermes-Server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añádela en los ajustes de Voz, en Clave de API, o define GEMINI_API_KEY en el archivo .env del perfil activo de Hermes. La clave se queda en tu servidor Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajoutez-la dans les réglages Voix, sous Clé API, ou définissez GEMINI_API_KEY dans le fichier .env du profil Hermes actif. La clé reste sur votre serveur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan di pengaturan Suara pada Kunci API, atau atur GEMINI_API_KEY di file .env profil Hermes yang aktif. Kunci tetap di server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungila nelle impostazioni Voce, in Chiave API, oppure imposta GEMINI_API_KEY nel file .env del profilo Hermes attivo. La chiave resta sul tuo server Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声設定の「APIキー」で追加するか、有効なHermesプロファイルの.envファイルでGEMINI_API_KEYを設定してください。キーはHermesサーバーに保存されたままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 설정의 API 키에서 추가하거나, 활성 Hermes 프로필의 .env 파일에 GEMINI_API_KEY를 설정하세요. 키는 Hermes 서버에 그대로 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj go w ustawieniach Głosu w sekcji Klucz API albo ustaw GEMINI_API_KEY w pliku .env aktywnego profilu Hermesa. Klucz zostaje na Twoim serwerze Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione-a nos ajustes de Voz, em Chave de API, ou defina GEMINI_API_KEY no arquivo .env do perfil ativo do Hermes. A chave fica no seu servidor Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавьте его в настройках голоса в разделе «Ключ API» или задайте GEMINI_API_KEY в файле .env активного профиля Hermes. Ключ остаётся на вашем сервере Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ses ayarlarında API anahtarı bölümünden ekleyin veya etkin Hermes profilinin .env dosyasında GEMINI_API_KEY'i ayarlayın. Anahtar Hermes sunucunuzda kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在语音设置的“API 密钥”中添加，或在当前 Hermes 配置文件的 .env 文件中设置 GEMINI_API_KEY。密钥保留在你的 Hermes 服务器上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在語音設定的「API 金鑰」中加入，或在目前 Hermes 設定檔的 .env 檔案中設定 GEMINI_API_KEY。金鑰會保留在你的 Hermes 伺服器上。"
+          }
+        }
+      }
+    },
+    "Sign in with your SuperGrok or X Premium+ account, or add an xAI key in Voice settings under API key instead. The sign-in and the key stay on your Hermes server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melde dich mit deinem SuperGrok- oder X-Premium+-Konto an oder füge stattdessen in den Sprachmodus-Einstellungen unter API-Schlüssel einen xAI-Schlüssel hinzu. Anmeldung und Schlüssel bleiben auf deinem Hermes-Server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia sesión con tu cuenta de SuperGrok o X Premium+, o añade una clave de xAI en los ajustes de Voz, en Clave de API. La sesión y la clave se quedan en tu servidor Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous avec votre compte SuperGrok ou X Premium+, ou ajoutez plutôt une clé xAI dans les réglages Voix, sous Clé API. La connexion et la clé restent sur votre serveur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masuk dengan akun SuperGrok atau X Premium+ Anda, atau tambahkan kunci xAI di pengaturan Suara pada Kunci API. Info masuk dan kunci tetap di server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi con il tuo account SuperGrok o X Premium+, oppure aggiungi una chiave xAI nelle impostazioni Voce, in Chiave API. L’accesso e la chiave restano sul tuo server Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SuperGrokまたはX Premium+アカウントでサインインするか、代わりに音声設定の「APIキー」でxAIのキーを追加してください。サインイン情報とキーはHermesサーバーに保存されたままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SuperGrok 또는 X Premium+ 계정으로 로그인하거나, 대신 음성 설정의 API 키에서 xAI 키를 추가하세요. 로그인 정보와 키는 Hermes 서버에 그대로 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaloguj się kontem SuperGrok lub X Premium+ albo dodaj klucz xAI w ustawieniach Głosu w sekcji Klucz API. Logowanie i klucz zostają na Twoim serwerze Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre com sua conta SuperGrok ou X Premium+, ou adicione uma chave da xAI nos ajustes de Voz, em Chave de API. O login e a chave ficam no seu servidor Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войдите через аккаунт SuperGrok или X Premium+ либо добавьте ключ xAI в настройках голоса в разделе «Ключ API». Вход и ключ остаются на вашем сервере Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SuperGrok veya X Premium+ hesabınızla oturum açın ya da bunun yerine Ses ayarlarında API anahtarı bölümünden bir xAI anahtarı ekleyin. Oturum ve anahtar Hermes sunucunuzda kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用你的 SuperGrok 或 X Premium+ 账户登录，或改为在语音设置的“API 密钥”中添加 xAI 密钥。登录信息和密钥都保留在你的 Hermes 服务器上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你的 SuperGrok 或 X Premium+ 帳號登入，或改為在語音設定的「API 金鑰」中加入 xAI 金鑰。登入資訊和金鑰都會保留在你的 Hermes 伺服器上。"
           }
         }
       }
