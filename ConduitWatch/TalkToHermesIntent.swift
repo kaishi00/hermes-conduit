@@ -4,7 +4,7 @@
 //
 //  One press to a call: the Action button on Apple Watch Ultra, Control
 //  Center and the Smart Stack (as a control, watchOS 26), Siri and the
-//  Shortcuts app run this intent; the watch face complication opens
+//  Shortcuts app run these intents; the watch face complication opens
 //  WatchCallURL.talk. Built into the Watch app and its widget extension,
 //  as a control that opens its app needs (WidgetKit, "Creating controls
 //  to perform actions across the system"); the call starts in the app.
@@ -34,6 +34,36 @@ struct TalkToHermesIntent: AppIntent {
         WatchCallRequests.handler?("intent")
         return .result()
     }
+}
+
+/// The control's action: an `OpenIntent`, which Apple documents as the way
+/// a control opens its app, so `perform()` runs in the app with its
+/// handler set rather than in the widget extension.
+struct OpenTalkToHermesIntent: OpenIntent {
+    static var title: LocalizedStringResource = "Talk to Hermes"
+    static var description = IntentDescription("Starts a voice call to Hermes on your Watch.")
+    static var isDiscoverable: Bool = false
+
+    @Parameter(title: "Talk to Hermes")
+    var target: WatchCallTarget
+
+    init() { target = .call }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        WatchCallRequests.handler?("control")
+        return .result()
+    }
+}
+
+/// What the control opens: only a call.
+enum WatchCallTarget: String, AppEnum {
+    case call
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Hermes"
+    static var caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
+        .call: "Talk to Hermes",
+    ]
 }
 
 /// Where a call asked for from outside the app goes: the Watch app sets

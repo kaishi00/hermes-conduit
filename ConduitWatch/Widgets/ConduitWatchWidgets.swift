@@ -80,6 +80,7 @@ struct TalkToHermesComplicationView: View {
                 Image(systemName: "waveform")
                     .font(.title3.weight(.semibold))
             }
+            .accessibilityLabel(Text("Talk to Hermes"))
         }
     }
 }
@@ -88,7 +89,7 @@ struct TalkToHermesComplicationView: View {
 struct TalkToHermesControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.milim.relay.watch.talk.control") {
-            ControlWidgetButton(action: TalkToHermesIntent()) {
+            ControlWidgetButton(action: OpenTalkToHermesIntent()) {
                 Label("Talk to Hermes", systemImage: "waveform")
             }
         }
