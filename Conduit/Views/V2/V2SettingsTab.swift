@@ -18,13 +18,13 @@ struct V2SettingsTab: View {
 
     var body: some View {
         ZStack {
-            // Shows while the page loads or fades for a profile switch; the
-            // home page draws its own over it.
+            // Shows while the page loads; the home page draws its own over it.
             V2Backdrop(drifts: false)
+            // Kept across profile switches, so the profile bar on the home
+            // page stays and slides to the new profile while only the list
+            // under it fades (SettingsHome), as on the other tabs.
             if let snapshot {
                 settingsView(snapshot)
-                    .id(snapshot.id)
-                    .opacity(shell.contentFaded ? 0 : 1)
             }
         }
         .onAppear {
