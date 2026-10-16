@@ -227,7 +227,8 @@ final class GeminiLiveSession {
     /// session as before.
     var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)?
     /// The connection being set up replaces a session Google wouldn't
-    /// resume; reported through `onFreshSession` once it is ready.
+    /// resume; reported through `onFreshSession` once it is ready. nil: no
+    /// fresh start pending; otherwise whether the user heard a dropout.
     private var startingFresh: Bool?
 
     private let tokens: GeminiLiveTokenProviding
@@ -607,7 +608,10 @@ final class GeminiLiveSession {
             }
             return
         }
-        if startFreshIfResumptionRefused(close, attempt: attempt, heardDropout: true) { return }
+        // A GoAway handoff whose setup send was refused: the old connection
+        // still serves, so the user heard no break.
+        let heardDropout = !(isHandingOff && socket != nil)
+        if startFreshIfResumptionRefused(close, attempt: attempt, heardDropout: heardDropout) { return }
         fail(Self.refusalMessage(close))
     }
 
@@ -622,7 +626,8 @@ final class GeminiLiveSession {
         guard onFreshSession != nil, resumptionHandle != nil, close.isResumptionLost else { return false }
         geminiLiveLogger.notice("Gemini Live refused to resume (closeCode=\(close.code, privacy: .public)); starting a fresh session")
         resumptionHandle = nil
-        startingFresh = heardDropout || startingFresh == true
+        // Only one fresh connection is ever pending: the handle is gone now.
+        startingFresh = heardDropout
         if heardDropout, state == .ready { state = .reconnecting }
         connectTask?.cancel()
         connectTask = Task { [weak self] in await self?.connect(attempt: attempt) }
