@@ -175,4 +175,54 @@ extension SidebarLayoutTests {
         XCTAssertEqual(V2VoiceButton.mostRecent(Array(sessions.prefix(2)), limit: 3).map(\.id), ["old", "untimed"])
         XCTAssertTrue(V2VoiceButton.mostRecent([], limit: 3).isEmpty)
     }
+
+    func testChatsListGivesEveryRowOfANestItsOwnItem() {
+        func node(_ id: String, _ children: [SessionNesting.Node] = []) -> SessionNesting.Node {
+            SessionNesting.Node(session: filterRow(id, source: .chat), children: children)
+        }
+        let nodes = [
+            node("call", [node("job", [node("job-of-job")]), node("job-2")]),
+            node("chat"),
+            node("closed", [node("hidden")])
+        ]
+        let items = V2ChatsListItem.items(nodes, expanded: ["call"])
+
+        // One item per List row, in list order: an open nest lists its
+        // descendants depth first, a closed one only its "3 jobs" line.
+        XCTAssertEqual(
+            items.map(\.id),
+            ["call", "nest:call", "job", "job-of-job", "job-2", "chat", "closed", "nest:closed"]
+        )
+        XCTAssertEqual(Set(items.map(\.id)).count, items.count)
+
+        var children: [(id: String, depth: Int, parent: String, isLast: Bool)] = []
+        var nests: [(key: String, isExpanded: Bool)] = []
+        for item in items {
+            switch item.kind {
+            case .session: break
+            case .nest(_, let key, let isExpanded): nests.append((key, isExpanded))
+            case .child(let session, let depth, let parentTitle, let isLast):
+                children.append((session.id, depth, parentTitle, isLast))
+            }
+        }
+        XCTAssertEqual(nests.map(\.key), ["call", "closed"])
+        XCTAssertEqual(nests.map(\.isExpanded), [true, false])
+        XCTAssertEqual(children.map(\.depth), [0, 1, 0])
+        XCTAssertEqual(children.map(\.parent), ["call", "call", "call"])
+        // Only the nest's last row draws the hairline that closes it.
+        XCTAssertEqual(children.map(\.isLast), [false, false, true])
+
+        XCTAssertEqual(V2ChatsListItem.leaf(filterRow("pinned", source: .chat)).id, "pinned")
+
+        // A nest opens by its stored id, which outlives the runtime id the
+        // row is listed under.
+        var reconciled = filterRow("runtime", source: .chat)
+        reconciled.storedSessionId = "stored"
+        let renamed = [SessionNesting.Node(session: reconciled, children: [node("its-job")])]
+        XCTAssertEqual(
+            V2ChatsListItem.items(renamed, expanded: ["stored"]).map(\.id),
+            ["runtime", "nest:runtime", "its-job"]
+        )
+        XCTAssertEqual(V2ChatsListItem.items(renamed, expanded: ["runtime"]).map(\.id), ["runtime", "nest:runtime"])
+    }
 }
