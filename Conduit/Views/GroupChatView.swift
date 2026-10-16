@@ -802,8 +802,10 @@ struct GroupMessageCopyButton: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.footnote.weight(.semibold))
-                .frame(width: 32, height: 32)
+                // A full-size tap target in the footer's 32 pt.
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .padding(-6)
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)

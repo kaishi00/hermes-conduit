@@ -236,6 +236,10 @@ struct GroupRoomComposer: View {
         }
     }
 
+    private var showsExpand: Bool {
+        draft.count > 240 || draft.filter({ $0 == "\n" }).count >= 3
+    }
+
     private func notice(_ text: String, color: Color) -> some View {
         Text(text)
             .font(.caption)
@@ -250,12 +254,14 @@ struct GroupRoomComposer: View {
         TextField(AppLocalization.string("Message the room"), text: $draft, axis: .vertical)
             .lineLimit(1...6)
             .focused($isFocused)
-            .padding(.horizontal, 12)
+            .padding(.leading, 12)
+            // Clear of the expand button once it shows.
+            .padding(.trailing, showsExpand ? 44 : 12)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .accessibilityIdentifier("room.composer.field")
             .overlay(alignment: .topTrailing) {
-                if draft.count > 240 || draft.filter({ $0 == "\n" }).count >= 3 {
+                if showsExpand {
                     Button {
                         Haptics.selection()
                         isFocused = false

@@ -62,4 +62,52 @@ extension GroupChatModelsTests {
         XCTAssertFalse(GroupEventRow.sameSpeaker(other, user))
         XCTAssertTrue(GroupEventRow.sameSpeaker(user, userAgain))
     }
+
+    private func stagedFile(_ name: String, contents: String) throws -> Attachment {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + name)
+        try Data(contents.utf8).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return Attachment(id: UUID().uuidString, name: name, uri: url.absoluteString, mimeType: "text/plain", kind: .document)
+    }
+
+    @MainActor
+    func testRoomFilesUploadInOrderAndReturnTheirReferences() async throws {
+        let files = [try stagedFile("a.txt", contents: "one"), try stagedFile("b.txt", contents: "two")]
+        var sent: [[String: Any]] = []
+        let client = GroupRoomFilesClient(request: { path, body in
+            XCTAssertEqual(path, GroupRoomFilesClient.path)
+            sent.append(body)
+            return ["ok": true, "path": "/h/room-files/\(body["name"] as? String ?? "")"]
+        })
+        let references = try await client.upload(files)
+        XCTAssertEqual(references, ["@file:/h/room-files/a.txt", "@file:/h/room-files/b.txt"])
+        XCTAssertEqual(sent.compactMap { $0["data_base64"] as? String }, [Data("one".utf8).base64EncodedString(), Data("two".utf8).base64EncodedString()])
+    }
+
+    @MainActor
+    func testRoomFileUploadRefusesAnUnreadableFile() async {
+        let missing = Attachment(id: "x", name: "gone.txt", uri: "file:///nonexistent/gone.txt", mimeType: nil, kind: .document)
+        let client = GroupRoomFilesClient(request: { _, _ in
+            XCTFail("nothing to send")
+            return [:]
+        })
+        do {
+            _ = try await client.upload([missing])
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("gone.txt"))
+        }
+    }
+
+    @MainActor
+    func testRoomFileUploadRefusesAHostThatSaysNo() async throws {
+        let file = try stagedFile("a.txt", contents: "one")
+        let client = GroupRoomFilesClient(request: { _, _ in ["ok": false] })
+        do {
+            _ = try await client.upload([file])
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .malformed)
+        }
+    }
 }
