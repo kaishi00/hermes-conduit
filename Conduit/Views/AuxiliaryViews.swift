@@ -862,9 +862,15 @@ private struct SettingsHome: View {
 
     var body: some View {
         ZStack {
-            ConduitBackdrop()
+            // V2: the tab roots' backdrop in the profile's glow, held still
+            // like a settings page's.
+            if v2Layout {
+                V2Backdrop(drifts: false)
+            } else {
+                ConduitBackdrop()
+            }
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: v2Layout ? 24 : 14) {
                     if appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending {
                         NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
                             Haptics.selection()
@@ -920,10 +926,13 @@ private struct SettingsHome: View {
                     Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.top, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, v2Layout ? 16 : 10)
+                        .padding(.top, v2Layout ? -12 : 2)
                 }
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.top, v2Layout ? 8 : 16)
+                .padding(.bottom, v2Layout ? 24 : 16)
             }
         }
         .sheet(isPresented: $showProfileManager) {
@@ -990,48 +999,67 @@ private struct SettingsHome: View {
     }
 
     /// V2's grouping: the selected profile (its connection, approvals and
-    /// profile page), then Voice, Hermes, and App. Every page the drawer's
-    /// Settings reached stays reachable.
+    /// profile page), then Voice, Hermes, and App, each one card of rows
+    /// with hairlines between them, as in the Scheduled list. Every page the
+    /// drawer's Settings reached stays reachable.
     @ViewBuilder
     private var v2Sections: some View {
-        homeSection(profileDisplayName, symbol: "person.crop.circle", tint: .conduitAccent) {
-            settingsLink(
+        v2Group(profileDisplayName, symbol: "person.crop.circle") {
+            v2Link(
                 .gateway,
                 icon: "dot.radiowaves.left.and.right",
                 title: AppLocalization.string("Connection"),
                 detail: v2ConnectionDetail,
                 identifier: "settings.gateway",
-                statusDot: appState.isConnected ? Color.green : (appState.isConnecting ? Color.orange : Color.red)
+                statusDot: appState.isConnected ? Color.green : (appState.isConnecting ? Color.orange : Color.red),
+                first: true
             )
-            settingsLink(.workspace, icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
-            settingsLink(.profile, icon: "person.crop.circle", title: AppLocalization.string("Edit profile"), detail: AppLocalization.string("Profile-specific preferences"))
+            v2Link(.workspace, icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
+            v2Link(.profile, icon: "person.crop.circle", title: AppLocalization.string("Edit profile"), detail: AppLocalization.string("Profile-specific preferences"))
         }
-        homeSection(AppLocalization.string("Voice"), symbol: "waveform", tint: .conduitAura) {
-            settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
+        v2Group(AppLocalization.string("Voice"), symbol: "waveform") {
+            v2Link(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"), first: true)
             if appState.supportsHermesCalls {
-                settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
+                v2Link(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
             }
         }
-        homeSection("Hermes", tint: .conduitAura) {
-            settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
-            settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
-            settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
-            settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, toolsets, and categories"))
+        v2Group("Hermes", symbol: "gearshape.2") {
+            v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
+            v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
+            v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
+            v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, toolsets, and categories"))
         }
-        homeSection(AppLocalization.string("App"), symbol: "iphone", tint: .conduitAccent) {
-            settingsActionRow(
+        v2Group(AppLocalization.string("App"), symbol: "slider.horizontal.3") {
+            v2Action(
                 icon: "person.2.crop.square.stack",
                 title: AppLocalization.string("Profiles"),
                 detail: AppLocalization.string("Add, reorder, or change profile photos"),
-                identifier: "settings.profiles"
+                identifier: "settings.profiles",
+                first: true
             ) {
                 showProfileManager = true
             }
-            settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
-            settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
-            settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
-            settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
-            settingsActionRow(
+            v2Link(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
+            v2Link(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+            v2Link(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
+        }
+        if appState.showsHealthSettings || appState.showsLocationSettings || appState.showsPhoneSettings {
+            v2Group(AppLocalization.string("On this device"), symbol: "iphone") {
+                if appState.showsHealthSettings {
+                    v2Link(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health", first: true)
+                }
+                if appState.showsLocationSettings {
+                    v2Link(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location", first: !appState.showsHealthSettings)
+                }
+                if appState.showsPhoneSettings {
+                    v2Link(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone", first: !appState.showsHealthSettings && !appState.showsLocationSettings)
+                }
+            }
+        }
+        v2Group(AppLocalization.string("Server"), symbol: "server.rack") {
+            v2Link(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards", first: true)
+            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
+            v2Action(
                 icon: "checkmark.circle",
                 title: AppLocalization.string("Connection Setup"),
                 detail: AppLocalization.string("Test, troubleshoot, or change your connection"),
@@ -1039,17 +1067,97 @@ private struct SettingsHome: View {
             ) {
                 openConnectionSetup()
             }
-            if appState.showsHealthSettings {
-                settingsLink(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health")
+        }
+        v2Group(AppLocalization.string("About"), symbol: "info.circle") {
+            v2Link(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"), first: true)
+        }
+    }
+
+    /// A V2 group: its name over one card of rows.
+    private func v2Group<Rows: View>(_ title: String, symbol: String, @ViewBuilder rows: () -> Rows) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingsSectionHeader(title: title, symbol: symbol, tint: .conduitAccent)
+            VStack(spacing: 0) {
+                rows()
             }
-            if appState.showsLocationSettings {
-                settingsLink(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location")
+            .settingsCard()
+        }
+    }
+
+    private func v2Link(
+        _ destination: SettingsDestination,
+        icon: String,
+        title: String,
+        detail: String,
+        identifier: String = "",
+        statusDot: Color? = nil,
+        first: Bool = false
+    ) -> some View {
+        Button {
+            Haptics.selection()
+            path.append(destination)
+        } label: {
+            v2RowLabel(icon: icon, title: title, detail: detail, statusDot: statusDot, first: first)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(detail)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func v2Action(
+        icon: String,
+        title: String,
+        detail: String,
+        identifier: String,
+        first: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            v2RowLabel(icon: icon, title: title, detail: detail, first: first)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+        .accessibilityHint(detail)
+    }
+
+    /// A row in a V2 group: the gold glyph, the name over a short detail,
+    /// a chevron, and a hairline above every row but the first, from the
+    /// text column.
+    private func v2RowLabel(icon: String, title: String, detail: String, statusDot: Color? = nil, first: Bool) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.body.weight(.medium))
+                .conduitFixedGlyph()
+                .foregroundStyle(Color.conduitAccent)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                HStack(spacing: 5) {
+                    if let statusDot {
+                        Circle().fill(statusDot).frame(width: 7, height: 7).accessibilityHidden(true)
+                    }
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                }
             }
-            if appState.showsPhoneSettings {
-                settingsLink(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone")
-            }
-            settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
-            settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
+        .overlay(alignment: .top) {
+            if !first { V2RowDivider(leadingInset: 56) }
         }
     }
 
@@ -1214,8 +1322,9 @@ struct ChatSettingsDetail: View {
             save: save,
             showsNavigationTitle: false,
             optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + options.personalities],
+            fieldsHeader: "Hermes",
             leadingSection: AnyView(
-                VStack(spacing: 14) {
+                VStack(spacing: 24) {
                     ChatReturnBehaviorSettings(
                         initialBehavior: chatResumeBehavior,
                         persistBehavior: persistChatResumeBehavior,
@@ -1226,7 +1335,7 @@ struct ChatSettingsDetail: View {
                 }
             ),
             trailingSection: AnyView(
-                VStack(spacing: 14) {
+                VStack(spacing: 24) {
                     ChatTextSizeSettings()
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
@@ -1915,6 +2024,8 @@ struct ProfileConfigSettingsPage: View {
     let save: (String, ProfileSettingValue) async -> Bool
     var showsNavigationTitle = true
     var optionOverrides: [String: [String]] = [:]
+    /// Names the fields' card when other sections share the page.
+    var fieldsHeader: String? = nil
     var leadingSection: AnyView? = nil
     var trailingSection: AnyView? = nil
 
@@ -1928,13 +2039,27 @@ struct ProfileConfigSettingsPage: View {
         SettingsDetailContainer {
             if let leadingSection { leadingSection }
             if !subtitle.isEmpty {
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+                Text(subtitle).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 16)
             }
             if loading {
                 ProgressView("Loading profile settings…").frame(maxWidth: .infinity, minHeight: 180)
             } else {
-                ForEach(fields) { field in
-                    settingCard(field)
+                // One card of rows, a hairline between them, each setting's
+                // name and what it does beside its control.
+                VStack(alignment: .leading, spacing: 8) {
+                    if let fieldsHeader {
+                        SettingsSectionHeader(title: fieldsHeader, symbol: "gearshape.2", tint: .conduitAura)
+                    }
+                    VStack(spacing: 0) {
+                        ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
+                            fieldRow(field)
+                                .padding(16)
+                                .overlay(alignment: .top) {
+                                    if index > 0 { V2RowDivider(leadingInset: 16) }
+                                }
+                        }
+                    }
+                    .settingsCard()
                 }
             }
             if let trailingSection { trailingSection }
@@ -1945,20 +2070,24 @@ struct ProfileConfigSettingsPage: View {
     }
 
     @ViewBuilder
-    private func settingCard(_ field: ProfileSettingField) -> some View {
-        ConduitSettingsSection(title: field.label, symbol: fieldIcon(field.key), tint: .conduitAura) {
-            Text(field.help).font(.footnote).foregroundStyle(.secondary)
+    private func fieldRow(_ field: ProfileSettingField) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             switch field.control {
             case .toggle(let defaultValue):
-                Toggle("", isOn: Binding(get: { boolValue(field.key, defaultValue: defaultValue) }, set: { save(field, value: .bool($0)) }))
-                    .labelsHidden().tint(.conduitAccent).disabled(savingKey != nil)
+                Toggle(isOn: Binding(get: { boolValue(field.key, defaultValue: defaultValue) }, set: { save(field, value: .bool($0)) })) {
+                    fieldLabel(field)
+                }
+                .tint(.conduitAccent).disabled(savingKey != nil)
             case .textToggle(let onValue, let offValue, let defaultValue):
-                Toggle("", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { textValue(field.key, defaultValue: defaultValue ? onValue : offValue) != offValue },
                     set: { save(field, value: .text($0 ? onValue : offValue)) }
-                ))
-                .labelsHidden().tint(.conduitAccent).disabled(savingKey != nil)
+                )) {
+                    fieldLabel(field)
+                }
+                .tint(.conduitAccent).disabled(savingKey != nil)
             case .options(let options, let defaultValue):
+                fieldLabel(field)
                 let choices = optionOverrides[field.key] ?? options
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
                 let displayedValue = selectedValue
@@ -1973,6 +2102,7 @@ struct ProfileConfigSettingsPage: View {
                 .disabled(savingKey != nil || choices.isEmpty).conduitGlassControl(cornerRadius: 14)
                 if choices.isEmpty { Text("No configured choices are available.").font(.caption).foregroundStyle(.secondary) }
             case .labeledOptions(let options, let defaultValue):
+                fieldLabel(field)
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
                 let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? options.first?.label ?? ""
                 Menu {
@@ -1985,11 +2115,27 @@ struct ProfileConfigSettingsPage: View {
                 }
                 .disabled(savingKey != nil || options.isEmpty).conduitGlassControl(cornerRadius: 14)
             case .text(let defaultValue):
+                fieldLabel(field)
                 textEditor(field, defaultValue: defaultValue, keyboard: .default)
             case .number(let defaultValue):
+                fieldLabel(field)
                 textEditor(field, defaultValue: String(defaultValue), keyboard: .decimalPad)
             }
             if savingKey == field.key { HStack { ProgressView().controlSize(.small); Text("Saving…").font(.caption).foregroundStyle(.secondary) } }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A setting's name over what it does.
+    private func fieldLabel(_ field: ProfileSettingField) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(field.label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text(field.help)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -2033,7 +2179,6 @@ struct ProfileConfigSettingsPage: View {
 
     private func boolValue(_ key: String, defaultValue: Bool) -> Bool { values[key]?.boolValue ?? defaultValue }
     private func textValue(_ key: String, defaultValue: String) -> String { values[key]?.textValue ?? defaultValue }
-    private func fieldIcon(_ key: String) -> String { key.hasPrefix("security") ? "lock" : key.hasPrefix("memory") ? "brain" : key.hasPrefix("delegation") ? "point.3.connected.trianglepath.dotted" : "slider.horizontal.3" }
 }
 
 private struct GatewaySettingsDetail: View {
@@ -2904,14 +3049,25 @@ private struct AboutSettingsDetail: View {
 
 }
 
+/// A settings page: its sections on the backdrop, the title small in the
+/// bar, and the list fading out under the bar (V2) rather than ending at a
+/// line.
 struct SettingsDetailContainer<Content: View>: View {
     var compact = false
     @ViewBuilder let content: Content
     var body: some View {
         ZStack {
             ConduitBackdrop()
-            ScrollView { VStack(alignment: .leading, spacing: compact ? 12 : 14) { content }.padding(16) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: compact ? 18 : 24) { content }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .modifier(V2SoftTopScrollEdge(isOn: true))
         }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
@@ -2936,16 +3092,55 @@ struct ConduitSettingsSection<Content: View>: View {
         self.content = content()
     }
 
+    /// V2: the name over the card, as a Board lane's name sits over its
+    /// cards, and a quiet card rather than a tinted glass slab.
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-            content
+        VStack(alignment: .leading, spacing: 8) {
+            SettingsSectionHeader(title: title, symbol: symbol, tint: tint)
+            VStack(alignment: .leading, spacing: 14) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .settingsCard()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .conduitGlassSurface(cornerRadius: 24, tint: tint.opacity(0.07))
+    }
+}
+
+/// A settings group's name over its card: a small symbol in the group's
+/// color, then the name.
+struct SettingsSectionHeader: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .conduitFixedGlyph()
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension View {
+    /// A settings group's card: a faint fill and hairline over the backdrop,
+    /// like the V2 Scheduled list, so a page of them stays calm.
+    func settingsCard(cornerRadius: CGFloat = 20) -> some View {
+        background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+            }
     }
 }
 

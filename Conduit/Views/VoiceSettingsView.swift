@@ -285,7 +285,7 @@ struct VoiceSettingsView: View {
             ScrollView {
                 // Setup first, then what most people change. Provider
                 // detail, models and tuning wait under Advanced.
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 24) {
                     if let callSaves, callSaves.pendingCount > 0 {
                         VoiceCallSaveStatusSection(model: callSaves)
                     }
@@ -303,8 +303,12 @@ struct VoiceSettingsView: View {
                     DictationSettingsSection()
                     advancedSection
                 }
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .modifier(V2SoftTopScrollEdge(isOn: true))
         }
         .navigationTitle("Voice")
         .navigationBarTitleDisplayMode(.inline)
@@ -754,9 +758,14 @@ struct VoiceSettingsView: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
-                    Label(AppLocalization.string("Advanced"), systemImage: "slider.horizontal.3")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.conduitAura)
+                    Label {
+                        Text(AppLocalization.string("Advanced"))
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(Color.conduitAccent)
+                    }
+                    .font(.callout.weight(.semibold))
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
                         .font(.footnote.weight(.semibold))
@@ -776,7 +785,7 @@ struct VoiceSettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .conduitGlassSurface(cornerRadius: 24, tint: Color.conduitAura.opacity(0.07))
+        .settingsCard()
         .accessibilityValue(Text(advancedExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
         .accessibilityIdentifier("voice.advancedToggle")
         if advancedExpanded {

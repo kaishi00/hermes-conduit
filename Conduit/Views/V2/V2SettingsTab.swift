@@ -18,7 +18,9 @@ struct V2SettingsTab: View {
 
     var body: some View {
         ZStack {
-            V2Backdrop()
+            // Shows while the page loads or fades for a profile switch; the
+            // home page draws its own over it.
+            V2Backdrop(drifts: false)
             if let snapshot {
                 settingsView(snapshot)
                     .id(snapshot.id)

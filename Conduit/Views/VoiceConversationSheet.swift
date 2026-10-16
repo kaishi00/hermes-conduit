@@ -27,7 +27,7 @@ struct VoiceConversationSheet: View {
             ZStack {
                 ConduitBackdrop()
                 ScrollView {
-                    VStack(spacing: 14) {
+                    VStack(spacing: 22) {
                         statusCard
                         conversationCard
                         backgroundJobsCard

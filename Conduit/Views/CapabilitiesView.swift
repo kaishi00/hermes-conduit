@@ -59,6 +59,8 @@ struct CapabilitiesView: View {
             .searchable(text: $searchText, prompt: AppLocalization.string("Search skills"))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
+            .scrollDismissesKeyboard(.immediately)
+            .modifier(V2SoftTopScrollEdge(isOn: true))
             .refreshable { await loadCapabilities() }
             .overlay(alignment: .top) {
                 if let banner {
@@ -72,7 +74,10 @@ struct CapabilitiesView: View {
             }
             }
         }
+        // The other settings pages' backdrop and small title.
+        .background { ConduitBackdrop() }
         .navigationTitle("Capabilities")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: appState.activeProfile) { await loadCapabilities() }
     }
@@ -82,17 +87,23 @@ struct CapabilitiesView: View {
         if !filteredSkills.isEmpty {
             if hasCategories {
                 ForEach(skillsByCategory, id: \.0) { category, skills in
-                    Section(category) {
+                    Section {
                         ForEach(skills) { skill in
                             CapabilitySkillRow(skill: skill)
+                                .listRowBackground(Color.clear)
                         }
+                    } header: {
+                        sectionHeader(Text(verbatim: category))
                     }
                 }
             } else {
-                Section("Skills") {
+                Section {
                     ForEach(filteredSkills) { skill in
                         CapabilitySkillRow(skill: skill)
+                            .listRowBackground(Color.clear)
                     }
+                } header: {
+                    sectionHeader(Text("Skills"))
                 }
             }
         }
@@ -101,12 +112,24 @@ struct CapabilitiesView: View {
     @ViewBuilder
     private var toolsetsSection: some View {
         if !filteredToolsets.isEmpty {
-            Section("Toolsets") {
+            Section {
                 ForEach(filteredToolsets) { toolset in
                     CapabilityToolsetRow(toolset: toolset)
+                        .listRowBackground(Color.clear)
                 }
+            } header: {
+                sectionHeader(Text("Toolsets"))
             }
         }
+    }
+
+    /// As the Chats list's section headers: small, quiet, in sentence case.
+    private func sectionHeader(_ title: Text) -> some View {
+        title
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private var filteredSkills: [CapabilitySkill] {

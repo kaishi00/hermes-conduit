@@ -165,7 +165,7 @@ struct KanbanTaskDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 22) {
                     // Identity gate: while the displayed identity has no
                     // actionable task (a replacement detail is loading or
                     // failed), NO task-specific content renders or acts — the

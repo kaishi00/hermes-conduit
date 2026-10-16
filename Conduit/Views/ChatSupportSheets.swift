@@ -30,7 +30,7 @@ struct GatewayDiagnosticsSheet: View {
         ZStack {
             ConduitBackdrop()
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: 22) {
                     summary
                     lastConnection
                     connectors
@@ -289,7 +289,7 @@ private struct WorkspaceFilePreviewSheet: View {
             ZStack {
                 ConduitBackdrop()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 22) {
                         if appState.workspaceFileLoading {
                             ProgressView("Loading preview…").frame(maxWidth: .infinity, minHeight: 180)
                         } else if let error = appState.workspaceFileError {
@@ -353,7 +353,7 @@ struct DelegateAgentsSheet: View {
             ZStack {
                 ConduitBackdrop()
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 22) {
                         ConduitSettingsSection(title: AppLocalization.string("Delegate agents"), symbol: "person.2", tint: .conduitAccent) {
                             Text(activeSummary).font(.footnote).foregroundStyle(.secondary)
                         }
