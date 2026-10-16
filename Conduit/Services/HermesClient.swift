@@ -45,13 +45,28 @@ private struct JsonRpcRequest: Encodable {
 /// client's own requests echo its integer ids; server→client requests
 /// (`tui_gateway/server_requests.py`) carry string ids (`srq-<hex>`), so a
 /// string id must decode instead of dropping the whole frame.
-private enum JsonRpcID: Decodable, Equatable {
+private enum JsonRpcID: Decodable, Equatable, Sendable {
     case int(Int)
     case string(String)
     /// Any other scalar (JSON-RPC forbids them): decoded so the rest of the
     /// frame is not lost. It never matches a request of ours and is never
     /// answered (requests need a string id).
     case other
+
+    /// From a `JSONSerialization` value. Nil for an absent or null id, as
+    /// the Decodable path reads it.
+    init?(jsonObject value: Any?) {
+        guard let value, !(value is NSNull) else { return nil }
+        switch value {
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber where !AnyCodable.isBoolean(number):
+            let int = number.intValue
+            self = Double(int) == number.doubleValue ? .int(int) : .other
+        default:
+            self = .other
+        }
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -89,15 +104,68 @@ private final class ResumeOnce: @unchecked Sendable {
     }
 }
 
-private struct JsonRpcResponse: Decodable {
+private struct JsonRpcResponse: Decodable, Sendable {
     let id: JsonRpcID?
     let result: AnyCodable?
     let error: RpcError?
     let method: String?
     let params: AnyCodable?
+
+    /// Reads an inbound frame with `JSONSerialization`. `JSONDecoder` finds
+    /// each `AnyCodable` value's type by trying to decode it as every type
+    /// in turn, and on the main actor that cost a frame's worth of time for
+    /// a large tool result, even one from a chat in the background. Nil for
+    /// anything the Decodable path would refuse.
+    init?(frame data: Data) {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return nil
+        }
+        var method: String?
+        if let value = object["method"], !(value is NSNull) {
+            guard let string = value as? String else { return nil }
+            method = string
+        }
+        var error: RpcError?
+        if let value = object["error"], !(value is NSNull) {
+            guard let fields = value as? [String: Any],
+                  let parsed = RpcError(jsonObject: fields) else { return nil }
+            error = parsed
+        }
+        self.id = JsonRpcID(jsonObject: object["id"])
+        self.result = AnyCodable(optionalJSONObject: object["result"])
+        self.error = error
+        self.method = method
+        self.params = AnyCodable(optionalJSONObject: object["params"])
+    }
 }
 
-struct RpcError: Decodable, Error, LocalizedError {
+/// An inbound frame, read and (for a stream event) parsed in one place, so
+/// a large one can be done off the main actor. Immutable once built, and
+/// handed to the main actor once.
+///
+/// `@unchecked` holds only while everything reachable from `StreamEvent` is
+/// an immutable value, and while `StreamEventParser.parse` and what it calls
+/// touch no shared mutable state (no shared formatters or caches, nothing
+/// main-actor bound): it runs off the main actor for large frames.
+private struct DecodedFrame: @unchecked Sendable {
+    let response: JsonRpcResponse?
+    /// The parsed stream event, for an `event` notification.
+    let event: StreamEvent?
+    let byteCount: Int
+
+    init(_ data: Data) {
+        let response = JsonRpcResponse(frame: data)
+        self.response = response
+        if response?.method == "event", let params = response?.params {
+            event = StreamEventParser.parse(params: params)
+        } else {
+            event = nil
+        }
+        byteCount = data.count
+    }
+}
+
+struct RpcError: Decodable, Error, LocalizedError, Sendable {
     let code: Int?
     let message: String
     /// Machine-readable refusal reason from the error's `data.reason`
@@ -122,6 +190,19 @@ struct RpcError: Decodable, Error, LocalizedError {
 extension RpcError {
     private enum CodingKeys: String, CodingKey { case code, message, data }
 
+    /// From a `JSONSerialization` object, refusing what `init(from:)` does.
+    fileprivate init?(jsonObject object: [String: Any]) {
+        guard let message = object["message"] as? String else { return nil }
+        var code: Int?
+        if let value = object["code"], !(value is NSNull) {
+            guard let number = value as? NSNumber, !AnyCodable.isBoolean(number),
+                  Double(number.intValue) == number.doubleValue else { return nil }
+            code = number.intValue
+        }
+        let data = AnyCodable(optionalJSONObject: object["data"])
+        self.init(code: code, message: message, reason: data?.objectValue?["reason"]?.stringValue)
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let data = try? container.decodeIfPresent(AnyCodable.self, forKey: .data)
@@ -134,7 +215,7 @@ extension RpcError {
 }
 
 // Type-erased Codable for dynamic JSON
-enum AnyCodable: Codable, Equatable {
+enum AnyCodable: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
     case number(Double)
@@ -144,21 +225,51 @@ enum AnyCodable: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+        // Each miss below throws and builds an error, so the common kinds go
+        // first. JSONDecoder never reads a number or a bool as a string, or
+        // the reverse, so the order doesn't change any value.
         if container.decodeNil() {
             self = .null
+        } else if let v = try? container.decode(String.self) {
+            self = .string(v)
+        } else if let v = try? container.decode([String: AnyCodable].self) {
+            self = .object(v)
         } else if let v = try? container.decode(Bool.self) {
             self = .bool(v)
         } else if let v = try? container.decode(Double.self) {
             self = .number(v)
-        } else if let v = try? container.decode(String.self) {
-            self = .string(v)
         } else if let v = try? container.decode([AnyCodable].self) {
             self = .array(v)
-        } else if let v = try? container.decode([String: AnyCodable].self) {
-            self = .object(v)
         } else {
             self = .null
         }
+    }
+
+    /// From a `JSONSerialization` value.
+    init(jsonObject value: Any) {
+        switch value {
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber:
+            self = Self.isBoolean(number) ? .bool(number.boolValue) : .number(number.doubleValue)
+        case let object as [String: Any]:
+            self = .object(object.mapValues(AnyCodable.init(jsonObject:)))
+        case let array as [Any]:
+            self = .array(array.map(AnyCodable.init(jsonObject:)))
+        default:
+            self = .null
+        }
+    }
+
+    /// Nil for an absent or null value, as `decodeIfPresent` reads it.
+    init?(optionalJSONObject value: Any?) {
+        guard let value, !(value is NSNull) else { return nil }
+        self.init(jsonObject: value)
+    }
+
+    /// `JSONSerialization` hands back true and false as NSNumber too.
+    static func isBoolean(_ number: NSNumber) -> Bool {
+        CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1047,14 +1158,27 @@ final class HermesClient: ObservableObject {
                 // otherwise fire `onEvent`/resolve pending RPCs for the new
                 // connection. Same guard the catch uses below.
                 guard self.socket === socket else { break }
+                let data: Data
                 switch message {
-                case .data(let data):
-                    handleMessage(data: data)
+                case .data(let bytes):
+                    data = bytes
                 case .string(let text):
-                    handleMessage(data: Data(text.utf8))
+                    data = Data(text.utf8)
                 @unknown default:
-                    break
+                    continue
                 }
+                let frame: DecodedFrame
+                if data.count >= Self.backgroundDecodeThreshold {
+                    // A big frame (a resume, a history page, a tool's
+                    // output, often from a chat in the background) is read
+                    // off the main actor so it can't stall a scroll. The
+                    // loop waits for it, so frames still apply in order.
+                    frame = await Self.decodeInBackground(data)
+                    guard self.socket === socket else { break }
+                } else {
+                    frame = DecodedFrame(data)
+                }
+                handleMessage(frame)
             } catch {
                 // Socket closed or errored
                 logger.error("WebSocket receive failed: \(error.localizedDescription, privacy: .public)")
@@ -1082,9 +1206,17 @@ final class HermesClient: ObservableObject {
         }
     }
 
-    private func handleMessage(data: Data) {
-        guard let json = try? JSONDecoder().decode(JsonRpcResponse.self, from: data) else {
-            logger.error("Dropped undecodable inbound WebSocket frame (\(data.count) bytes)")
+    /// Frames this size or larger are decoded off the main actor. Stream
+    /// deltas and RPC acks are far smaller and stay on the fast path.
+    static let backgroundDecodeThreshold = 16 * 1024
+
+    nonisolated private static func decodeInBackground(_ data: Data) async -> DecodedFrame {
+        DecodedFrame(data)
+    }
+
+    private func handleMessage(_ frame: DecodedFrame) {
+        guard let json = frame.response else {
+            logger.error("Dropped undecodable inbound WebSocket frame (\(frame.byteCount) bytes)")
             return
         }
 
@@ -1152,7 +1284,9 @@ final class HermesClient: ObservableObject {
             default:
                 break
             }
-            handleStreamEvent(params: params)
+            if let event = frame.event {
+                onEvent?(event)
+            }
         } else {
             logger.debug("Received non-event WebSocket notification without an RPC id")
         }
@@ -1756,6 +1890,10 @@ final class HermesClient: ObservableObject {
         ]
         if omitMessages {
             params["omit_messages"] = true
+        } else {
+            // The transcript without the copy of every picture stored in
+            // it (#652); a gateway without the flag ignores it.
+            params["inline_images"] = false
         }
         // A bot chat lives in the bot profile's state.db; the gateway's
         // `session.resume` reads the `profile` param to open that store
@@ -3240,7 +3378,12 @@ enum MessageNormalizer {
         return .other
     }
 
-    static func normalizeMessages(_ payload: [AnyCodable]) -> [ChatMessage] {
+    /// `imageScope` names the session and profile the rows were read from,
+    /// so pictures stored inside them can be fetched again (#652).
+    static func normalizeMessages(
+        _ payload: [AnyCodable],
+        imageScope: TranscriptImageScope? = nil
+    ) -> [ChatMessage] {
         var messages: [ChatMessage] = []
         var callsById = [String: ChatMessage]()
 
@@ -3344,8 +3487,9 @@ enum MessageNormalizer {
             if modelChange != nil || systemNotice != nil || (displayKind != nil && !isToolResult) {
                 role = .system
             }
+            let rowId = durableRowId(in: obj)
             let userContent: (content: String, rawContent: String?, attachments: [Attachment]?) = role == .user
-                ? splitUserAttachmentReferences(rawContent, messageId: id)
+                ? splitUserAttachmentReferences(rawContent, messageId: id, rowId: rowId, imageScope: imageScope)
                 : (content: rawContent, rawContent: nil, attachments: nil)
             let content: String
             if let displayKind, !isToolResult {
@@ -3454,7 +3598,7 @@ enum MessageNormalizer {
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
                     ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil),
-                rowId: durableRowId(in: obj),
+                rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
 
@@ -3999,16 +4143,24 @@ enum MessageNormalizer {
     /// prompt is retained for replay/branch operations.
     private static func splitUserAttachmentReferences(
         _ source: String,
-        messageId: String
+        messageId: String,
+        rowId: Int? = nil,
+        imageScope: TranscriptImageScope? = nil
     ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
-        let images = splitUserImageReferences(source, messageId: messageId)
+        let images = splitUserImageReferences(
+            source,
+            messageId: messageId,
+            rowId: rowId,
+            imageScope: imageScope
+        )
         let files = splitLeadingFileReferences(
             removingContextFooter(images.content),
             messageId: messageId
         )
         guard files.content != images.content else { return images }
         let attachments = files.attachments + (images.attachments ?? [])
-        return (files.content, source, attachments.isEmpty ? nil : attachments)
+        // Without Hermes' picture stand-ins, which a branch must not replay.
+        return (files.content, images.rawContent ?? source, attachments.isEmpty ? nil : attachments)
     }
 
     /// Hermes appends what it expanded for `@file:`/`@url:` references below
@@ -4078,40 +4230,140 @@ enum MessageNormalizer {
         return (content, attachments)
     }
 
-    /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
-    /// tokens in the user prompt. Project those tokens into Conduit's regular
-    /// attachment model so resumed cross-client sessions keep their previews.
-    /// Retain the original prompt for replay/branch operations.
-    private static func splitUserImageReferences(
-        _ source: String,
-        messageId: String
-    ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
-        let pattern = #"@image:(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else {
-            return (source, nil, nil)
-        }
+    /// `@image:` tokens, quoted the way Hermes quotes one
+    /// (`format_reference_value`) or bare.
+    private static let imageReferencePattern = try? NSRegularExpression(
+        pattern: #"@image:(?:`([^`\r\n]+)`|"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))"#
+    )
 
-        let fullRange = NSRange(source.startIndex..<source.endIndex, in: source)
-        let matches = expression.matches(in: source, range: fullRange)
-        guard !matches.isEmpty else { return (source, nil, nil) }
+    /// The gateway's note for a picture that came in through a chat
+    /// platform or a bot (`agent/image_routing.py`).
+    private static let imageHintPattern = try? NSRegularExpression(
+        pattern: #"\[Image attached at: ([^\n\]]+)\]"#
+    )
 
-        var paths: [String] = []
-        for match in matches {
-            for group in 1..<match.numberOfRanges {
-                let range = match.range(at: group)
-                guard range.location != NSNotFound,
-                      let swiftRange = Range(range, in: source) else { continue }
-                let path = String(source[swiftRange])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !path.isEmpty { paths.append(path) }
+    /// The caption the gateway writes when a picture arrives without one.
+    private static let defaultImageCaption = "What do you see in this image?"
+
+    /// What Hermes puts in place of each picture it leaves out of a
+    /// transcript read with `inline_images=false` (#652).
+    static let inlineImageMarker = "[image]"
+
+    private static let inlineImagePartTypes: Set<String> = ["image_url", "input_image", "image"]
+
+    /// A content part carrying a picture (OpenAI `image_url`/`input_image`,
+    /// Anthropic or MCP `image`), as opposed to some other object whose
+    /// `type` happens to say image.
+    static func isInlineImagePart(_ part: [String: AnyCodable]) -> Bool {
+        guard let type = part["type"]?.stringValue, inlineImagePartTypes.contains(type) else { return false }
+        return ["image_url", "image", "source", "data", "file_id"].contains { part[$0] != nil }
+    }
+
+    /// Splits Hermes' trailing picture stand-ins off a persisted prompt.
+    /// Hermes appends one line per picture after the text, so only a
+    /// trailing run counts and a typed "[image]" inside the text stays. A
+    /// bare `data:image/…` line (a gateway that writes pictures out as text)
+    /// counts as one too and is never shown.
+    static func trailingInlineImageMarkers(_ text: String) -> (text: String, count: Int) {
+        guard text.contains(inlineImageMarker) || text.contains("data:image/") else { return (text, 0) }
+        var lines = text.components(separatedBy: "\n")
+        var count = 0
+        while let last = lines.last {
+            let line = last.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty {
+                lines.removeLast()
+            } else if line == inlineImageMarker
+                        || (line.hasPrefix("data:image/") && line.contains(";base64,") && !line.contains(" ")) {
+                lines.removeLast()
+                count += 1
+            } else {
                 break
             }
         }
-        guard !paths.isEmpty else { return (source, nil, nil) }
+        guard count > 0 else { return (text, 0) }
+        return (lines.joined(separator: "\n"), count)
+    }
 
-        var visibleContent = source
-        for match in matches.reversed() {
-            guard let range = Range(match.range, in: visibleContent) else { continue }
+    /// The pictures stored inside persisted row `rowId`, in order, as data
+    /// URLs (nil for one that is not a data URL). `rows` comes from a read
+    /// that keeps pictures inline.
+    static func inlineImageDataURLs(inRows rows: [Any], rowId: Int) -> [String?] {
+        for raw in rows {
+            guard let envelope = AnyCodable.from(raw).objectValue else { continue }
+            let nested = envelope["message"]?.objectValue ?? envelope["payload"]?.objectValue ?? [:]
+            let obj = envelope.merging(nested) { _, nestedValue in nestedValue }
+            guard durableRowId(in: obj) == rowId else { continue }
+            var urls: [String?] = []
+            for part in obj["content"]?.arrayValue ?? [] {
+                guard let object = part.objectValue, isInlineImagePart(object) else { continue }
+                urls.append(inlineImageDataURL(in: object))
+            }
+            return urls
+        }
+        return []
+    }
+
+    private static func inlineImageDataURL(in part: [String: AnyCodable]) -> String? {
+        let url = part["image_url"]?.objectValue?["url"]?.stringValue
+            ?? part["image_url"]?.stringValue
+            ?? part["url"]?.stringValue
+        if let url {
+            return url.lowercased().hasPrefix("data:image/") ? url : nil
+        }
+        // Anthropic `source` block, or an MCP image (`data` + `mimeType`).
+        let source = part["source"]?.objectValue
+        let media = source?["media_type"]?.stringValue ?? part["mimeType"]?.stringValue ?? part["media_type"]?.stringValue
+        let data = source?["data"]?.stringValue ?? part["data"]?.stringValue
+        guard let media, media.lowercased().hasPrefix("image/"), let data, !data.isEmpty else { return nil }
+        return "data:\(media);base64,\(data)"
+    }
+
+    /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
+    /// tokens in the user prompt, and the gateway notes a picture that came
+    /// in through a chat platform as `[Image attached at: /path]`. Both
+    /// become Conduit's regular attachments so resumed cross-client sessions
+    /// keep their previews.
+    ///
+    /// A persisted row (`rowId`) also ends with one `[image]` stand-in per
+    /// picture Hermes stored inside it (#652). Each pairs, in order, with
+    /// the picture the prompt names a file for, as its fallback when that
+    /// file is gone, or becomes an attachment of its own. The prompt is
+    /// retained, without the stand-ins, for replay/branch operations.
+    private static func splitUserImageReferences(
+        _ source: String,
+        messageId: String,
+        rowId: Int? = nil,
+        imageScope: TranscriptImageScope? = nil
+    ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
+        let markers = rowId == nil ? (text: source, count: 0) : trailingInlineImageMarkers(source)
+        let body = markers.text
+        let fullRange = NSRange(body.startIndex..<body.endIndex, in: body)
+
+        var references: [(range: NSRange, path: String)] = []
+        var foundHint = false
+        for (expression, isHint) in [(imageReferencePattern, false), (imageHintPattern, true)] {
+            guard let expression else { continue }
+            for match in expression.matches(in: body, range: fullRange) {
+                for group in 1..<match.numberOfRanges {
+                    let range = match.range(at: group)
+                    guard range.location != NSNotFound,
+                          let swiftRange = Range(range, in: body) else { continue }
+                    let path = String(body[swiftRange])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !path.isEmpty {
+                        references.append((match.range, path))
+                        foundHint = foundHint || isHint
+                    }
+                    break
+                }
+            }
+        }
+        guard !references.isEmpty || markers.count > 0 else { return (source, nil, nil) }
+        references.sort { $0.range.location < $1.range.location }
+
+        var visibleContent = body
+        for reference in references.reversed() {
+            guard let range = Range(reference.range, in: visibleContent) else { continue }
             visibleContent.removeSubrange(range)
         }
         visibleContent = visibleContent
@@ -4126,18 +4378,33 @@ enum MessageNormalizer {
                 options: .regularExpression
             )
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        if foundHint, visibleContent == defaultImageCaption {
+            visibleContent = ""
+        }
 
-        let attachments = paths.enumerated().map { index, path in
-            let name = URL(fileURLWithPath: path).lastPathComponent
+        let paths = references.map(\.path)
+        let attachments = (0..<max(paths.count, markers.count)).map { index -> Attachment in
+            let path = index < paths.count ? paths[index] : nil
+            let name = path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+            var inlineImage: InlineImageRef?
+            if index < markers.count, let rowId, let imageScope {
+                inlineImage = InlineImageRef(
+                    sessionId: imageScope.sessionId,
+                    profile: imageScope.profile,
+                    rowId: rowId,
+                    index: index
+                )
+            }
             return Attachment(
                 id: "\(messageId)-gateway-image-\(index)",
                 name: name.isEmpty ? AppLocalization.string("Attached image") : name,
-                uri: path,
-                mimeType: imageMimeType(for: path),
-                kind: .image
+                uri: path ?? "",
+                mimeType: path.flatMap { imageMimeType(for: $0) },
+                kind: .image,
+                inlineImage: inlineImage
             )
         }
-        return (visibleContent, source, attachments)
+        return (visibleContent, body, attachments)
     }
 
     private static func imageMimeType(for path: String) -> String? {
@@ -4233,6 +4500,10 @@ enum MessageNormalizer {
         case .object(let obj):
             if let text = obj["text"] { return extractContent(text) }
             if let content = obj["content"] { return extractContent(content) }
+            // A picture stored inside the message: the same stand-in Hermes
+            // writes for it with `inline_images=false`, never its base64 as
+            // JSON text.
+            if isInlineImagePart(obj) { return "\n" + inlineImageMarker }
             if let data = try? JSONSerialization.data(withJSONObject: obj.mapValues { $0.anyValue }, options: .prettyPrinted),
                let str = String(data: data, encoding: .utf8) {
                 return str

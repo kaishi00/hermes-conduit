@@ -527,6 +527,9 @@ final class GeminiLiveConversationController: ObservableObject {
                 self.tools.beginEnding()
             }
         }
+        session.onFreshSession = { [weak self] heardDropout in
+            self?.freshSessionStarted(heardDropout: heardDropout)
+        }
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
         input.onInterrupted = { [weak self] in self?.captureInterrupted() }
@@ -1075,6 +1078,32 @@ final class GeminiLiveConversationController: ObservableObject {
         flushPendingTextIfIdle()
     }
 
+    /// Google wouldn't resume the conversation, so a new server session
+    /// took over without it: the model is told what was said so far (the
+    /// Watch's rejoin wording) before anything else goes out.
+    private func freshSessionStarted(heardDropout: Bool) {
+        tools.serverSessionStarted()
+        // A turn the lost session was in never completes. After a handoff
+        // nothing else ends it (a dropout already did via `.reconnecting`),
+        // so it is closed here as an interruption would.
+        output.interrupt()
+        suppressingModelTurn = false
+        modelTurnActive = false
+        lastModelTurnEndedAt = now()
+        publishFinished(openUserEntry)
+        publishFinished(openAssistantEntry)
+        closeOpenEntries()
+        if endRequestedAt == nil { phase = restingPhase }
+        // Ending: the goodbye goes on without a recap.
+        guard endRequestedAt == nil else { return }
+        let at = now()
+        let lines = transcript.map { entry in
+            WatchVoiceWire.DirectTurn(role: entry.speaker == .user ? .user : .assistant, text: entry.text, at: at)
+        }
+        pendingTextTurns.insert(WatchRejoin.prompt(lines, after: heardDropout ? .broke : .froze), at: 0)
+        scheduleIdleFlush()
+    }
+
     /// Not UI copy (written for the model), so not localized.
     static let acknowledgementPrompt = "[You just started a background job on Hermes for the user's last request. Acknowledge it out loud in a few words, like \"On it, Hermes is checking.\" Do not start another job.]"
 
@@ -1423,6 +1452,7 @@ final class GeminiLiveConversationController: ObservableObject {
         old.onEvent = nil
         old.onStateChange = nil
         old.onConnectionReplaced = nil
+        old.onFreshSession = nil
         old.stop()
     }
 

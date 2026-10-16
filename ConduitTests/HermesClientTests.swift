@@ -734,6 +734,10 @@ final class HermesClientTests: XCTestCase {
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["session_id"] as? String, "sess-full")
         XCTAssertNil(params["omit_messages"], "The legacy resume must not suppress the transcript")
+        XCTAssertEqual(
+            params["inline_images"] as? Bool, false,
+            "The transcript leaves out the copy of every picture stored in it (#652)"
+        )
 
         let id = try XCTUnwrap(request["id"] as? Int)
         let response: [String: Any] = [
@@ -1672,6 +1676,66 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(withdrawn.first?.0, "runtime-1")
         XCTAssertEqual(withdrawn.first?.1, "queue-1", "The card is keyed by the queue id, not the srq id")
         XCTAssertEqual(withdrawn.first?.2, "timeout")
+        client.disconnect()
+    }
+
+    func testLargeEventFrameArrivesDecodedAndInOrder() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        // Over the background-decode threshold: a big tool result, as a chat
+        // running in the background sends.
+        let output = String(repeating: "line of tool output\n", count: 2_000)
+        XCTAssertGreaterThan(output.utf8.count, HermesClient.backgroundDecodeThreshold)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "tool.complete", "session_id": "background-1",
+                "payload": ["name": "terminal", "tool_id": "call-1", "output": output]
+            ]
+        ], to: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.delta", "session_id": "background-1", "payload": ["text": "Done"]]
+        ], to: socket)
+
+        XCTAssertEqual(events.count, 2)
+        guard case .toolComplete(let sessionId, let name, let toolOutput, let toolID)? = events.first else {
+            return XCTFail("Expected the tool result first, got \(events)")
+        }
+        XCTAssertEqual(sessionId, "background-1")
+        XCTAssertEqual(name, "terminal")
+        XCTAssertEqual(toolOutput, output)
+        XCTAssertEqual(toolID, "call-1")
+        guard case .messageDelta(_, let text)? = events.last else {
+            return XCTFail("Expected the delta second, got \(events)")
+        }
+        XCTAssertEqual(text, "Done")
+        client.disconnect()
+    }
+
+    func testEventFrameKeepsBoolsNumbersAndNulls() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        var events: [StreamEvent] = []
+        client.onEvent = { events.append($0) }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "tool.start", "session_id": "runtime-1",
+                "payload": [
+                    "name": "web_search", "tool_id": "call-2",
+                    "args": ["query": "dinner", "limit": 5, "safe": true, "page": NSNull()]
+                ]
+            ]
+        ], to: socket)
+
+        guard case .toolStart(_, _, let input, _)? = events.first else {
+            return XCTFail("Expected a tool start, got \(events)")
+        }
+        let decoded = try XCTUnwrap(input.flatMap { try? JSONDecoder().decode(AnyCodable.self, from: Data($0.utf8)) })
+        XCTAssertEqual(decoded, .object([
+            "query": .string("dinner"), "limit": .number(5), "safe": .bool(true), "page": .null
+        ]))
         client.disconnect()
     }
 

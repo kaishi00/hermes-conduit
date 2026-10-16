@@ -176,15 +176,19 @@ struct GroupChatView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                appState.closeGroupRoom()
-            } label: {
-                // V2 pushes the room like a chat: Back, not Close.
-                Image(systemName: isV2 ? "chevron.backward" : "xmark")
-                    .font(isV2 ? .body.weight(.semibold) : .subheadline.weight(.semibold))
+        if !isV2 {
+            // V2 pushes the room like a chat and keeps the system Back
+            // button, so the edge swipe leaves it too (V2Shell closes the
+            // room when its screen is popped).
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    appState.closeGroupRoom()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
             }
-            .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
         }
         ToolbarItem(placement: .principal) {
             GroupRoomTitle(

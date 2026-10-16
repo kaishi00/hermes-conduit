@@ -27,7 +27,9 @@ struct ChatStepStyle: Equatable {
         AppLocalization.string(Self.doneKey(category))
     }
 
-    static let thinking = (symbol: "sparkle", tint: Color.conduitVoice)
+    /// Thinking isn't an action: a quiet gray bubble, so the colored tool
+    /// steps around it stand out.
+    static let thinking = (symbol: "ellipsis.bubble", tint: Color.secondary)
 
     /// A step row's insets and the gap after its icon.
     static let rowHorizontalPadding: CGFloat = 14

@@ -550,7 +550,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(
             rehydrationQueries,
             [
-                "?limit=120&offset=0&order=latest&include_compacted=true",
+                "?limit=120&offset=0&order=latest&include_compacted=true&inline_images=false",
                 PersistedTranscriptPagination.tailQuery(offset: 0)
             ],
             "Rehydration must request order=latest offset=0 after every adoption"

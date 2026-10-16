@@ -97,6 +97,12 @@ jobs:
         # translated string can never silently render English again.
         run: python3 scripts/check-l10n-coverage.py --repo-root .
 
+      - name: Recommended plugin version matches the plugin
+        # Conduit only offers the plugin update to hosts below
+        # NotifierPluginStatus.recommendedVersion, so it must follow every
+        # plugin release on hermes-conduit-notifier main.
+        run: python3 scripts/check-plugin-version.py --repo-root .
+
       - name: Select the hosted smoke suite
         id: smoke
         run: |

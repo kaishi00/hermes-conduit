@@ -160,6 +160,11 @@ struct V2Shell: View {
         }
     }
 
+    /// Whether either tab holds the conversation, shown or not.
+    private var conversationPushed: Bool {
+        chatsPath.contains(.conversation) || botsPath.contains(.conversation)
+    }
+
     /// Whether a screen is pushed over the tab's root.
     private func isRootCovered(_ tab: V2Tab) -> Bool {
         switch tab {
@@ -201,7 +206,29 @@ struct V2Shell: View {
                     closeConversation()
                 }
             }
-            // Leaving a group room from its own toolbar ends that screen.
+            // The room's screen was popped (Back, the edge swipe, or the
+            // return-to-list setting): leave the room, so it stops polling
+            // and opens again on its next tap. Moving the screen between
+            // tabs keeps it pushed in one of them. Waits out the pop so the
+            // outgoing screen doesn't redraw as a chat while it slides away.
+            // A row tap in that wait reopens the same room id, which the
+            // room id change below can't see: the epoch moved, so the room
+            // stays and its screen is pushed again.
+            .onChange(of: conversationPushed) { _, pushed in
+                guard !pushed, appState.activeRoomSurface != nil else { return }
+                let epoch = appState.groupRoomEpoch
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !conversationPushed, appState.activeRoomSurface != nil else { return }
+                    if appState.groupRoomEpoch == epoch {
+                        appState.closeGroupRoom()
+                    } else if !appState.isVoiceCallScreenPresented {
+                        openConversation()
+                    }
+                }
+            }
+            // Leaving a group room another way (disband, server change)
+            // ends that screen.
             .onChange(of: appState.activeRoomSurface?.room.roomID) { old, new in
                 // Leaving: whichever tab holds the room's screen, even one
                 // that isn't showing, drops it so it doesn't come back.
