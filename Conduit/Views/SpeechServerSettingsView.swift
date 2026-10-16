@@ -19,6 +19,9 @@ struct SpeechServerSettingsView: View {
     @State private var isSaving = false
     @State private var isTesting = false
     @State private var testResult: SpeechServerTestResult?
+    /// Why the last save failed, shown here rather than only at the top of
+    /// the Voice screen.
+    @State private var saveError: String?
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
@@ -60,6 +63,7 @@ struct SpeechServerSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     SecureField("Optional, for a server behind a login", text: $keyDraft)
+                        .accessibilityLabel(Text("Key"))
                         .textContentType(.password)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -79,6 +83,7 @@ struct SpeechServerSettingsView: View {
                         }
                     }
                     .disabled(isTesting || isSaving || status?.configured != true)
+                    .accessibilityLabel(Text("Test connection"))
                     .accessibilityIdentifier("voice.speechServer.test")
                     Spacer()
                     if status?.hasKey == true {
@@ -89,6 +94,12 @@ struct SpeechServerSettingsView: View {
                 }
                 .buttonStyle(.borderless)
 
+                if let saveError {
+                    Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("voice.speechServer.saveError")
+                }
                 if let testResult {
                     Label(testResult.message, systemImage: testResult.connected ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .font(.footnote)
@@ -98,6 +109,7 @@ struct SpeechServerSettingsView: View {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.orange)
+                        .accessibilityIdentifier("voice.speechServer.statusReason")
                 }
             }
         }
@@ -111,10 +123,16 @@ struct SpeechServerSettingsView: View {
         return url != savedURL || !keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// A profile switch starts from that profile's saved values.
     private func load() async {
+        status = nil
+        urlDraft = ""
+        keyDraft = ""
+        testResult = nil
+        saveError = nil
         let loaded = await service.speechServerStatus()
         status = loaded
-        if urlDraft.isEmpty { urlDraft = loaded.url ?? "" }
+        urlDraft = loaded.url ?? ""
     }
 
     private func saveURL() async {
@@ -123,23 +141,28 @@ struct SpeechServerSettingsView: View {
         isSaving = true
         defer { isSaving = false }
         testResult = nil
-        _ = await service.save(value: url, for: Self.urlKey)
-        await refreshStatus()
+        saveError = nil
+        let saved = await save(url, for: Self.urlKey)
+        await refreshStatus(submittedURL: saved ? url : nil)
     }
 
     private func saveAll() async {
         isSaving = true
+        defer { isSaving = false }
         testResult = nil
+        saveError = nil
         let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        var submitted: String?
         if url != savedURL {
-            _ = await service.save(value: url, for: Self.urlKey)
+            guard await save(url, for: Self.urlKey) else { return }
+            submitted = url
         }
         let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !key.isEmpty, await service.save(value: key, for: Self.apiKeyKey) {
+        if !key.isEmpty {
+            guard await save(key, for: Self.apiKeyKey) else { return }
             keyDraft = ""
         }
-        isSaving = false
-        await refreshStatus()
+        await refreshStatus(submittedURL: submitted)
         if status?.available == true { await runTest() }
     }
 
@@ -147,16 +170,30 @@ struct SpeechServerSettingsView: View {
         isSaving = true
         defer { isSaving = false }
         testResult = nil
-        _ = await service.save(value: "", for: Self.apiKeyKey)
-        await refreshStatus()
+        saveError = nil
+        _ = await save("", for: Self.apiKeyKey)
+        await refreshStatus(submittedURL: nil)
     }
 
-    private func refreshStatus() async {
+    /// Saves one value; on failure the service's reason is kept for this view.
+    private func save(_ value: String, for key: String) async -> Bool {
+        let saved = await service.save(value: value, for: key)
+        if !saved {
+            saveError = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
+        }
+        return saved
+    }
+
+    private func refreshStatus(submittedURL: String?) async {
         let loaded = await service.speechServerStatus()
         status = loaded
         // Show what the host will dial (http becomes ws, a bare host gets
-        // the realtime path) once it accepted the address.
-        if let url = loaded.url { urlDraft = url }
+        // the realtime path) once it accepted the address, unless the user
+        // has typed something else since.
+        if let submittedURL, let url = loaded.url,
+           urlDraft.trimmingCharacters(in: .whitespacesAndNewlines) == submittedURL {
+            urlDraft = url
+        }
     }
 
     private func runTest() async {

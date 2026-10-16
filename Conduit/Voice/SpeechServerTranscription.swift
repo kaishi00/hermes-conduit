@@ -56,6 +56,8 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     /// The segment being recognized, built from deltas.
     private var pendingText = ""
     private var lastError: String?
+    /// What the screen shows, so a segment that failed can clear its words.
+    private var publishedPartial = ""
 
     init(
         socket: any HermesSpeechSocket,
@@ -120,7 +122,11 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
                 self.resolve(.finished(self.joinedTranscript))
             }
         }
+        // The grace runs from when the last audio went out: a whole short
+        // recording sent at once can take a while on a slow uplink.
+        let sent = sendChain
         let grace = Task { [weak self, quietGrace] in
+            await sent?.value
             try? await Task.sleep(for: quietGrace)
             guard !Task.isCancelled, let self else { return }
             self.quietGraceElapsed = true
@@ -130,13 +136,20 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             timeout.cancel()
             grace.cancel()
         }
-        return await withCheckedContinuation { continuation in
-            if let outcome {
-                continuation.resume(returning: Self.transcript(outcome))
-            } else {
-                waiter = continuation
-                resolveIfSettled()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if let outcome {
+                    continuation.resume(returning: Self.transcript(outcome))
+                } else if Task.isCancelled {
+                    resolve(.finished(nil))
+                    continuation.resume(returning: nil)
+                } else {
+                    waiter = continuation
+                    resolveIfSettled()
+                }
             }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancel() }
         }
     }
 
@@ -153,9 +166,34 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         while offset < pcm16.endIndex {
             let end = pcm16.index(offset, offsetBy: chunkBytes, limitedBy: pcm16.endIndex) ?? pcm16.endIndex
             let chunk = pcm16.subdata(in: offset..<end)
-            enqueueAudio(captureSampleRate == Self.inputSampleRate ? chunk : GrokLiveProtocol.upsampledForInput(chunk))
+            enqueueAudio(Self.resampled(chunk, from: captureSampleRate))
             offset = end
         }
+    }
+
+    /// Capture audio at the server's 24 kHz input rate. Conduit captures at
+    /// 16 kHz (the Grok Live 3:2 path); any other rate is resampled linearly.
+    static func resampled(_ pcm16: Data, from rate: Double) -> Data {
+        if rate == inputSampleRate { return pcm16 }
+        if rate == 16_000 { return GrokLiveProtocol.upsampledForInput(pcm16) }
+        guard rate > 0 else { return Data() }
+        let samples: [Int16] = pcm16.withUnsafeBytes { raw in
+            (0..<(raw.count / 2)).map { Int16(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self)) }
+        }
+        guard samples.count > 1 else { return pcm16.count >= 2 ? pcm16 : Data() }
+        let step = rate / inputSampleRate
+        let count = Int((Double(samples.count) / step).rounded(.down))
+        var output = Data(capacity: count * 2)
+        for index in 0..<count {
+            let position = Double(index) * step
+            let lower = min(Int(position), samples.count - 1)
+            let upper = min(lower + 1, samples.count - 1)
+            let fraction = position - Double(lower)
+            let value = Double(samples[lower]) * (1 - fraction) + Double(samples[upper]) * fraction
+            var sample = Int16(max(-32_768, min(32_767, value.rounded()))).littleEndian
+            withUnsafeBytes(of: &sample) { output.append(contentsOf: $0) }
+        }
+        return output
     }
 
     private func enqueueAudio(_ pcm24: Data) {
@@ -214,6 +252,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             finishedSegments += 1
             startedSegments = max(startedSegments, finishedSegments)
             lastError = Self.errorMessage(frame) ?? lastError
+            publishPartial()
             resolveIfSettled()
         case "error":
             // A refused commit on an empty buffer is expected after a
@@ -232,7 +271,8 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        guard !text.isEmpty, outcome == nil else { return }
+        guard text != publishedPartial, outcome == nil else { return }
+        publishedPartial = text
         onPartial(text)
     }
 

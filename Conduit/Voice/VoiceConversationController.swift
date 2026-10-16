@@ -1237,8 +1237,10 @@ final class VoiceConversationController: ObservableObject {
             if finishingLiveTranscription === server { finishingLiveTranscription = nil }
             try Task.checkCancellation()
             if let text { return text }
-            throw VoiceSpeechServerError.message(speechServerFailure
-                ?? AppLocalization.string("Your speech server didn't hear any words."))
+            // A failure is shown; an utterance with no words (a noise the
+            // server's detector skipped) just keeps listening.
+            if let speechServerFailure { throw VoiceSpeechServerError.message(speechServerFailure) }
+            return ""
         }
     }
 

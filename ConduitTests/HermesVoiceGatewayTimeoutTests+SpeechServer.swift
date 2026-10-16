@@ -133,6 +133,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(failure, "Lost the connection to your speech server.")
     }
 
+    func testSpeechServerFailedSegmentClearsItsWordsFromTheScreen() async {
+        let socket = SpeechServerSocket()
+        var partials: [String] = []
+        let live = SpeechServerTranscription(socket: socket, sampleRate: 16_000, onPartial: { partials.append($0) })
+        socket.deliver(#"{"type":"input_audio_buffer.speech_started"}"#)
+        socket.deliver(#"{"type":"conversation.item.input_audio_transcription.delta","delta":"mumble"}"#)
+        socket.deliver(#"{"type":"conversation.item.input_audio_transcription.failed","error":{"message":"no speech"}}"#)
+        let cleared = await Self.speechServerEventually { partials == ["mumble", ""] }
+        XCTAssertTrue(cleared)
+        live.cancel()
+    }
+
+    func testSpeechServerFinishReturnsWhenItsTaskIsCancelled() async {
+        let socket = SpeechServerSocket()
+        let live = SpeechServerTranscription(
+            socket: socket,
+            sampleRate: 16_000,
+            finishTimeout: .seconds(30),
+            quietGrace: .seconds(30),
+            onPartial: { _ in }
+        )
+        socket.deliver(#"{"type":"input_audio_buffer.speech_started"}"#)
+        let finishing = Task { await live.finish() }
+        let committed = await Self.speechServerEventually { socket.sentTypes.last == "input_audio_buffer.commit" }
+        XCTAssertTrue(committed)
+        finishing.cancel()
+        let transcript = await finishing.value
+        XCTAssertNil(transcript)
+    }
+
+    func testSpeechServerResamplesOtherCaptureRatesTo24kHz() {
+        let second48k = Data(count: 48_000 * 2)
+        XCTAssertEqual(SpeechServerTranscription.resampled(second48k, from: 48_000).count, 24_000 * 2)
+        let second16k = Data(count: 16_000 * 2)
+        XCTAssertEqual(SpeechServerTranscription.resampled(second16k, from: 16_000).count, 24_000 * 2)
+        let same = Data([1, 0, 2, 0])
+        XCTAssertEqual(SpeechServerTranscription.resampled(same, from: 24_000), same)
+    }
+
     func testSpeechServerStatusAndTestParseTheNotifierReplies() {
         let status = SpeechServerStatus(response: [
             "ok": true, "configured": true, "available": false, "url": NSNull(),

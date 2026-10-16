@@ -121,6 +121,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
     @Published private(set) var snapshot: VoiceConfigurationSnapshot
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
+    /// The last speech server status read for this profile, for the setup step.
+    @Published private(set) var speechServer: SpeechServerStatus?
 
     private let requester: VoiceConfigurationRequesting
     let profile: String
@@ -338,16 +340,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// The user's own speech server as the notifier reads it
     /// (`voice.speech_server`). A plugin without the route predates it.
     func speechServerStatus() async -> SpeechServerStatus {
+        let status: SpeechServerStatus
         do {
             let response = try await requester.requestJSON(
                 path: profilePath(SpeechServerTranscription.statusPath), method: "GET", body: nil)
-            return SpeechServerStatus(response: response)
+            status = SpeechServerStatus(response: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return .pluginMissing
+            status = .pluginMissing
         } catch {
-            return SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
-                                      reason: UserFacingError.message(for: error), pluginMissing: false)
+            status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                                        reason: UserFacingError.message(for: error), pluginMissing: false)
         }
+        speechServer = status
+        return status
     }
 
     /// Asks the Hermes host to dial the speech server and report back.
