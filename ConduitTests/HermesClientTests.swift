@@ -1675,7 +1675,7 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testLargeEventFrameIsDecodedOffTheMainActorAndKeepsItsOrder() async throws {
+    func testLargeEventFrameArrivesDecodedAndInOrder() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         var events: [StreamEvent] = []
         client.onEvent = { events.append($0) }

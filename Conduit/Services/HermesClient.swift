@@ -142,6 +142,11 @@ private struct JsonRpcResponse: Decodable, Sendable {
 /// An inbound frame, read and (for a stream event) parsed in one place, so
 /// a large one can be done off the main actor. Immutable once built, and
 /// handed to the main actor once.
+///
+/// `@unchecked` holds only while everything reachable from `StreamEvent` is
+/// an immutable value, and while `StreamEventParser.parse` and what it calls
+/// touch no shared mutable state (no shared formatters or caches, nothing
+/// main-actor bound): it runs off the main actor for large frames.
 private struct DecodedFrame: @unchecked Sendable {
     let response: JsonRpcResponse?
     /// The parsed stream event, for an `event` notification.

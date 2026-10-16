@@ -24222,12 +24222,13 @@ final class AppState: ObservableObject {
         // Assigned only on a change: each publish redraws every screen that
         // observes AppState, the open chat included, and a background chat's
         // title event usually names a title the list already shows.
+        var listsChanged = false
         let retitled = sessions.map(updated)
-        if retitled != sessions { sessions = retitled }
+        if retitled != sessions { sessions = retitled; listsChanged = true }
         let retitledCron = cronSessions.map(updated)
-        if retitledCron != cronSessions { cronSessions = retitledCron }
+        if retitledCron != cronSessions { cronSessions = retitledCron; listsChanged = true }
         let retitledArchived = archivedSessions.map(updated)
-        if retitledArchived != archivedSessions { archivedSessions = retitledArchived }
+        if retitledArchived != archivedSessions { archivedSessions = retitledArchived; listsChanged = true }
         // Catalog rows may carry the recovered title either way, but the
         // ACTIVE ordinary persisted title must not: a .sessionTitle event
         // for a canonical Bot Chat would otherwise displace the bot's
@@ -24239,7 +24240,7 @@ final class AppState: ObservableObject {
                 setActiveSessionTitle(title)
             }
         }
-        publishWidgetSnapshot()
+        if listsChanged || matchesActiveSession { publishWidgetSnapshot() }
     }
 
     // MARK: - Stream event handling
