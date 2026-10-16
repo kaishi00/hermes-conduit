@@ -44,6 +44,27 @@ final class GatewayMediaDataURLResolver {
         guard let appState else { return .unavailable }
         return await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
     }
+
+    /// A picture stored inside a persisted message, for when its file is
+    /// gone from the server (#652).
+    func inlineImageDataURL(_ ref: InlineImageRef) async -> String? {
+        guard let appState else { return nil }
+        return await appState.transcriptInlineImageDataURL(ref)
+    }
+
+    /// Where a chat picture is kept on the phone: by the server file it
+    /// names, else by its place inside its message. Scoped to the connected
+    /// Hermes so two servers' same-named files never mix.
+    func imageCacheKey(for attachment: Attachment) -> String? {
+        let dashboard = appState?.activeDashboardID?.uuidString ?? ""
+        if attachment.uri.hasPrefix("/") {
+            return TranscriptImageCache.key(dashboard: dashboard, profile: profile, path: attachment.uri)
+        }
+        if let ref = attachment.inlineImage {
+            return TranscriptImageCache.key(dashboard: dashboard, inlineImage: ref)
+        }
+        return nil
+    }
 }
 
 /// A gateway `MEDIA:` file fetched for opening.

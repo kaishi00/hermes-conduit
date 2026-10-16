@@ -734,6 +734,10 @@ final class HermesClientTests: XCTestCase {
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["session_id"] as? String, "sess-full")
         XCTAssertNil(params["omit_messages"], "The legacy resume must not suppress the transcript")
+        XCTAssertEqual(
+            params["inline_images"] as? Bool, false,
+            "The transcript leaves out the copy of every picture stored in it (#652)"
+        )
 
         let id = try XCTUnwrap(request["id"] as? Int)
         let response: [String: Any] = [

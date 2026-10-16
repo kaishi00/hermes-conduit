@@ -3827,6 +3827,12 @@ final class AppState: ObservableObject {
         } else {
             offlineChatCache.removeAll()
         }
+        // Chat pictures kept on the phone go with the chats. Their files are
+        // named by a hash, so they cannot be told apart by server.
+        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        inlineImageRowsUnavailable.removeAll()
+        inlineImageRowFetches.values.forEach { $0.cancel() }
+        inlineImageRowFetches.removeAll()
         if offlineChatPresentation.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
             offlineChatPresentation = nil
         }
@@ -21855,7 +21861,10 @@ final class AppState: ObservableObject {
             }
             return .hydrated(PersistedSessionTranscript(
                 resolvedSessionId: Self.resolvedSessionId(in: response),
-                messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from)),
+                messages: MessageNormalizer.normalizeMessages(
+                    rawMessages.map(AnyCodable.from),
+                    imageScope: Self.transcriptImageScope(in: response, sessionId: sessionId, profile: profile)
+                ),
                 page: page,
                 durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
             ))
@@ -21928,7 +21937,10 @@ final class AppState: ObservableObject {
                     }
                     return .hydrated(PersistedSessionTranscript(
                         resolvedSessionId: Self.resolvedSessionId(in: fullResponse) ?? Self.resolvedSessionId(in: response),
-                        messages: MessageNormalizer.normalizeMessages(fullRows.map(AnyCodable.from)),
+                        messages: MessageNormalizer.normalizeMessages(
+                            fullRows.map(AnyCodable.from),
+                            imageScope: Self.transcriptImageScope(in: fullResponse, sessionId: sessionId, profile: profile)
+                        ),
                         page: nil
                     ))
                 case .unavailable:
@@ -21952,7 +21964,10 @@ final class AppState: ObservableObject {
             // returns `data`, so accept both public Hermes response shapes.
             return .hydrated(PersistedSessionTranscript(
                 resolvedSessionId: Self.resolvedSessionId(in: response),
-                messages: MessageNormalizer.normalizeMessages(rawMessages.map(AnyCodable.from)),
+                messages: MessageNormalizer.normalizeMessages(
+                    rawMessages.map(AnyCodable.from),
+                    imageScope: Self.transcriptImageScope(in: response, sessionId: sessionId, profile: profile)
+                ),
                 page: page,
                 durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
             ))
@@ -21982,6 +21997,21 @@ final class AppState: ObservableObject {
             // degrading the resume.
             return .failed(error)
         }
+    }
+
+    /// Where a page of persisted rows lives, for fetching a picture stored
+    /// inside one of them later (#652): the stored session the response
+    /// echoed (else the one asked for) in `profile`'s database.
+    nonisolated static func transcriptImageScope(
+        in response: [String: Any],
+        sessionId: String,
+        profile: String
+    ) -> TranscriptImageScope {
+        let echoed = resolvedSessionId(in: response)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return TranscriptImageScope(
+            sessionId: echoed.flatMap { $0.isEmpty ? nil : $0 } ?? sessionId,
+            profile: profile
+        )
     }
 
     /// The dashboard server returns `messages`; the API-server variant
@@ -22230,7 +22260,10 @@ final class AppState: ObservableObject {
             }
             var didPrepend = false
             if fetchedRowCount > 0 {
-                let normalizedPage = MessageNormalizer.normalizeMessages(rawRows.map(AnyCodable.from))
+                let normalizedPage = MessageNormalizer.normalizeMessages(
+                    rawRows.map(AnyCodable.from),
+                    imageScope: Self.transcriptImageScope(in: response, sessionId: wireSessionId, profile: profile)
+                )
                 // A page boundary can split a tool call from its result row.
                 // Fold any trailing call cards back together with the
                 // matching held result cards by durable tool-call identity
@@ -25784,6 +25817,82 @@ final class AppState: ObservableObject {
     /// `@image:/absolute/path.png`. Keep those paths on the gateway: its
     /// authenticated dashboard returns a data URL that the chat can display
     /// without exposing a gateway filesystem URL to iOS.
+    /// A picture stored inside a persisted message (#652), for when the
+    /// file it came from is gone (Hermes clears its media caches after a
+    /// day). The message is read once with its pictures inline, however
+    /// many of them ask at the same time. One Hermes cannot serve (an older
+    /// Hermes without the route, a message that is not a prompt) is not
+    /// asked for again until the app restarts; a network failure is.
+    func transcriptInlineImageDataURL(_ ref: InlineImageRef) async -> String? {
+        let dashboard = activeDashboardID?.uuidString ?? ""
+        let key = "\(dashboard)|\(ref.profile)|\(ref.sessionId)|\(ref.rowId)"
+        let pictureKey = "\(key)|\(ref.index)"
+        guard !inlineImageRowsUnavailable.contains(key),
+              !inlineImageRowsUnavailable.contains(pictureKey) else { return nil }
+        let fetch: Task<InlineImageRowFetch, Never>
+        if let running = inlineImageRowFetches[key] {
+            fetch = running
+        } else {
+            fetch = Task { @MainActor [weak self] in
+                guard let self else { return .failed }
+                let result = await self.fetchInlineImageRow(ref)
+                self.inlineImageRowFetches[key] = nil
+                if case .unavailable = result { self.inlineImageRowsUnavailable.insert(key) }
+                return result
+            }
+            inlineImageRowFetches[key] = fetch
+        }
+        guard case .found(let urls) = await fetch.value else { return nil }
+        guard urls.indices.contains(ref.index), let url = urls[ref.index] else {
+            // The row holds no copy of this picture (a web link, or fewer
+            // pictures than stand-ins), so it is not asked for again.
+            inlineImageRowsUnavailable.insert(pictureKey)
+            return nil
+        }
+        return url
+    }
+
+    enum InlineImageRowFetch {
+        case found([String?])
+        case unavailable
+        case failed
+    }
+
+    private var inlineImageRowFetches: [String: Task<InlineImageRowFetch, Never>] = [:]
+    private var inlineImageRowsUnavailable: Set<String> = []
+
+    /// Hermes' timeline route reads one prompt by its row id, pictures
+    /// included.
+    private func fetchInlineImageRow(_ ref: InlineImageRef) async -> InlineImageRowFetch {
+        guard let dashboardTicketBridge else { return .failed }
+        do {
+            let response = try await dashboardTicketBridge.requestJSON(
+                path: Self.inlineImageRowPath(ref),
+                // A message's pictures run to a few megabytes on a phone
+                // network.
+                timeoutMilliseconds: 45_000,
+                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+            )
+            guard let rows = Self.persistedMessageRows(in: response) else { return .unavailable }
+            let urls = MessageNormalizer.inlineImageDataURLs(inRows: rows, rowId: ref.rowId)
+            return urls.isEmpty ? .unavailable : .found(urls)
+        } catch DashboardTicketBridgeError.oversizedResponse {
+            // A stored message never gets smaller, so it is not asked for
+            // again.
+            return .unavailable
+        } catch {
+            return Self.historySourceIsUnavailable(error) ? .unavailable : .failed
+        }
+    }
+
+    nonisolated static func inlineImageRowPath(_ ref: InlineImageRef) -> String {
+        let encodedSessionId = ref.sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ref.sessionId
+        return DashboardPath.withProfile(
+            "/api/sessions/\(encodedSessionId)/messages/around?row_id=\(ref.rowId)&limit=1",
+            profile: ref.profile
+        )
+    }
+
     func gatewayMediaDataURL(for path: String, profile: String) async -> String? {
         guard let dashboardTicketBridge else { return nil }
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return nil }
