@@ -50,7 +50,7 @@ struct GeminiLiveServerClose: Equatable {
     /// Google no longer has the session a resumption handle named.
     var isResumptionLost: Bool {
         let text = reason.lowercased()
-        return text.contains("session not found") || (text.contains("session") && text.contains("expired"))
+        return ["session not found", "session expired", "session has expired", "expired session"].contains { text.contains($0) }
     }
 
     /// What the user is shown: the first line of Google's reason (capped),
@@ -609,14 +609,14 @@ final class GeminiLiveSession {
         fail(Self.refusalMessage(close))
     }
 
-    /// A setup that carried a resumption handle was refused: Google lost
-    /// or expired that session (seen as 1008 "BidiGenerateContent session
-    /// not found or expired", also after a 1011 internal error). The
+    /// A setup that carried a resumption handle was refused because Google
+    /// lost or expired that session (1008 "BidiGenerateContent session not
+    /// found or expired"); any other refusal fails as before. The
     /// handle is dropped and the same attempt runs again as a new
     /// session, once: with no handle left, a second refusal fails as any
     /// other would.
     private func startFreshIfResumptionRefused(_ close: GeminiLiveServerClose, attempt: Int, heardDropout: Bool) -> Bool {
-        guard onFreshSession != nil, resumptionHandle != nil, !close.isQuotaExhausted else { return false }
+        guard onFreshSession != nil, resumptionHandle != nil, close.isResumptionLost else { return false }
         geminiLiveLogger.notice("Gemini Live refused to resume (closeCode=\(close.code, privacy: .public)); starting a fresh session")
         resumptionHandle = nil
         startingFresh = heardDropout || startingFresh == true

@@ -456,7 +456,7 @@ enum HermesSpeechFailure {
     static func message(_ raw: String) -> String {
         let lowered = raw.lowercased()
         let isEdge = lowered.contains("(edge)") || lowered.contains("speech.platform.bing.com")
-        if isEdge, lowered.contains("403") || lowered.contains("401") {
+        if isEdge, lowered.range(of: #"\b40[13]\b"#, options: .regularExpression) != nil {
             // Microsoft changes Edge's read-aloud handshake from time to
             // time and refuses older edge-tts releases (7.2.x stopped working
             // in October 2026; 7.3.0 follows the new one).

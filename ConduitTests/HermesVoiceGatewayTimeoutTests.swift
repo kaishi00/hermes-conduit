@@ -34,6 +34,7 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
         XCTAssertEqual(message, "TTS generation failed (openai): 500, message='Server error'")
         XCTAssertEqual(HermesSpeechFailure.message("Fetch https://host/x?token=abc failed"), "Fetch failed")
         XCTAssertEqual(HermesSpeechFailure.message("No voice configured"), "No voice configured")
+        XCTAssertEqual(HermesSpeechFailure.message("TTS generation failed (edge): timeout after 4030 ms"), "TTS generation failed (edge): timeout after 4030 ms")
     }
 
     func testShortRecordingsGetAtLeastTheNewMinimum() {

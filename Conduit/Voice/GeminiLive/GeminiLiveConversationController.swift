@@ -1083,9 +1083,11 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Watch's rejoin wording) before anything else goes out.
     private func freshSessionStarted(heardDropout: Bool) {
         tools.serverSessionStarted()
+        // Ending: the goodbye goes on without a recap.
         guard endRequestedAt == nil else { return }
+        let at = now()
         let lines = transcript.map { entry in
-            WatchVoiceWire.DirectTurn(role: entry.speaker == .user ? .user : .assistant, text: entry.text, at: now())
+            WatchVoiceWire.DirectTurn(role: entry.speaker == .user ? .user : .assistant, text: entry.text, at: at)
         }
         pendingTextTurns.insert(WatchRejoin.prompt(lines, after: heardDropout ? .broke : .froze), at: 0)
         scheduleIdleFlush()

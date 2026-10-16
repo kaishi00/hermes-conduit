@@ -32,7 +32,8 @@ protocol GeminiLiveSessionControlling: AnyObject {
 
 extension GeminiLiveSessionControlling {
     var connectionGeneration: Int { 0 }
-    /// Sessions that never resume (Grok Live) never start one fresh.
+    /// Sessions that never resume (Grok Live) never start one fresh, so
+    /// setting this on them does nothing, on purpose.
     var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)? {
         get { nil }
         set {}

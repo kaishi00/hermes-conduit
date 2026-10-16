@@ -598,6 +598,25 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live lost this conversation on its side. Tap Try again to start a new one.")))
     }
 
+    func testGeminiLiveOtherRefusalOfAResumptionFailsWithoutAFreshStart() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.onFreshSession = { _ in XCTFail("only a lost session starts fresh") }
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        await settle()
+        first.serverClose(nil)
+        await settle(until: { sockets().count == 2 })
+        sockets()[1].serverClose(.init(code: 1008, reason: "API key expired. Please renew the API key."))
+        await settle(80)
+
+        XCTAssertEqual(sockets().count, 2)
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("API key expired. Please renew the API key.")")))
+    }
+
     func testGeminiLiveFreshSessionTellsTheModelWhatWasSaid() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, _, _, _) = makeGeminiController(clock: { current })
