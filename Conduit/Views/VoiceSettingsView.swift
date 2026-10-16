@@ -163,6 +163,8 @@ struct VoiceSettingsView: View {
     /// The voice server address typed into the Private voice card before
     /// OpenAI speech is picked; nil while the field is hidden.
     @State private var voiceServerDraft: String?
+    /// Hermes' error for the last failed address save, shown under the field.
+    @State private var voiceServerSaveError: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
     @State private var isRecordingASRTest = false
@@ -835,7 +837,8 @@ struct VoiceSettingsView: View {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         // "api.openai.com/v1" has no scheme, so URL finds no host in it.
         let withScheme = trimmed.contains("://") ? trimmed : "http://" + trimmed
-        let host = URL(string: withScheme)?.host?.lowercased() ?? ""
+        let host = (URL(string: withScheme)?.host?.lowercased() ?? "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return !trimmed.isEmpty && host != "api.openai.com"
     }
 
@@ -870,15 +873,22 @@ struct VoiceSettingsView: View {
                 Text(AppLocalization.string("Enter your own server's address, not OpenAI's."))
                     .font(.caption)
                     .foregroundStyle(.orange)
+            } else if let voiceServerSaveError {
+                Text(verbatim: voiceServerSaveError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Button(AppLocalization.string("Cancel"), role: .cancel) {
+                    voiceServerSaveError = nil
                     withAnimation(.snappy) { voiceServerDraft = nil }
                 }
                 Spacer()
                 Button { saveVoiceServerAddress() } label: {
                     if savingField != nil { ProgressView() } else { Text(AppLocalization.string("Save and use")) }
                 }
+                .accessibilityLabel(Text(AppLocalization.string("Save and use")))
                 .buttonStyle(.borderedProminent)
                 .disabled(savingField != nil || !Self.isOwnVoiceServer(draft))
                 .accessibilityIdentifier("voice.private.voiceServer.save")
@@ -895,10 +905,14 @@ struct VoiceSettingsView: View {
         let key = "tts.openai.base_url"
         savingField = key
         Task { @MainActor in
+            voiceServerSaveError = nil
             let saved = await service.save(value: address, for: key)
             values[key] = service.snapshot.values[key]
             savingField = nil
-            guard saved, Self.isOwnVoiceServer(service.snapshot.values[key] ?? "") else { return }
+            guard saved, Self.isOwnVoiceServer(service.snapshot.values[key] ?? "") else {
+                voiceServerSaveError = service.errorMessage ?? AppLocalization.string("Could not save \(key).")
+                return
+            }
             voiceServerDraft = nil
             usePrivateProvider(Self.openAITTSProviderID, kind: .tts)
         }
