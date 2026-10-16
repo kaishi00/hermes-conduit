@@ -54,6 +54,12 @@ struct CapabilityConnectorsTab: View {
                         : AppLocalization.string("Nothing matches “\(query)”.")
                 )
             } else {
+                if let error = store.connectorsError {
+                    Text("Refresh failed: \(error)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                }
                 if let actionError {
                     Text(verbatim: actionError)
                         .font(.footnote)

@@ -502,7 +502,8 @@ struct CapabilityToolsetDetailPage: View {
                 if needsNous {
                     notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
                 }
-                config = try? await store.toolsetConfig(name: name)
+                // A failed read keeps what's on screen.
+                if let fresh = try? await store.toolsetConfig(name: name) { config = fresh }
                 await appState.loadCapabilities()
             } catch {
                 notice = UserFacingError.message(for: error)
@@ -518,7 +519,7 @@ struct CapabilityToolsetDetailPage: View {
         Task {
             do {
                 try await store.selectTerminalBackend(backend.name)
-                backends = try? await store.terminalBackends()
+                if let fresh = try? await store.terminalBackends() { backends = fresh }
             } catch {
                 notice = UserFacingError.message(for: error)
             }
@@ -535,7 +536,8 @@ struct CapabilityToolsetDetailPage: View {
             do {
                 try await store.saveKey(env.key, value: trimmed)
                 Haptics.success()
-                config = try? await store.toolsetConfig(name: name)
+                // A failed read keeps what's on screen.
+                if let fresh = try? await store.toolsetConfig(name: name) { config = fresh }
                 await appState.loadCapabilities()
             } catch {
                 notice = UserFacingError.message(for: error)

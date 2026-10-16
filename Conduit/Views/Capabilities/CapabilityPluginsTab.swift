@@ -63,6 +63,12 @@ struct CapabilityPluginsTab: View {
                     Task { await store.loadPlugins() }
                 }
             } else {
+                if let error = store.pluginsError {
+                    Text("Refresh failed: \(error)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                }
                 if !canManage {
                     Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
                         .font(.footnote)
@@ -159,12 +165,12 @@ struct CapabilityPluginsTab: View {
         Task {
             do {
                 let outcome = try await store.installPlugin(entry)
-                Haptics.success()
                 if !outcome.missingEnv.isEmpty {
                     message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
                 } else if outcome.restartRequired {
                     message = AppLocalization.string("\(outcome.name) is installed. Restart the gateway to load it.")
                 } else {
+                    Haptics.success()
                     message = AppLocalization.string("\(outcome.name) is installed and loaded.")
                 }
             } catch {
