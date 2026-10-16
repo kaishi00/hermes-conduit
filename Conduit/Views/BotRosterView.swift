@@ -629,6 +629,7 @@ struct RosterGlyphRow: View {
                     .foregroundStyle(Color.conduitAccent)
             }
             .frame(width: glyphSize, height: glyphSize)
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout.weight(.semibold))

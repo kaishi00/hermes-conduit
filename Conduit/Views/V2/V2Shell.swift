@@ -361,6 +361,7 @@ private struct V2NoticeBanner: View {
             .conduitGlassControl(cornerRadius: 20, interactive: false)
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityHint(Text(AppLocalization.string("Dismiss")))
         .task(id: notice.id) {
             do {
                 try await Task.sleep(for: .seconds(6))
