@@ -30,11 +30,15 @@ struct HermesTurnLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.center) {
                     HermesTurnHeadline(attributes: attributes, state: state)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .environment(\.colorScheme, .dark)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HermesTurnFooter(attributes: attributes, state: state)
-                        .padding(.horizontal, 2)
-                        .padding(.top, 4)
+                    if HermesTurnFooter.hasContent(state) {
+                        HermesTurnFooter(attributes: attributes, state: state)
+                            .padding(.horizontal, 2)
+                            .padding(.top, 4)
+                            .environment(\.colorScheme, .dark)
+                    }
                 }
             } compactLeading: {
                 HermesTurnPhaseIcon(state: state)
@@ -113,7 +117,9 @@ private struct HermesTurnLockScreenView: View {
                     .foregroundStyle(HermesTurnStyle.timerTint(for: state.turnPhase))
                     .frame(maxWidth: 88, alignment: .trailing)
             }
-            HermesTurnFooter(attributes: attributes, state: state)
+            if HermesTurnFooter.hasContent(state) {
+                HermesTurnFooter(attributes: attributes, state: state)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -167,14 +173,19 @@ private struct HermesTurnHeadline: View {
 }
 
 /// Under the headline: what to do when Hermes waits on you, else the tool
-/// count and a context meter.
+/// count and a context meter. The pill is a hint, not a button: tapping
+/// the card opens the chat, where the approval or answer happens.
 private struct HermesTurnFooter: View {
     let attributes: HermesTurnAttributes
     let state: HermesTurnAttributes.ContentState
 
+    static func hasContent(_ state: HermesTurnAttributes.ContentState) -> Bool {
+        state.turnPhase.waitsOnUser || state.tools > 0 || state.context != nil
+    }
+
     var body: some View {
         if state.turnPhase.waitsOnUser {
-            Text(verbatim: WidgetLocalization.string(state.turnPhase == .approval ? "Approve" : "Open chat", language: attributes.language))
+            Text(verbatim: WidgetLocalization.string(state.turnPhase == .approval ? "Review" : "Open chat", language: attributes.language))
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.black.opacity(0.85))
                 .padding(.horizontal, 14)
@@ -189,12 +200,14 @@ private struct HermesTurnFooter: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
                         .background(Color.white.opacity(0.10), in: Capsule())
+                        .fixedSize()
                 }
                 if let context = state.context {
                     HermesTurnContextMeter(percent: context, isFinished: state.turnPhase.isFinished)
                     Text(verbatim: HermesTurnCopy.context(context, language: attributes.language))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .fixedSize()
                 } else {
                     Spacer(minLength: 0)
                 }
@@ -214,11 +227,13 @@ private struct HermesTurnContextMeter: View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.12))
-                Capsule()
-                    .fill(isFinished
-                        ? AnyShapeStyle(Color.secondary)
-                        : AnyShapeStyle(LinearGradient(colors: [HermesTurnStyle.gold, HermesTurnStyle.goldSoft], startPoint: .leading, endPoint: .trailing)))
-                    .frame(width: max(4, proxy.size.width * fraction))
+                if fraction > 0 {
+                    Capsule()
+                        .fill(isFinished
+                            ? AnyShapeStyle(Color.secondary)
+                            : AnyShapeStyle(LinearGradient(colors: [HermesTurnStyle.gold, HermesTurnStyle.goldSoft], startPoint: .leading, endPoint: .trailing)))
+                        .frame(width: max(4, proxy.size.width * fraction))
+                }
             }
         }
         .frame(height: 4)
