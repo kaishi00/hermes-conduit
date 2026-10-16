@@ -159,6 +159,7 @@ struct VoiceSettingsView: View {
 
     @State private var values: [String: String] = [:]
     @State private var savingField: String?
+    @State private var scrollTarget: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
     @State private var isRecordingASRTest = false
@@ -281,33 +282,45 @@ struct VoiceSettingsView: View {
     var body: some View {
         ZStack {
             SettingsBackdrop()
-            ScrollView {
-                // Setup first, then what most people change. Provider
-                // detail, models and tuning wait under Advanced.
-                VStack(alignment: .leading, spacing: 24) {
-                    if let callSaves, callSaves.pendingCount > 0 {
-                        VoiceCallSaveStatusSection(model: callSaves)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // Setup first, then what most people change. Provider
+                    // detail, models and tuning wait under Advanced.
+                    VStack(alignment: .leading, spacing: 24) {
+                        if let callSaves, callSaves.pendingCount > 0 {
+                            VoiceCallSaveStatusSection(model: callSaves)
+                        }
+                        setupSection
+                        voiceModeSection
+                        liveModeSettings
+                        conversationSection
+                        if let agentSettingsChanged {
+                            AgentSettingsModeSection(onChange: agentSettingsChanged)
+                        }
+                        wakeSection
+                        CarPlaySettingsSection()
+                        WatchSettingsSection()
+                        readAloudSection
+                        DictationSettingsSection()
+                        advancedSection
                     }
-                    setupSection
-                    voiceModeSection
-                    liveModeSettings
-                    conversationSection
-                    if let agentSettingsChanged {
-                        AgentSettingsModeSection(onChange: agentSettingsChanged)
-                    }
-                    wakeSection
-                    CarPlaySettingsSection()
-                    WatchSettingsSection()
-                    readAloudSection
-                    DictationSettingsSection()
-                    advancedSection
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .scrollDismissesKeyboard(.interactively)
+                .modifier(V2SoftTopScrollEdge(isOn: true))
+                // The Private voice card's buttons open Advanced, then bring
+                // the provider section they set up into view.
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                        scrollTarget = nil
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
-            .modifier(V2SoftTopScrollEdge(isOn: true))
         }
         .navigationTitle("Voice")
         .navigationBarTitleDisplayMode(.inline)
@@ -745,7 +758,7 @@ struct VoiceSettingsView: View {
     private var liveModeSettings: some View {
         switch voiceMode {
         case .classic:
-            EmptyView()
+            privateVoiceSection
         case .gemini:
             if let geminiLive {
                 GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false)
@@ -761,6 +774,83 @@ struct VoiceSettingsView: View {
                 GrokLiveSettingsSection(model: grokLive, showsModeToggle: false)
                 liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
             }
+        }
+    }
+
+    static let sttSectionID = "voice.provider.stt"
+    static let ttsSectionID = "voice.provider.tts"
+
+    /// Classic voice on servers the user runs: their own speech server for
+    /// recognition and an OpenAI-compatible voice server (Chatterbox) for
+    /// replies. Both settings live under Advanced; this card picks them
+    /// and opens the section to finish setup.
+    @ViewBuilder
+    private var privateVoiceSection: some View {
+        if service.isLoading || service.snapshot.capability.isGatewayConnected {
+            ConduitSettingsSection(title: AppLocalization.string("Private voice"), symbol: "lock.shield", tint: .conduitAura) {
+                Text(AppLocalization.string("Keep your voice on machines you run. Hermes still does the work."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                privateVoiceRow(
+                    title: AppLocalization.string("Your speech server"),
+                    detail: AppLocalization.string("Understands what you say. For example, the speech-to-speech server Hermes Live Voice runs."),
+                    inUse: transcriptionMode == .speechServer,
+                    identifier: "voice.private.speechServer"
+                ) { usePrivateProvider(Self.speechServerProviderID, kind: .stt) }
+                privateVoiceRow(
+                    title: AppLocalization.string("Your voice server"),
+                    detail: AppLocalization.string("Speaks the replies. Any OpenAI-compatible speech server, such as Chatterbox."),
+                    inUse: usesOwnVoiceServer,
+                    identifier: "voice.private.voiceServer"
+                ) { usePrivateProvider("openai", kind: .tts) }
+            }
+        }
+    }
+
+    /// OpenAI speech pointed at a server other than OpenAI's.
+    private var usesOwnVoiceServer: Bool {
+        let baseURL = values["tts.openai.base_url"] ?? service.snapshot.values["tts.openai.base_url"] ?? ""
+        return service.snapshot.selectedTTSProvider == "openai"
+            && !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func privateVoiceRow(
+        title: String, detail: String, inUse: Bool, identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title).font(.subheadline.weight(.semibold))
+                Text(verbatim: detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if inUse {
+                    Label(AppLocalization.string("In use"), systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            Spacer(minLength: 8)
+            Button(inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use"), action: action)
+                .buttonStyle(.bordered)
+                .disabled(service.isLoading || savingField != nil)
+                .accessibilityIdentifier(identifier)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Picks the provider when it isn't already, then opens its section
+    /// under Advanced, where its address and key are set.
+    private func usePrivateProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind) {
+        withAnimation(.snappy) { advancedExpanded = true }
+        Task { @MainActor in
+            let providers = kind == .stt ? service.snapshot.sttProviders : service.snapshot.ttsProviders
+            let selectable = provider == Self.speechServerProviderID || providers.contains { $0.descriptor.id == provider }
+            if selectable, provider != selectedProviderChoice(kind) {
+                await applyProvider(provider, kind: kind)
+            }
+            scrollTarget = kind == .stt ? Self.sttSectionID : Self.ttsSectionID
         }
     }
 
@@ -832,7 +922,9 @@ struct VoiceSettingsView: View {
                         .padding(.horizontal, 4)
                 } else if service.snapshot.capability.isGatewayConnected {
                     providerSection(title: AppLocalization.string("Speech to text"), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
+                        .id(Self.sttSectionID)
                     providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
+                        .id(Self.ttsSectionID)
                     credentialsSection
                 }
                 if let voiceReplies {
