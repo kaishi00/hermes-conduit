@@ -714,8 +714,15 @@ final class AppState: ObservableObject {
         return titles
     }
     @Published private(set) var projects: [ProjectSummary] = [] {
-        didSet { projectPositionsBySessionID = nil }
+        didSet {
+            projectPositionsBySessionID = nil
+            projectsSeededFromSavedList = false
+        }
     }
+    /// The project pages came from the saved Chats list, not from Hermes:
+    /// they leave with it, and say nothing yet about whether this Hermes
+    /// takes new projects. Any later write to `projects` replaces them.
+    private(set) var projectsSeededFromSavedList = false
     /// For each conversation id a project previews, the position of the
     /// first project that lists it. Built once per `projects` change for
     /// `knownProjectID(for:)`, which the chat list asks for every row on
@@ -4221,6 +4228,7 @@ final class AppState: ObservableObject {
         if list.supportsProjects, projects.isEmpty, !supportsProjects {
             projects = list.projects
             supportsProjects = true
+            projectsSeededFromSavedList = true
         }
         noteConnectionStep("Saved chat list, \(list.sessions.count + list.cronSessions.count) rows")
     }
@@ -4255,13 +4263,32 @@ final class AppState: ObservableObject {
             savedChatList = nil
             return
         }
-        savedChatList = saved.keepingPinnedRows(missingFrom: activeProfileSessions, isPinned: isSessionPinned)
+        // Pinned on the phone, or in the saved list: after a dashboard switch
+        // the phone's pins start over from the newest page's alone.
+        savedChatList = saved.keepingPinnedRows(
+            missingFrom: activeProfileSessions,
+            isPinned: { self.isSessionPinned($0) || saved.showedAsPinned($0) }
+        )
     }
 
     private func dismissSavedChatList() {
         chatPickedFromSavedList = nil
+        // Project pages the saved list brought leave with it, unless Hermes'
+        // own have replaced them.
+        if projectsSeededFromSavedList {
+            projects = []
+            supportsProjects = false
+        }
         guard savedChatList != nil else { return }
         savedChatList = nil
+    }
+
+    /// A row the saved list put there: every row while it shows, then the
+    /// kept pinned ones. It takes no actions, which would act on a list
+    /// Hermes hasn't sent yet.
+    func isSavedChatRow(_ session: SessionSummary) -> Bool {
+        guard let saved = savedChatListForActiveScope else { return false }
+        return saved.isShowingSavedRows || saved.isKeptRow(session)
     }
 
     /// A tap on a Chats row. While the list is still the saved one, the chat
@@ -4269,7 +4296,9 @@ final class AppState: ObservableObject {
     /// for real once the live list lands.
     func openListedSession(_ session: SessionSummary) {
         guard isShowingSavedChatList, let dashboardID = activeDashboardID else {
-            requestOpenSession(session.id)
+            // A kept row isn't in the live list yet: it opens by its saved
+            // durable id, as a pick does.
+            requestOpenSession(isSavedChatRow(session) ? session.storedSessionId ?? session.id : session.id)
             return
         }
         let profile = activeProfile
@@ -4298,7 +4327,7 @@ final class AppState: ObservableObject {
             return nil
         }
         let ids = Set(pick.session.nestingIDs)
-        if let live = (sessions + cronSessions).first(where: { !ids.isDisjoint(with: $0.nestingIDs) }) {
+        if let live = (activeProfileSessions + activeProfileCronSessions).first(where: { !ids.isDisjoint(with: $0.nestingIDs) }) {
             // The open goes by the live row's id, which may be new (a fresh
             // runtime id): its saved copy stays up for that open too.
             if offlineChatPresentation?.picked?.sessionIDs.isDisjoint(with: ids) == false {
@@ -4307,6 +4336,16 @@ final class AppState: ObservableObject {
             return live.id
         }
         return pick.session.storedSessionId ?? pick.session.id
+    }
+
+    /// Opens the chat picked in the saved list. An open that fails takes its
+    /// copy down too, so a read-only chat doesn't stay up with nothing on
+    /// its way.
+    private func openChatPickedFromSavedList(_ sessionID: String) {
+        requestOpenSession(sessionID) { [weak self] in
+            guard let self, self.offlineChatPresentation?.isPickedChat == true else { return }
+            self.dismissOfflineChatPresentation()
+        }
     }
 
 #if DEBUG
@@ -4350,7 +4389,18 @@ final class AppState: ObservableObject {
     func deleteSavedChats() {
         offlineChatCache.removeAll()
         Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
-        dismissOfflineChatPresentation()
+        if connection == nil, let copy = offlineChatPresentation {
+            // Until this launch's sign-in goes through, the copy is what keeps
+            // the app and its Retry up: it stays, with nothing saved in it.
+            offlineChatPresentation = OfflineChatPresentation(
+                dashboardID: copy.dashboardID,
+                profile: copy.profile,
+                snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                displayedSessionID: nil
+            )
+        } else {
+            dismissOfflineChatPresentation()
+        }
         dismissSavedChatList()
         savableChatListScope = nil
     }
@@ -6796,13 +6846,13 @@ final class AppState: ObservableObject {
     func isSessionPinned(_ session: SessionSummary) -> Bool {
         let ids = SessionPinSync.pinIDs(for: session)
         if pinnedSessionIDs.contains(where: { ids.contains($0) }) { return true }
+        guard let saved = savedChatListForActiveScope else { return false }
+        // A kept row is listed only because it is pinned.
+        if saved.isKeptRow(session) { return true }
         // A dashboard switch starts the phone's pins over until Hermes'
         // arrive with its list; the saved list keeps its own meanwhile.
-        guard pinnedSessionIDs.isEmpty,
-              let saved = savedChatListForActiveScope,
-              saved.isShowingSavedRows,
-              !saved.list.pinnedRowIDs.isEmpty else { return false }
-        return session.nestingIDs.contains { saved.list.pinnedRowIDs.contains($0) }
+        guard pinnedSessionIDs.isEmpty, saved.isShowingSavedRows else { return false }
+        return saved.showedAsPinned(session)
     }
 
     func toggleSessionPinned(_ session: SessionSummary) {
@@ -11477,7 +11527,7 @@ final class AppState: ObservableObject {
                     token,
                     automaticSyncOperationID: automaticOperationID
                 )
-                requestOpenSession(pickedSessionID)
+                openChatPickedFromSavedList(pickedSessionID)
                 return .superseded
             }
 
@@ -16012,7 +16062,7 @@ final class AppState: ObservableObject {
             // leaves the chat alone.
             if let pickedSessionID = takeChatPickedFromSavedList(dashboardID: dashboardID, profile: profile) {
                 cancelChatResumeRestoration()
-                requestOpenSession(pickedSessionID)
+                openChatPickedFromSavedList(pickedSessionID)
             }
             if let activeClient {
                 Task { [weak self] in

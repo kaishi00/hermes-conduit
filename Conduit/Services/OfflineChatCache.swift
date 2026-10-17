@@ -230,6 +230,19 @@ struct SavedChatListPresentation: Equatable {
     /// Whether the list on screen is still the saved one.
     var isShowingSavedRows: Bool { keptPinnedRows == nil }
 
+    /// Whether `row` showed as pinned in the saved list.
+    func showedAsPinned(_ row: SessionSummary) -> Bool {
+        row.nestingIDs.contains { list.pinnedRowIDs.contains($0) }
+    }
+
+    /// Whether `row` is one of the kept pinned rows, which came from the
+    /// saved list, not from Hermes.
+    func isKeptRow(_ row: SessionSummary) -> Bool {
+        guard let kept = keptPinnedRows, !kept.isEmpty else { return false }
+        let ids = Set(row.nestingIDs)
+        return kept.contains { !ids.isDisjoint(with: $0.nestingIDs) }
+    }
+
     /// What stays once the live list's newest page alone is listed: the
     /// saved pinned rows it lacks, or nil when it lacks none.
     func keepingPinnedRows(

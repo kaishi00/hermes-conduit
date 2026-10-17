@@ -312,7 +312,7 @@ struct SessionList: View {
                     } label: {
                         Label(AppLocalization.string("New project"), systemImage: "folder.badge.plus")
                     }
-                    .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
+                    .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 19, weight: .semibold))
@@ -333,7 +333,7 @@ struct SessionList: View {
                     }
                     .buttonStyle(.plain)
                     .conduitGlassControl(cornerRadius: 14)
-                    .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
+                    .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
                     .accessibilityLabel("New project")
                 }
 
@@ -833,7 +833,7 @@ struct SessionList: View {
         session: SessionSummary,
         nest: NestReadToggle?
     ) -> some View {
-        let isSavedRow = appState.isShowingSavedChatList
+        let isSavedRow = appState.isSavedChatRow(session)
         return content
             .contextMenu {
                 if !isSavedRow {
@@ -1641,10 +1641,10 @@ private struct ProjectSessionsSheet: View {
                 }
             }
         }
-        .task(id: project.id) {
-            isLoading = true
-            detail = await appState.loadProjectSessions(project)
-            isLoading = false
+        .task(id: project.id) { await load() }
+        .onChange(of: appState.isConnected) { _, isConnected in
+            guard isConnected, detail == nil else { return }
+            Task { await load() }
         }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
@@ -1668,6 +1668,15 @@ private struct ProjectSessionsSheet: View {
                 }
             }
         }
+    }
+
+    /// A page opened from the saved Chats list before Hermes answered says
+    /// it's loading until Hermes is connected, then loads.
+    private func load() async {
+        guard appState.isConnected else { return }
+        isLoading = true
+        detail = await appState.loadProjectSessions(project)
+        isLoading = false
     }
 
     private func reloadDetail() {

@@ -89,6 +89,10 @@ struct V2ProjectPage: View {
             MinimisedLiveVoiceBar()
         }
         .task(id: project.id) { await reload() }
+        .onChange(of: appState.isConnected) { _, isConnected in
+            guard isConnected, detail == nil else { return }
+            Task { await reload() }
+        }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
             set: { if !$0 { sessionPendingDeletion = nil } }
@@ -254,7 +258,10 @@ struct V2ProjectPage: View {
 
     // MARK: - Actions
 
+    /// A page opened from the saved Chats list before Hermes answered says
+    /// it's loading until Hermes is connected, then loads.
     private func reload() async {
+        guard appState.isConnected else { return }
         reloadGeneration &+= 1
         let generation = reloadGeneration
         isLoading = true

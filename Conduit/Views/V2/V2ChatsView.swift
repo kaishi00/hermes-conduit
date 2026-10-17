@@ -463,7 +463,7 @@ struct V2ChatsView: View {
                 }
                 // Projects shown from the saved list say nothing yet about
                 // whether this Hermes takes new ones.
-                .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
+                .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
             } else {
                 filterToggle(.all)
 
@@ -1211,7 +1211,7 @@ private struct V2ChatsRow: View {
                 .sessionActions(
                     session: session,
                     nest: nil,
-                    isSavedRow: appState.isShowingSavedChatList,
+                    isSavedRow: appState.isSavedChatRow(session),
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) }
                 )
@@ -1251,7 +1251,7 @@ private struct V2ChatsRow: View {
         .sessionActions(
             session: session,
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
-            isSavedRow: appState.isShowingSavedChatList,
+            isSavedRow: appState.isSavedChatRow(session),
             onRename: { onRename(session) },
             onDelete: { onDelete(session) }
         )

@@ -710,7 +710,8 @@ final class OfflineChatCacheTests: XCTestCase {
 
         appState.deleteSavedChats()
 
-        XCTAssertNil(appState.offlineChatPresentation)
+        let copy = try XCTUnwrap(appState.offlineChatPresentation, "Before the sign-in goes through, the copy keeps the app up")
+        XCTAssertNil(copy.displayedTranscript, "with nothing saved left in it")
         XCTAssertNil(appState.savedChatList)
         XCTAssertTrue(appState.listedSessions.isEmpty)
         for id in [dashboard, other] {
@@ -731,6 +732,27 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.recordSavedChatList()
         let saved = try XCTUnwrap(store.loadChatList(dashboardID: dashboard, profile: "default"))
         XCTAssertEqual(saved.sessions.map(\.id), ["live-a"])
+    }
+
+    /// Delete Saved Chats while the server can't be reached keeps the app
+    /// and its Retry up instead of falling back to the sign-in screen, with
+    /// nothing saved left on screen.
+    func testDeleteSavedChatsBeforeSignInKeepsTheAppUp() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.showLogin = false
+        XCTAssertTrue(appState.presentCredentialRestoreFailure(.unreachable, switchGeneration: nil))
+        XCTAssertNil(appState.connection)
+
+        appState.deleteSavedChats()
+
+        XCTAssertFalse(appState.showLogin)
+        let copy = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertNil(copy.displayedTranscript)
+        XCTAssertTrue(copy.displayedMessages.isEmpty)
+        XCTAssertEqual(appState.lastConnectionFailure, .unreachable)
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
     }
 
     /// A dashboard switch starts the phone's pins over until Hermes' arrive
@@ -885,6 +907,29 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.activeSessionId)
     }
 
+    /// Project pages that came from the saved list leave with it, so the
+    /// sign-in screen after an auth failure, or Delete Saved Chats, doesn't
+    /// keep them for whoever signs in next.
+    func testProjectsFromTheSavedListLeaveWithIt() {
+        let (appState, store, dashboard) = makeAppState()
+        let project = ProjectSummary(id: "project", title: "Project", isHome: false, sessionCount: 1, previewSessions: [])
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")], projects: [project], supportsProjects: true)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(appState.projects, [project])
+
+        appState.showLogin = true
+
+        XCTAssertTrue(appState.projects.isEmpty)
+        XCTAssertFalse(appState.supportsProjects)
+
+        appState.showLogin = false
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(appState.projects, [project])
+        appState.deleteSavedChats()
+        XCTAssertTrue(appState.projects.isEmpty)
+        XCTAssertFalse(appState.supportsProjects)
+    }
+
     func testLiveListReplacesTheSavedRows() async {
         let live = [session("live-a"), session("stored-a")]
         let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in live })
@@ -939,6 +984,34 @@ final class OfflineChatCacheTests: XCTestCase {
                      "A page with every pinned chat keeps nothing")
     }
 
+    /// After a dashboard switch the phone's pins start over from the newest
+    /// page's alone: the saved list's own pins still keep its older pinned
+    /// chats, which then count as kept rows.
+    func testSavedListsOwnPinsKeepItsOlderPinnedChats() throws {
+        let saved = SavedChatListPresentation(
+            dashboardID: UUID(),
+            profile: "default",
+            list: SavedChatList.capture(
+                sessions: [session("a"), session("old-pinned"), session("old")],
+                cronSessions: [],
+                isPinned: { $0.id == "old-pinned" },
+                voiceTags: [:],
+                projects: [],
+                supportsProjects: false
+            )
+        )
+        XCTAssertTrue(saved.showedAsPinned(session("old-pinned")))
+        XCTAssertFalse(saved.showedAsPinned(session("a")))
+        XCTAssertFalse(saved.isKeptRow(session("old-pinned")), "Nothing is kept while the saved rows show")
+
+        let newestPage = [session("new"), session("a")]
+        let kept = try XCTUnwrap(saved.keepingPinnedRows(missingFrom: newestPage, isPinned: saved.showedAsPinned))
+        XCTAssertEqual(kept.keptPinnedRows?.map(\.id), ["old-pinned"])
+        XCTAssertTrue(kept.isKeptRow(session("old-pinned")))
+        XCTAssertFalse(kept.isKeptRow(session("a")))
+        XCTAssertFalse(kept.isKeptRow(session("new")))
+    }
+
     /// A chat tapped in the saved list before the live one lands opens once
     /// it does, instead of the chat the automatic resume would have picked.
     func testAChatPickedInTheSavedListOpensAheadOfTheAutomaticResume() async throws {
@@ -966,6 +1039,28 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["live-stored-b"])
         XCTAssertNil(appState.savedChatList)
         XCTAssertEqual(appState.listedSessions.map(\.id), ["stored-a", "stored-b"])
+    }
+
+    /// A picked chat whose open fails takes its read-only stand-in down with
+    /// it, rather than leaving it up with nothing on its way.
+    func testAPickedChatsStandInGoesWhenItsOpenFails() async throws {
+        useInMemoryKeychain()
+        // Hermes lists the picked chat under another profile.
+        let live = [session("live-a"), session("elsewhere", profile: "work")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: connectedLifecycle(catalog: { _ in live }, opened: opened)
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        seedChatList(store, dashboard: dashboard, sessions: [session("live-a"), session("elsewhere")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.openListedSession(appState.listedSessions[1])
+        XCTAssertEqual(appState.offlineChatPresentation?.isPickedChat, true)
+
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+
+        await waitUntil { appState.offlineChatPresentation == nil }
+        XCTAssertFalse(opened.ids.contains("elsewhere"))
     }
 
     /// A profile switch lists the target profile's rows as they showed last
