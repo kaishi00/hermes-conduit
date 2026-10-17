@@ -156,7 +156,9 @@ final class V2ShownUpdates: ObservableObject {
     private var subscription: AnyCancellable?
 
     /// Read through here by the list's rows, which follow these updates.
-    unowned let appState: AppState
+    /// Held strongly: AppState never holds the gate, and the sink below
+    /// holds the gate weakly.
+    let appState: AppState
 
     init(_ appState: AppState) {
         self.appState = appState

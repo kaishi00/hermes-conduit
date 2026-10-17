@@ -4718,19 +4718,21 @@ final class AppState: ObservableObject {
             sessionsRevision: sessionsRevision,
             cronSessionsRevision: cronSessionsRevision
         )
-        if let cached = chatOwnSessionIDsCache, cached.key == key { return cached.ids }
+        // A few entries: the header asks by the open id and by its row's.
+        if let cached = chatOwnSessionIDsCache[key] { return cached }
         let ids = Self.ownSessionIDs(for: seeds, in: [sessions, cronSessions].joined())
-        chatOwnSessionIDsCache = (key, ids)
+        if chatOwnSessionIDsCache.count >= 8 { chatOwnSessionIDsCache.removeAll() }
+        chatOwnSessionIDsCache[key] = ids
         return ids
     }
 
-    private struct ChatOwnSessionIDsKey: Equatable {
+    private struct ChatOwnSessionIDsKey: Hashable {
         let seeds: [String]
         let sessionsRevision: Int
         let cronSessionsRevision: Int
     }
 
-    private var chatOwnSessionIDsCache: (key: ChatOwnSessionIDsKey, ids: Set<String>)?
+    private var chatOwnSessionIDsCache: [ChatOwnSessionIDsKey: Set<String>] = [:]
 
     /// The open chat's row in the session list, for the chat title's
     /// touch-and-hold menu. A cron run is found among the Cron rows and gets
