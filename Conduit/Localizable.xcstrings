@@ -283453,6 +283453,170 @@
           }
         }
       }
+    },
+    "Main button" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hauptknopf"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botón principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bouton principal"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tombol utama"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulsante principale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メインボタン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본 버튼"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przycisk główny"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botão principal"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Главная кнопка"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana düğme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主按钮"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主按鈕"
+          }
+        }
+      }
+    },
+    "Choose what the round button beside the tabs does. The other one moves to the top bar, and a chat keeps its voice button." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege fest, was der runde Knopf neben den Tabs tut. Die andere Aktion wandert in die obere Leiste, und ein Chat behält seinen Sprachknopf."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige qué hace el botón redondo junto a las pestañas. La otra opción pasa a la barra superior, y un chat conserva su botón de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez l’action du bouton rond à côté des onglets. L’autre passe dans la barre du haut, et une discussion garde son bouton vocal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih fungsi tombol bulat di samping tab. Fungsi lainnya pindah ke bilah atas, dan chat tetap punya tombol suaranya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli cosa fa il pulsante rotondo accanto alle schede. L’altra azione passa nella barra in alto, e una chat mantiene il suo pulsante vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タブの横にある丸いボタンの動作を選びます。もう一方は上部バーに移り、チャット内の音声ボタンはそのまま残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "탭 옆 둥근 버튼의 동작을 선택하세요. 다른 하나는 상단 막대로 이동하며, 채팅 안의 음성 버튼은 그대로 유지됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz, co robi okrągły przycisk obok kart. Druga funkcja trafia na górny pasek, a czat zachowuje swój przycisk głosowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha o que o botão redondo ao lado das abas faz. A outra opção vai para a barra superior, e um chat mantém seu botão de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите, что делает круглая кнопка рядом с вкладками. Другое действие переместится на верхнюю панель, а в чате кнопка голоса останется."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sekmelerin yanındaki yuvarlak düğmenin ne yapacağını seçin. Diğeri üst çubuğa taşınır ve sohbetteki ses düğmesi yerinde kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择标签栏旁圆形按钮的功能。另一个功能会移到顶部栏，聊天中的语音按钮保持不变。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇分頁旁圓形按鈕的功能。另一個功能會移到頂端列，聊天中的語音按鈕保持不變。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -106,6 +106,26 @@ extension SidebarLayoutTests {
         XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.voice, .unread]), unread: ["chat-new"]), [])
     }
 
+    func testV2AllHidesProjectChatsExceptWhileSearching() {
+        let inMainList: (SessionSummary) -> Bool = { $0.id != "chat-old" }
+        let rows = filterChats.filter { !$0.isArchived }
+        XCTAssertEqual(
+            V2ChatsView.allRows(rows, searching: false, inMainList: inMainList).map(\.id),
+            ["chat-new", "voice", "telegram"]
+        )
+        // A search finds a project's chat too (#708).
+        XCTAssertEqual(
+            V2ChatsView.allRows(rows, searching: true, inMainList: inMainList).map(\.id),
+            ["chat-new", "voice", "telegram", "chat-old"]
+        )
+    }
+
+    func testV2SearchPreviewNamesTheProject() {
+        XCTAssertEqual(V2ChatsView.searchPreview("Last reply", projectTitle: "Website"), "Website · Last reply")
+        XCTAssertEqual(V2ChatsView.searchPreview("", projectTitle: "Website"), "Website")
+        XCTAssertEqual(V2ChatsView.searchPreview("Last reply", projectTitle: nil), "Last reply")
+    }
+
     func testV2FiltersSaveAsOneValue() {
         let selection = V2FilterSelection(filters: [.source(.chat), .unread, .scheduled])
         XCTAssertEqual(selection.rawValue, "unread,scheduled,source.chat")

@@ -264,6 +264,7 @@ struct V2ChatsView: View {
     @AppStorage("conduit.v2.sessionFilter") private var filterRaw = "all"
     /// Expanded parents, remembered per parent across launches.
     @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
     /// A conversation opened from elsewhere whose closed section still has
@@ -431,17 +432,23 @@ struct V2ChatsView: View {
 
             filterMenu
 
-            Button {
-                Haptics.medium()
-                appState.dismissSidebarDrawer()
-                Task { await appState.createNewSession() }
-            } label: {
-                V2CapsuleIcon(systemImage: "square.and.pencil")
+            // The gold button beside the tabs makes new chats instead
+            // (Settings > Appearance): voice takes New chat's place here.
+            if mainButtonNewChat {
+                V2VoiceButton(context: .home, style: .capsule)
+            } else {
+                Button {
+                    Haptics.medium()
+                    appState.dismissSidebarDrawer()
+                    Task { await appState.createNewSession() }
+                } label: {
+                    V2CapsuleIcon(systemImage: "square.and.pencil")
+                }
+                .buttonStyle(PressableButtonStyle())
+                // The saved copy has no live gateway to create a chat on.
+                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
+                .accessibilityLabel(AppLocalization.string("New Chat"))
             }
-            .buttonStyle(PressableButtonStyle())
-            // The saved copy has no live gateway to create a chat on.
-            .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
-            .accessibilityLabel(AppLocalization.string("New Chat"))
         }
     }
 
@@ -523,7 +530,7 @@ struct V2ChatsView: View {
                 select(savedSelection.setting(option, on: on))
             }
         )) {
-            Label("\(option.title) \(String(filterRows(selection.facet(option)).count))", systemImage: option.symbol)
+            Label("\(option.title) \(String(filterRows(selection.facet(option), searching: false).count))", systemImage: option.symbol)
         }
         .menuActionDismissBehavior(option == .all ? .automatic : .disabled)
     }
@@ -569,8 +576,14 @@ struct V2ChatsView: View {
         )
     }
 
-    private func filterRows(_ selection: V2FilterSelection) -> [SessionSummary] {
-        guard !selection.isEmpty else { return mainListRows(sourceRows(nil)) }
+    private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
+        guard !selection.isEmpty else {
+            return V2ChatsView.allRows(
+                sourceRows(nil),
+                searching: searching,
+                inMainList: mainListShows
+            )
+        }
         return selection.rows(
             everything: sourceRows(nil),
             sessions: appState.listedSessions,
@@ -593,21 +606,51 @@ struct V2ChatsView: View {
     /// a pinned one stays, since pinning asks for it here. The catalog
     /// carries no folder, so this hides the conversations the project tree
     /// is known to hold.
-    private func mainListRows(_ rows: [SessionSummary]) -> [SessionSummary] {
-        guard appState.supportsProjects else { return rows }
-        return rows.filter { appState.isSessionPinned($0) || appState.knownProjectID(for: $0) == nil }
+    private func mainListShows(_ session: SessionSummary) -> Bool {
+        guard appState.supportsProjects else { return true }
+        return appState.isSessionPinned(session) || appState.knownProjectID(for: session) == nil
+    }
+
+    /// What All lists. A search looks through every chat, a project's
+    /// included, as the status filters do (#708).
+    static func allRows(
+        _ rows: [SessionSummary],
+        searching: Bool,
+        inMainList: (SessionSummary) -> Bool
+    ) -> [SessionSummary] {
+        searching ? rows : rows.filter(inMainList)
+    }
+
+    /// A search result's preview led by its project, if it has one.
+    static func searchPreview(_ preview: String, projectTitle: String?) -> String {
+        guard let projectTitle, !projectTitle.isEmpty else { return preview }
+        return preview.isEmpty ? projectTitle : "\(projectTitle) · \(preview)"
     }
 
     private var displayedSessions: [SessionSummary] {
-        let rows = filterRows(selection)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rows = filterRows(selection, searching: !query.isEmpty)
         guard !query.isEmpty else { return rows }
         return rows.filter { sessionMatches($0, query: query) }
     }
 
+    /// While searching, a project's chat names its project, since the main
+    /// list doesn't otherwise say where it lives.
+    private func searchProjectTitle(_ item: V2ChatsListItem) -> String? {
+        guard isSearching, case .session(let node) = item.kind else { return nil }
+        return projectTitle(for: node.session)
+    }
+
+    private func projectTitle(for session: SessionSummary) -> String? {
+        guard appState.supportsProjects, let projectID = appState.knownProjectID(for: session) else { return nil }
+        return appState.projects.first { $0.id == projectID }?.title
+    }
+
     private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
+        // The project name a result shows finds it too.
         [session.title, session.model, session.id, session.preview ?? "", appState.sessionCategory(for: session).label]
             .contains { $0.localizedCaseInsensitiveContains(query) }
+            || projectTitle(for: session)?.localizedCaseInsensitiveContains(query) == true
     }
 
     private var isSearching: Bool {
@@ -935,6 +978,7 @@ struct V2ChatsView: View {
         ForEach(items) { item in
             V2ChatsRow(
                 item: item,
+                projectTitle: searchProjectTitle(item),
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
                 setExpanded: setExpanded
@@ -1193,6 +1237,8 @@ private struct V2ChatsRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: V2ChatsListItem
+    /// The project a search result sits in, named before its preview.
+    let projectTitle: String?
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
@@ -1223,6 +1269,7 @@ private struct V2ChatsRow: View {
     /// nest never hides an unread reply.
     private func sessionRow(_ node: SessionNesting.Node) -> some View {
         let session = node.session
+        let preview = appState.v2RowPreview(for: session)
         let hasChildren = !node.children.isEmpty
         let signals = SessionNesting.signals(
             node,
@@ -1237,7 +1284,7 @@ private struct V2ChatsRow: View {
             V2SessionRow(
                 title: session.title,
                 time: session.updatedLabel,
-                preview: appState.v2RowPreview(for: session),
+                preview: V2ChatsView.searchPreview(preview, projectTitle: projectTitle),
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isSelected: session.id == appState.activeSessionId,

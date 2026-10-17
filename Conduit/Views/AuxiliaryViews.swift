@@ -2663,6 +2663,8 @@ private struct AppearanceSettingsDetail: View {
     let theme: ThemePreference
     let saveTheme: (ThemePreference) -> Void
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
+    @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
@@ -2759,6 +2761,24 @@ private struct AppearanceSettingsDetail: View {
                         .disabled(isChangingIcon)
                         .accessibilityLabel("Use \(choice.title.lowercased()) app icon")
                     }
+                }
+            }
+
+            // The gold button beside V2's tabs: voice, or New chat for
+            // people who'd rather not talk. A chat keeps its voice button.
+            if usesV2 {
+                ConduitSettingsSection(title: AppLocalization.string("Main button"), symbol: "circle.circle.fill", tint: .conduitAccent) {
+                    Text("Choose what the round button beside the tabs does. The other one moves to the top bar, and a chat keeps its voice button.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Main button", selection: Binding(get: { mainButtonNewChat }, set: {
+                        Haptics.selection()
+                        mainButtonNewChat = $0
+                    })) {
+                        Text("Voice").tag(false)
+                        Text("New Chat").tag(true)
+                    }
+                    .pickerStyle(.segmented)
                 }
             }
 

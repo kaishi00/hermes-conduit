@@ -164,6 +164,7 @@ struct V2Shell: View {
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -282,8 +283,15 @@ struct V2Shell: View {
             }
     }
 
-    private var voiceButton: some View {
-        V2VoiceButton(context: voiceContext)
+    /// The gold button beside the tabs: voice, or New chat when the user
+    /// swapped them (Settings > Appearance). A minimised call still comes
+    /// back through it either way.
+    @ViewBuilder private var voiceButton: some View {
+        if mainButtonNewChat, appState.minimisedLiveVoice == nil {
+            V2NewChatButton(context: voiceContext)
+        } else {
+            V2VoiceButton(context: voiceContext)
+        }
     }
 
     private static let tabSlideDistance: CGFloat = 28
@@ -649,6 +657,14 @@ enum V2ShellPreference {
     static var isOn: Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? defaultValue
     }
+}
+
+/// Whether the gold button beside the tabs starts a new chat instead of
+/// voice, for people who'd rather not talk. Voice then moves to the top
+/// bar's New chat slot; a chat's own voice button stays.
+enum V2MainButtonPreference {
+    static let key = "conduit.v2.mainButtonNewChat"
+    static let defaultValue = false
 }
 
 private struct V2TabBarClearanceKey: EnvironmentKey {

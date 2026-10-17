@@ -12,6 +12,7 @@ import SwiftUI
 
 struct V2ProjectPage: View {
     @EnvironmentObject private var appState: AppState
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
@@ -75,7 +76,13 @@ struct V2ProjectPage: View {
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if newConversationPath != nil {
+            if mainButtonNewChat {
+                // The gold button beside the tabs makes this project's new
+                // chats instead (Settings > Appearance): voice sits here.
+                ToolbarItem(placement: .topBarTrailing) {
+                    V2VoiceButton(context: .project(project), style: .toolbar)
+                }
+            } else if newConversationPath != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: startNewConversation) {
                         Image(systemName: "square.and.pencil")
