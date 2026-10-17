@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import SwiftUI
 import UIKit
 @testable import Conduit
@@ -21,6 +22,8 @@ extension TranscriptPerformanceFixtureTests {
         var layoutMetrics = 0
         var chatBody = 0
         var composerBody = 0
+        var appPublishes = 0
+        var enginePublishes = 0
 
         @MainActor static func read() -> ProbeCounters {
             ProbeCounters(
@@ -34,7 +37,9 @@ extension TranscriptPerformanceFixtureTests {
                 rowFrames: TranscriptPerf.rowFramePreferenceUpdates,
                 layoutMetrics: TranscriptPerf.layoutMetricsChangedCalls,
                 chatBody: TranscriptPerf.chatViewBodyEvaluations,
-                composerBody: TranscriptPerf.composerBarBodyEvaluations
+                composerBody: TranscriptPerf.composerBarBodyEvaluations,
+                appPublishes: ProbePublishTrace.appPublishes,
+                enginePublishes: ProbePublishTrace.enginePublishes
             )
         }
 
@@ -50,7 +55,9 @@ extension TranscriptPerformanceFixtureTests {
                 rowFrames: lhs.rowFrames - rhs.rowFrames,
                 layoutMetrics: lhs.layoutMetrics - rhs.layoutMetrics,
                 chatBody: lhs.chatBody - rhs.chatBody,
-                composerBody: lhs.composerBody - rhs.composerBody
+                composerBody: lhs.composerBody - rhs.composerBody,
+                appPublishes: lhs.appPublishes - rhs.appPublishes,
+                enginePublishes: lhs.enginePublishes - rhs.enginePublishes
             )
         }
 
@@ -66,14 +73,17 @@ extension TranscriptPerformanceFixtureTests {
                 rowFrames: lhs.rowFrames + rhs.rowFrames,
                 layoutMetrics: lhs.layoutMetrics + rhs.layoutMetrics,
                 chatBody: lhs.chatBody + rhs.chatBody,
-                composerBody: lhs.composerBody + rhs.composerBody
+                composerBody: lhs.composerBody + rhs.composerBody,
+                appPublishes: lhs.appPublishes + rhs.appPublishes,
+                enginePublishes: lhs.enginePublishes + rhs.enginePublishes
             )
         }
 
         var summary: String {
             "bubble=\(bubble) md=\(markdown) mdFresh=\(markdownFresh) mdRepeat=\(markdownRepeat) "
                 + "textUpd=\(textUpdate) textRebuild=\(textRebuild) textKit=\(textKit) "
-                + "rowFrames=\(rowFrames) layout=\(layoutMetrics) chatBody=\(chatBody) composer=\(composerBody)"
+                + "rowFrames=\(rowFrames) layout=\(layoutMetrics) chatBody=\(chatBody) composer=\(composerBody) "
+                + "appPub=\(appPublishes) enginePub=\(enginePublishes)"
         }
     }
 
@@ -248,6 +258,19 @@ extension TranscriptPerformanceFixtureTests {
             PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.2, pumpingLayoutOf: host.view),
             "the transcript never settled"
         )
+        // Who publishes while the finger moves: every AppState publish
+        // re-evaluates each row that observes it.
+        let appSink = appState.objectWillChange.sink { _ in
+            MainActor.assumeIsolated { ProbePublishTrace.recordAppPublish() }
+        }
+        let engineSink = engine.objectWillChange.sink { _ in
+            MainActor.assumeIsolated { ProbePublishTrace.enginePublishes += 1 }
+        }
+        defer {
+            appSink.cancel()
+            engineSink.cancel()
+            ProbePublishTrace.printStacks()
+        }
         print(String(
             format: "SCROLL_PROBE setup rows=%ld contentHeight=%.0f offset=%.0f viewport=%.0f",
             appState.messages.count, scrollView.contentSize.height, scrollView.contentOffset.y, scrollView.bounds.height
@@ -722,6 +745,33 @@ extension TranscriptPerformanceFixtureTests {
         }
         walk(scrollView)
         return count
+    }
+}
+
+@MainActor
+private enum ProbePublishTrace {
+    static var appPublishes = 0
+    static var enginePublishes = 0
+    private static var stacks: [String: Int] = [:]
+    private static var order: [String] = []
+
+    /// Counts each AppState publish and keeps the distinct call stacks
+    /// that caused them, so the log names the property that published.
+    static func recordAppPublish() {
+        appPublishes += 1
+        let frames = Thread.callStackSymbols.dropFirst(2).prefix(16).map { line in
+            // "3   Conduit   0x0000 symbol + 12": keep the symbol.
+            line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true).dropFirst(3).joined()
+        }
+        let key = frames.joined(separator: "\n    ")
+        if stacks[key] == nil { order.append(key) }
+        stacks[key, default: 0] += 1
+    }
+
+    static func printStacks() {
+        for key in order.prefix(12) {
+            print("SCROLL_PROBE appPublish count=\(stacks[key] ?? 0)\n    " + key)
+        }
     }
 }
 
