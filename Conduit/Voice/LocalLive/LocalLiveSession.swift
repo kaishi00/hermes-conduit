@@ -79,6 +79,9 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var readinessCheck: (id: UUID, marker: String)?
     /// The check's own response hasn't finished: its events aren't the call's.
     private var readinessResponseOpen = false
+    /// The frame that just ended the check's response: its turn end, decoded
+    /// from the same response.done, isn't the call's either.
+    private var readinessResponseEnding = false
     /// Words of this call's checks: an ask for one that comes after the call
     /// went ready (a retry, or late after an error) gets nothing, never a
     /// Hermes turn.
@@ -314,6 +317,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                 handle(turn, connection: id)
                 continue
             }
+            readinessResponseEnding = false
             for frame in GrokLiveProtocol.decode(data) {
                 // A frame can end this connection.
                 guard id == connectionID else { return }
@@ -389,6 +393,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         case .responseDone:
             guard readinessResponseOpen else { return }
             readinessResponseOpen = false
+            readinessResponseEnding = true
             // The check's response ended without its ask reaching this
             // call: the server's model address isn't this profile's plugin.
             if readinessCheck?.id == id {
@@ -404,6 +409,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             // The server sends each utterance's transcript once, when it is done.
             onEvent?(.inputTranscription(text))
         case .event(let event):
+            if readinessResponseEnding, case .turnComplete = event { return }
             if readinessResponseOpen {
                 // The check's reply (said by no one) and its end aren't the call's.
                 switch event {
