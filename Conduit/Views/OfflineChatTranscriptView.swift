@@ -15,19 +15,17 @@ struct OfflineChatTranscriptView: View {
 
     private static let topAnchor = "offline-chat-top"
 
-    /// A chat picked in the saved list with no copy of its own, on its way
-    /// in: it says so, without the saved-copy banner.
-    private var isOpeningPickedChat: Bool {
-        presentation.isPickedChat
-            && presentation.displayedRows.isEmpty
-            && (appState.isConnecting || appState.isConnected)
+    /// Only a real offline state says this is a saved copy. While Hermes is
+    /// on its way, between retries too, the copy reads as the chat itself,
+    /// and the header and the composer say Conduit is connecting.
+    private var showsBanner: Bool {
+        !appState.isConnected && !appState.isRecoveringConnection
     }
 
-    /// Only a real offline state says this is a saved copy. While Hermes is
-    /// on its way the copy reads as the chat itself, and the header and the
-    /// composer say Conduit is connecting.
-    private var showsBanner: Bool {
-        !isOpeningPickedChat && !appState.isConnected && !appState.isRecoveringConnection
+    /// A chat picked in the saved list with no copy of its own, on its way
+    /// in: it says so for as long as the banner is down.
+    private var isOpeningPickedChat: Bool {
+        presentation.isPickedChat && presentation.displayedRows.isEmpty && !showsBanner
     }
 
     var body: some View {
@@ -121,6 +119,7 @@ private struct OfflineChatBanner: View {
             Image(systemName: "icloud.slash")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.footnote.weight(.semibold))

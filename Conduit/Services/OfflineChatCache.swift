@@ -476,7 +476,6 @@ final class OfflineChatCacheStore {
         let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows))
         // Its rows land first, so the index never lists a copy that isn't there.
         guard write(transcript, dashboardID: dashboardID, profile: profile) else { return }
-        let previous = snapshot.transcripts
         snapshot.transcripts.removeAll { $0.sessionID == sessionID || allIdentities.contains($0.sessionID) }
         snapshot.transcripts.insert(OfflineCachedTranscriptEntry(transcript), at: 0)
         snapshot.transcripts = Array(snapshot.transcripts.prefix(Self.maxTranscripts))
@@ -491,10 +490,22 @@ final class OfflineChatCacheStore {
         }
         snapshot.lastSessionID = sessionID
         guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
-        // The rows of the copies the index no longer lists.
-        let kept = Set(snapshot.transcripts.map(\.sessionID))
-        for entry in previous where !kept.contains(entry.sessionID) {
-            try? fileManager.removeItem(at: transcriptFileURL(entry.sessionID, dashboardID: dashboardID, profile: profile))
+        removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
+    }
+
+    /// Removes the scope's chat files its index doesn't list: the copies it
+    /// let go, and any an earlier save left behind (a chat whose index write
+    /// failed, or an index that could no longer be read).
+    private func removeUnlistedTranscripts(_ snapshot: OfflineChatSnapshot, dashboardID: UUID, profile: String) {
+        let prefix = "\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).chat-"
+        let listed = Set(snapshot.transcripts.map {
+            transcriptFileURL($0.sessionID, dashboardID: dashboardID, profile: profile).lastPathComponent
+        })
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files where file.lastPathComponent.hasPrefix(prefix) && !listed.contains(file.lastPathComponent) {
+            try? fileManager.removeItem(at: file)
         }
     }
 

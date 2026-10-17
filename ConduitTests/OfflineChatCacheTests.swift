@@ -238,6 +238,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.loadTranscript("c", dashboardID: dashboard, profile: "default"))
     }
 
+    /// A chat file its index doesn't list (its index write failed, say) goes
+    /// with the next copy saved for its scope. Other scopes' files stay.
+    func testChatFilesTheIndexDoesNotListGoWithTheNextCopy() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [])
+        store.record(dashboardID: dashboard, profile: "other", sessionID: "x", title: "X", messages: row, sessions: [])
+        let stray = store.transcriptFileURL("stray", dashboardID: dashboard, profile: "default")
+        try Data("{}".utf8).write(to: stray)
+
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B", messages: row, sessions: [])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        XCTAssertNotNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.loadTranscript("x", dashboardID: dashboard, profile: "other"))
+    }
+
     /// Copies saved by an earlier build, every chat inside the one file,
     /// still show after the update: the first read moves them to a file each.
     func testCopiesSavedInTheFirstFormatMoveToAFileEach() throws {
