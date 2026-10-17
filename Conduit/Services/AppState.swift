@@ -25152,6 +25152,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Removes the job from Hermes. Chats from its past runs stay; Hermes
+    /// keeps those sessions.
+    func deleteCronJob(_ job: CronJob) async -> Bool {
+        guard cronJobActionID == nil else { return false }
+        let profile = activeProfile
+        cronJobActionID = job.id
+        defer { cronJobActionID = nil }
+        guard let dashboardTicketBridge else { return false }
+
+        do {
+            let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
+            _ = try await dashboardTicketBridge.requestJSON(
+                path: cronDashboardPath("/api/cron/jobs/\(encodedID)", profile: profile),
+                method: "DELETE"
+            )
+            guard profile == activeProfile else { return false }
+            cronJobs.removeAll { $0.id == job.id }
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not delete scheduled job: \(UserFacingError.message(for: error))")
+            return false
+        }
+    }
+
     private func cronDashboardPath(_ path: String, profile: String) -> String {
         DashboardPath.withExplicitProfile(path, profile: profile)
     }

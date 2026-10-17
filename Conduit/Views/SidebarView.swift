@@ -2162,6 +2162,7 @@ struct CronJobDetailSheet: View {
     /// The job as it was tapped; `job` follows the live list so Pause and
     /// Resume flip the sheet as soon as Hermes answers.
     let selectedJob: CronJob
+    @State private var confirmingDelete = false
 
     init(job: CronJob) {
         selectedJob = job
@@ -2221,6 +2222,14 @@ struct CronJobDetailSheet: View {
                             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent, prominent: true)
                         }
                         .font(.subheadline.weight(.semibold))
+                        Button(role: .destructive) { confirmingDelete = true } label: {
+                            Label(AppLocalization.string("Delete job"), systemImage: "trash").frame(maxWidth: .infinity)
+                        }
+                        .foregroundStyle(.red)
+                        .disabled(appState.cronJobActionID != nil)
+                        .frame(minHeight: 48)
+                        .conduitGlassControl(cornerRadius: 16, tint: .red.opacity(0.14))
+                        .font(.subheadline.weight(.semibold))
                         if let prompt = job.prompt, !prompt.isEmpty {
                             ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).font(.callout) }
                         }
@@ -2241,6 +2250,18 @@ struct CronJobDetailSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Scheduled job"), close: { dismiss() })
             }
+        }
+        .alert("Delete scheduled job?", isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    let deleted = await appState.deleteCronJob(job)
+                    Haptics.mutationCompleted(deleted)
+                    if deleted { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(AppLocalization.string("This removes \(job.displayName) from Hermes, so it won't run again. Chats from its past runs are kept."))
         }
         .task {
             async let runs: Void = appState.loadCronRuns(for: job)
