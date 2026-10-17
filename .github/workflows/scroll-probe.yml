@@ -85,24 +85,27 @@ jobs:
           run_probe testScrollProbeReportsMountCostByRow mount
           for name in kinds frames mount; do
             echo "===== $name"
-            grep -E "SCROLL_PROBE|error:|failed|passed" "probe-$name.log" | grep -v "^Test Suite" || tail -n 80 "probe-$name.log"
+            grep -E "SCROLL_PROBE|error:|^Test Case" "probe-$name.log" || tail -n 80 "probe-$name.log"
           done > probe-summary.txt
           cat probe-summary.txt
           # Cloud threads read annotations, not the log: the summary goes
-          # out as notices and warnings (10 of each per step), 6 KB apiece.
+          # out as notices and warnings (10 of each per step), each under
+          # the 4,096 characters an annotation keeps.
           python3 - probe-summary.txt <<'PY'
           import sys
           lines = open(sys.argv[1], errors="replace").read().splitlines()
           chunks, current = [], ""
+          def encode(text):
+              return text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
           for line in lines:
-              if current and len(current) + len(line) > 6000:
+              line = encode(line[:600] + "\n")
+              if current and len(current) + len(line) > 3900:
                   chunks.append(current)
                   current = ""
-              current += line[:1000] + "\n"
+              current += line
           if current:
               chunks.append(current)
           for index, chunk in enumerate(chunks[:20]):
               kind = "notice" if index < 10 else "warning"
-              body = chunk.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-              print(f"::{kind} title=probe {index + 1}/{len(chunks)}::{body}")
+              print(f"::{kind} title=probe {index + 1}/{len(chunks)}::{chunk}")
           PY

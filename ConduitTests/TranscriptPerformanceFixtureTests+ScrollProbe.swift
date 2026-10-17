@@ -608,8 +608,8 @@ extension TranscriptPerformanceFixtureTests {
         }
         /// The text view inside a host view, pinned with constraints the
         /// way SelectableTextViewHostView does today, or framed by hand.
-        func hosted(constraints: Bool) -> UIView {
-            let child = textView(textKit1: false)
+        func hosted(constraints: Bool, textKit1: Bool = false) -> UIView {
+            let child = textView(textKit1: textKit1)
             let hostView: UIView = constraints ? UIView() : ProbeFramingHostView()
             hostView.addSubview(child)
             if constraints {
@@ -645,6 +645,8 @@ extension TranscriptPerformanceFixtureTests {
             Kind(name: "tk1-joined", joined: true, reused: false) { textView(textKit1: true) },
             Kind(name: "tk2-constraint-host", joined: false, reused: false) { hosted(constraints: true) },
             Kind(name: "tk2-frame-host", joined: false, reused: false) { hosted(constraints: false) },
+            Kind(name: "tk1-constraint-host", joined: false, reused: false) { hosted(constraints: true, textKit1: true) },
+            Kind(name: "tk1-frame-host", joined: false, reused: false) { hosted(constraints: false, textKit1: true) },
             Kind(name: "label", joined: false, reused: false) { label() },
         ]
 
@@ -775,7 +777,8 @@ private enum ProbePublishTrace {
                       let symbol = info.dli_sname else { return String(format: "0x%lx", address) }
                 return String(cString: symbol)
             }
-            print("SCROLL_PROBE appPublish count=\(stacks[key] ?? 0)\n    " + names.joined(separator: "\n    "))
+            print("SCROLL_PROBE appPublish count=\(stacks[key] ?? 0)")
+            names.forEach { print("SCROLL_PROBE stack   \($0)") }
         }
     }
 }
