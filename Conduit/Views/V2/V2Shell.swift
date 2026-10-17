@@ -154,8 +154,6 @@ final class V2ShownUpdates: ObservableObject {
     }
     private var missedUpdate = false
     private var subscription: AnyCancellable?
-    /// PROBE ONLY (removed before merge): the old behaviour, for an A/B.
-    static var probeAlwaysForwards = false
 
     /// Read through here by the list's rows, which follow these updates.
     unowned let appState: AppState
@@ -164,7 +162,7 @@ final class V2ShownUpdates: ObservableObject {
         self.appState = appState
         subscription = appState.objectWillChange.sink { [weak self] _ in
             guard let self else { return }
-            if self.isShown || Self.probeAlwaysForwards { self.objectWillChange.send() } else { self.missedUpdate = true }
+            if self.isShown { self.objectWillChange.send() } else { self.missedUpdate = true }
         }
     }
 }
