@@ -81,6 +81,9 @@ enum ConnectionFailureClassifier {
             // Discovery answered, but with no sign-in Conduit can use.
             return .unexpectedServerResponse
         }
+        if let handshakeError = error as? DashboardSocketHandshakeError {
+            return classify(handshakeError)
+        }
         // URLSession surfaces transport failures as NSError values in the
         // NSURLErrorDomain (e.g. injected through URLProtocol test seams).
         // Recover the typed error so classification stays code-based even
@@ -127,6 +130,15 @@ enum ConnectionFailureClassifier {
             return classifyHTTPStatus(status, stage: .ticketMint)
         case .notReady, .requestFailed, .oversizedResponse:
             return .unexpectedServerResponse
+        }
+    }
+
+    /// A refused dashboard WebSocket upgrade: the server wants a browser
+    /// sign-in first (3xx). The remedy is a sign-in, never a password.
+    static func classify(_ handshakeError: DashboardSocketHandshakeError) -> ConnectionFailure {
+        switch handshakeError {
+        case .browserSessionRequired:
+            return .loginRequired
         }
     }
 

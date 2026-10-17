@@ -284,6 +284,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(GrokLiveSession.isRefusal(.init(code: 4503, reason: "no credential")))
         XCTAssertTrue(GrokLiveSession.isRefusal(.init(code: 4401, reason: "")))
         XCTAssertTrue(GrokLiveSession.isRefusal(.init(code: 403, reason: "", isHTTPStatus: true)))
+        XCTAssertTrue(GrokLiveSession.isRefusal(.init(code: 302, reason: "", isHTTPStatus: true)),
+                      "A redirect that is never followed is not retried either")
         XCTAssertFalse(GrokLiveSession.isRefusal(.init(code: 502, reason: "", isHTTPStatus: true)))
         XCTAssertFalse(GrokLiveSession.isRefusal(.init(code: 1006, reason: "")))
         XCTAssertEqual(

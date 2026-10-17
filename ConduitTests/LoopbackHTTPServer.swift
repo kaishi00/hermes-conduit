@@ -8,6 +8,7 @@
 //  different origins, which is how cross-origin cases are built.
 //
 
+import CryptoKit
 import Foundation
 import Network
 
@@ -22,6 +23,35 @@ struct LoopbackHTTPResponse: Sendable {
     let status: Int
     let headers: [(String, String)]
     let body: Data
+    /// A 101 upgrade: the head goes out without a body or `Connection:
+    /// close`, and the connection stays open until the server stops.
+    var keepsConnectionOpen = false
+
+    /// A genuine WebSocket upgrade answer to `request`: 101 with the
+    /// `Sec-WebSocket-Accept` RFC 6455 derives from the client's key, so a
+    /// real `URLSessionWebSocketTask` completes its handshake.
+    static func webSocketUpgrade(for request: LoopbackHTTPRequest) -> LoopbackHTTPResponse {
+        let key = request.headers["sec-websocket-key"] ?? ""
+        let digest = Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))
+        return LoopbackHTTPResponse(
+            status: 101,
+            headers: [
+                ("Upgrade", "websocket"),
+                ("Connection", "Upgrade"),
+                ("Sec-WebSocket-Accept", Data(digest).base64EncodedString()),
+            ],
+            body: Data(),
+            keepsConnectionOpen: true
+        )
+    }
+
+    static func redirect(status: Int = 302, to location: String) -> LoopbackHTTPResponse {
+        LoopbackHTTPResponse(status: status, headers: [("Location", location)], body: Data())
+    }
+
+    static func status(_ status: Int) -> LoopbackHTTPResponse {
+        LoopbackHTTPResponse(status: status, headers: [], body: Data())
+    }
 
     static func json(
         status: Int,
@@ -174,15 +204,24 @@ final class LoopbackHTTPServer: @unchecked Sendable {
     private func send(_ response: LoopbackHTTPResponse, on connection: NWConnection) {
         let reason: String
         switch response.status {
+        case 101: reason = "Switching Protocols"
         case 200: reason = "OK"
+        case 301: reason = "Moved Permanently"
         case 302: reason = "Found"
+        case 307: reason = "Temporary Redirect"
         case 401: reason = "Unauthorized"
+        case 403: reason = "Forbidden"
         case 404: reason = "Not Found"
         default: reason = "Response"
         }
         var header = "HTTP/1.1 \(response.status) \(reason)\r\n"
         for (name, value) in response.headers {
             header += "\(name): \(value)\r\n"
+        }
+        if response.keepsConnectionOpen {
+            header += "\r\n"
+            connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in })
+            return
         }
         header += "Content-Length: \(response.body.count)\r\n"
         header += "Connection: close\r\n\r\n"

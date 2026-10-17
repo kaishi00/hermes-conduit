@@ -122,6 +122,26 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertEqual(ConnectionFailureClassifier.classify(URLError(.badServerResponse)), .unexpectedServerResponse)
     }
 
+    func testRefusedDashboardSocketUpgradesClassifyAsSignInNeverCredentials() {
+        // A refused upgrade is remedied by a sign-in in a browser, never by
+        // retyping a password.
+        for error in [DashboardSocketHandshakeError.browserSessionRequired(status: 302)] {
+            XCTAssertEqual(ConnectionFailureClassifier.classify(error), .loginRequired, "\(error)")
+            XCTAssertNotEqual(ConnectionFailurePresentation.presenting(ConnectionFailureClassifier.classify(error)).helpDestination, .credentials)
+        }
+    }
+
+    func testRefusedUpgradeStatusIsTypedOnlyWhenItSaysSomething() {
+        XCTAssertEqual(DashboardSocketHandshakeError.failure(status: 302), .browserSessionRequired(status: 302))
+        XCTAssertEqual(DashboardSocketHandshakeError.failure(status: 307), .browserSessionRequired(status: 307))
+        // A 401/403 says nothing about an account: Hermes answers a spent
+        // ticket with 403.
+        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 401))
+        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 403))
+        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 502))
+        XCTAssertNil(DashboardSocketHandshakeError.failure(status: nil))
+    }
+
     func testCancelledURLErrorClassifiesAsUnknownNotCredentials() {
         // LoginView intercepts CancellationError before classification (and
         // NativeAuthClient converts URLError.cancelled into CancellationError),

@@ -534,7 +534,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// other 4xxx is the plugin or xAI refusing what a retry would resend,
     /// as is a dashboard that refused the upgrade.
     nonisolated static func isRefusal(_ close: GeminiLiveServerClose) -> Bool {
-        if close.isHTTPStatus { return [400, 401, 403, 404].contains(close.code) }
+        // A redirect (never followed) wants a browser session: retrying
+        // can't change that.
+        if close.isHTTPStatus { return [400, 401, 403, 404].contains(close.code) || (300...399).contains(close.code) }
         if close.code == 4502 { return false }
         return [1003, 1007, 1008, 1009].contains(close.code) || (4000...4999).contains(close.code)
     }

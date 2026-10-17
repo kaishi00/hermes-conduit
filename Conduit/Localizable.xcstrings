@@ -285339,6 +285339,88 @@
           }
         }
       }
+    },
+    "This server asked for a browser sign-in before connecting to Hermes. Conduit doesn't follow that redirect with your sign-in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server verlangt vor der Verbindung zu Hermes eine Anmeldung im Browser. Conduit folgt dieser Weiterleitung nicht mit deiner Anmeldung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor pidió iniciar sesión en un navegador antes de conectarse a Hermes. Conduit no sigue esa redirección con tu inicio de sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur demande une connexion dans un navigateur avant d'accéder à Hermes. Conduit ne suit pas cette redirection avec votre session."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server ini meminta login lewat browser sebelum terhubung ke Hermes. Conduit tidak mengikuti pengalihan itu dengan login Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server ha chiesto un accesso dal browser prima di connettersi a Hermes. Conduit non segue quel reindirizzamento con il tuo accesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーは、Hermesに接続する前にブラウザでのサインインを求めました。Conduitはサインイン情報を付けたままそのリダイレクトには従いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버가 Hermes에 연결하기 전에 브라우저 로그인을 요구했어요. Conduit은 로그인 정보를 가지고 그 리디렉션을 따라가지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer zażądał logowania w przeglądarce przed połączeniem z Hermesem. Conduit nie podąża za tym przekierowaniem z Twoim logowaniem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor pediu login em um navegador antes de conectar ao Hermes. O Conduit não segue esse redirecionamento com o seu login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот сервер запросил вход через браузер перед подключением к Hermes. Conduit не переходит по такому перенаправлению с вашими данными входа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu, Hermes'e bağlanmadan önce tarayıcıda giriş yapılmasını istedi. Conduit bu yönlendirmeyi giriş bilgilerinizle takip etmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器要求在连接 Hermes 之前先在浏览器中登录。Conduit 不会带着你的登录信息跟随该重定向。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器要求在連線 Hermes 之前先在瀏覽器中登入。Conduit 不會帶著你的登入資訊跟隨該重新導向。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -99,11 +99,34 @@ extension GeminiLiveSocket {
 private final class GeminiLiveSocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: GeminiLiveServerClose?
+    private var refusedRedirect: Int?
 
     var serverClose: GeminiLiveServerClose? {
         lock.lock()
         defer { lock.unlock() }
         return recorded
+    }
+
+    /// The 3xx of a redirect this socket refused to follow.
+    var redirectStatus: Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return refusedRedirect
+    }
+
+    /// Never followed: a redirect would carry the upgrade's headers (the
+    /// relay's dashboard credentials) to wherever it points.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        lock.lock()
+        refusedRedirect = response.statusCode
+        lock.unlock()
+        completionHandler(nil)
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
@@ -126,10 +149,19 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
     }
 
     /// `request` carries any headers the upgrade needs (Cloudflare Access
-    /// in front of the Hermes dashboard, for Grok Live's relay).
+    /// in front of the Hermes dashboard and, for a native sign-in, its
+    /// bearer, for Grok Live's relay). Nothing else is added: the session
+    /// keeps no cookies and follows no redirect, whether the socket goes to
+    /// the relay or to Google.
     init(request: URLRequest) {
         // A session of its own, so its delegate hears this socket's close.
-        session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        configuration.urlCredentialStorage = nil
+        session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         task = session.webSocketTask(with: request)
         // Model audio frames are larger than URLSession's 1 MB default.
         task.maximumMessageSize = 16 * 1024 * 1024
@@ -170,6 +202,9 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
                 return GeminiLiveServerClose(code: task.closeCode.rawValue, reason: text)
             }
             // No close frame, but the upgrade itself was refused.
+            if let redirect = delegate.redirectStatus {
+                return GeminiLiveServerClose(code: redirect, reason: "", isHTTPStatus: true)
+            }
             if let http = task.response as? HTTPURLResponse, http.statusCode != 101 {
                 return GeminiLiveServerClose(code: http.statusCode, reason: "", isHTTPStatus: true)
             }
