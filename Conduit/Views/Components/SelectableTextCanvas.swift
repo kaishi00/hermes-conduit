@@ -90,9 +90,24 @@ final class SelectableTextCanvas: UIView {
     /// The height the text view would take at `width`.
     func height(atWidth width: CGFloat) -> CGFloat {
         TranscriptPerf.note(.textKitMeasurement)
-        guard text.length > 0 else { return ceil(font.lineHeight) }
+        guard text.length > 0 else { return Self.emptyHeight(for: font) }
         layOut(atWidth: width)
         return ceil(textLayoutManager.usageBoundsForTextContainer.height)
+    }
+
+    /// An empty text view still takes a line's height, where TextKit 2
+    /// gives an empty document none; measured once per font.
+    private static var emptyHeights: [UIFont: CGFloat] = [:]
+
+    private static func emptyHeight(for font: UIFont) -> CGFloat {
+        if let height = emptyHeights[font] { return height }
+        let textView = SelectableTextView.makeTextView()
+        textView.font = font
+        let height = ceil(textView.sizeThatFits(
+            CGSize(width: 100, height: CGFloat.greatestFiniteMagnitude)
+        ).height)
+        emptyHeights[font] = height
+        return height
     }
 
     override func layoutSubviews() {
@@ -158,6 +173,11 @@ final class SelectableTextCanvas: UIView {
     /// points: for tests that hold the drawing against the text view's.
     func firstRectForTests(characterRange range: NSRange) -> CGRect? {
         layOut(atWidth: wrapsLines ? bounds.width : 100_000)
+        return Self.firstRectForTests(characterRange: range, in: textLayoutManager)
+    }
+
+    /// The same for any TextKit 2 layout, such as a text view's.
+    static func firstRectForTests(characterRange range: NSRange, in textLayoutManager: NSTextLayoutManager) -> CGRect? {
         guard let start = textLayoutManager.location(textLayoutManager.documentRange.location, offsetBy: range.location),
               let end = textLayoutManager.location(start, offsetBy: max(range.length, 1)),
               let textRange = NSTextRange(location: start, end: end)

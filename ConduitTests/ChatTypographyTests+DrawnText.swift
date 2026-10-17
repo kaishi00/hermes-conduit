@@ -49,19 +49,19 @@ extension ChatTypographyTests {
         let (window, drawn, plain) = drawnAndPlainHosts(of: view, width: 366)
         defer { window.isHidden = true }
         let canvas = try XCTUnwrap(drawn.canvas)
-        let textView = plain.mountedTextView
+        // Asked the same way as the canvas: the text view's own firstRect
+        // pads the line by a point.
+        let textViewLayout = try XCTUnwrap(plain.mountedTextView.textLayoutManager, "the text view is on TextKit 2")
+        textViewLayout.ensureLayout(for: textViewLayout.documentRange)
         var report: [String] = []
         for landmark in ["Alpha", "Bravo", "column", "Charlie", "Delta", "another", "Echo", "Foxtrot", "link", "code"] {
-            let range = (text.string as NSString).range(of: landmark)
-            guard let drawnRect = canvas.firstRectForTests(characterRange: NSRange(location: range.location, length: 1)),
-                  let start = textView.position(from: textView.beginningOfDocument, offset: range.location),
-                  let end = textView.position(from: start, offset: 1),
-                  let glyph = textView.textRange(from: start, to: end)
+            let glyph = NSRange(location: (text.string as NSString).range(of: landmark).location, length: 1)
+            guard let drawnRect = canvas.firstRectForTests(characterRange: glyph),
+                  let viewRect = SelectableTextCanvas.firstRectForTests(characterRange: glyph, in: textViewLayout)
             else {
                 report.append("\(landmark) missing")
                 continue
             }
-            let viewRect = textView.firstRect(for: glyph)
             if abs(drawnRect.minX - viewRect.minX) > 0.5 || abs(drawnRect.minY - viewRect.minY) > 0.5 {
                 report.append(String(
                     format: "%@ drawn (%.1f, %.1f) vs text view (%.1f, %.1f)",

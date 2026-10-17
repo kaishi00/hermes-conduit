@@ -309,6 +309,24 @@ final class ChatTextSelectionTests: XCTestCase {
     }
 
     @MainActor
+    func testATextViewMovedToTextKit1IsNotReused() {
+        SelectableTextViewPool.removeAll()
+        defer { SelectableTextViewPool.removeAll() }
+        let view = SelectableTextView(text: "First block")
+        let coordinator = view.makeCoordinator()
+        let host = view.makeUIViewForTests(coordinator: coordinator)
+        let textView = host.mountedTextView
+        _ = textView.layoutManager
+        XCTAssertNil(textView.textLayoutManager, "asking for the layoutManager moves it to TextKit 1")
+        SelectableTextView.dismantleUIView(host, coordinator: coordinator)
+
+        let next = SelectableTextView(text: "Second")
+        let nextHost = next.makeUIViewForTests(coordinator: next.makeCoordinator())
+        XCTAssertFalse(nextHost.mountedTextView === textView)
+        XCTAssertNotNil(nextHost.mountedTextView.textLayoutManager)
+    }
+
+    @MainActor
     func testDismantledTextViewIsReusedCleanByTheNextMount() {
         SelectableTextViewPool.removeAll()
         defer { SelectableTextViewPool.removeAll() }

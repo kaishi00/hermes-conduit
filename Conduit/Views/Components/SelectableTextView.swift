@@ -1115,6 +1115,10 @@ enum SelectableTextViewPool {
               !coordinated.contains(where: { $0 === textView })
         else { return }
         textView.removeFromSuperview()
+        // The selection overlay's layoutManager calls move a text view to
+        // TextKit 1, which lays text out a little differently from the
+        // drawing a chat mounts text views over (SelectableTextCanvas).
+        guard textView.textLayoutManager != nil else { return }
         textView.attributedText = NSAttributedString()
         textView.selectedRange = NSRange(location: 0, length: 0)
         if let coordinatedTextView = textView as? MarkdownSelectionTextView {
