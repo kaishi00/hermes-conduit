@@ -149,30 +149,54 @@ struct SelectableTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
-        return makeUIViewForTests(coordinator: context.coordinator)
+        return makeUIViewForTests(
+            coordinator: context.coordinator,
+            drawsUntilTouched: Self.drawsUntilTouched(in: context.environment)
+        )
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
+        // VoiceOver or Switch Control came on: they read the text view.
+        if uiView.canvas != nil, !Self.drawsUntilTouched(in: context.environment) {
+            uiView.needsTextView = true
+        }
         updateUIViewForTests(uiView, coordinator: context.coordinator)
+    }
+
+    /// Whether this text is drawn until something needs its text view: on
+    /// in a chat, except for VoiceOver and Switch Control, which read the
+    /// text view. A touch mounts it (SelectableTextViewHostView), and so
+    /// does a selection made elsewhere in the same message.
+    static func drawsUntilTouched(in environment: EnvironmentValues) -> Bool {
+        environment.selectableTextDrawsUntilTouched
+            && !environment.accessibilityVoiceOverEnabled
+            && !environment.accessibilitySwitchControlEnabled
     }
 
     @MainActor
     static func dismantleUIView(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        uiView.cancelDeferredSelectionRegistration()
+        guard let textView = uiView.textView else { return }
         tearDownMountedTextView(in: uiView)
-        SelectableTextViewPool.recycle(uiView.mountedTextView)
+        SelectableTextViewPool.recycle(textView)
     }
 
     @MainActor
-    func makeUIViewForTests(coordinator: Coordinator) -> SelectableTextViewHostView {
-        // The kind of text view this mount needs, made once: a plain one
-        // swapped straight for a coordinated one cost two UITextViews per
-        // block each time a row scrolled into view.
-        let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
-        let hostView = SelectableTextViewHostView(
-            textView: makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
-        )
+    func makeUIViewForTests(coordinator: Coordinator, drawsUntilTouched: Bool = false) -> SelectableTextViewHostView {
+        let hostView: SelectableTextViewHostView
+        if drawsUntilTouched {
+            hostView = SelectableTextViewHostView(canvas: SelectableTextCanvas())
+        } else {
+            // The kind of text view this mount needs, made once: a plain one
+            // swapped straight for a coordinated one cost two UITextViews per
+            // block each time a row scrolled into view.
+            let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+            hostView = SelectableTextViewHostView(
+                textView: makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
+            )
+        }
         updateUIViewForTests(hostView, coordinator: coordinator)
         return hostView
     }
@@ -183,6 +207,43 @@ struct SelectableTextView: UIViewRepresentable {
         coordinator.linkColor = linkColor
         coordinator.selectionCoordinator = selectionCoordinator
         coordinator.selectionSegment = selectionSegment
+
+        if let canvas = uiView.canvas {
+            // A touch can mount the text view between updates, configured
+            // from this view's inputs.
+            coordinator.latestView = self
+            uiView.coordinator = coordinator
+            let presentation = Coordinator.Presentation(view: self)
+            if coordinator.canvasPresentation != presentation {
+                TranscriptPerf.note(.selectableTextViewTextRebuild)
+                canvas.configure(
+                    text: styledText(),
+                    font: font,
+                    linkColor: linkColor,
+                    maximumNumberOfLines: maximumNumberOfLines,
+                    wrapsLines: wrapsLines
+                )
+                coordinator.canvasPresentation = presentation
+                coordinator.presentationGeneration &+= 1
+            }
+            guard uiView.textView != nil || uiView.needsTextView else {
+                deferSelectionRegistration(in: uiView, coordinator: coordinator)
+                return
+            }
+        }
+        syncMountedTextView(in: uiView, coordinator: coordinator)
+    }
+
+    /// Mounts the host's text view if it has none yet, and brings it up to
+    /// date with this view's inputs.
+    @MainActor
+    func syncMountedTextView(in uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        if uiView.textView == nil {
+            uiView.cancelDeferredSelectionRegistration()
+            let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+            uiView.embedTextView(makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView))
+            coordinator.appliedPresentation = nil
+        }
 
         unregisterMountedTextViewIfNeeded(in: uiView, coordinator: coordinator)
 
@@ -222,7 +283,7 @@ struct SelectableTextView: UIViewRepresentable {
         let presentation = Coordinator.Presentation(view: self)
         let presentationIsUnchanged = coordinator.appliedPresentation == presentation
         if !presentationIsUnchanged {
-            configure(textView)
+            configure(textView, styledText: uiView.canvas?.text)
             coordinator.appliedPresentation = presentation
             coordinator.presentationGeneration &+= 1
         }
@@ -263,7 +324,14 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: SelectableTextViewHostView, context: Context) -> CGSize? {
-        measuredSizeCached(
+        // A drawn host measures with its canvas even once its text view is
+        // mounted, so mounting never changes its size.
+        if let canvas = uiView.canvas {
+            return measuredSizeCached(proposalWidth: proposal.width, coordinator: context.coordinator) { width in
+                canvas.height(atWidth: width)
+            }
+        }
+        return measuredSizeCached(
             proposalWidth: proposal.width,
             textView: uiView.mountedTextView,
             coordinator: context.coordinator
@@ -282,6 +350,17 @@ struct SelectableTextView: UIViewRepresentable {
         textView: UITextView,
         coordinator: Coordinator
     ) -> CGSize? {
+        measuredSizeCached(proposalWidth: proposalWidth, coordinator: coordinator) { width in
+            Self.measuredWrappingHeight(of: textView, at: width)
+        }
+    }
+
+    @MainActor
+    private func measuredSizeCached(
+        proposalWidth: CGFloat?,
+        coordinator: Coordinator,
+        wrappingHeight: (CGFloat) -> CGFloat
+    ) -> CGSize? {
         let key: Coordinator.MeasurementKey
         switch effectiveMeasurementMode(proposalWidth: proposalWidth) {
         case .none:
@@ -299,7 +378,7 @@ struct SelectableTextView: UIViewRepresentable {
            cached.key == key {
             return cached.size
         }
-        guard let size = measuredSize(proposalWidth: proposalWidth, textView: textView) else {
+        guard let size = measuredSize(proposalWidth: proposalWidth, wrappingHeight: wrappingHeight) else {
             return nil
         }
         coordinator.cachedMeasurement = Coordinator.CachedMeasurement(
@@ -345,6 +424,12 @@ struct SelectableTextView: UIViewRepresentable {
     /// ideal width clamped to the table's column policy, so the first pass
     /// and every later pass report the same correct height.
     func measuredSize(proposalWidth: CGFloat?, textView: UITextView) -> CGSize? {
+        measuredSize(proposalWidth: proposalWidth) { width in
+            Self.measuredWrappingHeight(of: textView, at: width)
+        }
+    }
+
+    private func measuredSize(proposalWidth: CGFloat?, wrappingHeight: (CGFloat) -> CGFloat) -> CGSize? {
         if !wrapsLines {
             return measureNonWrapping()
         }
@@ -352,11 +437,11 @@ struct SelectableTextView: UIViewRepresentable {
         if let range = selfSizingWidthRange {
             let idealWidth = max(1, measureNonWrapping().width)
             let width = min(max(idealWidth, range.lowerBound), range.upperBound)
-            return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
+            return CGSize(width: width, height: wrappingHeight(width))
         }
 
         guard let width = proposalWidth, width > 0, width.isFinite else { return nil }
-        return CGSize(width: width, height: Self.measuredWrappingHeight(of: textView, at: width))
+        return CGSize(width: width, height: wrappingHeight(width))
     }
 
     /// Shared measurement path for `sizeThatFits` and unit tests. Delegates
@@ -385,7 +470,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
     }
 
-    private func configure(_ textView: UITextView) {
+    private func configure(_ textView: UITextView, styledText precomputed: NSAttributedString? = nil) {
         textView.font = font
         textView.textColor = textColor
         textView.textContainer.widthTracksTextView = wrapsLines
@@ -401,6 +486,26 @@ struct SelectableTextView: UIViewRepresentable {
             .underlineStyle: NSUnderlineStyle.single.rawValue
         ]
 
+        let styledText = precomputed ?? self.styledText()
+
+        let selectedRange = textView.selectedRange
+        if !textView.attributedText.isEqual(to: styledText) {
+            TranscriptPerf.note(.selectableTextViewTextRebuild)
+            textView.attributedText = styledText
+            let selectedLocation = min(selectedRange.location, styledText.length)
+            let selectedEnd = min(NSMaxRange(selectedRange), styledText.length)
+            textView.selectedRange = NSRange(
+                location: selectedLocation,
+                length: max(0, selectedEnd - selectedLocation)
+            )
+        }
+        textView.invalidateIntrinsicContentSize()
+    }
+
+    /// The text as laid out: per-run fonts and colours kept from
+    /// `attributedText`, missing ones filled with the defaults, and the
+    /// paragraph style applied (see `keepsParagraphStyles`).
+    private func styledText() -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
         paragraphStyle.alignment = textAlignment
@@ -426,19 +531,28 @@ struct SelectableTextView: UIViewRepresentable {
                 }
             }
         }
+        return styledText
+    }
 
-        let selectedRange = textView.selectedRange
-        if !textView.attributedText.isEqual(to: styledText) {
-            TranscriptPerf.note(.selectableTextViewTextRebuild)
-            textView.attributedText = styledText
-            let selectedLocation = min(selectedRange.location, styledText.length)
-            let selectedEnd = min(NSMaxRange(selectedRange), styledText.length)
-            textView.selectedRange = NSRange(
-                location: selectedLocation,
-                length: max(0, selectedEnd - selectedLocation)
-            )
+    /// Until a drawn host mounts its text view, its selection segment waits
+    /// in the coordinator, which mounts it as soon as a selection in the
+    /// same message becomes visible, so the selection can reach it.
+    @MainActor
+    private func deferSelectionRegistration(in uiView: SelectableTextViewHostView, coordinator: Coordinator) {
+        let segmentID = coordinator.selectionSegment?.id
+        if let deferredCoordinator = uiView.deferredSelectionCoordinator,
+           deferredCoordinator === coordinator.selectionCoordinator,
+           let segmentID, uiView.deferredSelectionSegmentID == segmentID,
+           deferredCoordinator.hasDeferredRegistration(segmentID, owner: uiView) {
+            return
         }
-        textView.invalidateIntrinsicContentSize()
+        uiView.cancelDeferredSelectionRegistration()
+        guard let selectionCoordinator = coordinator.selectionCoordinator, let segmentID else { return }
+        selectionCoordinator.deferRegistration(segmentID: segmentID, owner: uiView) { [weak uiView] in
+            uiView?.mountTextView()
+        }
+        uiView.deferredSelectionCoordinator = selectionCoordinator
+        uiView.deferredSelectionSegmentID = segmentID
     }
 
     private func registerSelectionIfNeeded(for textView: UITextView, coordinator: Coordinator) {
@@ -453,11 +567,12 @@ struct SelectableTextView: UIViewRepresentable {
     private func unregisterMountedTextViewIfNeeded(in hostView: SelectableTextViewHostView, coordinator: Coordinator) {
         guard
             let selectionCoordinator = hostView.mountedSelectionCoordinator,
-            let selectionSegment = hostView.mountedSelectionSegment
+            let selectionSegment = hostView.mountedSelectionSegment,
+            let textView = hostView.textView
         else { return }
 
         if selectionCoordinator !== coordinator.selectionCoordinator || selectionSegment != coordinator.selectionSegment {
-            selectionCoordinator.unregister(segmentID: selectionSegment.id, textView: hostView.mountedTextView)
+            selectionCoordinator.unregister(segmentID: selectionSegment.id, textView: textView)
             hostView.mountedSelectionCoordinator = nil
             hostView.mountedSelectionSegment = nil
         }
@@ -504,7 +619,7 @@ struct SelectableTextView: UIViewRepresentable {
 
     @MainActor
     private static func tearDownMountedTextView(in hostView: SelectableTextViewHostView) {
-        let textView = hostView.mountedTextView
+        guard let textView = hostView.textView else { return }
         textView.delegate = nil
         if let coordinated = textView as? MarkdownSelectionTextView {
             coordinated.onTouchBegan = nil
@@ -627,6 +742,12 @@ struct SelectableTextView: UIViewRepresentable {
         var selectionSegment: MarkdownSelectionSegmentDescriptor?
 
         var appliedPresentation: Presentation?
+        /// What a drawn host's canvas shows, which runs ahead of
+        /// `appliedPresentation` (the mounted text view's) until a touch
+        /// mounts the text view.
+        var canvasPresentation: Presentation?
+        /// The latest inputs, for a text view mounted between updates.
+        var latestView: SelectableTextView?
         var presentationGeneration: UInt64 = 0
         /// One-entry measurement cache scoped to the current presentation
         /// generation. Invalidated by any generation bump; lives and dies
@@ -646,6 +767,11 @@ struct SelectableTextView: UIViewRepresentable {
             self.linkColor = linkColor
             self.selectionCoordinator = selectionCoordinator
             self.selectionSegment = selectionSegment
+        }
+
+        @MainActor
+        func mountTextView(in hostView: SelectableTextViewHostView) {
+            latestView?.syncMountedTextView(in: hostView, coordinator: self)
         }
 
         // NOTE: the selection menu is only extended, never replaced, and only
@@ -1006,28 +1132,110 @@ enum SelectableTextViewPool {
 }
 
 final class SelectableTextViewHostView: UIView {
-    private(set) var mountedTextView: UITextView
+    /// Draws the text while the host has no text view: only hosts made to
+    /// draw until touched have one (`SelectableTextView.drawsUntilTouched`).
+    let canvas: SelectableTextCanvas?
+    private(set) var textView: UITextView?
+    /// Set on a drawn host, which mounts its text view through it. Held
+    /// strongly: nothing it holds leads back here.
+    var coordinator: SelectableTextView.Coordinator?
+    /// Mount the text view at the next update, whatever touches it.
+    var needsTextView = false
     weak var mountedSelectionCoordinator: MarkdownSelectionCoordinator?
     var mountedSelectionSegment: MarkdownSelectionSegmentDescriptor?
+    /// Where a drawn host's segment waits for its text view.
+    weak var deferredSelectionCoordinator: MarkdownSelectionCoordinator?
+    var deferredSelectionSegmentID: String?
 
     init(textView: UITextView) {
-        self.mountedTextView = textView
+        self.canvas = nil
+        self.textView = textView
         super.init(frame: .zero)
         embedMountedTextView()
+    }
+
+    init(canvas: SelectableTextCanvas) {
+        self.canvas = canvas
+        self.textView = nil
+        super.init(frame: .zero)
+        addSubview(canvas)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The text view, mounted first if the host only drew its text so far.
+    var mountedTextView: UITextView {
+        textView ?? mountTextView()
+    }
+
     var isUsingCoordinatedTextView: Bool {
-        mountedTextView is MarkdownSelectionTextView
+        textView is MarkdownSelectionTextView
+    }
+
+    /// The text shown, without mounting a text view to read it.
+    var displayedText: String {
+        textView?.text ?? canvas?.text.string ?? ""
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        canvas?.frame = bounds
+    }
+
+    /// A touch gets the real text view, mounted over the drawing as the
+    /// touch begins: links, selection, menus and drags then behave exactly
+    /// as they always have. Scrolling stays cheap, as the finger is still.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if textView == nil, canvas != nil, event?.type == .touches,
+           isUserInteractionEnabled, !isHidden, alpha > 0.01,
+           self.point(inside: point, with: event) {
+            mountTextView()
+        }
+        return super.hitTest(point, with: event)
+    }
+
+    @discardableResult
+    func mountTextView() -> UITextView {
+        if let textView { return textView }
+        coordinator?.mountTextView(in: self)
+        if let textView { return textView }
+        // Made outside SwiftUI, with no inputs to configure from.
+        let fallback = SelectableTextView.makeTextView()
+        fallback.attributedText = canvas?.text ?? NSAttributedString()
+        embedTextView(fallback)
+        return fallback
+    }
+
+    /// Mounts a drawn host's text view over its canvas, which hides once
+    /// the text view has drawn (it lays out and draws with this turn's
+    /// commit): the two draw the same glyphs in the same places, so nothing
+    /// on screen changes.
+    func embedTextView(_ textView: UITextView) {
+        guard self.textView == nil else { return }
+        self.textView = textView
+        embedMountedTextView()
+        textView.frame = bounds
+        guard let canvas else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak canvas] in
+            guard let self, let canvas, self.textView != nil else { return }
+            canvas.isHidden = true
+        }
+    }
+
+    func cancelDeferredSelectionRegistration() {
+        if let coordinator = deferredSelectionCoordinator, let segmentID = deferredSelectionSegmentID {
+            coordinator.cancelDeferredRegistration(segmentID: segmentID, owner: self)
+        }
+        deferredSelectionCoordinator = nil
+        deferredSelectionSegmentID = nil
     }
 
     func setMountedTextView(_ textView: UITextView) {
-        guard mountedTextView !== textView else { return }
-        mountedTextView.removeFromSuperview()
-        mountedTextView = textView
+        guard self.textView !== textView else { return }
+        self.textView?.removeFromSuperview()
+        self.textView = textView
         embedMountedTextView()
     }
 
@@ -1044,14 +1252,28 @@ final class SelectableTextViewHostView: UIView {
     }
 
     private func embedMountedTextView() {
-        addSubview(mountedTextView)
-        mountedTextView.translatesAutoresizingMaskIntoConstraints = false
+        guard let textView else { return }
+        addSubview(textView)
+        textView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            mountedTextView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            mountedTextView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            mountedTextView.topAnchor.constraint(equalTo: topAnchor),
-            mountedTextView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            textView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            textView.topAnchor.constraint(equalTo: topAnchor),
+            textView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+    }
+}
+
+private struct SelectableTextDrawsUntilTouchedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// On in a chat, where text draws without a UITextView until something
+    /// needs one (`SelectableTextView.drawsUntilTouched`).
+    var selectableTextDrawsUntilTouched: Bool {
+        get { self[SelectableTextDrawsUntilTouchedKey.self] }
+        set { self[SelectableTextDrawsUntilTouchedKey.self] = newValue }
     }
 }
 

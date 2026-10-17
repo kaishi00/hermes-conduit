@@ -30,9 +30,13 @@ summarise() {
 
 case "${1:-frames}" in
 frames)
-  run_probe plain-1 "$frames"
-  run_probe plain-2 "$frames"
-  { summarise plain-1; summarise plain-2; } > probe-summary.txt
+  # Drawn text (the default) against text views everywhere, interleaved:
+  # the first process in a job runs slower, so each kind gets two runs.
+  run_probe drawn-1 "$frames"
+  run_probe textviews-1 "$frames" TEST_RUNNER_PROBE_TEXT_VIEWS=1
+  run_probe drawn-2 "$frames"
+  run_probe textviews-2 "$frames" TEST_RUNNER_PROBE_TEXT_VIEWS=1
+  for name in drawn-1 textviews-1 drawn-2 textviews-2; do summarise "$name"; done > probe-summary.txt
   cat probe-summary.txt
   python3 "$HERE/annotate.py" probe-summary.txt probe
   ;;

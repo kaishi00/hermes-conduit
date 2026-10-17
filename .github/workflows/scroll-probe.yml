@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: scroll-probe-${{ github.ref }}
+  group: scroll-probe-${{ github.sha }}
   cancel-in-progress: true
 
 env:

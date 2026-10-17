@@ -23,6 +23,8 @@ private struct OptionalAccessibilityHint: ViewModifier {
 }
 
 struct ChatView: View {
+    /// Probe only (temporary): text views everywhere, for an A/B run.
+    static var probeKeepsTextViews = false
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: someone is typing in the composer, which hides the minimised
@@ -294,6 +296,7 @@ struct ChatView: View {
         .environment(\.chatTextSize, chatTextSize)
         .environment(\.markdownTablePlainCells, true)
         .environment(\.markdownJoinsProseRuns, true)
+        .environment(\.selectableTextDrawsUntilTouched, !Self.probeKeepsTextViews)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         .background(Color.clear)

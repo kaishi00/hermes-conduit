@@ -235,7 +235,9 @@ extension TranscriptPerformanceFixtureTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         let environment = ProcessInfo.processInfo.environment
-        print("SCROLL_PROBE setup profiled=\(environment["PROBE_WAIT"] ?? "no")")
+        ChatView.probeKeepsTextViews = environment["PROBE_TEXT_VIEWS"] == "1"
+        defer { ChatView.probeKeepsTextViews = false }
+        print("SCROLL_PROBE setup profiled=\(environment["PROBE_WAIT"] ?? "no") textViews=\(ChatView.probeKeepsTextViews ? "always" : "on touch")")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.messages = Self.probeTranscript(turns: 60)
 
@@ -793,7 +795,7 @@ extension TranscriptPerformanceFixtureTests {
         var maxY = -CGFloat.greatestFiniteMagnitude
         var count = 0
         func walk(_ view: UIView) {
-            if view is UITextView, view.window != nil {
+            if view is SelectableTextViewHostView, view.window != nil {
                 let frame = view.convert(view.bounds, to: scrollView)
                 minY = min(minY, frame.minY)
                 maxY = max(maxY, frame.maxY)
@@ -813,7 +815,7 @@ extension TranscriptPerformanceFixtureTests {
     private static func mountedRowEstimate(in scrollView: UIView) -> Int {
         var count = 0
         func walk(_ view: UIView) {
-            if view is UITextView { count += 1 }
+            if view is SelectableTextViewHostView { count += 1 }
             view.subviews.forEach(walk)
         }
         walk(scrollView)

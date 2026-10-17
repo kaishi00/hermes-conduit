@@ -157,8 +157,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
         var sources = Set<String>()
         func walk(_ view: UIView) {
             if let host = view as? SelectableTextViewHostView,
-               let text = host.mountedTextView.text,
-               let match = text.firstMatch(of: #/answer (\d+) /#),
+               let match = host.displayedText.firstMatch(of: #/answer (\d+) /#),
                let index = Int(match.1),
                transcript.indices.contains(index) {
                 sources.insert(transcript[index].content)

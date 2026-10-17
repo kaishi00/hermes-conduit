@@ -211,6 +211,9 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// text view with a programmatic range renders nothing. The overlay
     /// draws every span in that state.
     private var isOwnerNativeChromeSuppressed = false
+    /// Segments drawn without a text view so far (SelectableTextCanvas),
+    /// each with what mounts it, keyed by segment and owned by their host.
+    private var deferredMounts: [String: (owner: ObjectIdentifier, mount: () -> Void)] = [:]
 
     func replaceSegments(_ descriptors: [MarkdownSelectionSegmentDescriptor], revision: String) {
         let before = visibleSelectionSnapshot()
@@ -242,6 +245,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         orderedSegmentIDs = ordered.map(\.id)
         let currentIDs = Set(orderedSegmentIDs)
         recordsByID = recordsByID.filter { currentIDs.contains($0.key) }
+        deferredMounts = deferredMounts.filter { currentIDs.contains($0.key) }
 
         for descriptor in ordered {
             if let record = recordsByID[descriptor.id] {
@@ -282,6 +286,33 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         if activeSelectionState != nil {
             objectWillChange.send()
         }
+    }
+
+    /// A segment that will register its text view once it has one; until
+    /// then a selection can't reach it, so a selection that becomes visible
+    /// mounts every deferred segment first (`mountDeferredSegments`).
+    func deferRegistration(segmentID: String, owner: AnyObject, mount: @escaping () -> Void) {
+        deferredMounts[segmentID] = (ObjectIdentifier(owner), mount)
+    }
+
+    func cancelDeferredRegistration(segmentID: String, owner: AnyObject) {
+        guard deferredMounts[segmentID]?.owner == ObjectIdentifier(owner) else { return }
+        deferredMounts[segmentID] = nil
+    }
+
+    func hasDeferredRegistration(_ segmentID: String, owner: AnyObject) -> Bool {
+        deferredMounts[segmentID]?.owner == ObjectIdentifier(owner)
+    }
+
+    /// Mounts the text view of every segment still drawn without one, so a
+    /// selection can be dragged across the whole message. Runs once the
+    /// selection is in place: a registration applies the active selection's
+    /// ranges, and before there is one it would clear the owner's.
+    private func mountDeferredSegments() {
+        guard !deferredMounts.isEmpty else { return }
+        let mounts = deferredMounts.values.map { $0.mount }
+        deferredMounts.removeAll()
+        mounts.forEach { $0() }
     }
 
     func unregister(segmentID: String, textView: UITextView) {
@@ -579,6 +610,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         selectionGestureIsActive = true
         applySelectionRanges()
         publishIfVisibleSelectionChanged(from: before)
+        mountDeferredSegments()
     }
 
     func beginPendingSelection(segmentID: String, offset: Int, windowPoint: CGPoint) {
@@ -680,6 +712,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         selectionGestureIsActive = true
         applySelectionRanges()
         publishIfVisibleSelectionChanged(from: before)
+        mountDeferredSegments()
     }
 
     func updateSelection(windowPoint: CGPoint) {
