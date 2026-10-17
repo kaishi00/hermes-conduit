@@ -288,6 +288,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpeechServerSpeechStream.splitSentences("今天很好。明天").ready, "今天很好。")
         XCTAssertEqual(SpeechServerSpeechStream.splitSentences(String(repeating: "字", count: 300)).ready.count, 280)
         XCTAssertEqual(SpeechServerVoiceStatus.shellQuoted("it's"), "'it'\\''s'")
+        XCTAssertLessThanOrEqual(SpeechServerSpeechStream.splitSentences(String(repeating: "word ", count: 400)).ready.count, 280)
         let long = String(repeating: "word ", count: 80)
         XCTAssertFalse(SpeechServerSpeechStream.splitSentences(long).ready.isEmpty)
         XCTAssertTrue(SpeechServerSpeechStream.isReadingBack("it's 5", words: "It's 5 o'clock."))

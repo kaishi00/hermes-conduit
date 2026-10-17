@@ -110,9 +110,13 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         guard !terminal else { throw terminalError ?? CancellationError() }
         guard !text.isEmpty else { return }
         pending += text
-        let (ready, rest) = Self.splitSentences(pending)
-        pending = rest
-        if !ready.isEmpty { enqueue(ready) }
+        // A long run without sentence ends goes out a chunk at a time.
+        while true {
+            let (ready, rest) = Self.splitSentences(pending)
+            guard !ready.isEmpty else { break }
+            pending = rest
+            enqueue(ready)
+        }
     }
 
     func finish() async throws -> Bool {
@@ -174,8 +178,9 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             return (String(text[..<cut]), String(text[cut...]))
         }
         if text.count > maximumChunkCharacters {
-            let split = text.lastIndex(where: { $0 == " " })
-                ?? text.index(text.startIndex, offsetBy: maximumChunkCharacters)
+            let limit = text.index(text.startIndex, offsetBy: maximumChunkCharacters)
+            let space = text[..<limit].lastIndex(where: { $0 == " " })
+            let split = space.flatMap { $0 > text.startIndex ? $0 : nil } ?? limit
             return (String(text[..<split]), String(text[split...]))
         }
         return ("", text)
