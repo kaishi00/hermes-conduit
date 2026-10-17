@@ -149,10 +149,12 @@ struct SelectableTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
-        return makeUIViewForTests(
+        let hostView = makeUIViewForTests(
             coordinator: context.coordinator,
             drawsUntilTouched: Self.drawsUntilTouched(in: context.environment)
         )
+        hostView.selectionTint = context.environment.textSelectionTint
+        return hostView
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
@@ -163,6 +165,7 @@ struct SelectableTextView: UIViewRepresentable {
             uiView.needsTextView = true
         }
         updateUIViewForTests(uiView, coordinator: context.coordinator)
+        uiView.selectionTint = context.environment.textSelectionTint
     }
 
     /// Whether this text is drawn until something needs its text view: on
@@ -1151,10 +1154,23 @@ final class SelectableTextViewHostView: UIView {
     weak var deferredSelectionCoordinator: MarkdownSelectionCoordinator?
     var deferredSelectionSegmentID: String?
 
+    /// The tint the text view draws its selection in; nil inherits the
+    /// accent. A pooled text view may arrive tinted by its last mount, so
+    /// every mounted view gets this value.
+    var selectionTint: UIColor? {
+        didSet {
+            // The tint is a shared static colour, so equality is identity.
+            guard selectionTint != oldValue else { return }
+            // A drawn host's text view takes it when it mounts.
+            textView?.tintColor = selectionTint
+        }
+    }
+
     init(textView: UITextView) {
         self.canvas = nil
         self.textView = textView
         super.init(frame: .zero)
+        textView.tintColor = nil
         embedMountedTextView()
     }
 
@@ -1219,6 +1235,7 @@ final class SelectableTextViewHostView: UIView {
     func embedTextView(_ textView: UITextView) {
         guard self.textView == nil else { return }
         self.textView = textView
+        textView.tintColor = selectionTint
         embedMountedTextView()
         textView.frame = bounds
         guard let canvas else { return }
@@ -1240,6 +1257,7 @@ final class SelectableTextViewHostView: UIView {
         guard self.textView !== textView else { return }
         self.textView?.removeFromSuperview()
         self.textView = textView
+        textView.tintColor = selectionTint
         embedMountedTextView()
     }
 
@@ -1278,6 +1296,19 @@ extension EnvironmentValues {
     var selectableTextDrawsUntilTouched: Bool {
         get { self[SelectableTextDrawsUntilTouchedKey.self] }
         set { self[SelectableTextDrawsUntilTouchedKey.self] = newValue }
+    }
+}
+
+private struct TextSelectionTintKey: EnvironmentKey {
+    static let defaultValue: UIColor? = nil
+}
+
+extension EnvironmentValues {
+    /// The selection tint for chat text drawn on a coloured surface (#697):
+    /// a sent bubble is the accent, the colour selections take by default.
+    var textSelectionTint: UIColor? {
+        get { self[TextSelectionTintKey.self] }
+        set { self[TextSelectionTintKey.self] = newValue }
     }
 }
 

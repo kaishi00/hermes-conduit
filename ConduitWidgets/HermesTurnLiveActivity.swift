@@ -90,16 +90,12 @@ enum HermesTurnStyle {
         return phase.waitsOnUser ? attention : gold
     }
 
-    /// The glow behind the card: the profile's color while Hermes works,
-    /// the phase's color once it needs you or is done.
-    static func glow(_ attributes: HermesTurnAttributes, phase: HermesTurnPhase) -> Color {
-        switch phase {
-        case .thinking, .writing, .tool:
-            if let rgb = attributes.glowColor { return Color(red: rgb.red, green: rgb.green, blue: rgb.blue) }
-            return gold
-        case .stopped: return .gray
-        case .approval, .input, .done, .failed: return tint(for: phase)
-        }
+    /// The glow behind the card: the profile's backdrop glow, as in the
+    /// app, whatever the phase (the status disc carries the phase's color).
+    /// Gold, like the app's backdrop, when the profile has none.
+    static func glow(_ attributes: HermesTurnAttributes) -> Color {
+        guard let rgb = attributes.glowColor else { return gold }
+        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 }
 
@@ -129,7 +125,7 @@ private struct HermesTurnLockScreenView: View {
             // The V2 backdrop glow, rising from behind the status disc.
             GeometryReader { proxy in
                 RadialGradient(
-                    colors: [HermesTurnStyle.glow(attributes, phase: state.turnPhase).opacity(0.34), .clear],
+                    colors: [HermesTurnStyle.glow(attributes).opacity(0.34), .clear],
                     center: UnitPoint(x: 0.08, y: 0.35),
                     startRadius: 0,
                     endRadius: proxy.size.width * 0.62

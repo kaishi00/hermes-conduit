@@ -4,7 +4,8 @@
 //
 //  Read-only on-disk copy of recently opened conversations (#99), so a cold
 //  launch (after iOS reclaimed the process, or with the server unreachable)
-//  can still show the last chat.
+//  can still show the last chat, and of the Chats list as it was last shown,
+//  so a launch opens to the real list while it connects.
 //
 //  The copy is PRESENTATION ONLY. It never enters `AppState.messages` or
 //  `AppState.sessions`, so nothing that decides resume, pagination,
@@ -108,31 +109,6 @@ struct OfflineCachedSession: Codable, Equatable, Identifiable {
         aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
     }
 
-    /// Relative to now when the row carried a machine-readable instant (the
-    /// saved `updatedLabel` was formatted at save time and goes stale).
-    @MainActor
-    func displayUpdatedLabel(now: Date = Date()) -> String {
-        // Persisted input: anything outside 2000 ... now + 1 day is not a
-        // real activity instant, so keep the saved label.
-        guard let lastActivityAt,
-              lastActivityAt.isFinite,
-              lastActivityAt >= 946_684_800,
-              lastActivityAt <= now.timeIntervalSince1970 + 86_400 else { return updatedLabel }
-        return Self.relativeFormatter.localizedString(for: Date(timeIntervalSince1970: lastActivityAt), relativeTo: now)
-    }
-
-    /// One formatter for every saved row (the sidebar renders up to
-    /// `maxSessions` of them). Main-actor confined: formatters are not
-    /// thread-safe, and only the sidebar reads it. Its locale is the one
-    /// current at first use.
-    @MainActor
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        formatter.unitsStyle = .abbreviated
-        return formatter
-    }()
-
     func matches(_ identities: Set<String>) -> Bool {
         identities.contains(id) || !identities.isDisjoint(with: aliases)
     }
@@ -160,6 +136,138 @@ struct OfflineChatSnapshot: Codable, Equatable {
     }
 }
 
+/// The Chats list as it was last shown for one (dashboard, profile) scope:
+/// whole rows, so a launch or a profile switch draws it through the live
+/// list's own code until the live list lands. PRESENTATION ONLY, like the
+/// saved transcripts: it never enters `AppState.sessions`, and nothing that
+/// resumes, routes or sends reads it.
+struct SavedChatList: Codable, Equatable {
+    static let formatVersion = 1
+    static let maxSessions = 200
+    static let maxCronSessions = 50
+
+    var version: Int = Self.formatVersion
+    var savedAt: Date
+    /// The newest chats, then any pinned one past them, in list order.
+    var sessions: [SessionSummary]
+    /// The newest scheduled runs, then any pinned one past them.
+    var cronSessions: [SessionSummary]
+    /// The saved rows that showed as pinned. The Pinned section holds them
+    /// while the phone has no pins of its own for the scope (a dashboard
+    /// switch starts those over until Hermes' arrive).
+    var pinnedRowIDs: [String]
+    /// The saved rows' voice tags by id: call and job icons, and nests.
+    var voiceTags: [String: VoiceSessionTag]
+    /// The project tree, so project chats stay on their own pages.
+    var projects: [ProjectSummary]
+    var supportsProjects: Bool
+
+    /// The list as shown: archived rows left out, the newest rows up to the
+    /// caps, and every pinned row whatever its age.
+    static func capture(
+        sessions: [SessionSummary],
+        cronSessions: [SessionSummary],
+        isPinned: (SessionSummary) -> Bool,
+        voiceTags: [String: VoiceSessionTag],
+        projects: [ProjectSummary],
+        supportsProjects: Bool,
+        now: Date = Date()
+    ) -> SavedChatList {
+        let chats = sessions.filter { !$0.isArchived }
+        let runs = cronSessions.filter { !$0.isArchived }
+        let savedSessions = Array(chats.prefix(maxSessions)) + chats.dropFirst(maxSessions).filter(isPinned)
+        let savedCron = Array(runs.prefix(maxCronSessions)) + runs.dropFirst(maxCronSessions).filter(isPinned)
+        let savedRows = savedSessions + savedCron
+        var tags: [String: VoiceSessionTag] = [:]
+        for row in savedRows {
+            for id in row.nestingIDs {
+                if let tag = voiceTags[id] { tags[id] = tag }
+            }
+        }
+        return SavedChatList(
+            savedAt: now,
+            sessions: savedSessions,
+            cronSessions: savedCron,
+            pinnedRowIDs: savedRows.filter(isPinned).map(\.id),
+            voiceTags: tags,
+            projects: projects,
+            supportsProjects: supportsProjects
+        )
+    }
+
+    /// The rows as a launch shows them: each time worked out again from its
+    /// instant, the way the live list formats it, so a row saved yesterday
+    /// doesn't still show only a time.
+    func relabeled(now: Date = Date()) -> SavedChatList {
+        func relabel(_ row: SessionSummary) -> SessionSummary {
+            // Persisted input: anything outside 2000 ... now + 1 day is not
+            // a real activity instant, so the row keeps its saved label.
+            guard let instant = row.lastActivityAt,
+                  instant.isFinite,
+                  instant >= 946_684_800,
+                  instant <= now.timeIntervalSince1970 + 86_400 else { return row }
+            var row = row
+            row.updatedLabel = MessageNormalizer.formattedSessionTimestamp(instant)
+            return row
+        }
+        var list = self
+        list.sessions = sessions.map(relabel)
+        list.cronSessions = cronSessions.map(relabel)
+        return list
+    }
+}
+
+/// The saved list on screen for its scope, until the live one lands.
+struct SavedChatListPresentation: Equatable {
+    let dashboardID: UUID
+    let profile: String
+    var list: SavedChatList
+    /// Set once the live list's newest page is listed while its older pages
+    /// still load: the saved pinned rows that page doesn't have, kept under
+    /// it so they don't blink out until the rest lands.
+    var keptPinnedRows: [SessionSummary]?
+
+    /// Whether the list on screen is still the saved one.
+    var isShowingSavedRows: Bool { keptPinnedRows == nil }
+
+    /// Whether `row` showed as pinned in the saved list.
+    func showedAsPinned(_ row: SessionSummary) -> Bool {
+        row.nestingIDs.contains { list.pinnedRowIDs.contains($0) }
+    }
+
+    /// Whether `row` is one of the kept pinned rows, which came from the
+    /// saved list, not from Hermes.
+    func isKeptRow(_ row: SessionSummary) -> Bool {
+        guard let kept = keptPinnedRows, !kept.isEmpty else { return false }
+        let ids = Set(row.nestingIDs)
+        return kept.contains { !ids.isDisjoint(with: $0.nestingIDs) }
+    }
+
+    /// What stays once the live list's newest page alone is listed: the
+    /// saved pinned rows it lacks, or nil when it lacks none.
+    func keepingPinnedRows(
+        missingFrom live: [SessionSummary],
+        isPinned: (SessionSummary) -> Bool
+    ) -> SavedChatListPresentation? {
+        let liveIDs = Set(live.flatMap(\.nestingIDs))
+        let kept = list.sessions.filter { isPinned($0) && liveIDs.isDisjoint(with: $0.nestingIDs) }
+        guard !kept.isEmpty else { return nil }
+        var presentation = self
+        presentation.keptPinnedRows = kept
+        return presentation
+    }
+
+    /// The chats listed over `live`: the saved rows while they show, else
+    /// the live rows and then each kept row the live list still lacks (one
+    /// it has since gained, opened or loaded, is listed once, as live).
+    func listedRows(live: [SessionSummary]) -> [SessionSummary] {
+        guard let kept = keptPinnedRows else { return list.sessions }
+        guard !kept.isEmpty else { return live }
+        let liveIDs = Set(live.flatMap(\.nestingIDs))
+        return live + kept.filter { liveIDs.isDisjoint(with: $0.nestingIDs) }
+    }
+}
+
 /// What the chat surface presents while the server has not answered yet.
 struct OfflineChatPresentation: Equatable {
     let dashboardID: UUID
@@ -170,13 +278,33 @@ struct OfflineChatPresentation: Equatable {
     }
     /// Mapped once per displayed conversation, not on every render.
     private(set) var displayedMessages: [ChatMessage]
+    /// A chat tapped in the saved list before the live one landed. Its
+    /// saved copy (or the wait for one) shows over any transcript still on
+    /// screen until that chat's own open lands.
+    var picked: PickedChat?
 
-    init(dashboardID: UUID, profile: String, snapshot: OfflineChatSnapshot, displayedSessionID: String?) {
+    struct PickedChat: Equatable {
+        /// The row's title, for the header.
+        let title: String
+        /// Every id the row answers to, so the open it leads to is known.
+        var sessionIDs: Set<String>
+    }
+
+    var isPickedChat: Bool { picked != nil }
+
+    init(
+        dashboardID: UUID,
+        profile: String,
+        snapshot: OfflineChatSnapshot,
+        displayedSessionID: String?,
+        picked: PickedChat? = nil
+    ) {
         self.dashboardID = dashboardID
         self.profile = profile
         self.snapshot = snapshot
         self.displayedSessionID = displayedSessionID
         self.displayedMessages = Self.messages(in: snapshot, for: displayedSessionID)
+        self.picked = picked
     }
 
     var displayedTranscript: OfflineCachedTranscript? {
@@ -324,18 +452,37 @@ final class OfflineChatCacheStore {
         try? fileManager.removeItem(at: directory)
     }
 
+    /// The scope's saved Chats list, or nil when none was saved (or it was
+    /// saved in another format).
+    func loadChatList(dashboardID: UUID, profile: String) -> SavedChatList? {
+        guard let data = try? Data(contentsOf: chatListFileURL(dashboardID: dashboardID, profile: profile)),
+              let list = try? JSONDecoder().decode(SavedChatList.self, from: data),
+              list.version == SavedChatList.formatVersion else {
+            return nil
+        }
+        return list
+    }
+
+    /// Replaces the scope's saved Chats list. Its file sits beside the
+    /// scope's transcripts, so every wipe that removes those removes it.
+    func recordChatList(_ list: SavedChatList, dashboardID: UUID, profile: String) {
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        write(data, to: chatListFileURL(dashboardID: dashboardID, profile: profile))
+    }
+
     private func write(_ snapshot: OfflineChatSnapshot, dashboardID: UUID, profile: String) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        write(data, to: fileURL(dashboardID: dashboardID, profile: profile))
+    }
+
+    private func write(_ data: Data, to url: URL) {
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             var directoryURL = directory
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try? directoryURL.setResourceValues(values)
-            let data = try JSONEncoder().encode(snapshot)
-            try data.write(
-                to: fileURL(dashboardID: dashboardID, profile: profile),
-                options: Self.writeOptions
-            )
+            try data.write(to: url, options: Self.writeOptions)
         } catch {
             // Best effort: the cache is a convenience copy, never a source of
             // truth, so a failed write only means a colder next launch.
@@ -343,10 +490,19 @@ final class OfflineChatCacheStore {
     }
 
     func fileURL(dashboardID: UUID, profile: String) -> URL {
+        directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).json")
+    }
+
+    func chatListFileURL(dashboardID: UUID, profile: String) -> URL {
+        directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).list.json")
+    }
+
+    /// "<dashboard>--<profile>": the dashboard prefix is what
+    /// `removeDashboard` matches. A profile's "." is percent-encoded, so no
+    /// profile's transcript file can be named like another's list file.
+    private static func scopeFileStem(dashboardID: UUID, profile: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let safeProfile = profile.addingPercentEncoding(withAllowedCharacters: allowed) ?? "default"
-        return directory.appendingPathComponent(
-            "\(dashboardID.uuidString.lowercased())--\(safeProfile).json"
-        )
+        return "\(dashboardID.uuidString.lowercased())--\(safeProfile)"
     }
 }

@@ -141,8 +141,18 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(deletions.contains("item_ch_add2"))
     }
 
-    func testPhoneChangeNeedsWhatItActsOn() {
+    func testPhoneChangeNeedsWhatItActsOn() throws {
         XCTAssertNil(PhoneChange(json: ["id": "ch_1", "kind": "delete_event", "fields": [String: Any]()]), "A deletion names its event")
+        XCTAssertNil(PhoneChange(json: ["id": "ch_1r", "kind": "delete_reminder", "fields": [String: Any]()]), "A deletion names its reminder")
+        let deletion = try XCTUnwrap(PhoneChange(json: ["id": "ch_1d", "kind": "delete_reminder", "target": ["reminder_id": "r_1"]]))
+        XCTAssertEqual(deletion.reminderID, "r_1")
+        XCTAssertFalse(deletion.kind.addsWithoutAsking, "Deleting always asks")
+        XCTAssertFalse(deletion.kind.isEvent)
+        XCTAssertTrue(PhoneChangeWording.isRemoval(deletion.kind))
+        XCTAssertEqual(PhoneChangeWording.approveTitle(deletion), "Delete")
+        let named = try XCTUnwrap(PhoneChange(json: ["id": "ch_1n", "kind": "delete_reminder", "target": ["reminder_id": "r_1"],
+                                                     "fields": ["title": "Buy milk"]]))
+        XCTAssertEqual(PhoneChangeWording.detail(named), "Buy milk", "The card names what it deletes")
         XCTAssertNil(PhoneChange(json: ["id": "ch_2", "kind": "add_event", "fields": ["title": "No time"]]))
         XCTAssertNil(PhoneChange(json: ["id": "ch_3", "kind": "format_disk"]))
         let change = PhoneChange(json: ["id": "ch_4", "kind": "add_reminder", "auto": true,

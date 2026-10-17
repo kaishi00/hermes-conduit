@@ -365,6 +365,12 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             }
             try store.save(reminder, commit: true)
             return Self.reminderID(reminder)
+        case .deleteReminder:
+            let reminder = try await findReminder(change.reminderID ?? "")
+            guard reminder.calendar?.allowsContentModifications ?? false else { throw PhoneCalendarSourceError.readOnly }
+            let id = Self.reminderID(reminder)
+            try store.remove(reminder, commit: true)
+            return id
         case .setAlarm, .setTimer, .cancelAlarm:
             // Alarms go to PhoneAlarmSource, never here.
             throw PhoneCalendarSourceError.notFound

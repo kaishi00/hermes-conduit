@@ -48,7 +48,7 @@ struct NotifierPluginStatus: Equatable {
 
     /// The plugin version this Conduit build was made against. Below it, the
     /// update notice shows even when no feature is missing yet.
-    static let recommendedVersion = "0.42.1"
+    static let recommendedVersion = "0.43.0"
 
     /// Where Hermes installs it from (`hermes plugins install …`).
     static let repository = "kaishi00/hermes-conduit-notifier"

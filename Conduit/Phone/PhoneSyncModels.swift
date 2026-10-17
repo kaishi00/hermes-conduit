@@ -232,6 +232,7 @@ struct PhoneChange: Identifiable, Equatable {
         case addReminder = "add_reminder"
         case updateReminder = "update_reminder"
         case completeReminder = "complete_reminder"
+        case deleteReminder = "delete_reminder"
         case setAlarm = "set_alarm"
         case setTimer = "set_timer"
         case cancelAlarm = "cancel_alarm"
@@ -277,7 +278,7 @@ struct PhoneChange: Identifiable, Equatable {
         switch kind {
         case .updateEvent, .deleteEvent:
             guard eventID != nil else { return nil }
-        case .updateReminder, .completeReminder:
+        case .updateReminder, .completeReminder, .deleteReminder:
             guard reminderID != nil else { return nil }
         case .addEvent:
             guard fields.title != nil, fields.start != nil else { return nil }

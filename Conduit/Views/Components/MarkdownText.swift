@@ -59,9 +59,15 @@ struct MarkdownText: View {
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL
             )
+            .environment(\.textSelectionTint, selectionTint)
         } else {
             normalBody
         }
+    }
+
+    /// A selection on a sent bubble would take the bubble's own colour (#697).
+    private var selectionTint: UIColor? {
+        usesAccentSurface ? UIColor.conduitSelectionOnAccent : nil
     }
 
     /// A streaming reply or a cut preview can end inside a block.
@@ -186,6 +192,7 @@ struct MarkdownText: View {
         // the same message-level context without threading it through each
         // container view. Scoped to this MarkdownText subtree only.
         .environment(\.markdownReferences, rendering.references)
+        .environment(\.textSelectionTint, selectionTint)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -228,6 +235,7 @@ private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
 
     func updateUIView(_ uiView: MarkdownSelectionHighlightView, context: Context) {
         uiView.coordinator = coordinator
+        uiView.selectionTint = context.environment.textSelectionTint
         uiView.refresh()
     }
 
@@ -242,6 +250,8 @@ private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
 /// the message, made again each time its row scrolled into view.
 private final class MarkdownSelectionHighlightView: UIView {
     weak var coordinator: MarkdownSelectionCoordinator?
+    /// Nil draws the standard blue.
+    var selectionTint: UIColor?
 
     override class var layerClass: AnyClass { CAShapeLayer.self }
 
@@ -252,7 +262,7 @@ private final class MarkdownSelectionHighlightView: UIView {
         isOpaque = false
         backgroundColor = .clear
         isUserInteractionEnabled = false
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: MarkdownSelectionHighlightView, _: UITraitCollection) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ConduitAccentTrait.self]) { (view: MarkdownSelectionHighlightView, _: UITraitCollection) in
             view.refresh()
         }
     }
@@ -285,7 +295,7 @@ private final class MarkdownSelectionHighlightView: UIView {
                 cornerRadius: 2
             ))
         }
-        shapeLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.24).resolvedColor(with: traitCollection).cgColor
+        shapeLayer.fillColor = (selectionTint ?? .systemBlue).withAlphaComponent(0.24).resolvedColor(with: traitCollection).cgColor
         shapeLayer.path = path.isEmpty ? nil : path.cgPath
     }
 }

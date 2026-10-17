@@ -332,6 +332,14 @@ struct VoiceThreadTarget: Equatable, Codable {
         guard !sessionID.isEmpty else { return false }
         return sessionID == runtimeSessionID || sessionID == storedSessionID
     }
+
+    /// The link that opens this chat. A Bot Chat opens through its bot,
+    /// never by its id on this profile.
+    var appLink: ConduitAppLink? {
+        if let bot = profile, !bot.isEmpty { return .bot(profile: bot) }
+        guard let id = [storedSessionID, runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return nil }
+        return .session(id: id)
+    }
 }
 
 /// Seam the Voice controller uses for spoken job commands and hand-backs.

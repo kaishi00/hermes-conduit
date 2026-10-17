@@ -16,7 +16,7 @@
     "ChatScrollEngineTests": 0.5,
     "ChatScrollHostedTests": 150.0,
     "ChatScrollStateTests": 0.054,
-    "ChatTextSelectionTests": 0.321,
+    "ChatTextSelectionTests": 1.2,
     "ChatTitleScrollTests": 0.006,
     "CloudflareAccessTests": 0.048,
     "ComposerAttachmentPolicyTests": 0.05,

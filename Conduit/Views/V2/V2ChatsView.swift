@@ -2,9 +2,10 @@
 //  V2ChatsView.swift
 //  Conduit
 //
-//  Chats: the dense session list (Pinned, Recent, child sessions under
-//  their parent) and, behind the folder toggle, Projects. The filters are
-//  a native pull-down menu and combine (Unread and Chat lists unread
+//  Chats: the dense session list (Pinned, then Today, Yesterday, Last 7
+//  days and Older, each collapsible; child sessions under their parent)
+//  and, behind the folder toggle, Projects. The filters are a native
+//  pull-down menu and combine (Unread and Chat lists unread
 //  chats); the active ones show as a gold chip in the search field. Rows
 //  keep the old drawer's swipes and context menu.
 //
@@ -263,8 +264,18 @@ struct V2ChatsView: View {
     @AppStorage("conduit.v2.sessionFilter") private var filterRaw = "all"
     /// Expanded parents, remembered per parent across launches.
     @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
+    /// A conversation opened from elsewhere whose closed section still has
+    /// to open once its row is listed.
+    @State private var pendingSectionReveal: String?
+    /// The closed list sections (#696), remembered across launches. Read
+    /// into state so a tap can animate the change, which an `@AppStorage`
+    /// write ignores.
+    @State private var collapsedSections = ChatListSection.collapsed(
+        from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
+    )
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
@@ -319,6 +330,12 @@ struct V2ChatsView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        // Here rather than on the chats list, so an activation that arrives
+        // while Projects is shown still opens its section on the way back.
+        .onChange(of: appState.activeSessionId) { _, active in
+            pendingSectionReveal = active
+            revealActiveSection()
+        }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
                 .environmentObject(appState)
@@ -415,17 +432,23 @@ struct V2ChatsView: View {
 
             filterMenu
 
-            Button {
-                Haptics.medium()
-                appState.dismissSidebarDrawer()
-                Task { await appState.createNewSession() }
-            } label: {
-                V2CapsuleIcon(systemImage: "square.and.pencil")
+            // The gold button beside the tabs makes new chats instead
+            // (Settings > Appearance): voice takes New chat's place here.
+            if mainButtonNewChat {
+                V2VoiceButton(context: .home, style: .capsule)
+            } else {
+                Button {
+                    Haptics.medium()
+                    appState.dismissSidebarDrawer()
+                    Task { await appState.createNewSession() }
+                } label: {
+                    V2CapsuleIcon(systemImage: "square.and.pencil")
+                }
+                .buttonStyle(PressableButtonStyle())
+                // The saved copy has no live gateway to create a chat on.
+                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
+                .accessibilityLabel(AppLocalization.string("New Chat"))
             }
-            .buttonStyle(PressableButtonStyle())
-            // The saved copy has no live gateway to create a chat on.
-            .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
-            .accessibilityLabel(AppLocalization.string("New Chat"))
         }
     }
 
@@ -445,7 +468,9 @@ struct V2ChatsView: View {
                 } label: {
                     Label("New project", systemImage: "folder.badge.plus")
                 }
-                .disabled(!appState.supportsProjects)
+                // Projects shown from the saved list say nothing yet about
+                // whether this Hermes takes new ones.
+                .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
             } else {
                 filterToggle(.all)
 
@@ -474,7 +499,8 @@ struct V2ChatsView: View {
                     } label: {
                         Label("Mark all as read", systemImage: "envelope.open")
                     }
-                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
+                    // The saved rows aren't the live list it marks.
+                    .disabled(appState.isShowingSavedChatList || !sourceRows(nil).contains { appState.isSessionUnread($0) })
                 }
             }
         } label: {
@@ -504,7 +530,7 @@ struct V2ChatsView: View {
                 select(savedSelection.setting(option, on: on))
             }
         )) {
-            Label("\(option.title) \(String(filterRows(selection.facet(option)).count))", systemImage: option.symbol)
+            Label("\(option.title) \(String(filterRows(selection.facet(option), searching: false).count))", systemImage: option.symbol)
         }
         .menuActionDismissBehavior(option == .all ? .automatic : .disabled)
     }
@@ -538,23 +564,30 @@ struct V2ChatsView: View {
     // MARK: - Rows
 
     /// The rows a source lists (cron runs only under Scheduled, plus the
-    /// pinned ones in All, #485).
+    /// pinned ones in All, #485). Until this profile's live list lands,
+    /// the rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         SidebarSourceRows.rows(
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             source: source,
             category: appState.sessionCategory,
             isPinned: appState.isSessionPinned
         )
     }
 
-    private func filterRows(_ selection: V2FilterSelection) -> [SessionSummary] {
-        guard !selection.isEmpty else { return mainListRows(sourceRows(nil)) }
+    private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
+        guard !selection.isEmpty else {
+            return V2ChatsView.allRows(
+                sourceRows(nil),
+                searching: searching,
+                inMainList: mainListShows
+            )
+        }
         return selection.rows(
             everything: sourceRows(nil),
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             category: appState.sessionCategory,
             hasStatus: hasStatus
         )
@@ -573,21 +606,51 @@ struct V2ChatsView: View {
     /// a pinned one stays, since pinning asks for it here. The catalog
     /// carries no folder, so this hides the conversations the project tree
     /// is known to hold.
-    private func mainListRows(_ rows: [SessionSummary]) -> [SessionSummary] {
-        guard appState.supportsProjects else { return rows }
-        return rows.filter { appState.isSessionPinned($0) || appState.knownProjectID(for: $0) == nil }
+    private func mainListShows(_ session: SessionSummary) -> Bool {
+        guard appState.supportsProjects else { return true }
+        return appState.isSessionPinned(session) || appState.knownProjectID(for: session) == nil
+    }
+
+    /// What All lists. A search looks through every chat, a project's
+    /// included, as the status filters do (#708).
+    static func allRows(
+        _ rows: [SessionSummary],
+        searching: Bool,
+        inMainList: (SessionSummary) -> Bool
+    ) -> [SessionSummary] {
+        searching ? rows : rows.filter(inMainList)
+    }
+
+    /// A search result's preview led by its project, if it has one.
+    static func searchPreview(_ preview: String, projectTitle: String?) -> String {
+        guard let projectTitle, !projectTitle.isEmpty else { return preview }
+        return preview.isEmpty ? projectTitle : "\(projectTitle) · \(preview)"
     }
 
     private var displayedSessions: [SessionSummary] {
-        let rows = filterRows(selection)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rows = filterRows(selection, searching: !query.isEmpty)
         guard !query.isEmpty else { return rows }
         return rows.filter { sessionMatches($0, query: query) }
     }
 
+    /// While searching, a project's chat names its project, since the main
+    /// list doesn't otherwise say where it lives.
+    private func searchProjectTitle(_ item: V2ChatsListItem) -> String? {
+        guard isSearching, case .session(let node) = item.kind else { return nil }
+        return projectTitle(for: node.session)
+    }
+
+    private func projectTitle(for session: SessionSummary) -> String? {
+        guard appState.supportsProjects, let projectID = appState.knownProjectID(for: session) else { return nil }
+        return appState.projects.first { $0.id == projectID }?.title
+    }
+
     private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
+        // The project name a result shows finds it too.
         [session.title, session.model, session.id, session.preview ?? "", appState.sessionCategory(for: session).label]
             .contains { $0.localizedCaseInsensitiveContains(query) }
+            || projectTitle(for: session)?.localizedCaseInsensitiveContains(query) == true
     }
 
     private var isSearching: Bool {
@@ -613,8 +676,8 @@ struct V2ChatsView: View {
         let expanded = expandedNestIDs
         let layout = SidebarOfflineLayout.visibility(
             showingProjects: false,
-            hasOfflineCopy: appState.offlineChatPresentation != nil,
-            displayedSessionsEmpty: displayed.isEmpty
+            displayedSessionsEmpty: displayed.isEmpty,
+            isLoadingList: appState.isLoadingChatList
         )
         return List {
             searchField
@@ -630,25 +693,11 @@ struct V2ChatsView: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
             }
 
-            if layout.savedSection, let offline = appState.offlineChatPresentation {
-                Section {
-                    ForEach(offline.snapshot.sessions) { session in
-                        offlineSessionRow(session, presentation: offline)
-                    }
-                    // A row, not a footer: a plain List paints footers as an
-                    // opaque band across the backdrop.
-                    Text("Read-only copies from your last connection.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
-                } header: {
-                    sectionHeader(AppLocalization.string("Saved on this device"))
-                }
+            if layout.loadingState {
+                ProgressView("Loading chats…")
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             if layout.emptyState {
@@ -664,18 +713,12 @@ struct V2ChatsView: View {
             }
 
             if layout.liveSections && !sections.pinned.isEmpty {
-                Section {
-                    listRows(V2ChatsListItem.items(sections.pinned, expanded: expanded))
-                } header: {
-                    sectionHeader(AppLocalization.string("Pinned"))
-                }
+                collapsibleSection(.pinned, nodes: sections.pinned, expanded: expanded)
             }
 
-            if layout.liveSections && !sections.recent.isEmpty {
-                Section {
-                    listRows(V2ChatsListItem.items(sections.recent, expanded: expanded))
-                } header: {
-                    sectionHeader(AppLocalization.string("Recent"))
+            if layout.liveSections {
+                ForEach(ChatListSection.byDate(sections.recent)) { group in
+                    collapsibleSection(group.section, nodes: group.nodes, expanded: expanded)
                 }
             }
         }
@@ -687,15 +730,130 @@ struct V2ChatsView: View {
         .refreshable {
             await appState.refreshSessionCatalog()
         }
-        .onAppear { revealActiveNestAncestors() }
+        .onAppear {
+            revealActiveNestAncestors()
+            revealActiveSection()
+        }
         .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
-        .onChange(of: displayed) { _, _ in revealActiveNestAncestors() }
+        .onChange(of: displayed) { _, _ in
+            revealActiveNestAncestors()
+            revealActiveSection()
+        }
         .onChange(of: appState.pinnedSessionIDs) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceCallChatLinksRevision) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.activeProfile) { _, _ in
             revealLatch = NestRevealLatch()
             revealActiveNestAncestors()
+        }
+    }
+
+    static let collapsedSectionsKey = "conduit.v2.collapsedChatSections"
+
+    /// A search or a status filter is a lookup: every section shows its
+    /// matches, and the saved open/closed state waits for the browse. The
+    /// status filters don't narrow Projects' Pinned section.
+    private var sectionsCollapsible: Bool {
+        !isSearching && (showingProjects || !selection.flattens)
+    }
+
+    private func isCollapsed(_ section: ChatListSection) -> Bool {
+        sectionsCollapsible && collapsedSections.contains(section)
+    }
+
+    private func toggleSection(_ section: ChatListSection, haptic: Bool = true) {
+        if haptic { Haptics.selection() }
+        var collapsed = collapsedSections
+        if collapsed.contains(section) { collapsed.remove(section) } else { collapsed.insert(section) }
+        UserDefaults.standard.set(ChatListSection.storageValue(collapsed), forKey: Self.collapsedSectionsKey)
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            collapsedSections = collapsed
+        }
+    }
+
+    /// A list section whose header opens and closes it (#696).
+    private func collapsibleSection(
+        _ section: ChatListSection,
+        nodes: [SessionNesting.Node],
+        expanded: Set<String>
+    ) -> some View {
+        Section {
+            if !isCollapsed(section) {
+                listRows(V2ChatsListItem.items(nodes, expanded: expanded))
+            }
+        } header: {
+            collapsibleHeader(section, count: nodes.count)
+        }
+    }
+
+    /// The section's name and a chevron that turns with it; a closed
+    /// section counts the chats it hides. While a search or status filter
+    /// keeps every section open it is a plain header.
+    @ViewBuilder
+    private func collapsibleHeader(_ section: ChatListSection, count: Int) -> some View {
+        if sectionsCollapsible {
+            let collapsed = isCollapsed(section)
+            Button {
+                toggleSection(section)
+            } label: {
+                HStack(spacing: 6) {
+                    Text(section.title)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .conduitFixedGlyph()
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    Spacer(minLength: 6)
+                    if collapsed {
+                        Text(count, format: .number)
+                            .monospacedDigit()
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(nil)
+                .padding(.leading, 16)
+                .padding(.trailing, 16)
+                .padding(.vertical, 2)
+                // The whole strip is the tap target, at the 44 pt minimum.
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(section.title))
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(collapsed
+                ? Text(AppLocalization.string("Collapsed")) + Text(verbatim: ", ") + Text(count, format: .number)
+                : Text(AppLocalization.string("Expanded")))
+            .accessibilityHint(AppLocalization.string(collapsed
+                ? "Shows the chats in this section."
+                : "Hides the chats in this section."))
+        } else {
+            sectionHeader(section.title)
+        }
+    }
+
+    /// Opens the section holding a conversation opened from elsewhere (a
+    /// notification, a widget, a new chat), so returning to the list shows
+    /// its row; a section closed while it stays open stays closed, and a
+    /// launch opens the list the way it was left. An activation whose row
+    /// hasn't been listed yet waits for the list to bring it.
+    private func revealActiveSection() {
+        guard let active = pendingSectionReveal, active == appState.activeSessionId else {
+            pendingSectionReveal = nil
+            return
+        }
+        guard !showingProjects, sectionsCollapsible else { return }
+        let sections = nestedSections(displayedSessions)
+        guard let section = ChatListSection.section(
+            of: active,
+            pinned: sections.pinned,
+            recent: ChatListSection.byDate(sections.recent)
+        ) else { return }
+        pendingSectionReveal = nil
+        if collapsedSections.contains(section) {
+            toggleSection(section, haptic: false)
         }
     }
 
@@ -820,6 +978,7 @@ struct V2ChatsView: View {
         ForEach(items) { item in
             V2ChatsRow(
                 item: item,
+                projectTitle: searchProjectTitle(item),
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
                 setExpanded: setExpanded
@@ -845,32 +1004,6 @@ struct V2ChatsView: View {
         let approvalCount = descendants.filter { liveStatus($0) == .needsInput }.count
         if approvalCount > 0 { parts.append(AppLocalization.string("\(approvalCount) to approve")) }
         return parts.joined(separator: " · ")
-    }
-
-    private func offlineSessionRow(
-        _ session: OfflineCachedSession,
-        presentation: OfflineChatPresentation
-    ) -> some View {
-        let isSaved = presentation.snapshot.transcript(for: session.id) != nil
-        return Button {
-            Haptics.selection()
-            appState.showOfflineCachedSession(session.id)
-            appState.dismissSidebarDrawer()
-        } label: {
-            V2SessionRow(
-                title: session.title,
-                time: isSaved ? session.displayUpdatedLabel() : "",
-                preview: isSaved ? "" : AppLocalization.string("Not saved offline"),
-                status: .none,
-                isSelected: presentation.displayedSessionID == session.id,
-                icon: .chat
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(!isSaved)
-        .opacity(isSaved ? 1 : 0.5)
-        .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
-        .v2ListRow(dividerInset: V2SessionRow.iconTextInset)
     }
 
     // MARK: - Reveal
@@ -919,9 +1052,11 @@ struct V2ChatsView: View {
 
             if !pinned.isEmpty {
                 Section {
-                    listRows(pinned.map(V2ChatsListItem.leaf))
+                    if !isCollapsed(.pinned) {
+                        listRows(pinned.map(V2ChatsListItem.leaf))
+                    }
                 } header: {
-                    sectionHeader(AppLocalization.string("Pinned"))
+                    collapsibleHeader(.pinned, count: pinned.count)
                 }
             }
 
@@ -1102,6 +1237,8 @@ private struct V2ChatsRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: V2ChatsListItem
+    /// The project a search result sits in, named before its preview.
+    let projectTitle: String?
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
@@ -1120,6 +1257,7 @@ private struct V2ChatsRow: View {
                 .sessionActions(
                     session: session,
                     nest: nil,
+                    isSavedRow: appState.isSavedChatRow(session),
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) }
                 )
@@ -1131,6 +1269,7 @@ private struct V2ChatsRow: View {
     /// nest never hides an unread reply.
     private func sessionRow(_ node: SessionNesting.Node) -> some View {
         let session = node.session
+        let preview = appState.v2RowPreview(for: session)
         let hasChildren = !node.children.isEmpty
         let signals = SessionNesting.signals(
             node,
@@ -1140,12 +1279,12 @@ private struct V2ChatsRow: View {
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             V2SessionRow(
                 title: session.title,
                 time: session.updatedLabel,
-                preview: appState.v2RowPreview(for: session),
+                preview: V2ChatsView.searchPreview(preview, projectTitle: projectTitle),
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isSelected: session.id == appState.activeSessionId,
@@ -1159,6 +1298,7 @@ private struct V2ChatsRow: View {
         .sessionActions(
             session: session,
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
+            isSavedRow: appState.isSavedChatRow(session),
             onRename: { onRename(session) },
             onDelete: { onDelete(session) }
         )
@@ -1207,7 +1347,7 @@ private struct V2ChatsRow: View {
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             HStack(spacing: 7) {
                 Rectangle()
@@ -1250,11 +1390,14 @@ private struct V2ChatsRow: View {
 extension View {
     /// The conversation actions every V2 session row carries: the context
     /// menu (Rename, Pin, Read, Move to Project, Archive, Delete) and the
-    /// drawer's swipes.
+    /// drawer's swipes. A saved row (the list as it showed last time, up
+    /// while Conduit connects) takes none: they would act on a list Hermes
+    /// hasn't sent yet.
     func sessionActions(
         session: SessionSummary,
         nest: NestReadToggle?,
         excludingProjectID: String? = nil,
+        isSavedRow: Bool = false,
         onRename: @escaping () -> Void,
         onDelete: @escaping () -> Void,
         onChanged: @escaping () -> Void = {}
@@ -1263,6 +1406,7 @@ extension View {
             session: session,
             nest: nest,
             excludingProjectID: excludingProjectID,
+            isSavedRow: isSavedRow,
             onRename: onRename,
             onDelete: onDelete,
             onChanged: onChanged
@@ -1275,6 +1419,7 @@ private struct V2SessionActions: ViewModifier {
     let session: SessionSummary
     let nest: NestReadToggle?
     let excludingProjectID: String?
+    let isSavedRow: Bool
     let onRename: () -> Void
     let onDelete: () -> Void
     let onChanged: () -> Void
@@ -1282,50 +1427,56 @@ private struct V2SessionActions: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                SessionActionMenuItems(
-                    session: session,
-                    excludingProjectID: excludingProjectID,
-                    nest: nest,
-                    onRename: onRename,
-                    onDelete: onDelete,
-                    onChanged: onChanged
-                )
-            }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button {
-                    Haptics.light()
-                    appState.toggleSessionPinned(session)
-                } label: {
-                    Label(
-                        appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                        systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin"
+                if !isSavedRow {
+                    SessionActionMenuItems(
+                        session: session,
+                        excludingProjectID: excludingProjectID,
+                        nest: nest,
+                        onRename: onRename,
+                        onDelete: onDelete,
+                        onChanged: onChanged
                     )
                 }
-                .tint(.conduitAccent)
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                if !isSavedRow {
+                    Button {
+                        Haptics.light()
+                        appState.toggleSessionPinned(session)
+                    } label: {
+                        Label(
+                            appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                            systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin"
+                        )
+                    }
+                    .tint(.conduitAccent)
 
-                ReadStateToggleButton(session: session, nest: nest)
-                    .tint(.blue)
+                    ReadStateToggleButton(session: session, nest: nest)
+                        .tint(.blue)
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
-                    Task {
-                        let archived = await appState.archiveSession(session)
-                        Haptics.mutationCompleted(archived)
-                        if archived { onChanged() }
+                if !isSavedRow {
+                    Button {
+                        Task {
+                            let archived = await appState.archiveSession(session)
+                            Haptics.mutationCompleted(archived)
+                            if archived { onChanged() }
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
                     }
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                }
-                .tint(.orange)
-                .disabled(appState.isSessionMutationInFlight(session))
+                    .tint(.orange)
+                    .disabled(appState.isSessionMutationInFlight(session))
 
-                Button(role: .destructive) {
-                    Haptics.warning()
-                    onDelete()
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                    Button(role: .destructive) {
+                        Haptics.warning()
+                        onDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(appState.isSessionMutationInFlight(session))
                 }
-                .disabled(appState.isSessionMutationInFlight(session))
             }
     }
 }

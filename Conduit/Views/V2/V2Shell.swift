@@ -151,6 +151,9 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
+    /// The last selected tab. Set after the switch, so the transition of a
+    /// first visit reads the tab it left and slides in from that side.
+    @State private var lastTab: V2Tab = .chats
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -161,6 +164,7 @@ struct V2Shell: View {
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -253,6 +257,7 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
+                lastTab = tab
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
@@ -278,8 +283,30 @@ struct V2Shell: View {
             }
     }
 
-    private var voiceButton: some View {
-        V2VoiceButton(context: voiceContext)
+    /// The gold button beside the tabs: voice, or New chat when the user
+    /// swapped them (Settings > Appearance). A minimised call still comes
+    /// back through it either way.
+    @ViewBuilder private var voiceButton: some View {
+        if mainButtonNewChat, appState.minimisedLiveVoice == nil {
+            V2NewChatButton(context: voiceContext)
+        } else {
+            V2VoiceButton(context: voiceContext)
+        }
+    }
+
+    private static let tabSlideDistance: CGFloat = 28
+
+    /// Where `tab` waits while `shown` is on screen: a little toward its
+    /// side of the bar (right of `shown` waits right), so opening it slides
+    /// it in from there. Zero for the shown tab and under Reduce Motion.
+    private func tabSlideOffset(_ tab: V2Tab, from shown: V2Tab) -> CGFloat {
+        guard !reduceMotion,
+              let index = V2Tab.destinations.firstIndex(of: tab),
+              let shownIndex = V2Tab.destinations.firstIndex(of: shown),
+              index != shownIndex else { return 0 }
+        // The bar mirrors right to left; the offset doesn't.
+        let later: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+        return (index > shownIndex ? later : -later) * Self.tabSlideDistance
     }
 
     /// The four tabs over a custom glass capsule, the gold voice button
@@ -301,18 +328,30 @@ struct V2Shell: View {
                         }
                         // Nothing inside a tab animates with the switch.
                         .animation(nil, value: selectedTab)
-                        // Only the tab being opened fades in, quickly; the one
-                        // left goes at once. Fading two full screens of glass
-                        // and backdrop into each other dropped frames, and a
-                        // plain swap read as a blink. Scoped to the opacity.
+                        // Only the tab being opened moves: it slides the last
+                        // few points in from its side of the bar as it fades
+                        // in; the one left goes at once. Fading two full
+                        // screens of glass and backdrop into each other
+                        // dropped frames, and a plain swap read as a blink.
+                        // A hidden tab waits off center on its own side, so
+                        // the slide needs no start state. Scoped to offset
+                        // and opacity.
+                        .animation(isSelected ? ConduitMotion.tabSlideIn : nil) {
+                            $0.offset(x: tabSlideOffset(tab, from: selectedTab))
+                        }
                         .animation(isSelected ? ConduitMotion.tabFadeIn : nil) {
                             $0.opacity(isSelected ? 1 : 0)
                         }
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
                         // A tab's first visit inserts it already selected:
-                        // the same fade, not the bar's overshoot spring.
-                        .transition(.opacity.animation(ConduitMotion.tabFadeIn))
+                        // the same slide and fade from the tab it left, each
+                        // on its own timing (no slide under Reduce Motion).
+                        .transition(
+                            AnyTransition.offset(x: tabSlideOffset(tab, from: lastTab))
+                                .animation(ConduitMotion.tabSlideIn)
+                                .combined(with: AnyTransition.opacity.animation(ConduitMotion.tabFadeIn))
+                        )
                 }
             }
         }
@@ -618,6 +657,14 @@ enum V2ShellPreference {
     static var isOn: Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? defaultValue
     }
+}
+
+/// Whether the gold button beside the tabs starts a new chat instead of
+/// voice, for people who'd rather not talk. Voice then moves to the top
+/// bar's New chat slot; a chat's own voice button stays.
+enum V2MainButtonPreference {
+    static let key = "conduit.v2.mainButtonNewChat"
+    static let defaultValue = false
 }
 
 private struct V2TabBarClearanceKey: EnvironmentKey {

@@ -57,6 +57,13 @@ struct ChatView: View {
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
+    /// The saved copy is on screen: over an empty transcript, or over any
+    /// transcript for a chat picked in the saved list.
+    private var showsOfflineCopy: Bool {
+        guard let offline = appState.offlineChatPresentation else { return false }
+        return appState.messages.isEmpty || offline.isPickedChat
+    }
+
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
@@ -266,14 +273,18 @@ struct ChatView: View {
                 )
             }
             // VoiceOver reads only the saved copy while it is up.
-            .accessibilityHidden(appState.messages.isEmpty && appState.offlineChatPresentation != nil)
+            .accessibilityHidden(showsOfflineCopy)
+            // A chat picked in the saved list covers a transcript still up
+            // from before (a profile switch): that one is hidden, not drawn
+            // under it. It stays laid out, so its scroll position holds.
+            .opacity(showsOfflineCopy ? 0 : 1)
             // The read-only saved copy (#99) sits OVER the live scroll view
             // instead of feeding it: the live view stays mounted with the
             // same empty transcript a cold launch always had, so its viewport
             // ownership, restoration, and follow logic are untouched. The
             // first real transcript clears the copy in the same update.
             .overlay {
-                if appState.messages.isEmpty, let offline = appState.offlineChatPresentation {
+                if showsOfflineCopy, let offline = appState.offlineChatPresentation {
                     OfflineChatTranscriptView(presentation: offline)
                 }
             }
@@ -968,9 +979,33 @@ struct UserBubble: View {
                     )
                 }
 
-                MessageTimestampLabel(timestamp: message.timestamp)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(spacing: 2) {
+                    Spacer(minLength: 0)
+                    MessageTimestampLabel(timestamp: message.timestamp)
+                    UserMessageCopyButton(message: message)
+                }
             }
+        }
+    }
+}
+
+/// Copies a sent message's text (#697), as replies have a copy button. A
+/// quoted reply copies only what the user wrote.
+struct UserMessageCopyButton: View {
+    /// Worked out once, not on each re-render of the row.
+    private let text: String
+
+    init(message: ChatMessage) {
+        text = Self.copyText(for: message)
+    }
+
+    static func copyText(for message: ChatMessage) -> String {
+        ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+    }
+
+    var body: some View {
+        if text.contains(where: { !$0.isWhitespace }) {
+            GroupMessageCopyButton(text: text, label: .message)
         }
     }
 }

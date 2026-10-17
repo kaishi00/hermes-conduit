@@ -714,8 +714,15 @@ final class AppState: ObservableObject {
         return titles
     }
     @Published private(set) var projects: [ProjectSummary] = [] {
-        didSet { projectPositionsBySessionID = nil }
+        didSet {
+            projectPositionsBySessionID = nil
+            projectsSeededFromSavedList = false
+        }
     }
+    /// The project pages came from the saved Chats list, not from Hermes:
+    /// they leave with it, and say nothing yet about whether this Hermes
+    /// takes new projects. Any later write to `projects` replaces them.
+    private(set) var projectsSeededFromSavedList = false
     /// For each conversation id a project previews, the position of the
     /// first project that lists it. Built once per `projects` change for
     /// `knownProjectID(for:)`, which the chat list asks for every row on
@@ -811,6 +818,21 @@ final class AppState: ObservableObject {
     /// server has not answered yet (#99). Presentation only: it never feeds
     /// `messages`, `sessions`, or any resume/selection/routing decision.
     @Published private(set) var offlineChatPresentation: OfflineChatPresentation?
+    /// The Chats list as it was last shown on this phone, listed while this
+    /// scope's live list hasn't landed (a launch, a profile switch).
+    /// Presentation only, like the saved copy: nothing that resumes, routes
+    /// or sends reads it.
+    @Published private(set) var savedChatList: SavedChatListPresentation? {
+        didSet { savedChatListRevision &+= 1 }
+    }
+    private var savedChatListRevision = 0
+    private var listedSessionsCache: (key: ListedSessionsKey, rows: [SessionSummary])?
+    /// A chat tapped in the saved list: it opens once the live list lands,
+    /// ahead of the automatic resume.
+    private var chatPickedFromSavedList: SavedChatListPick?
+    /// The scope whose list in memory came from Hermes after the saved files
+    /// were last wiped, and so may be saved.
+    private var savableChatListScope: WidgetWorkspaceID?
     @Published private(set) var activeSessionTitle = AppLocalization.string("New conversation")
     /// Persisted-history pagination window of the active conversation.
     /// Drives the "Load earlier messages" affordance; nil means the current
@@ -1126,6 +1148,74 @@ final class AppState: ObservableObject {
 
     var activeProfileCronSessions: [SessionSummary] {
         cronSessions.filter { sessionBelongsToProfile($0, profile: activeProfile) }
+    }
+
+    /// The Chats list's rows: the live ones once this scope's list has
+    /// landed, until then the ones it showed last time. Views only; every
+    /// decision reads `activeProfileSessions`.
+    var listedSessions: [SessionSummary] {
+        guard let saved = savedChatListForActiveScope else { return activeProfileSessions }
+        guard let kept = saved.keptPinnedRows else { return saved.list.sessions }
+        guard !kept.isEmpty else { return activeProfileSessions }
+        let key = ListedSessionsKey(
+            rows: ActiveProfileSessionsKey(
+                sessionsRevision: sessionsRevision,
+                profile: activeProfile,
+                botOwnershipGeneration: botOwnershipGeneration
+            ),
+            savedChatListRevision: savedChatListRevision
+        )
+        if let cached = listedSessionsCache, cached.key == key { return cached.rows }
+        let rows = saved.listedRows(live: activeProfileSessions)
+        listedSessionsCache = (key, rows)
+        return rows
+    }
+
+    /// The scheduled runs the Chats list shows, like `listedSessions`.
+    var listedCronSessions: [SessionSummary] {
+        guard let saved = savedChatListForActiveScope, saved.isShowingSavedRows else {
+            return activeProfileCronSessions
+        }
+        return saved.list.cronSessions
+    }
+
+    /// Whether the Chats list still shows the saved rows, not live ones.
+    var isShowingSavedChatList: Bool {
+        savedChatListForActiveScope?.isShowingSavedRows == true
+    }
+
+    /// No rows yet because this scope's list is still on its way and none
+    /// was saved: the list says it's loading, not that there are no chats.
+    var isLoadingChatList: Bool {
+        guard savedChatListForActiveScope == nil,
+              let dashboardID = activeDashboardID,
+              !liveChatListLanded(dashboardID: dashboardID, profile: activeProfile) else { return false }
+        return isConnecting || isProfileSwitching || turnState == .synchronizing
+    }
+
+    private var savedChatListForActiveScope: SavedChatListPresentation? {
+        guard let saved = savedChatList,
+              saved.dashboardID == activeDashboardID,
+              saved.profile == activeProfile else { return nil }
+        return saved
+    }
+
+    /// Whether this scope's live list has landed in this process: set where
+    /// the catalog is published, cleared by a profile or dashboard change.
+    private func liveChatListLanded(dashboardID: UUID, profile: String) -> Bool {
+        widgetSettledCatalogOwner == WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+    }
+
+    private struct ListedSessionsKey: Equatable {
+        let rows: ActiveProfileSessionsKey
+        let savedChatListRevision: Int
+    }
+
+    /// A chat tapped in the saved list, and the scope it was tapped in.
+    private struct SavedChatListPick {
+        let dashboardID: UUID
+        let profile: String
+        let session: SessionSummary
     }
 
     // MARK: - Bot Mode
@@ -1715,7 +1805,10 @@ final class AppState: ObservableObject {
             // The sign-in surface never keeps a saved copy in memory: after an
             // authentication failure it must not reappear on the next sign-in.
             // (The files stay until sign-out/removal/switch wipes them.)
-            if showLogin { dismissOfflineChatPresentation() }
+            if showLogin {
+                dismissOfflineChatPresentation()
+                dismissSavedChatList()
+            }
             // Sign-in raised with Conduit off the phone screen (a call from
             // Hermes or the Apple Watch launched it in the background, or
             // only CarPlay shows it): Face ID can't show there, and a locked
@@ -4078,8 +4171,10 @@ final class AppState: ObservableObject {
     }
 
     /// Cold launch: present the saved copy for the active dashboard until the
-    /// server answers. A no-op once any real transcript is on screen.
+    /// server answers, and the Chats list as it was last shown until the
+    /// live one lands. A no-op once any real transcript is on screen.
     func presentOfflineChatIfAvailable(dashboardID: UUID) {
+        presentSavedChatListIfAvailable(dashboardID: dashboardID)
         guard offlineChatPresentation == nil,
               messages.isEmpty,
               let snapshot = offlineChatCache.load(dashboardID: dashboardID, profile: activeProfile),
@@ -4094,25 +4189,168 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// Shows another saved conversation inside the offline copy. Sessions
-    /// without a saved transcript cannot be shown offline.
-    func showOfflineCachedSession(_ sessionID: String) {
-        guard var presentation = offlineChatPresentation,
-              presentation.snapshot.transcript(for: sessionID) != nil else { return }
-        presentation.displayedSessionID = sessionID
-        offlineChatPresentation = presentation
-    }
-
     /// Header title: the saved conversation's title while the offline copy
-    /// is on screen, otherwise the live conversation's.
+    /// is on screen (a picked chat's row title), otherwise the live
+    /// conversation's.
     var displayedChatTitle: String {
-        offlineChatPresentation?.displayedTranscript?.title ?? activeSessionTitle
+        offlineChatPresentation?.picked?.title
+            ?? offlineChatPresentation?.displayedTranscript?.title
+            ?? activeSessionTitle
     }
 
     func dismissOfflineChatPresentation() {
         guard offlineChatPresentation != nil else { return }
         offlineChatPresentation = nil
     }
+
+    // MARK: - Saved chat list
+
+    /// Lists the scope's saved Chats list while its live list hasn't landed:
+    /// the same rows, icons, nests and project pages the list showed last
+    /// time. A no-op once this scope's live list is in.
+    func presentSavedChatListIfAvailable(dashboardID: UUID) {
+        let profile = activeProfile
+        guard dashboardID == activeDashboardID,
+              savedChatListForActiveScope == nil,
+              sessions.isEmpty, cronSessions.isEmpty,
+              !liveChatListLanded(dashboardID: dashboardID, profile: profile),
+              let saved = offlineChatCache.loadChatList(dashboardID: dashboardID, profile: profile),
+              !saved.sessions.isEmpty || !saved.cronSessions.isEmpty else { return }
+        let list = saved.relabeled()
+        savedChatList = SavedChatListPresentation(dashboardID: dashboardID, profile: profile, list: list)
+        // The rows' call and job icons and nests until the host's tags
+        // answer, which merge over these.
+        let tagKey = voiceHistoryKey(profile: profile)
+        if voiceSessionTagsByKey[tagKey] == nil, !list.voiceTags.isEmpty {
+            voiceSessionTagsByKey[tagKey] = list.voiceTags
+        }
+        // Project chats stay on their project pages until the tree loads.
+        if list.supportsProjects, projects.isEmpty, !supportsProjects {
+            projects = list.projects
+            supportsProjects = true
+            projectsSeededFromSavedList = true
+        }
+        noteConnectionStep("Saved chat list, \(list.sessions.count + list.cronSessions.count) rows")
+    }
+
+    /// Saves the Chats list as it shows now, for the next launch or switch
+    /// to this profile. Only a list Hermes sent since the saved files were
+    /// last wiped is saved, and only while signed in: a list still in memory
+    /// from before a sign-in failure may be another account's.
+    func recordSavedChatList() {
+        guard connection != nil, !showLogin,
+              let dashboardID = activeDashboardID,
+              savableChatListScope == WidgetWorkspaceID(dashboardID: dashboardID, profile: activeProfile),
+              !isShowingSavedChatList else { return }
+        let list = SavedChatList.capture(
+            sessions: listedSessions,
+            cronSessions: activeProfileCronSessions,
+            isPinned: isSessionPinned,
+            voiceTags: voiceSessionTagsByKey[voiceHistoryKey(profile: activeProfile)] ?? [:],
+            projects: projects,
+            supportsProjects: supportsProjects
+        )
+        offlineChatCache.recordChatList(list, dashboardID: dashboardID, profile: activeProfile)
+    }
+
+    /// This scope's live list just landed and replaces the saved one. A
+    /// newest page alone keeps the saved pinned rows it lacks until the rest
+    /// loads, so an older pinned chat doesn't blink out meanwhile.
+    private func savedChatListReplacedByLiveList(newestPageOnly: Bool, dashboardID: UUID?) {
+        savableChatListScope = dashboardID.map { WidgetWorkspaceID(dashboardID: $0, profile: activeProfile) }
+        guard savedChatList != nil else { return }
+        guard newestPageOnly, let saved = savedChatListForActiveScope else {
+            savedChatList = nil
+            return
+        }
+        // Pinned on the phone, or in the saved list: after a dashboard switch
+        // the phone's pins start over from the newest page's alone.
+        savedChatList = saved.keepingPinnedRows(
+            missingFrom: activeProfileSessions,
+            isPinned: { self.isSessionPinned($0) || saved.showedAsPinned($0) }
+        )
+    }
+
+    private func dismissSavedChatList() {
+        chatPickedFromSavedList = nil
+        // Project pages the saved list brought leave with it, unless Hermes'
+        // own have replaced them.
+        if projectsSeededFromSavedList {
+            projects = []
+            supportsProjects = false
+        }
+        guard savedChatList != nil else { return }
+        savedChatList = nil
+    }
+
+    /// A row the saved list put there: every row while it shows, then the
+    /// kept pinned ones. It takes no actions, which would act on a list
+    /// Hermes hasn't sent yet.
+    func isSavedChatRow(_ session: SessionSummary) -> Bool {
+        guard let saved = savedChatListForActiveScope else { return false }
+        return saved.isShowingSavedRows || saved.isKeptRow(session)
+    }
+
+    /// A tap on a Chats row. While the list is still the saved one, the chat
+    /// shows at once (its saved copy, or its title while it opens) and opens
+    /// for real once the live list lands.
+    func openListedSession(_ session: SessionSummary) {
+        guard isShowingSavedChatList, let dashboardID = activeDashboardID else {
+            // A kept row isn't in the live list yet: it opens by its saved
+            // durable id, as a pick does.
+            requestOpenSession(isSavedChatRow(session) ? session.storedSessionId ?? session.id : session.id)
+            return
+        }
+        let profile = activeProfile
+        chatPickedFromSavedList = SavedChatListPick(dashboardID: dashboardID, profile: profile, session: session)
+        let snapshot = offlineChatPresentation.flatMap { $0.dashboardID == dashboardID && $0.profile == profile ? $0.snapshot : nil }
+            ?? offlineChatCache.load(dashboardID: dashboardID, profile: profile)
+            ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: [])
+        let ids = Set(session.nestingIDs)
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: profile,
+            snapshot: snapshot,
+            displayedSessionID: snapshot.transcripts.first { ids.contains($0.sessionID) }?.sessionID,
+            picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids)
+        )
+    }
+
+    /// The chat picked in the saved list for this scope, as the id to open it
+    /// by: its live row's when the live list has it, else its saved durable
+    /// id. Forgotten once taken; a pick from another scope is dropped.
+    private func takeChatPickedFromSavedList(dashboardID: UUID?, profile: String) -> String? {
+        guard let pick = chatPickedFromSavedList else { return nil }
+        chatPickedFromSavedList = nil
+        guard pick.dashboardID == dashboardID, pick.profile == profile else {
+            if offlineChatPresentation?.isPickedChat == true { dismissOfflineChatPresentation() }
+            return nil
+        }
+        let ids = Set(pick.session.nestingIDs)
+        if let live = (activeProfileSessions + activeProfileCronSessions).first(where: { !ids.isDisjoint(with: $0.nestingIDs) }) {
+            // The open goes by the live row's id, which may be new (a fresh
+            // runtime id): its saved copy stays up for that open too.
+            if offlineChatPresentation?.picked?.sessionIDs.isDisjoint(with: ids) == false {
+                offlineChatPresentation?.picked?.sessionIDs.formUnion(live.nestingIDs)
+            }
+            return live.id
+        }
+        return pick.session.storedSessionId ?? pick.session.id
+    }
+
+    /// Opens the chat picked in the saved list. An open that fails takes its
+    /// copy down too, so a read-only chat doesn't stay up with nothing on
+    /// its way.
+    private func openChatPickedFromSavedList(_ sessionID: String) {
+        requestOpenSession(sessionID) { [weak self] in
+            guard let self, self.offlineChatPresentation?.isPickedChat == true else { return }
+            self.dismissOfflineChatPresentation()
+        }
+    }
+
+#if DEBUG
+    var chatPickedFromSavedListIDForTesting: String? { chatPickedFromSavedList?.session.id }
+#endif
 
     private func wipeOfflineChatCache(dashboardID: UUID?) {
         if let dashboardID {
@@ -4123,12 +4361,48 @@ final class AppState: ObservableObject {
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
         Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        leaveSavedChats(dashboardID: dashboardID)
+    }
+
+    /// What of the saved chats is in memory (the copy and list on screen,
+    /// picture reads under way, whether the list may be saved) leaves with
+    /// its dashboard, whether the dashboard's files are wiped or kept.
+    private func leaveSavedChats(dashboardID: UUID?) {
         inlineImageRowsUnavailable.removeAll()
         inlineImageRowFetches.values.forEach { $0.cancel() }
         inlineImageRowFetches.removeAll()
         if offlineChatPresentation.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
             offlineChatPresentation = nil
         }
+        if savedChatList.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
+            dismissSavedChatList()
+        }
+        if savableChatListScope.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
+            savableChatListScope = nil
+        }
+    }
+
+    /// Settings' Delete Saved Chats: every dashboard's saved Chats lists,
+    /// conversation copies and kept pictures on this phone. The chat in use
+    /// and its picture reads carry on; the list is saved again once Hermes
+    /// next sends it.
+    func deleteSavedChats() {
+        offlineChatCache.removeAll()
+        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        if connection == nil, let copy = offlineChatPresentation {
+            // Until this launch's sign-in goes through, the copy is what keeps
+            // the app and its Retry up: it stays, with nothing saved in it.
+            offlineChatPresentation = OfflineChatPresentation(
+                dashboardID: copy.dashboardID,
+                profile: copy.profile,
+                snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                displayedSessionID: nil
+            )
+        } else {
+            dismissOfflineChatPresentation()
+        }
+        dismissSavedChatList()
+        savableChatListScope = nil
     }
 
     var offlineChatCacheForTesting: OfflineChatCacheStore { offlineChatCache }
@@ -4153,8 +4427,9 @@ final class AppState: ObservableObject {
         widgetSettledCatalogOwner = nil
         publishWidgetCurrentWorkspace(dashboardID: activeDashboardID, profile: newValue)
         presentationCacheProfileEpoch &+= 1
-        // The saved copy belongs to the outgoing profile's scope.
+        // The saved copy and list belong to the outgoing profile's scope.
         dismissOfflineChatPresentation()
+        dismissSavedChatList()
         // So do the unsaved voice calls Voice settings counts.
         publishVoiceCallSaveStatus()
         // And the Watch voice checks: this profile's decide whether calls
@@ -5148,8 +5423,10 @@ final class AppState: ObservableObject {
             case nil: return AppLocalization.string("Voice call")
             }
         case .job:
+            // The listed rows: the saved list names a job's parent the way
+            // the live one will.
             if let parentID = tag.parentID,
-               let parent = activeProfileSessions.first(where: { $0.nestingIDs.contains(parentID) }) {
+               let parent = listedSessions.first(where: { $0.nestingIDs.contains(parentID) }) {
                 return AppLocalization.string("From \(parent.title)")
             }
             return tag.parentTitle.map { AppLocalization.string("From \($0)") }
@@ -5690,12 +5967,8 @@ final class AppState: ObservableObject {
     static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
         // Queued, not necessarily delivered: a hang-up drops unsent requests.
         let line = AppLocalization.string("Asked the chat: \(job.title).")
-        // A Bot Chat opens through its bot, never by its id on this profile.
-        if let bot = thread.profile, !bot.isEmpty {
-            return line + " " + ConduitAppLink.bot(profile: bot).markdown(label: AppLocalization.string("Open chat"))
-        }
-        guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
-        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
+        guard let link = thread.appLink else { return line }
+        return line + " " + link.markdown(label: AppLocalization.string("Open chat"))
     }
 
     /// Opens a link Conduit wrote into a chat (a voice call's job link), or
@@ -5792,7 +6065,12 @@ final class AppState: ObservableObject {
                 self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
                 return
             }
-            _ = await self.openBotChat(for: bot)
+            // Like a chat link, a bot's chat comes forward over V2's Chats
+            // list. True means this open finished and holds the viewport (a
+            // superseded one returns false), as for the roster's own taps.
+            if await self.openBotChat(for: bot) {
+                self.dismissSidebarDrawer()
+            }
         }
     }
 
@@ -5849,12 +6127,19 @@ final class AppState: ObservableObject {
             }
             // Only this open's own "not found" may be reworded.
             self.reconciliationSessionWasNotFound = false
-            self.requestOpenSession(target ?? id) { [weak self] in
+            let opened = await self.requestOpenSession(target ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
                 guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
                 self.errorMessage = unavailable
-            }
+            }.value
+            // From outside a chat (a Live Activity, another app) the chat
+            // must come forward: V2 keeps the Chats list over it until the
+            // sidebar is let go, as a notification's open does (once the open
+            // succeeded, so a dead link leaves the list up with its error).
+            // Not while a newer open is still under way; one that already
+            // finished has brought its own chat forward anyway.
+            if opened, self.explicitSessionOpenRequestID == nil { self.dismissSidebarDrawer() }
         }
     }
 
@@ -6560,7 +6845,14 @@ final class AppState: ObservableObject {
 
     func isSessionPinned(_ session: SessionSummary) -> Bool {
         let ids = SessionPinSync.pinIDs(for: session)
-        return pinnedSessionIDs.contains { ids.contains($0) }
+        if pinnedSessionIDs.contains(where: { ids.contains($0) }) { return true }
+        guard let saved = savedChatListForActiveScope else { return false }
+        // A kept row is listed only because it is pinned.
+        if saved.isKeptRow(session) { return true }
+        // A dashboard switch starts the phone's pins over until Hermes'
+        // arrive with its list; the saved list keeps its own meanwhile.
+        guard pinnedSessionIDs.isEmpty, saved.isShowingSavedRows else { return false }
+        return saved.showedAsPinned(session)
     }
 
     func toggleSessionPinned(_ session: SessionSummary) {
@@ -7312,6 +7604,12 @@ final class AppState: ObservableObject {
             generation: chatViewportTransitionGeneration
         )
         cancelChatResumeRestoration()
+        // A newer navigation (a notification, a widget, a switch) takes over
+        // from a chat still waiting in the saved list to open.
+        if chatPickedFromSavedList != nil {
+            chatPickedFromSavedList = nil
+            if offlineChatPresentation?.isPickedChat == true { dismissOfflineChatPresentation() }
+        }
         return chatViewportTransitionGeneration
     }
 
@@ -7933,7 +8231,11 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: knownProfilesKey)
         refreshSiriProfileShortcuts()
         clearSessionPresentationCache()
-        wipeOfflineChatCache(dashboardID: nil)
+        // Saved chats are kept apart per dashboard and stay for the next
+        // visit there: only removing the dashboard, signing out of it or
+        // Settings' Delete Saved Chats wipes them. What of them is in memory
+        // belongs to the outgoing server.
+        leaveSavedChats(dashboardID: nil)
         // Identity evidence and per-session overrides are keyed only by
         // (profile, session id); without this clear they would leak between
         // Hermes servers whose strings collide. Same boundary that clears
@@ -10421,6 +10723,10 @@ final class AppState: ObservableObject {
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
+        // The outgoing dashboard's chat and Chats list as they show now are
+        // what the next visit there opens to.
+        recordOfflineChatCopy()
+        recordSavedChatList()
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
@@ -10438,9 +10744,8 @@ final class AppState: ObservableObject {
             restoreActiveSessionState(for: targetProfile)
             restorePinnedSessions(for: targetProfile)
         }
-        // Mirrors cold launch. A switch to a DIFFERENT server already wiped
-        // every saved copy above (prepareChatResumeForConnection), so this
-        // only finds one when re-selecting the same server.
+        // Mirrors cold launch: the target's own saved copy and Chats list,
+        // kept while another dashboard was in use, show until it answers.
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
             if !credentials.requiresFaceID {
                 presentOfflineChatIfAvailable(dashboardID: id)
@@ -11196,6 +11501,10 @@ final class AppState: ObservableObject {
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            savedChatListReplacedByLiveList(
+                newestPageOnly: catalogLoad.olderPagesDeferred,
+                dashboardID: dashboardID
+            )
             if let dashboardID {
                 widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
                 widgetLaunchCoordinator.readinessChanged()
@@ -11210,6 +11519,17 @@ final class AppState: ObservableObject {
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
             publishWidgetSnapshot()
+            // A chat tapped in the saved list before this list landed wins
+            // over the automatic resume, the same way a notification does.
+            if let pickedSessionID = takeChatPickedFromSavedList(dashboardID: dashboardID, profile: profile) {
+                cancelChatResumeRestoration()
+                settleReconciliation(
+                    token,
+                    automaticSyncOperationID: automaticOperationID
+                )
+                openChatPickedFromSavedList(pickedSessionID)
+                return .superseded
+            }
 
             guard automaticChatResumeWorkIsCurrent(
                 automaticWorkToken,
@@ -14327,6 +14647,8 @@ final class AppState: ObservableObject {
             // queue here (see SessionPresentationCache.waitForPendingWrites).
             flushPendingPresentationCache()
             holdBackgroundTaskUntilPresentationCacheWritesLand()
+            // The Chats list as it shows now, for the next cold launch.
+            recordSavedChatList()
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()
@@ -15715,6 +16037,7 @@ final class AppState: ObservableObject {
             )
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
@@ -15733,6 +16056,13 @@ final class AppState: ObservableObject {
                 widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
                 widgetLaunchCoordinator.readinessChanged()
                 publishWidgetSnapshot()
+            }
+            // A chat tapped in the saved list opens now if no chat sync
+            // landed this scope's list first, and a sync still reading it
+            // leaves the chat alone.
+            if let pickedSessionID = takeChatPickedFromSavedList(dashboardID: dashboardID, profile: profile) {
+                cancelChatResumeRestoration()
+                openChatPickedFromSavedList(pickedSessionID)
             }
             if let activeClient {
                 Task { [weak self] in
@@ -16139,6 +16469,14 @@ final class AppState: ObservableObject {
     func removeSessionFromLiveCatalog(_ session: SessionSummary) {
         sessions.removeAll { sessionMatches($0, session) }
         cronSessions.removeAll { sessionMatches($0, session) }
+        // A row deleted or archived while the saved list still shows goes
+        // from it too, not only once the live list lands without it.
+        if var saved = savedChatList {
+            saved.list.sessions.removeAll { sessionMatches($0, session) }
+            saved.list.cronSessions.removeAll { sessionMatches($0, session) }
+            saved.keptPinnedRows?.removeAll { sessionMatches($0, session) }
+            if saved != savedChatList { savedChatList = saved }
+        }
         // Every non-forced catalog load merges the profile cache back into
         // the published arrays and re-saves the union. A row left in the
         // cache therefore resurrects a deleted or archived conversation on
@@ -17441,8 +17779,12 @@ final class AppState: ObservableObject {
         // comes from the bot registry (seeded above), never the id's shape.
         setActiveSessionState(id: sessionId)
         messages = []
-        // Explicit navigation owns the chat surface from here.
-        dismissOfflineChatPresentation()
+        // Explicit navigation owns the chat surface from here. A chat picked
+        // in the saved list keeps its saved copy up until its own transcript
+        // replaces it (`messages`' didSet), rather than blanking first.
+        if offlineChatPresentation?.picked?.sessionIDs.contains(sessionId) != true {
+            dismissOfflineChatPresentation()
+        }
         persistedTranscriptWindow = nil
         // Freshness evidence belongs to the conversation it was captured
         // for; the reconcile below re-establishes it authoritatively.
@@ -17475,6 +17817,12 @@ final class AppState: ObservableObject {
             conversationProfile: conversationProfile,
             widgetLease: widgetLease
         )
+        // The picked chat's saved copy has done its job: its own transcript
+        // (or none, for an empty chat) is up, or the open failed.
+        if chatViewportTransitionIsCurrent(generation: transitionGeneration),
+           offlineChatPresentation?.picked?.sessionIDs.contains(sessionId) == true {
+            dismissOfflineChatPresentation()
+        }
         guard widgetLease?.isCurrent != false else {
             // The widget launch expired with nothing newer on screen: settle
             // like a failed open, so the composer doesn't stay synchronizing
@@ -19601,6 +19949,7 @@ final class AppState: ObservableObject {
                         profile: activeProfile,
                         profileName: profileDisplayName(activeProfile),
                         glowHex: profileGlowColors()[activeProfile]?.hex
+                            ?? profileGlowTint(activeProfile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex }
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
@@ -23173,6 +23522,8 @@ final class AppState: ObservableObject {
             suspendedVoiceConversation = nil
             voiceSheetShouldAutoListen = false
             voiceControllerSessionProfile = nil
+            // The outgoing profile's list as it shows now, for switching back.
+            recordSavedChatList()
             // Fence any residual deferred cache write scheduled under the
             // outgoing profile before identities and namespaces change over.
             setActiveProfile(target)
@@ -23186,6 +23537,10 @@ final class AppState: ObservableObject {
             slashCommands = Self.builtInSlashCommands
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
+            // The target's list as it showed last time, until its own lands.
+            if let dashboardID = activeDashboardID {
+                presentSavedChatListIfAvailable(dashboardID: dashboardID)
+            }
             try await connectChatResumeClient(nextClient)
             // The new profile is connected and already active: an expired
             // widget launch still finishes the switch (the caller stops

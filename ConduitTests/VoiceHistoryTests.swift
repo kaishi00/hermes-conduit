@@ -407,6 +407,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: runtimeOnly), "Asked the chat: Check the build. [Open chat](conduit://session/rt-chat)")
     }
 
+    /// The call screen's chat name opens the same chat as the note (#698).
+    func testTheAttachedChatLinkPrefersItsStoredIDAndABotsProfile() {
+        XCTAssertEqual(VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: "st", title: "A").appLink, .session(id: "st"))
+        XCTAssertEqual(VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: "", title: "A").appLink, .session(id: "rt"))
+        XCTAssertNil(VoiceThreadTarget(runtimeSessionID: "", storedSessionID: nil, title: "A").appLink)
+        XCTAssertEqual(VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: "st", title: "Fam", profile: "fam").appLink, .bot(profile: "fam"))
+        XCTAssertEqual(VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: nil, title: "A", profile: "").appLink, .session(id: "rt"))
+    }
+
     func testABotChatIsLinkedThroughItsBot() throws {
         let link = ConduitAppLink.bot(profile: "fam")
         XCTAssertEqual(link.url.absoluteString, "conduit://bot/fam")

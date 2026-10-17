@@ -234,26 +234,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
     }
 
-    func testOtherSavedConversationsOpenInsideTheCopyOnly() throws {
+    /// A chat tapped in the saved list shows at once (its saved copy, or its
+    /// title while it opens) and opens nothing until the live list lands.
+    func testPickingASavedChatShowsItAtOnceWithoutOpeningIt() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
-        store.record(
-            dashboardID: dashboard,
-            profile: "default",
-            sessionID: "stored-b",
-            title: "B",
-            messages: [ChatMessage(id: "b1", role: .user, content: "Other", timestamp: "3")],
-            sessions: [session("stored-a"), session("stored-b"), session("stored-c")]
-        )
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a"), session("stored-b")])
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
-        XCTAssertEqual(appState.offlineChatPresentation?.displayedSessionID, "stored-b")
+        let rows = appState.listedSessions
+        XCTAssertEqual(rows.map(\.id), ["stored-a", "stored-b"])
 
-        appState.showOfflineCachedSession("stored-a")
-        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["u1", "a1"])
-        appState.showOfflineCachedSession("stored-c")
-        XCTAssertEqual(appState.offlineChatPresentation?.displayedSessionID, "stored-a",
-                       "A session with no saved transcript cannot be opened offline")
+        appState.openListedSession(rows[1])
+        var presentation = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertEqual(presentation.picked?.title, "stored-b")
+        XCTAssertNil(presentation.displayedSessionID, "No saved copy of that chat: its title shows while it opens")
+        XCTAssertTrue(presentation.displayedMessages.isEmpty)
+        XCTAssertEqual(appState.displayedChatTitle, "stored-b")
+
+        appState.openListedSession(rows[0])
+        presentation = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertEqual(presentation.displayedMessages.map(\.id), ["u1", "a1"])
+        XCTAssertEqual(appState.chatPickedFromSavedListIDForTesting, "stored-a", "The latest tap is the one that opens")
+        // Nothing live moved.
         XCTAssertNil(appState.activeSessionId)
+        XCTAssertTrue(appState.messages.isEmpty)
+        XCTAssertTrue(appState.sessions.isEmpty)
     }
 
     func testAuthoritativeTranscriptReplacesTheCopyWholesale() {
@@ -303,46 +308,71 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - Sidebar
 
-    /// The saved section never hides the live catalog: in the owed-bootstrap
-    /// window the live list is published while the copy is still up, and both
-    /// render (saved above live). The empty state only shows with neither.
-    func testSidebarShowsSavedSectionAlongsideTheLiveCatalog() {
-        let withCopyAndLive = SidebarOfflineLayout.visibility(
-            showingProjects: false, hasOfflineCopy: true, displayedSessionsEmpty: false
+    /// With nothing saved and the list on its way, the Chats list says it's
+    /// loading, not that there are no chats. A live list that came back
+    /// empty is empty.
+    func testChatsListSaysItIsLoadingWhileItsFirstListIsOnItsWay() async {
+        XCTAssertEqual(
+            SidebarOfflineLayout.visibility(showingProjects: false, displayedSessionsEmpty: true, isLoadingList: true),
+            .init(liveSections: true, emptyState: false, loadingState: true)
         )
-        XCTAssertEqual(withCopyAndLive, .init(savedSection: true, liveSections: true, emptyState: false))
+        XCTAssertEqual(
+            SidebarOfflineLayout.visibility(showingProjects: false, displayedSessionsEmpty: true, isLoadingList: false),
+            .init(liveSections: true, emptyState: true, loadingState: false)
+        )
+        XCTAssertEqual(
+            SidebarOfflineLayout.visibility(showingProjects: false, displayedSessionsEmpty: false, isLoadingList: true),
+            .init(liveSections: true, emptyState: false, loadingState: false)
+        )
+        XCTAssertEqual(
+            SidebarOfflineLayout.visibility(showingProjects: true, displayedSessionsEmpty: true, isLoadingList: true),
+            .init(liveSections: false, emptyState: false, loadingState: false)
+        )
 
-        let copyOnly = SidebarOfflineLayout.visibility(
-            showingProjects: false, hasOfflineCopy: true, displayedSessionsEmpty: true
-        )
-        XCTAssertEqual(copyOnly, .init(savedSection: true, liveSections: true, emptyState: false))
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in [] })
+        appState.isConnecting = true
+        XCTAssertTrue(appState.isLoadingChatList)
 
-        let liveOnly = SidebarOfflineLayout.visibility(
-            showingProjects: false, hasOfflineCopy: false, displayedSessionsEmpty: false
-        )
-        XCTAssertEqual(liveOnly, .init(savedSection: false, liveSections: true, emptyState: false))
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertFalse(appState.isLoadingChatList, "The saved rows stand in while it loads")
 
-        let neither = SidebarOfflineLayout.visibility(
-            showingProjects: false, hasOfflineCopy: false, displayedSessionsEmpty: true
-        )
-        XCTAssertEqual(neither, .init(savedSection: false, liveSections: true, emptyState: true))
-
-        let projects = SidebarOfflineLayout.visibility(
-            showingProjects: true, hasOfflineCopy: true, displayedSessionsEmpty: false
-        )
-        XCTAssertEqual(projects, .init(savedSection: false, liveSections: false, emptyState: false))
+        await appState.loadSessions()
+        XCTAssertFalse(appState.isLoadingChatList)
+        XCTAssertTrue(appState.listedSessions.isEmpty)
     }
 
-    func testSavedRowTimeFallsBackToTheSavedLabelForImplausibleInstants() {
-        let now = Date(timeIntervalSince1970: 1_790_000_000)
-        func row(_ instant: TimeInterval?) -> OfflineCachedSession {
-            OfflineCachedSession(id: "a", title: "A", updatedLabel: "saved label", lastActivityAt: instant, source: .chat)
-        }
-        XCTAssertEqual(row(nil).displayUpdatedLabel(now: now), "saved label")
-        XCTAssertEqual(row(1e12).displayUpdatedLabel(now: now), "saved label")
-        XCTAssertEqual(row(-5).displayUpdatedLabel(now: now), "saved label")
-        XCTAssertEqual(row(.infinity).displayUpdatedLabel(now: now), "saved label")
-        XCTAssertNotEqual(row(now.timeIntervalSince1970 - 3600).displayUpdatedLabel(now: now), "saved label")
+    /// A saved row's time is worked out again at launch from its instant,
+    /// the way the live list formats it, so yesterday's row doesn't still
+    /// show only a time. A row without a plausible instant keeps its saved
+    /// label.
+    func testSavedRowTimesAreWorkedOutAgainFromTheirInstants() {
+        var dated = session("dated")
+        dated.updatedLabel = "9:41 AM"
+        dated.lastActivityAt = 1_790_000_000
+        var undated = session("undated")
+        undated.updatedLabel = "saved label"
+        var zero = session("zero")
+        zero.updatedLabel = "zero label"
+        zero.lastActivityAt = 0
+        var future = session("future")
+        future.updatedLabel = "future label"
+        future.lastActivityAt = 1_790_000_000 + 7 * 86_400
+        var run = session("run", source: .cron)
+        run.lastActivityAt = 1_790_000_000
+
+        let list = SavedChatList.capture(
+            sessions: [dated, undated, zero, future],
+            cronSessions: [run],
+            isPinned: { _ in false },
+            voiceTags: [:],
+            projects: [],
+            supportsProjects: false
+        ).relabeled(now: Date(timeIntervalSince1970: 1_790_000_000))
+
+        let expected = MessageNormalizer.formattedSessionTimestamp(1_790_000_000)
+        XCTAssertEqual(list.sessions.map(\.updatedLabel), [expected, "saved label", "zero label", "future label"])
+        XCTAssertEqual(list.cronSessions.map(\.updatedLabel), [expected])
     }
 
     // MARK: - Unreachable server vs. sign-in
@@ -625,16 +655,515 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotNil(store.load(dashboardID: active.id, profile: "default"))
     }
 
-    func testServerSwitchWipesEveryCopy() {
+    /// A switch to another dashboard saves the outgoing one's Chats list as
+    /// it shows and keeps its saved chats for the next visit there, and lists
+    /// the target's own while it answers.
+    func testDashboardSwitchKeepsEachDashboardsSavedChats() async {
+        useInMemoryKeychain()
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let loopback = SavedDashboard(id: UUID(), label: "Local", normalizedURL: "http://127.0.0.1:1")
+        let live = [session("live-a"), session("live-b")]
+        let (appState, store, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: one.id, dashboards: [one, loopback]),
+            sessionCatalogLoader: { _ in live }
+        )
+        seedCopy(store, dashboard: one.id)
+        seedCopy(store, dashboard: loopback.id)
+        seedChatList(store, dashboard: loopback.id, sessions: [session("local-a")])
+        // The closed port fails the restore as unreachable, which keeps
+        // the target's saved chats up instead of sending it to sign-in.
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: loopback.normalizedURL, username: "hermes", password: "unused", requiresFaceID: false),
+            dashboardID: loopback.id
+        )
+        appState.prepareChatResumeForConnection(to: one.normalizedURL, dashboardID: one.id)
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: one.normalizedURL, dashboardID: one.id),
+                       "Re-establishing the same server is not a switch")
+        appState.connection = HermesConnection(baseUrl: one.normalizedURL, ticket: "ticket")
+        appState.showLogin = false
+        await appState.loadSessions()
+
+        await appState.switchDashboard(to: loopback.id)
+
+        XCTAssertEqual(appState.offlineChatPresentation?.dashboardID, loopback.id)
+        XCTAssertTrue(appState.isShowingSavedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["local-a"])
+        XCTAssertNotNil(store.load(dashboardID: one.id, profile: "default"), "The outgoing dashboard's copy stays")
+        XCTAssertEqual(store.loadChatList(dashboardID: one.id, profile: "default")?.sessions.map(\.id), ["live-a", "live-b"],
+                       "The outgoing dashboard's list was saved as it showed")
+    }
+
+    /// Settings' Delete Saved Chats wipes every dashboard's saved chats and
+    /// what of them shows. The list is saved again only from one Hermes
+    /// sends after it.
+    func testDeleteSavedChatsWipesEveryDashboardsSavedChats() async throws {
+        let other = UUID()
+        let live = [session("live-a")]
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in live })
+        seedCopy(store, dashboard: dashboard)
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        seedCopy(store, dashboard: other)
+        seedChatList(store, dashboard: other, sessions: [session("other-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertNotNil(appState.offlineChatPresentation)
+        XCTAssertTrue(appState.isShowingSavedChatList)
+
+        appState.deleteSavedChats()
+
+        let copy = try XCTUnwrap(appState.offlineChatPresentation, "Before the sign-in goes through, the copy keeps the app up")
+        XCTAssertNil(copy.displayedTranscript, "with nothing saved left in it")
+        XCTAssertNil(appState.savedChatList)
+        XCTAssertTrue(appState.listedSessions.isEmpty)
+        for id in [dashboard, other] {
+            XCTAssertNil(store.load(dashboardID: id, profile: "default"))
+            XCTAssertNil(store.loadChatList(dashboardID: id, profile: "default"))
+        }
+
+        appState.connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.showLogin = false
+        await appState.loadSessions()
+        appState.deleteSavedChats()
+        appState.recordSavedChatList()
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"),
+                     "The list already in memory isn't saved straight back")
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["live-a"], "The live list stays")
+
+        await appState.loadSessions()
+        appState.recordSavedChatList()
+        let saved = try XCTUnwrap(store.loadChatList(dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(saved.sessions.map(\.id), ["live-a"])
+    }
+
+    /// Delete Saved Chats while the server can't be reached keeps the app
+    /// and its Retry up instead of falling back to the sign-in screen, with
+    /// nothing saved left on screen.
+    func testDeleteSavedChatsBeforeSignInKeepsTheAppUp() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
-        _ = appState.prepareChatResumeForConnection(to: "https://one.example", dashboardID: nil)
-        XCTAssertNotNil(store.load(dashboardID: dashboard, profile: "default"),
-                        "Re-establishing the same server is not a switch")
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.showLogin = false
+        XCTAssertTrue(appState.presentCredentialRestoreFailure(.unreachable, switchGeneration: nil))
+        XCTAssertNil(appState.connection)
 
-        _ = appState.prepareChatResumeForConnection(to: "https://two.example", dashboardID: nil)
+        appState.deleteSavedChats()
 
+        XCTAssertFalse(appState.showLogin)
+        let copy = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertNil(copy.displayedTranscript)
+        XCTAssertTrue(copy.displayedMessages.isEmpty)
+        XCTAssertEqual(appState.lastConnectionFailure, .unreachable)
         XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
+    }
+
+    /// A dashboard switch starts the phone's pins over until Hermes' arrive
+    /// with its list. The saved rows keep the pins they showed until then,
+    /// and only until then.
+    func testSavedRowsKeepTheirPinsUntilTheLiveListLands() async {
+        let live = [session("pinned"), session("plain")]
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in live })
+        store.recordChatList(
+            SavedChatList.capture(
+                sessions: live,
+                cronSessions: [],
+                isPinned: { $0.id == "pinned" },
+                voiceTags: [:],
+                projects: [],
+                supportsProjects: false
+            ),
+            dashboardID: dashboard,
+            profile: "default"
+        )
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        XCTAssertTrue(appState.isSessionPinned(session("pinned")))
+        XCTAssertFalse(appState.isSessionPinned(session("plain")))
+
+        await appState.loadSessions()
+
+        XCTAssertFalse(appState.isSessionPinned(session("pinned")), "The live list's pins decide once it lands")
+    }
+
+    // MARK: - Saved Chats list
+
+    func testSavedChatListKeepsTheNewestRowsAndEveryPinnedOne() {
+        let chats = (0..<(SavedChatList.maxSessions + 5)).map { session("s\($0)") }
+        var archived = session("archived")
+        archived.isArchived = true
+        let runs = (0..<(SavedChatList.maxCronSessions + 3)).map { session("cron-\($0)", source: .cron) }
+        let oldPinned = "s\(SavedChatList.maxSessions + 3)"
+        let oldPinnedRun = "cron-\(SavedChatList.maxCronSessions + 1)"
+        let project = ProjectSummary(
+            id: "project",
+            title: "Project",
+            isHome: false,
+            sessionCount: 1,
+            previewSessions: [session("s1")]
+        )
+
+        let list = SavedChatList.capture(
+            sessions: [archived] + chats,
+            cronSessions: runs,
+            isPinned: { [oldPinned, oldPinnedRun].contains($0.id) },
+            voiceTags: [
+                "s0": VoiceSessionTag(kind: .call, engine: "gemini-live"),
+                oldPinned: VoiceSessionTag(kind: .job, parentID: "s0", parentTitle: "s0"),
+                "s\(SavedChatList.maxSessions + 4)": VoiceSessionTag(kind: .classic),
+            ],
+            projects: [project],
+            supportsProjects: true
+        )
+
+        XCTAssertEqual(list.sessions.count, SavedChatList.maxSessions + 1)
+        XCTAssertEqual(list.sessions.first?.id, "s0")
+        XCTAssertEqual(list.sessions.last?.id, oldPinned, "A pinned chat past the newest rows is kept")
+        XCTAssertFalse(list.sessions.contains { $0.id == "archived" })
+        XCTAssertEqual(list.cronSessions.count, SavedChatList.maxCronSessions + 1)
+        XCTAssertEqual(list.cronSessions.last?.id, oldPinnedRun)
+        XCTAssertEqual(Set(list.voiceTags.keys), ["s0", oldPinned], "Only the saved rows' tags are kept")
+        XCTAssertEqual(list.projects, [project])
+        XCTAssertTrue(list.supportsProjects)
+    }
+
+    func testSavedChatListIsKeptPerScopeBesideTheTranscriptsAndWipedWithThem() throws {
+        let store = makeStore()
+        let first = UUID()
+        let second = UUID()
+        var row = session("a")
+        row.storedSessionId = "stored-a"
+        row.preview = "First message"
+        row.isUnread = true
+        row.lastActivityAt = 1_790_000_000
+        let list = SavedChatList.capture(
+            sessions: [row],
+            cronSessions: [session("cron-1", source: .cron)],
+            isPinned: { _ in false },
+            voiceTags: ["a": VoiceSessionTag(kind: .call, engine: "gpt-live")],
+            projects: [],
+            supportsProjects: false,
+            now: Date(timeIntervalSince1970: 1_790_000_000)
+        )
+        store.recordChatList(list, dashboardID: first, profile: "default")
+        store.recordChatList(list, dashboardID: second, profile: "work")
+
+        XCTAssertEqual(store.loadChatList(dashboardID: first, profile: "default"), list)
+        XCTAssertNil(store.loadChatList(dashboardID: first, profile: "work"))
+        XCTAssertNil(store.load(dashboardID: first, profile: "default"), "The list is not a saved transcript")
+        let file = store.chatListFileURL(dashboardID: first, profile: "default")
+        XCTAssertEqual(file.deletingLastPathComponent(), store.fileURL(dashboardID: first, profile: "default").deletingLastPathComponent())
+
+        // Another build's format is not read.
+        var other = list
+        other.version = SavedChatList.formatVersion + 1
+        store.recordChatList(other, dashboardID: first, profile: "default")
+        XCTAssertNil(store.loadChatList(dashboardID: first, profile: "default"))
+
+        store.recordChatList(list, dashboardID: first, profile: "default")
+        store.removeDashboard(first)
+        XCTAssertNil(store.loadChatList(dashboardID: first, profile: "default"))
+        XCTAssertEqual(store.loadChatList(dashboardID: second, profile: "work"), list)
+
+        store.removeAll()
+        XCTAssertNil(store.loadChatList(dashboardID: second, profile: "work"))
+    }
+
+    /// A launch lists last time's rows (with their voice icons and project
+    /// pages) through the live list's own accessors, while nothing a resume,
+    /// route or send reads changes.
+    func testLaunchListsTheSavedRowsWithoutFeedingLiveState() throws {
+        let (appState, store, dashboard) = makeAppState()
+        var call = session("call")
+        call.preview = "Call summary"
+        let project = ProjectSummary(
+            id: "project",
+            title: "Project",
+            isHome: false,
+            sessionCount: 1,
+            previewSessions: [session("in-project")]
+        )
+        seedChatList(
+            store,
+            dashboard: dashboard,
+            sessions: [call, session("in-project"), session("plain")],
+            cronSessions: [session("cron-1", source: .cron)],
+            voiceTags: ["call": VoiceSessionTag(kind: .call, engine: "gemini-live")],
+            projects: [project],
+            supportsProjects: true
+        )
+
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        XCTAssertTrue(appState.isShowingSavedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["call", "in-project", "plain"])
+        XCTAssertEqual(appState.listedSessions.first?.preview, "Call summary")
+        XCTAssertEqual(appState.listedCronSessions.map(\.id), ["cron-1"])
+        XCTAssertEqual(appState.voiceSessionTag(for: call)?.tag.kind, .call)
+        XCTAssertEqual(appState.projects, [project])
+        XCTAssertTrue(appState.supportsProjects)
+        XCTAssertEqual(appState.knownProjectID(for: session("in-project")), "project")
+        // Not evidence.
+        XCTAssertTrue(appState.sessions.isEmpty)
+        XCTAssertTrue(appState.cronSessions.isEmpty)
+        XCTAssertTrue(appState.activeProfileSessions.isEmpty)
+        XCTAssertNil(appState.activeSessionId)
+    }
+
+    /// Project pages that came from the saved list leave with it, so the
+    /// sign-in screen after an auth failure, or Delete Saved Chats, doesn't
+    /// keep them for whoever signs in next.
+    func testProjectsFromTheSavedListLeaveWithIt() {
+        let (appState, store, dashboard) = makeAppState()
+        let project = ProjectSummary(id: "project", title: "Project", isHome: false, sessionCount: 1, previewSessions: [])
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")], projects: [project], supportsProjects: true)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(appState.projects, [project])
+
+        appState.showLogin = true
+
+        XCTAssertTrue(appState.projects.isEmpty)
+        XCTAssertFalse(appState.supportsProjects)
+
+        appState.showLogin = false
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(appState.projects, [project])
+        appState.deleteSavedChats()
+        XCTAssertTrue(appState.projects.isEmpty)
+        XCTAssertFalse(appState.supportsProjects)
+    }
+
+    func testLiveListReplacesTheSavedRows() async {
+        let live = [session("live-a"), session("stored-a")]
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in live })
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a"), session("gone")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        await appState.loadSessions()
+
+        XCTAssertNil(appState.savedChatList)
+        XCTAssertFalse(appState.isShowingSavedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["live-a", "stored-a"])
+
+        // The live list is in: a later presentation (another restore) keeps it.
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertNil(appState.savedChatList)
+    }
+
+    /// The live list's newest page alone keeps the saved pinned chats it
+    /// lacks under it, so an older pinned chat doesn't blink out while the
+    /// rest loads; a chat the live list gains is then listed once, as live.
+    func testNewestPageKeepsTheSavedPinnedChatsItLacks() throws {
+        var oldPinned = session("old-pinned")
+        oldPinned.storedSessionId = "old-pinned-stored"
+        let saved = SavedChatListPresentation(
+            dashboardID: UUID(),
+            profile: "default",
+            list: SavedChatList.capture(
+                sessions: [session("a"), session("b-pinned"), oldPinned, session("old")],
+                cronSessions: [],
+                isPinned: { _ in false },
+                voiceTags: [:],
+                projects: [],
+                supportsProjects: false
+            )
+        )
+        let pinned: Set<String> = ["b-pinned", "old-pinned"]
+        let isPinned: (SessionSummary) -> Bool = { pinned.contains($0.id) }
+        let newestPage = [session("new"), session("a"), session("b-pinned")]
+        XCTAssertEqual(saved.listedRows(live: newestPage).map(\.id), ["a", "b-pinned", "old-pinned", "old"],
+                       "The saved rows show until a live list lands")
+
+        let kept = try XCTUnwrap(saved.keepingPinnedRows(missingFrom: newestPage, isPinned: isPinned))
+        XCTAssertFalse(kept.isShowingSavedRows)
+        XCTAssertEqual(kept.keptPinnedRows?.map(\.id), ["old-pinned"])
+        XCTAssertEqual(kept.listedRows(live: newestPage).map(\.id), ["new", "a", "b-pinned", "old-pinned"])
+        XCTAssertEqual(
+            kept.listedRows(live: newestPage + [session("old-pinned-stored")]).map(\.id),
+            ["new", "a", "b-pinned", "old-pinned-stored"],
+            "A kept chat the live list gained under another of its ids is listed once"
+        )
+        XCTAssertNil(saved.keepingPinnedRows(missingFrom: newestPage + [oldPinned], isPinned: isPinned),
+                     "A page with every pinned chat keeps nothing")
+    }
+
+    /// After a dashboard switch the phone's pins start over from the newest
+    /// page's alone: the saved list's own pins still keep its older pinned
+    /// chats, which then count as kept rows.
+    func testSavedListsOwnPinsKeepItsOlderPinnedChats() throws {
+        let saved = SavedChatListPresentation(
+            dashboardID: UUID(),
+            profile: "default",
+            list: SavedChatList.capture(
+                sessions: [session("a"), session("old-pinned"), session("old")],
+                cronSessions: [],
+                isPinned: { $0.id == "old-pinned" },
+                voiceTags: [:],
+                projects: [],
+                supportsProjects: false
+            )
+        )
+        XCTAssertTrue(saved.showedAsPinned(session("old-pinned")))
+        XCTAssertFalse(saved.showedAsPinned(session("a")))
+        XCTAssertFalse(saved.isKeptRow(session("old-pinned")), "Nothing is kept while the saved rows show")
+
+        let newestPage = [session("new"), session("a")]
+        let kept = try XCTUnwrap(saved.keepingPinnedRows(missingFrom: newestPage, isPinned: saved.showedAsPinned))
+        XCTAssertEqual(kept.keptPinnedRows?.map(\.id), ["old-pinned"])
+        XCTAssertTrue(kept.isKeptRow(session("old-pinned")))
+        XCTAssertFalse(kept.isKeptRow(session("a")))
+        XCTAssertFalse(kept.isKeptRow(session("new")))
+    }
+
+    /// A chat tapped in the saved list before the live one lands opens once
+    /// it does, instead of the chat the automatic resume would have picked.
+    func testAChatPickedInTheSavedListOpensAheadOfTheAutomaticResume() async throws {
+        useInMemoryKeychain()
+        let live = [session("stored-a"), session("stored-b")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-a", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(catalog: { _ in live }, opened: opened)
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        seedCopy(store, dashboard: dashboard)
+        seedChatList(store, dashboard: dashboard, sessions: live)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.openListedSession(appState.listedSessions[1])
+
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        XCTAssertFalse(opened.ids.contains("stored-a"), "The automatic resume gave way to the pick")
+
+        await waitUntil { opened.ids.contains("stored-b") && appState.offlineChatPresentation == nil }
+        XCTAssertEqual(Set(opened.ids), ["stored-b"])
+        XCTAssertEqual(appState.activeSessionId, "stored-b")
+        XCTAssertEqual(appState.messages.map(\.id), ["live-stored-b"])
+        XCTAssertNil(appState.savedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["stored-a", "stored-b"])
+    }
+
+    /// A picked chat whose open fails takes its read-only stand-in down with
+    /// it, rather than leaving it up with nothing on its way.
+    func testAPickedChatsStandInGoesWhenItsOpenFails() async throws {
+        useInMemoryKeychain()
+        // Hermes lists the picked chat under another profile.
+        let live = [session("live-a"), session("elsewhere", profile: "work")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: connectedLifecycle(catalog: { _ in live }, opened: opened)
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        seedChatList(store, dashboard: dashboard, sessions: [session("live-a"), session("elsewhere")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.openListedSession(appState.listedSessions[1])
+        XCTAssertEqual(appState.offlineChatPresentation?.isPickedChat, true)
+
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+
+        await waitUntil { appState.offlineChatPresentation == nil }
+        XCTAssertFalse(opened.ids.contains("elsewhere"))
+    }
+
+    /// A profile switch lists the target profile's rows as they showed last
+    /// time until its own list lands, and saves the outgoing profile's.
+    func testProfileSwitchListsTheTargetsSavedRowsUntilItsOwnListLands() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        let defaultLive = [session("default-a"), session("default-b")]
+        let workLive = [session("work-live", profile: "work")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            sessionCatalogLoader: { _ in defaultLive },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { profile in
+                    guard profile == "work" else { return defaultLive }
+                    await gate.suspend()
+                    return workLive
+                },
+                opened: opened
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.loadSessions()
+        seedChatList(store, dashboard: dashboard, profile: "work", sessions: [session("work-saved", profile: "work")])
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+
+        XCTAssertEqual(appState.activeProfile, "work")
+        XCTAssertTrue(appState.isShowingSavedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["work-saved"])
+        XCTAssertFalse(appState.isLoadingChatList)
+        let outgoing = try XCTUnwrap(store.loadChatList(dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(outgoing.sessions.map(\.id), ["default-a", "default-b"], "The outgoing profile's list was saved")
+
+        gate.resume()
+        await switching.value
+
+        XCTAssertNil(appState.savedChatList)
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["work-live"])
+    }
+
+    /// Only a list Hermes sent since the saved files were last wiped is
+    /// saved, and never from the sign-in screen: one still in memory may be
+    /// another account's.
+    func testSavedListIsRecordedOnlyFromALiveListWhileSignedIn() async throws {
+        let live = [session("live-a"), session("live-b")]
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in live })
+        appState.connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.showLogin = false
+        appState.sessions = live
+
+        appState.recordSavedChatList()
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"),
+                     "Rows Hermes didn't send in this process are never saved")
+
+        await appState.loadSessions()
+        appState.showLogin = true
+        appState.recordSavedChatList()
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"), "Never saved from sign-in")
+
+        appState.showLogin = false
+        appState.handleScenePhase(.background)
+        let saved = try XCTUnwrap(store.loadChatList(dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(saved.sessions.map(\.id), ["live-a", "live-b"])
+
+        // A wipe (a sign-in, an auth failure) forgets that the list may be saved.
+        appState.prepareInteractiveSignIn(baseURL: "https://one.example")
+        appState.recordSavedChatList()
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"))
+    }
+
+    func testDeletingAChatTakesItOutOfTheSavedList() {
+        let (appState, store, dashboard) = makeAppState()
+        seedChatList(store, dashboard: dashboard, sessions: [session("keep"), session("delete")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        appState.removeSessionFromLiveCatalog(session("delete"))
+
+        XCTAssertEqual(appState.listedSessions.map(\.id), ["keep"])
+    }
+
+    func testSavedListLeavesWithItsScope() {
+        let (appState, store, dashboard) = makeAppState()
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertTrue(appState.isShowingSavedChatList)
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.savedChatList, "A list saved for one profile never shows under another")
+        XCTAssertTrue(appState.listedSessions.isEmpty)
+
+        appState.setActiveProfileForTesting("default")
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertTrue(appState.isShowingSavedChatList)
+        appState.disconnect()
+        XCTAssertNil(appState.savedChatList)
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"), "Sign-out wipes the saved list")
     }
 
     // MARK: - Helpers
@@ -656,13 +1185,17 @@ final class OfflineChatCacheTests: XCTestCase {
 
     private func makeAppState(
         registry: SavedDashboardRegistry? = nil,
-        store existingStore: OfflineChatCacheStore? = nil
+        store existingStore: OfflineChatCacheStore? = nil,
+        configureDefaults: (UserDefaults) -> Void = { _ in },
+        sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
+        lifecycleOperations: ChatResumeLifecycleOperations = .live
     ) -> (AppState, OfflineChatCacheStore, UUID) {
         let suite = "OfflineChatCacheTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
             fatalError("Failed to create test UserDefaults suite")
         }
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        configureDefaults(defaults)
         let dashboard = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
         let registry = registry ?? SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
         let store = existingStore ?? makeStore()
@@ -671,10 +1204,93 @@ final class OfflineChatCacheTests: XCTestCase {
             loadSavedConnection: false,
             dashboardRegistry: registry,
             clearSessionPresentationCache: {},
+            sessionCatalogLoader: sessionCatalogLoader,
+            chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
             offlineChatCache: store
         )
         return (appState, store, registry.activeDashboardID ?? dashboard.id)
+    }
+
+    /// Lifecycle seams for a connect or profile switch that never leaves
+    /// the process: each profile's catalog comes from `catalog`, and every
+    /// chat open is recorded in `opened`.
+    private func connectedLifecycle(
+        catalog: @escaping @MainActor (String) async -> [SessionSummary],
+        opened: OpenedChats
+    ) -> ChatResumeLifecycleOperations {
+        ChatResumeLifecycleOperations(
+            connectClient: { _ in },
+            loadCatalog: { client, _ in await catalog(client.profile ?? "default") },
+            mintTicket: { _ in "profile-ticket" },
+            openSession: { _, sessionID, _ in
+                opened.ids.append(sessionID)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [ChatMessage(id: "live-\(sessionID)", role: .assistant, content: "Live", timestamp: "9")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            pendingApprovals: { _, _ in [] },
+            loadProfiles: {},
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {},
+            loadBotRoster: {},
+            botRoster: { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: false) }
+        )
+    }
+
+    /// Connects and switches with an in-memory keychain: the unsigned test
+    /// host can't write the system one.
+    private func useInMemoryKeychain() {
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+    }
+
+    /// Polls until `condition` holds, so a test waits on the state it checks
+    /// rather than on a guessed number of yields.
+    private func waitUntil(
+        timeout: Duration = .seconds(5),
+        _ condition: @MainActor () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting for the condition", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// The Chats list a previous run saved for the scope.
+    private func seedChatList(
+        _ store: OfflineChatCacheStore,
+        dashboard: UUID,
+        profile: String = "default",
+        sessions: [SessionSummary],
+        cronSessions: [SessionSummary] = [],
+        voiceTags: [String: VoiceSessionTag] = [:],
+        projects: [ProjectSummary] = [],
+        supportsProjects: Bool = false
+    ) {
+        store.recordChatList(
+            SavedChatList.capture(
+                sessions: sessions,
+                cronSessions: cronSessions,
+                isPinned: { _ in false },
+                voiceTags: voiceTags,
+                projects: projects,
+                supportsProjects: supportsProjects
+            ),
+            dashboardID: dashboard,
+            profile: profile
+        )
     }
 
     private func seedCopy(_ store: OfflineChatCacheStore, dashboard: UUID) {
@@ -691,18 +1307,24 @@ final class OfflineChatCacheTests: XCTestCase {
         )
     }
 
-    private func session(_ id: String, source: SessionSource = .chat) -> SessionSummary {
+    private func session(_ id: String, source: SessionSource = .chat, profile: String = "default") -> SessionSummary {
         SessionSummary(
             id: id,
             alternateIds: [],
             title: id,
             model: "Hermes",
             updatedLabel: "now",
-            profile: "default",
+            profile: profile,
             source: source,
             isActive: false,
             isArchived: false,
             lineageRootId: nil
         )
     }
+}
+
+/// The chats a test's lifecycle seams opened, in order.
+@MainActor
+private final class OpenedChats {
+    var ids: [String] = []
 }

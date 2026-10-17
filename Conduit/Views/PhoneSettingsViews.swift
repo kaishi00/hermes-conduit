@@ -588,6 +588,7 @@ enum PhoneChangeWording {
             return change.fields.completed == false
                 ? AppLocalization.string("Hermes wants to reopen a reminder")
                 : AppLocalization.string("Hermes wants to mark a reminder done")
+        case .deleteReminder: return AppLocalization.string("Hermes wants to delete a reminder")
         case .setAlarm: return AppLocalization.string("Hermes wants to set an alarm")
         case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
         case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
@@ -653,7 +654,7 @@ enum PhoneChangeWording {
     static func approveTitle(_ change: PhoneChange) -> String {
         switch change.kind {
         case .addEvent, .addReminder: return AppLocalization.string("Add")
-        case .deleteEvent: return AppLocalization.string("Delete")
+        case .deleteEvent, .deleteReminder: return AppLocalization.string("Delete")
         case .completeReminder: return AppLocalization.string("Mark done")
         case .updateEvent, .updateReminder: return AppLocalization.string("Change")
         case .setAlarm: return AppLocalization.string("Set")
@@ -670,7 +671,7 @@ enum PhoneChangeWording {
 
     /// Changes whose approve button is the red one.
     static func isRemoval(_ kind: PhoneChange.Kind) -> Bool {
-        kind == .deleteEvent || kind == .cancelAlarm
+        kind == .deleteEvent || kind == .deleteReminder || kind == .cancelAlarm
     }
 }
 
@@ -808,7 +809,8 @@ struct PhoneChangeOverlay: View {
         .onChange(of: engine.prompts.first?.id) { _, id in
             // The card isn't modal: tell VoiceOver users Hermes is waiting.
             guard id != nil, let change = engine.prompts.first?.change else { return }
-            UIAccessibility.post(notification: .announcement, argument: PhoneChangeWording.headline(change))
+            let spoken = [PhoneChangeWording.headline(change), PhoneChangeWording.detail(change)].filter { !$0.isEmpty }
+            UIAccessibility.post(notification: .announcement, argument: spoken.joined(separator: ". "))
         }
     }
 }

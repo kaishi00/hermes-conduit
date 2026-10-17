@@ -302,7 +302,8 @@ struct SessionList: View {
                     } label: {
                         Label(AppLocalization.string("Mark all as read"), systemImage: "envelope.open")
                     }
-                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
+                    // The saved rows aren't the live list it marks.
+                    .disabled(appState.isShowingSavedChatList || !sourceRows(nil).contains { appState.isSessionUnread($0) })
 
                     Button {
                         Haptics.selection()
@@ -311,7 +312,7 @@ struct SessionList: View {
                     } label: {
                         Label(AppLocalization.string("New project"), systemImage: "folder.badge.plus")
                     }
-                    .disabled(!appState.supportsProjects)
+                    .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 19, weight: .semibold))
@@ -332,7 +333,7 @@ struct SessionList: View {
                     }
                     .buttonStyle(.plain)
                     .conduitGlassControl(cornerRadius: 14)
-                    .disabled(!appState.supportsProjects)
+                    .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
                     .accessibilityLabel("New project")
                 }
 
@@ -360,8 +361,8 @@ struct SessionList: View {
             }
             let layout = SidebarOfflineLayout.visibility(
                 showingProjects: showingProjects,
-                hasOfflineCopy: appState.offlineChatPresentation != nil,
-                displayedSessionsEmpty: displayedSessions.isEmpty
+                displayedSessionsEmpty: displayedSessions.isEmpty,
+                isLoadingList: appState.isLoadingChatList
             )
             List {
                 if showingProjects {
@@ -377,21 +378,11 @@ struct SessionList: View {
                     }
                     projectContent(hasPinnedSessions: !pinned.isEmpty)
                 }
-                if layout.savedSection, let offline = appState.offlineChatPresentation {
-                    // While the saved copy is up (#99), its saved session list
-                    // shows ABOVE the live sections, which keep rendering as
-                    // soon as the live catalog arrives. Read-only — only
-                    // conversations with a saved transcript open, and they
-                    // open inside the offline copy.
-                    Section {
-                        ForEach(offline.snapshot.sessions) { session in
-                            offlineSessionRow(session, presentation: offline)
-                        }
-                    } header: {
-                        Text("Saved on this device")
-                    } footer: {
-                        Text("Read-only copies from your last connection.")
-                    }
+                if layout.loadingState {
+                    ProgressView("Loading chats…")
+                        .frame(maxWidth: .infinity, minHeight: 140)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
                 if layout.emptyState {
                     ContentUnavailableView(
@@ -543,11 +534,12 @@ struct SessionList: View {
     }
 
     /// The rows a source filter lists: cron runs only under Cron, plus the
-    /// pinned ones in All (#485).
+    /// pinned ones in All (#485). Until this profile's live list lands, the
+    /// rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         SidebarSourceRows.rows(
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             source: source,
             category: appState.sessionCategory,
             isPinned: appState.isSessionPinned
@@ -775,33 +767,6 @@ struct SessionList: View {
         }
     }
 
-    private func offlineSessionRow(
-        _ session: OfflineCachedSession,
-        presentation: OfflineChatPresentation
-    ) -> some View {
-        let isSaved = presentation.snapshot.transcript(for: session.id) != nil
-        let isDisplayed = presentation.displayedSessionID == session.id
-        return Button {
-            Haptics.selection()
-            appState.showOfflineCachedSession(session.id)
-            appState.dismissSidebarDrawer()
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.title)
-                    .font(.subheadline.weight(isDisplayed ? .semibold : .regular))
-                    .lineLimit(1)
-                Text(isSaved ? session.displayUpdatedLabel() : AppLocalization.string("Not saved offline"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isSaved)
-        .opacity(isSaved ? 1 : 0.5)
-        .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
-    }
-
     private func sessionRow(_ session: SessionSummary) -> some View {
         sessionRowChrome(sessionRowButton(session, nest: nil), session: session, nest: nil)
     }
@@ -836,7 +801,7 @@ struct SessionList: View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             SessionRow(
                 session: session,
@@ -861,51 +826,59 @@ struct SessionList: View {
     /// whether that root is the card alone or the card with its expander
     /// beside it. `nest` comes from the nested list, where a parent
     /// displays its children's activity and its "Mark as read" clears
-    /// the nest.
+    /// the nest. The saved list's rows (up while Conduit connects) take
+    /// no actions: they would act on a list Hermes hasn't sent yet.
     private func sessionRowChrome<V: View>(
         _ content: V,
         session: SessionSummary,
         nest: NestReadToggle?
     ) -> some View {
-        content
+        let isSavedRow = appState.isSavedChatRow(session)
+        return content
             .contextMenu {
-                SessionActionMenuItems(
-                    session: session,
-                    nest: nest,
-                    onRename: { sessionPendingRename = session },
-                    onDelete: { sessionPendingDeletion = session }
-                )
+                if !isSavedRow {
+                    SessionActionMenuItems(
+                        session: session,
+                        nest: nest,
+                        onRename: { sessionPendingRename = session },
+                        onDelete: { sessionPendingDeletion = session }
+                    )
+                }
             }
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button {
-                    Haptics.light()
-                    appState.toggleSessionPinned(session)
-                } label: {
-                    Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
-                }
-                .tint(.conduitAccent)
+                if !isSavedRow {
+                    Button {
+                        Haptics.light()
+                        appState.toggleSessionPinned(session)
+                    } label: {
+                        Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
+                    }
+                    .tint(.conduitAccent)
 
-                ReadStateToggleButton(session: session, nest: nest)
-                    .tint(.blue)
+                    ReadStateToggleButton(session: session, nest: nest)
+                        .tint(.blue)
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
-                    Task {
-                        Haptics.mutationCompleted(await appState.archiveSession(session))
+                if !isSavedRow {
+                    Button {
+                        Task {
+                            Haptics.mutationCompleted(await appState.archiveSession(session))
+                        }
+                    } label: {
+                        Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                     }
-                } label: {
-                    Label(AppLocalization.string("Archive"), systemImage: "archivebox")
-                }
-                .tint(.orange)
-                .disabled(appState.isSessionMutationInFlight(session))
+                    .tint(.orange)
+                    .disabled(appState.isSessionMutationInFlight(session))
 
-                Button(role: .destructive) {
-                    Haptics.warning()
-                    sessionPendingDeletion = session
-                } label: {
-                    Label(AppLocalization.string("Delete"), systemImage: "trash")
+                    Button(role: .destructive) {
+                        Haptics.warning()
+                        sessionPendingDeletion = session
+                    } label: {
+                        Label(AppLocalization.string("Delete"), systemImage: "trash")
+                    }
+                    .disabled(appState.isSessionMutationInFlight(session))
                 }
-                .disabled(appState.isSessionMutationInFlight(session))
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -1668,10 +1641,10 @@ private struct ProjectSessionsSheet: View {
                 }
             }
         }
-        .task(id: project.id) {
-            isLoading = true
-            detail = await appState.loadProjectSessions(project)
-            isLoading = false
+        .task(id: project.id) { await load() }
+        .onChange(of: appState.isConnected) { _, isConnected in
+            guard isConnected, detail == nil else { return }
+            Task { await load() }
         }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
@@ -1695,6 +1668,15 @@ private struct ProjectSessionsSheet: View {
                 }
             }
         }
+    }
+
+    /// A page opened from the saved Chats list before Hermes answered says
+    /// it's loading until Hermes is connected, then loads.
+    private func load() async {
+        guard appState.isConnected else { return }
+        isLoading = true
+        detail = await appState.loadProjectSessions(project)
+        isLoading = false
     }
 
     private func reloadDetail() {
@@ -2312,26 +2294,27 @@ enum SidebarPinnedSessions {
     }
 }
 
-/// Which session-list parts the sidebar shows while a saved offline copy
-/// (#99) may be up. The saved section never replaces the live sections: a
-/// live catalog published before the live transcript replaces the copy (the
-/// owed-bootstrap window) renders alongside it.
+/// Which session-list parts the sidebar shows before the live list lands.
+/// The rows saved last time draw through the live sections themselves, so
+/// there is no separate saved section; with nothing saved and the list on
+/// its way, a loading state stands in for "no chats".
 enum SidebarOfflineLayout {
     struct Visibility: Equatable {
-        let savedSection: Bool
         let liveSections: Bool
         let emptyState: Bool
+        let loadingState: Bool
     }
 
     static func visibility(
         showingProjects: Bool,
-        hasOfflineCopy: Bool,
-        displayedSessionsEmpty: Bool
+        displayedSessionsEmpty: Bool,
+        isLoadingList: Bool
     ) -> Visibility {
-        Visibility(
-            savedSection: !showingProjects && hasOfflineCopy,
+        let empty = !showingProjects && displayedSessionsEmpty
+        return Visibility(
             liveSections: !showingProjects,
-            emptyState: !showingProjects && !hasOfflineCopy && displayedSessionsEmpty
+            emptyState: empty && !isLoadingList,
+            loadingState: empty && isLoadingList
         )
     }
 }
