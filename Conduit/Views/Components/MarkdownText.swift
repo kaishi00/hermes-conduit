@@ -85,7 +85,6 @@ struct MarkdownText: View {
         // through each block's view. Voice Control can't be detected; it
         // targets controls, and the links inside a run stay targets.
         let proseRuns = joinsProseRuns
-            && !MarkdownProseRun.probeTurnsOff
             && !voiceOverEnabled
             && !switchControlEnabled
             && !isStreaming

@@ -28,9 +28,6 @@ enum MarkdownProseRun {
         }
     }
 
-    /// Temporary: lets the scroll probe measure the chat with runs off.
-    @MainActor static var probeTurnsOff = false
-
     /// Whether a block can join a run. Quotes and callouts draw a card and
     /// task lists draw checkbox symbols, so they keep their own views.
     static func joins(_ block: MarkdownBlock) -> Bool {
