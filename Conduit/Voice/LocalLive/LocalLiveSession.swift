@@ -45,6 +45,11 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// The connection the open turns came on ended: none of them can be
     /// answered any more.
     var onTurnsDropped: (@MainActor () -> Void)?
+    /// What the server says once the call is ready, from the user's greeting
+    /// setting; nil or empty for nothing. Spoken as the readiness check's
+    /// answer, so it doubles as the cue to start talking. Once per call.
+    var greeting: (@MainActor () -> String?)?
+    private var hasGreeted = false
     private(set) var connectionGeneration = 0
     var stateDescription: String { "\(state)" }
     /// The server transcribes the user's speech once an utterance is done.
@@ -107,6 +112,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         guard state == .idle || state == .stopped || isFailed else { return }
         lastSetupClose = nil
         hasConnectedOnce = false
+        hasGreeted = false
         state = .connecting
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
@@ -317,9 +323,16 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             openTurns.insert(turnID)
             if let check = readinessCheck, check.id == id {
                 // The check's ask (or, before it, nothing the call said):
-                // answered with nothing, so the server says nothing.
+                // answered with nothing, so the server says nothing, or
+                // with the greeting, which the call then plays as a reply.
+                let isCheck = text.trimmingCharacters(in: .whitespacesAndNewlines) == check.marker
+                if isCheck, !hasGreeted, let greeting = greeting?(), !greeting.isEmpty {
+                    hasGreeted = true
+                    readinessResponseOpen = false
+                    sendTurnDelta(turnID, text: greeting)
+                }
                 sendTurnDone(turnID)
-                if text.trimmingCharacters(in: .whitespacesAndNewlines) == check.marker { becomeReady() }
+                if isCheck { becomeReady() }
                 return
             }
             onTurn?(turnID, text)

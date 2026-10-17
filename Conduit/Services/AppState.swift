@@ -3109,8 +3109,14 @@ final class AppState: ObservableObject {
         let hostContext = geminiLiveTokenClient
         let audio = makeLiveVoiceAudio(outputSampleRate: LocalLiveProtocol.sampleRate)
         let controller = GeminiLiveConversationController(
-            makeSession: {
+            makeSession: { [weak self] in
                 let session = LocalLiveSession(client: client)
+                // The greeting setting, said by the speech server itself:
+                // Hermes isn't asked, so "own words" is a short fixed line.
+                session.greeting = { [weak self] in
+                    guard let greeting = self?.liveVoiceStyle.greeting else { return nil }
+                    return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
+                }
                 // The turns follow the newest session: a turn opened on an
                 // older one can't be answered on this socket.
                 turns.dropTurn()

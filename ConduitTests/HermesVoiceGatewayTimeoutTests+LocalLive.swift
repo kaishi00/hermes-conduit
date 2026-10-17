@@ -227,6 +227,35 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    func testLocalLiveSessionSaysTheGreetingAsTheCheckAnswerOncePerCall() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var events: [GeminiLiveProtocol.ServerEvent] = []
+        session.onEvent = { events.append($0) }
+        session.greeting = { "Hello there." }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(first, session: session)
+        await localLiveSettle(until: { first.sent.count >= 4 })
+        let answer = first.sent.dropFirst(2).map { "\($0["type"] as? String ?? ""):\($0["text"] as? String ?? "")" }
+        XCTAssertEqual(answer, ["conduit.turn.delta:Hello there.", "conduit.turn.done:"])
+        // The greeting is the call's own reply: it plays.
+        first.deliver(["type": "response.output_audio_transcript.delta", "delta": "Hello there."])
+        await localLiveSettle(until: { !events.isEmpty })
+        XCTAssertEqual(events, [.outputTranscription("Hello there.")])
+
+        // A reconnect checks again but doesn't greet again.
+        first.serverClose(nil)
+        await localLiveSettle(until: { sockets().count == 2 && sockets()[1].sent.isEmpty == false })
+        let second = try XCTUnwrap(sockets().last)
+        second.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(second, session: session)
+        await localLiveSettle(until: { second.sent.count >= 3 })
+        XCTAssertEqual(second.sent.dropFirst(2).map { $0["type"] as? String }, ["conduit.turn.done"])
+        session.stop()
+    }
+
     func testLocalLiveSessionFailsWhenTheServerAnswersWithoutAskingHermes() async throws {
         let (session, sockets) = makeLocalLiveSession()
         session.start()
