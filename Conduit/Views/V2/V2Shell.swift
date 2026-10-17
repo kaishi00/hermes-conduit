@@ -307,6 +307,9 @@ struct V2Shell: View {
                         // and backdrop into each other dropped frames, and a
                         // plain swap read as a blink.
                         .animation(isSelected ? ConduitMotion.tabFadeIn : nil, value: selectedTab)
+                        // A tab's first visit inserts it already selected:
+                        // the same fade, not the bar's overshoot spring.
+                        .transition(.opacity.animation(ConduitMotion.tabFadeIn))
                 }
             }
         }
