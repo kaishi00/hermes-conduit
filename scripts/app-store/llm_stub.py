@@ -12,6 +12,7 @@ Standard library only. Usage: llm_stub.py SCRIPT.json [PORT]
 """
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -112,6 +113,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.rstrip("/").endswith("/chat/completions"):
             self.send_json(404, {"error": "not found"})
             return
+        dump = os.environ.get("STUB_DUMP_TOOLS")
+        if dump and body.get("tools") and not os.path.exists(dump):
+            with open(dump, "w", encoding="utf-8") as f:
+                json.dump(body["tools"], f, indent=1)
         step = pick_step(self.script, body.get("messages", []))
         calls = tool_calls_of(step)
         finish = "tool_calls" if calls else "stop"

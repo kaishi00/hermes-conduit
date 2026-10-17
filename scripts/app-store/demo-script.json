@@ -1,21 +1,156 @@
 {
-  "fallback": "Done.",
+  "fallback": "Done. Anything else?",
   "stream_delay": 0.0,
   "chats": [
+    {
+      "title": "Garden watering schedule",
+      "turns": [
+        {
+          "match": "watering schedule",
+          "prompt": "Make me a watering schedule for the tomatoes, basil and lemon tree now that it's getting cooler.",
+          "steps": [
+            {
+              "content": "Cooler nights mean less evaporation, so you can water less often but more deeply.\n\n| Plant | How often | How much |\n|---|---|---|\n| Tomatoes | Every 3 days | ~2 L at the base |\n| Basil | Every 2 days | Until the pot drains |\n| Lemon tree | Weekly | ~10 L, slowly |\n\nWater in the morning so leaves dry before evening. Skip a round whenever it rains more than about 5 mm."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Japanese study plan, week 3",
+      "turns": [
+        {
+          "match": "japanese",
+          "prompt": "I'm on week 3 of Japanese. Can you set me a plan for this week? 30 minutes a day.",
+          "steps": [
+            {
+              "content": "Nice progress. Here's week 3, about 30 minutes a day:\n\n- **Mon** 15 new kanji (日, 月, 火…) + Anki review\n- **Tue** Particles は vs が, 10 example sentences\n- **Wed** Listening: one Nihongo con Teppei episode\n- **Thu** Kanji review + write 5 sentences about your day\n- **Fri** て-form drills\n- **Sat** Shadowing practice, 15 minutes\n- **Sun** Light review only\n\nWant me to quiz you on Thursday's sentences?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reply to the landlord",
+      "turns": [
+        {
+          "match": "landlord",
+          "prompt": "Help me reply to my landlord. The dishwasher has been broken for two weeks and they keep saying next week.",
+          "steps": [
+            {
+              "content": "Here's a firm but friendly draft:\n\n> Hi Sam,\n>\n> Following up on the dishwasher, which has now been out of order since October 3. Could you confirm a repair date by Friday? If it's easier, I'm happy to book the technician myself and deduct the invoice from next month's rent, as our lease allows for urgent repairs.\n>\n> Thanks,\n> Alex\n\nIt names a date, offers a way out, and points to the lease without sounding hostile."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Q3 spending summary",
+      "turns": [
+        {
+          "match": "q3 spending",
+          "prompt": "Can you summarise our Q3 spending from the budget export and tell me where we went over?",
+          "steps": [
+            {
+              "reasoning": "The export is a CSV of monthly totals per category. Sum July to September and compare with the budget column.",
+              "content": "I'll total the quarter by category first.",
+              "tool_calls": [
+                {
+                  "name": "execute_code",
+                  "arguments": {
+                    "code": "budget = {'Groceries': 1800, 'Dining out': 600, 'Transport': 450, 'Utilities': 690, 'Fun': 500}\nspent = {'Groceries': 1742, 'Dining out': 815, 'Transport': 398, 'Utilities': 702, 'Fun': 455}\nfor k in budget:\n    print(f\"{k:12} {spent[k]:>6} / {budget[k]:>6}  {spent[k]-budget[k]:+}\")\nprint('Total', sum(spent.values()), '/', sum(budget.values()))"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Q3 came in at **$4,112** against a **$4,040** budget, $72 over.\n\n| Category | Spent | Budget | |\n|---|---:|---:|---:|\n| Groceries | $1,742 | $1,800 | −$58 |\n| Dining out | $815 | $600 | **+$215** |\n| Transport | $398 | $450 | −$52 |\n| Utilities | $702 | $690 | +$12 |\n| Fun | $455 | $500 | −$45 |\n\nDining out is the whole story: August alone was $380. Everything else came in under or close to plan."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Espresso machine shortlist",
+      "turns": [
+        {
+          "match": "espresso",
+          "prompt": "Shortlist three espresso machines under $1,000 for a beginner who wants to get good at milk drinks.",
+          "steps": [
+            {
+              "content": "Three that grow with you:\n\n1. **Breville Bambino Plus** ($500). Automatic milk frothing to start, manual when you're ready. Smallest footprint.\n2. **Rancilio Silvia** ($900). Built like a tank, strong steam, but you need a separate grinder.\n3. **Breville Barista Express** ($700). Grinder built in, so it's the cheapest complete setup.\n\nFor milk drinks specifically, the Bambino Plus is the easiest to learn on. Pair it with a Baratza Encore ESP grinder and you're still under $700."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Fix the flaky upload test",
+      "turns": [
+        {
+          "match": "the upload test",
+          "prompt": "The upload test in the photos repo fails about one run in ten. Can you find out why?",
+          "steps": [
+            {
+              "reasoning": "One in ten points at timing. Look at the test first, then run it in a loop to reproduce.",
+              "content": "Let me look at the test and try to reproduce it.",
+              "tool_calls": [
+                {
+                  "name": "write_file",
+                  "arguments": {
+                    "path": "photos/tests/test_upload.py",
+                    "content": "import threading, time\n\ndef upload(done):\n    time.sleep(0.01)\n    done.set()\n\ndef test_upload_finishes():\n    done = threading.Event()\n    threading.Thread(target=upload, args=(done,)).start()\n    assert done.wait(timeout=1)\n"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Running it 50 times to see how often it fails.",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "cd photos && for i in $(seq 1 50); do python3 -c 'import tests.test_upload as t; t.test_upload_finishes()' && echo pass || echo fail; done | sort | uniq -c"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Found it. The old test checked `done.is_set()` straight after starting the upload thread, so it only passed when the thread happened to finish first. I changed it to wait on the event with a timeout:\n\n```python\ndef test_upload_finishes():\n    done = threading.Event()\n    threading.Thread(target=upload, args=(done,)).start()\n    assert done.wait(timeout=1)\n```\n\n50 runs in a row now pass. Want me to open a PR?"
+            }
+          ]
+        }
+      ]
+    },
     {
       "title": "Weekend trip to Big Sur",
       "turns": [
         {
           "match": "plan a weekend in big sur",
+          "prompt": "Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning.",
           "steps": [
             {
               "reasoning": "Two days, driving from San Francisco. Keep the drive under 3 hours each way and put the scenic stops on day one.",
               "content": "Here's a relaxed two-day plan, leaving San Francisco Saturday morning.\n\n**Saturday**\n- 8:00 Leave SF, coffee in Carmel\n- 11:30 Bixby Creek Bridge and Garrapata State Park\n- 2:00 Lunch at Nepenthe\n- 4:30 McWay Falls at golden hour\n\n**Sunday**\n- Pfeiffer Beach in the morning\n- Point Lobos on the way home\n\nWant me to check campsites at Pfeiffer Big Sur?"
             }
-          ],
-          "prompt": "Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning."
+          ]
+        },
+        {
+          "match": "somewhere good for dinner",
+          "prompt": "Yes please, and find somewhere good for dinner Saturday.",
+          "steps": [
+            {
+              "content": "Pfeiffer Big Sur has **two sites left for Saturday**, both in the redwood loop (#112 and #148, $45 a night). Book soon, they go fast on fall weekends.\n\nFor dinner, **Big Sur Roadhouse** is 5 minutes from the campground and does a great wood-fired chicken. If you'd rather watch the sunset, **Sierra Mar** at Post Ranch has the view, but book ahead and budget about $150 each.\n\nI've added both to your trip notes."
+            }
+          ]
         }
       ]
     }
+  ],
+  "cron": [
+    {"name": "Morning briefing", "schedule": "0 7 * * *", "prompt": "Summarise my calendar, the weather and anything urgent in my inbox."},
+    {"name": "Inbox digest", "schedule": "every 4h", "prompt": "Digest new email and flag anything that needs a reply today."},
+    {"name": "Weekly review", "schedule": "0 18 * * 0", "prompt": "Review this week's notes and tasks and draft next week's priorities."},
+    {"name": "Flight price watch", "schedule": "every 6h", "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.", "paused": true}
   ]
 }

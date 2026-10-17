@@ -9,7 +9,7 @@ on:
     inputs:
       devices:
         description: "Simulator names, comma-separated"
-        default: "iPhone 17 Pro Max"
+        default: "iPhone 17 Pro Max,iPad Pro 13-inch"
   push:
     # Temporary while the pipeline is built on this branch.
     branches: [claude/project-thread-3rugpr]
@@ -30,7 +30,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 75
     env:
-      DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max' }}
+      DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max,iPad Pro 13-inch' }}
       DEMO_HOST: hermes.tail-demo.ts.net
       DEMO_PORT: "9119"
       DEMO_USER: demo
@@ -66,10 +66,14 @@ jobs:
           name = sys.argv[1]
           runtimes = json.load(sys.stdin)["devices"]
           ios = sorted((r for r in runtimes if "iOS" in r), reverse=True)
-          for r in ios:
-              for d in runtimes[r]:
-                  if d["name"] == name:
-                      print(d["udid"]); sys.exit()
+          # Exact name first, then the first name starting with it (iPad
+          # names carry the chip, which changes with each Xcode).
+          for exact in (True, False):
+              for r in ios:
+                  for d in runtimes[r]:
+                      if d["name"] == name if exact else d["name"].startswith(name):
+                          print(d["udid"]); sys.exit()
+          print("available:", sorted({d["name"] for r in ios for d in runtimes[r]}), file=sys.stderr)
           ' "$name")
             if [ -z "$udid" ]; then echo "::error::no simulator named $name"; exit 1; fi
             echo "== $name ($udid)"

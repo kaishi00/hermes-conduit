@@ -20,7 +20,7 @@ final class AppStoreScreenshotTests: XCTestCase {
     private var demoPassword: String { ProcessInfo.processInfo.environment["CONDUIT_DEMO_PASSWORD"] ?? "" }
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        continueAfterFailure = true
         guard demoURL != nil else { throw XCTSkip("CONDUIT_DEMO_URL is not set") }
         app = XCUIApplication()
         app.launch()
@@ -29,13 +29,49 @@ final class AppStoreScreenshotTests: XCTestCase {
     func testCaptureAppStoreScreens() throws {
         signInIfNeeded()
         dismissFinishSetupCard()
+        // The list fills from the dashboard; wait for the newest chat.
+        _ = app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30)
+        settle()
         snap("01-chats")
 
-        let chat = app.staticTexts["Weekend trip to Big Sur"]
-        XCTAssertTrue(chat.waitForExistence(timeout: 20), "Demo chat missing. Tree:\n\(app.debugDescription)")
-        chat.tap()
+        openChat("Q3 spending summary", waitingFor: "Dining out")
+        snap("02-chat-steps")
+        backToTabs()
+
+        openChat("Weekend trip to Big Sur", waitingFor: "Sierra Mar")
+        snap("03-chat-trip")
+        backToTabs()
+
+        openChat("Fix the flaky upload test", waitingFor: "50 runs")
+        snap("04-chat-code")
+        backToTabs()
+
+        for (number, tab) in [(5, "Tasks"), (6, "Bots"), (7, "Settings")] {
+            let button = app.buttons[tab]
+            guard button.waitForExistence(timeout: 5) else { continue }
+            button.tap()
+            settle(3)
+            snap(String(format: "%02d-%@", number, tab.lowercased()))
+        }
+        app.buttons["Chats"].tap()
+    }
+
+    private func openChat(_ title: String, waitingFor text: String) {
+        let row = app.staticTexts[title]
+        guard row.waitForExistence(timeout: 15) else {
+            snap("debug-missing-\(title)")
+            return
+        }
+        row.tap()
+        let content = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
+        if !content.waitForExistence(timeout: 20) { snap("debug-slow-\(title)") }
+        settle(3)
+    }
+
+    private func backToTabs() {
+        app.returnToV2Tabs(revealing: app.buttons["Chats"])
         settle()
-        snap("02-chat")
     }
 
     // MARK: - Steps

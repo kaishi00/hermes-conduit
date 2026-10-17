@@ -50,6 +50,8 @@ printf '<!doctype html><html><head></head><body></body></html>' > "$DEMO_WORK/sr
 "$HERMES" config set model.provider custom >/dev/null
 "$HERMES" config set model.base_url "http://127.0.0.1:$STUB_PORT/v1" >/dev/null
 "$HERMES" config set model.default hermes-4-405b >/dev/null
+# The scripted tool calls run unattended (they only touch the runner).
+"$HERMES" config set approvals.mode off >/dev/null
 
 # Password sign-in plus a non-loopback public URL: that engages the dashboard's
 # auth gate on a loopback bind, the same gated mode real remote setups use.
@@ -81,6 +83,8 @@ if ! grep -q " $DEMO_HOST\$" /etc/hosts; then
   sudo dscacheutil -flushcache 2>/dev/null || true
 fi
 
+# Hermes works (and the scripted tool calls write) in the scratch dir.
+cd "$DEMO_WORK"
 nohup python3 "$SCRIPT_DIR/llm_stub.py" "$SCRIPT_DIR/demo-script.json" "$STUB_PORT" > "$DEMO_WORK/stub.log" 2>&1 &
 nohup "$HERMES" gateway run > "$DEMO_WORK/gateway.log" 2>&1 &
 nohup "$HERMES" dashboard --no-open --skip-build --port "$DEMO_PORT" > "$DEMO_WORK/dashboard.log" 2>&1 &
@@ -92,21 +96,19 @@ for _ in $(seq 1 90); do
 done
 curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not start"; tail -40 "$DEMO_WORK/dashboard.log"; exit 1; }
 
-# Seed: each chat's turns in order, the first starting a session and the rest
-# continuing the newest one, which seeding one chat at a time keeps correct.
-"$PY" - "$SCRIPT_DIR/demo-script.json" <<'PY' > "$DEMO_WORK/seed-prompts.txt"
+# Seed the chats through the gateway RPC the app itself uses, then the
+# scheduled jobs through the CLI.
+"$PY" -u "$SCRIPT_DIR/seed_demo.py" "$SCRIPT_DIR/demo-script.json" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
+  2>&1 | tee "$DEMO_WORK/seed.log"
+"$PY" - "$SCRIPT_DIR/demo-script.json" <<'PY' > "$DEMO_WORK/cron.tsv"
 import json, sys
-for chat in json.load(open(sys.argv[1]))["chats"]:
-    for n, turn in enumerate(chat["turns"]):
-        print(("CONT\t" if n else "NEW\t") + turn.get("prompt", turn["match"]))
+for job in json.load(open(sys.argv[1])).get("cron", []):
+    print("\t".join([job["name"], job["schedule"], job["prompt"], "paused" if job.get("paused") else ""]))
 PY
-while IFS=$'\t' read -r kind prompt; do
-  if [ "$kind" = NEW ]; then
-    "$HERMES" -z "$prompt" >> "$DEMO_WORK/seed.log" 2>&1
-  else
-    "$HERMES" --continue -z "$prompt" >> "$DEMO_WORK/seed.log" 2>&1
-  fi
-done < "$DEMO_WORK/seed-prompts.txt"
+while IFS=$'\t' read -r name schedule prompt paused; do
+  "$HERMES" cron create --name "$name" ${paused:+--paused} "$schedule" "$prompt" >> "$DEMO_WORK/seed.log" 2>&1 \
+    || echo "::warning::cron job '$name' was not created"
+done < "$DEMO_WORK/cron.tsv"
 
 jar="$DEMO_WORK/cookies"
 curl -sf -c "$jar" -H 'Content-Type: application/json' \
