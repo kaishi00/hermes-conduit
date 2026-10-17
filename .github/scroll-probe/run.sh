@@ -29,6 +29,26 @@ summarise() {
 }
 
 case "${1:-frames}" in
+tests)
+  # The suites the drawn text touches, failures as annotations.
+  xcodebuild test-without-building \
+    -xctestrun "$XCRUN_FILE" \
+    -destination "$DESTINATION" \
+    -parallel-testing-enabled NO \
+    -collect-test-diagnostics never \
+    -only-testing:ConduitTests/ChatTypographyTests \
+    -only-testing:ConduitTests/SelectableTextViewPresentationCacheTests \
+    -only-testing:ConduitTests/MarkdownSelectionCoordinatorTests \
+    -only-testing:ConduitTests/ChatTextSelectionTests \
+    -only-testing:ConduitTests/ChatQuoteTests \
+    -only-testing:ConduitTests/ChatScrollHostedTests \
+    > tests.log 2>&1 || echo "tests exited $?"
+  { grep -E "^Test Suite .*(passed|failed)|Executed [0-9]+ test" tests.log | tail -n 12
+    grep -E ": error: |^Test Case .* failed" tests.log | sed -e "s|$PWD/||g" | head -n 80
+  } > tests-summary.txt
+  cat tests-summary.txt
+  python3 "$HERE/annotate.py" tests-summary.txt tests
+  ;;
 frames)
   # Drawn text (the default) against text views everywhere, interleaved:
   # the first process in a job runs slower, so each kind gets two runs.
