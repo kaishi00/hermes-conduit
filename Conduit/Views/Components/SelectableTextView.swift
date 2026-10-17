@@ -925,8 +925,8 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
 /// scroll in next. Making a UITextView is the larger part of what a Markdown
 /// block costs to mount, and a chat takes rows down and builds them again
 /// all the time it scrolls. Only the empty view is kept: teardown clears its
-/// delegate and coordinator, and recycling drops its text, selection and
-/// frame, so a reused view starts out like a new one.
+/// delegate and coordinator, and recycling drops its text and selection,
+/// so a reused view starts out like a new one.
 @MainActor
 enum SelectableTextViewPool {
     /// Rows leave at one end as they enter at the other, so the pool only
@@ -951,7 +951,10 @@ enum SelectableTextViewPool {
     /// Call after `tearDownMountedTextView`, which clears the delegate,
     /// the coordinator and the selection registration.
     static func recycle(_ textView: UITextView) {
-        assert(textView.delegate == nil, "recycle after tearDownMountedTextView")
+        assert(
+            textView.delegate == nil && (textView as? MarkdownSelectionTextView)?.onTouchBegan == nil,
+            "recycle after tearDownMountedTextView"
+        )
         _ = memoryWarning
         // Pooled twice, one view would be handed to two blocks.
         guard !plain.contains(where: { $0 === textView }),
@@ -960,7 +963,6 @@ enum SelectableTextViewPool {
         textView.removeFromSuperview()
         textView.attributedText = NSAttributedString()
         textView.selectedRange = NSRange(location: 0, length: 0)
-        textView.frame = .zero
         if let coordinatedTextView = textView as? MarkdownSelectionTextView {
             coordinatedTextView.prepareForReuse()
             if coordinated.count < capacity { coordinated.append(textView) }
