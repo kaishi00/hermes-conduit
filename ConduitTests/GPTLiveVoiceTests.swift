@@ -141,6 +141,14 @@ private func settle(_ iterations: Int = 20) async {
     for _ in 0..<iterations { await Task.yield() }
 }
 
+/// Yields until `done` holds, capped at 10 s of wall clock: a fixed number
+/// of yields can run out on a busy hosted runner.
+@MainActor
+private func settle(until done: () -> Bool, limit: Duration = .seconds(10)) async {
+    let deadline = ContinuousClock.now.advanced(by: limit)
+    while !done(), ContinuousClock.now < deadline { await Task.yield() }
+}
+
 // MARK: - Wire format, host client, session
 
 @MainActor
@@ -2022,6 +2030,90 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertGreaterThan(Drag.lift(for: CGSize(width: 0, height: -1_000)), -Drag.maxLift)
         XCTAssertEqual(Drag.lift(for: CGSize(width: -100, height: -40)), 0, "a sideways drag leaves the bar")
         XCTAssertGreaterThan(Drag.lift(for: CGSize(width: 20, height: -40)), Drag.lift(for: CGSize(width: 0, height: -40)), "sideways movement takes from the rise")
+    }
+
+    // MARK: Waiting call
+
+    /// Conduit reconnecting with GPT-Live chosen over a fake call, and
+    /// Siri's request for a call pending in the shared store.
+    private func makeSiriWaitingAppState() -> (AppState, FakeGPTLiveSessionControl) {
+        let suite = "GPTLiveSiriWaiting.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        appState.isConnecting = true
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        PendingVoiceIntentStore.shared.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil))
+        return (appState, session)
+    }
+
+    /// Siri's call shows its screen while Conduit connects, and the call
+    /// starts on it once Hermes answers.
+    func testSiriCallWaitsOnItsOwnScreenAndStartsThere() async {
+        let store = PendingVoiceIntentStore.shared
+        defer { store.clear() }
+        let (appState, session) = makeSiriWaitingAppState()
+
+        // What the app's route does as Siri's request arrives.
+        appState.presentWaitingCallIfNeeded()
+
+        XCTAssertTrue(appState.showGPTLiveSheet, "Siri's call shows its screen at once")
+        XCTAssertEqual(appState.waitingCall?.engine, .gptLive)
+        XCTAssertFalse(appState.isVoiceCallInProgress, "a screen waiting for its call is no call yet")
+        XCTAssertEqual(session.started, 0, "the call waits for Hermes")
+
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard let claim = store.takeClaim() else { return XCTFail("Siri's request should still be pending") }
+        let opened = await appState.openVoiceConversation(claim.intent)
+        await settle(until: { session.started == 1 })
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(session.started, 1, "the call starts on the screen that waited for it")
+        XCTAssertTrue(appState.gptLiveController.isActive)
+        XCTAssertNil(appState.waitingCall)
+        // The route's outcome for a call that opened leaves it be.
+        appState.endWaitingCall(owner: .siri)
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        appState.closeGPTLiveConversation()
+    }
+
+    /// Hanging up on Siri's waiting screen drops Siri's request. A request
+    /// that ends without its call takes the screen with it, and a sign-out
+    /// closes the screen but leaves the request to end as it would have.
+    func testSiriWaitingScreenGoesWithItsRequest() {
+        let store = PendingVoiceIntentStore.shared
+        defer { store.clear() }
+        let (appState, session) = makeSiriWaitingAppState()
+        appState.presentWaitingCallIfNeeded()
+        XCTAssertTrue(appState.showGPTLiveSheet)
+
+        appState.closeGPTLiveConversation()
+
+        XCTAssertFalse(store.hasPendingIntent, "hanging up drops Siri's request")
+        XCTAssertFalse(appState.showGPTLiveSheet)
+
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil))
+        appState.presentWaitingCallIfNeeded()
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        appState.endWaitingCall(owner: .widget)
+        XCTAssertTrue(appState.showGPTLiveSheet, "a widget launch ending leaves Siri's screen")
+        appState.endWaitingCall(owner: .siri)
+        XCTAssertFalse(appState.showGPTLiveSheet, "Siri's request failed or expired")
+        XCTAssertNil(appState.waitingCall)
+
+        store.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil))
+        appState.presentWaitingCallIfNeeded()
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        appState.disconnect()
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertNil(appState.waitingCall)
+        XCTAssertTrue(store.hasPendingIntent)
+        XCTAssertEqual(session.started, 0)
     }
 }
 

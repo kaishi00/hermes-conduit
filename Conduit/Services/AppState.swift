@@ -2183,7 +2183,12 @@ final class AppState: ObservableObject {
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .geminiLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-            Task { await geminiLiveController.start() }
+            let waited = liveCallOpens(.geminiLive)
+            Task {
+                // Not if it was called off on its waiting screen meanwhile.
+                guard !waited || waitedCallStarts(.geminiLive) else { return }
+                await geminiLiveController.start()
+            }
         }
         return true
     }
@@ -2229,6 +2234,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGeminiLiveConversation() {
+        callOffWaitingCall(.geminiLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .geminiLive)
         if geminiLiveControllerCreated { geminiLiveController.stop() }
@@ -2261,6 +2267,7 @@ final class AppState: ObservableObject {
             if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
+        releaseWaitingCall(.geminiLive)
         closeGeminiLiveConversation()
     }
 
@@ -2570,7 +2577,12 @@ final class AppState: ObservableObject {
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .gptLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-            Task { await gptLiveController.start() }
+            let waited = liveCallOpens(.gptLive)
+            Task {
+                // Not if it was called off on its waiting screen meanwhile.
+                guard !waited || waitedCallStarts(.gptLive) else { return }
+                await gptLiveController.start()
+            }
         }
         return true
     }
@@ -2616,6 +2628,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGPTLiveConversation() {
+        callOffWaitingCall(.gptLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .gptLive)
         if gptLiveControllerCreated { gptLiveController.stop() }
@@ -2649,6 +2662,7 @@ final class AppState: ObservableObject {
             if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
+        releaseWaitingCall(.gptLive)
         closeGPTLiveConversation()
     }
 
@@ -2864,7 +2878,12 @@ final class AppState: ObservableObject {
             voiceBackgroundJobSupervisor.liveCallReadsReplies = true
             beginVoiceCallRecording(engine: .grokLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-            Task { await grokLiveController.start() }
+            let waited = liveCallOpens(.grokLive)
+            Task {
+                // Not if it was called off on its waiting screen meanwhile.
+                guard !waited || waitedCallStarts(.grokLive) else { return }
+                await grokLiveController.start()
+            }
         }
         return true
     }
@@ -2912,6 +2931,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGrokLiveConversation() {
+        callOffWaitingCall(.grokLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .grokLive)
         if grokLiveControllerCreated { grokLiveController.stop() }
@@ -2946,6 +2966,7 @@ final class AppState: ObservableObject {
             if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
+        releaseWaitingCall(.grokLive)
         closeGrokLiveConversation()
     }
 
@@ -3145,12 +3166,18 @@ final class AppState: ObservableObject {
             localLiveOwnChat = nil
             beginVoiceCallRecording(engine: .localLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-            Task { await localLiveController.start() }
+            let waited = liveCallOpens(.localLive)
+            Task {
+                // Not if it was called off on its waiting screen meanwhile.
+                guard !waited || waitedCallStarts(.localLive) else { return }
+                await localLiveController.start()
+            }
         }
         return true
     }
 
     func closeLocalLiveConversation() {
+        callOffWaitingCall(.localLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .localLive)
         if localLiveControllerCreated {
@@ -3175,6 +3202,7 @@ final class AppState: ObservableObject {
             if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
+        releaseWaitingCall(.localLive)
         closeLocalLiveConversation()
     }
 
@@ -4370,8 +4398,14 @@ final class AppState: ObservableObject {
     }
 
     /// The widget coordinator's pending link changed. A New Chat on its way
-    /// shows as its chat, except during a call, which refuses it.
+    /// shows as its chat, except during a call, which refuses it. A Talk on
+    /// its way shows its call screen.
     func widgetLaunchPendingLinkChanged(_ link: WidgetLaunchLink?) {
+        if link?.action == .talk {
+            presentWaitingCallIfNeeded()
+        } else {
+            endWaitingCall(owner: .widget)
+        }
         let pending = link?.action == .newChat && !isVoiceCallInProgress ? link?.workspace : nil
         guard pending != pendingNewChat else { return }
         pendingNewChat = pending
@@ -6377,6 +6411,104 @@ final class AppState: ObservableObject {
         return true
     }
 
+    // MARK: Waiting call
+
+    /// A call a widget's Talk or Siri asked for, shown on its call screen at
+    /// once while the launch waits for Hermes. The screen shows the call
+    /// connecting, and the call starts on it when the launch opens it.
+    struct WaitingCall: Equatable {
+        enum Owner: Equatable { case widget, siri }
+        let engine: VoiceCallEngine
+        let owner: Owner
+        /// The launch opened the call, which starts on the next turn: the
+        /// screen stays connecting until the call's own state takes over.
+        var opened = false
+    }
+
+    @Published private(set) var waitingCall: WaitingCall?
+
+    /// Puts up the call screen a pending Talk waits on, a widget's or
+    /// Siri's, once the app has a window to show it in.
+    func presentWaitingCallIfNeeded() {
+        if let link = widgetLaunchCoordinator.pendingLink, link.action == .talk {
+            guard let workspace = link.workspace, workspace.dashboardID == activeDashboardID else { return }
+            presentWaitingCall(owner: .widget, profile: workspace.profile)
+        } else if let intent = PendingVoiceIntentStore.shared.peekClaim()?.intent,
+                  intent.source == .siri, intent.startsFreshConversation {
+            let profile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            presentWaitingCall(owner: .siri, profile: profile.isEmpty ? activeProfile : profile)
+        }
+    }
+
+    /// Only for a Live engine on the profile already open: the classic
+    /// conversation prepares its chat before its sheet can show, and a
+    /// profile switch on the way would close the screen.
+    private func presentWaitingCall(owner: WaitingCall.Owner, profile: String) {
+        // Before its connection exists, the mode is the one kept for the
+        // dashboard Conduit is connecting to.
+        let gateway = connection == nil
+            ? activeDashboardID.flatMap { savedDashboardRegistry.dashboard(with: $0) }?.normalizedURL
+            : nil
+        guard waitingCall == nil, isSceneActive, sceneHasBeenActive, !showLogin,
+              !isVoiceCallInProgress, !isProfileSwitching, profile == activeProfile,
+              let engine = configuredLiveVoiceEngine(profile: profile, gateway: gateway) else { return }
+        // As the call's own open does: nothing else on screen or playing.
+        revealChatForWidgetLaunch()
+        messageReadAloudController.stop()
+        waitingCall = WaitingCall(engine: engine, owner: owner)
+        switch engine {
+        case .geminiLive: showGeminiLiveSheet = true
+        case .gptLive: showGPTLiveSheet = true
+        case .grokLive: showGrokLiveSheet = true
+        case .localLive: showLocalLiveSheet = true
+        }
+    }
+
+    /// The launch a waiting call screen was up for ended without opening its
+    /// call (it failed, expired or was superseded): the screen goes too.
+    func endWaitingCall(owner: WaitingCall.Owner) {
+        guard let waiting = waitingCall, waiting.owner == owner, !waiting.opened else { return }
+        waitingCall = nil
+        // A call CarPlay started meanwhile on the same engine carries on.
+        guard !isLiveVoiceCallActive(waiting.engine) else { return }
+        closeLiveVoiceConversation(waiting.engine)
+    }
+
+    /// `engine`'s call opens on the screen that waited for it, if one did.
+    private func liveCallOpens(_ engine: VoiceCallEngine) -> Bool {
+        guard waitingCall?.engine == engine else { return false }
+        waitingCall?.opened = true
+        return true
+    }
+
+    /// The opened call starts now, in the same update as its own connecting
+    /// state. False when it was called off on its screen in the meantime.
+    private func waitedCallStarts(_ engine: VoiceCallEngine) -> Bool {
+        guard waitingCall?.engine == engine, waitingCall?.opened == true else { return false }
+        waitingCall = nil
+        return true
+    }
+
+    /// A waiting call was hung up before its call opened (its screen's End
+    /// or Close): its launch is called off too, so the call doesn't start
+    /// later with nothing on screen.
+    private func callOffWaitingCall(_ engine: VoiceCallEngine) {
+        guard let waiting = waitingCall, waiting.engine == engine else { return }
+        waitingCall = nil
+        guard !waiting.opened else { return }
+        switch waiting.owner {
+        case .widget: widgetLaunchCoordinator.supersede()
+        case .siri: PendingVoiceIntentStore.shared.clear()
+        }
+    }
+
+    /// A boundary (a sign-in, a profile or server change, another call
+    /// taking over) closes a waiting call's screen but not its launch, which
+    /// goes on, or fails, as it would have with no screen up.
+    private func releaseWaitingCall(_ engine: VoiceCallEngine) {
+        if waitingCall?.engine == engine { waitingCall = nil }
+    }
+
     // MARK: Minimised live voice
 
     /// The live call whose sheet was swiped away. The call keeps running
@@ -6397,6 +6529,10 @@ final class AppState: ObservableObject {
     /// this closes an already-closed call a second time, which is a no-op:
     /// `stop()` settles the phase synchronously.
     func liveVoiceSheetDismissed(_ engine: VoiceCallEngine) {
+        // A waiting call's screen doesn't swipe away and its Close hangs up,
+        // so this is the app's screen giving way under it (to sign-in, while
+        // Conduit reconnects): its launch still opens the call when it can.
+        if let waiting = waitingCall, waiting.engine == engine, !waiting.opened { return }
         if isLiveVoiceCallActive(engine) {
             minimisedLiveVoice = engine
         } else {
@@ -14440,6 +14576,9 @@ final class AppState: ObservableObject {
             isSceneActive = true
             sceneHasBeenActive = true
             widgetLaunchCoordinator.readinessChanged()
+            // A Talk that arrived before there was a window shows its call
+            // screen now.
+            presentWaitingCallIfNeeded()
             noteActiveChatSeen(respectingMarks: true)
             // Health data the phone gathered while Conduit was away.
             Task { await runHealthSync(reason: .foreground) }
@@ -27562,9 +27701,10 @@ final class AppState: ObservableObject {
     }
 
     /// The profile's live voice mode, in the order a voice launch tries
-    /// them; nil when the profile uses classic voice.
-    func configuredLiveVoiceEngine(profile: String) -> VoiceCallEngine? {
-        let preferences = loadVoiceProfilePreferences(profile: profile)
+    /// them; nil when the profile uses classic voice. `gateway` reads it for
+    /// a server Conduit isn't connected to yet.
+    func configuredLiveVoiceEngine(profile: String, gateway: String? = nil) -> VoiceCallEngine? {
+        let preferences = loadVoiceProfilePreferences(profile: profile, gateway: gateway)
         if preferences.geminiLiveEnabled { return .geminiLive }
         if preferences.gptLiveEnabled { return .gptLive }
         if preferences.grokLiveEnabled { return .grokLive }
@@ -28339,9 +28479,10 @@ final class AppState: ObservableObject {
         return "conduit.voice.enabled.v1.\(gateway).\(profile)"
     }
 
-    private func voicePreferencesKey(profile: String) -> String {
-        let gateway = connection?.baseUrl.lowercased() ?? "disconnected"
-        return "conduit.voice.preferences.v1.\(gateway).\(profile)"
+    /// `gateway` is the server to read for when it isn't the connection's.
+    private func voicePreferencesKey(profile: String, gateway: String? = nil) -> String {
+        let server = (gateway ?? connection?.baseUrl)?.lowercased() ?? "disconnected"
+        return "conduit.voice.preferences.v1.\(server).\(profile)"
     }
 
     private var selectedTranscriptionIsAvailable: Bool {
@@ -28417,8 +28558,8 @@ final class AppState: ObservableObject {
         dashboardTicketBridge = bridge
     }
 
-    private func loadVoiceProfilePreferences(profile: String) -> VoiceProfilePreferences {
-        guard let data = defaults.data(forKey: voicePreferencesKey(profile: profile)),
+    private func loadVoiceProfilePreferences(profile: String, gateway: String? = nil) -> VoiceProfilePreferences {
+        guard let data = defaults.data(forKey: voicePreferencesKey(profile: profile, gateway: gateway)),
               let preferences = try? JSONDecoder().decode(VoiceProfilePreferences.self, from: data) else {
             return VoiceProfilePreferences()
         }

@@ -317,17 +317,25 @@ struct GPTLiveVoiceSheet: View {
     let jobs: VoiceBackgroundJobSupervisor
     /// Passed to the call screen for its own sheets; not observed.
     let appState: AppState
+    /// Up before its call opens, for a widget's Talk or Siri waiting on
+    /// Hermes (`AppState.waitingCall`).
+    var waitsToStart = false
     let onClose: () -> Void
     let onRetry: () -> Void
+
+    /// The screen shows its call connecting, without the last call's lines,
+    /// until the call's own connecting state takes over.
+    private var isWaiting: Bool { waitsToStart && !controller.isActive }
 
     var body: some View {
         LiveVoiceCallSheet(
             title: "GPT-Live",
-            billingBadge: controller.billing,
-            phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
-            statusText: statusText,
-            note: controller.limitNote ?? controller.voiceNote,
-            transcript: controller.transcript,
+            billingBadge: isWaiting ? nil : controller.billing,
+            phase: isWaiting ? .connecting : Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
+            waitsToStart: isWaiting,
+            statusText: isWaiting ? AppLocalization.string("Connecting…") : statusText,
+            note: isWaiting ? nil : controller.limitNote ?? controller.voiceNote,
+            transcript: isWaiting ? [] : controller.transcript,
             assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
             jobs: jobs,
             appState: appState,

@@ -27,6 +27,10 @@ struct LiveVoiceCallSheet: View {
     /// GPT-Live call's ChatGPT plan or API key). Nil shows nothing.
     var billingBadge: GPTLiveBilling? = nil
     let phase: LiveVoiceCallPhase
+    /// Up before its call opens, for a widget's Talk or Siri waiting on
+    /// Hermes. There is no call yet to minimise: Close hangs up, as End
+    /// does, and the screen doesn't swipe away.
+    var waitsToStart = false
     let statusText: String
     var note: String?
     let transcript: [VoiceConversationTranscriptEntry]
@@ -111,6 +115,7 @@ struct LiveVoiceCallSheet: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
+        .interactiveDismissDisabled(waitsToStart)
         .sheet(item: $selection, onDismiss: {
             // Leaving for the job's chat minimises the call.
             guard let chatID = pendingJobChat else { return }
@@ -175,6 +180,7 @@ struct LiveVoiceCallSheet: View {
 
     /// Only a running call minimises; dismissing any other closes it.
     private var isMinimisable: Bool {
+        guard !waitsToStart else { return false }
         switch phase {
         case .idle, .failed: return false
         case .connecting, .listening, .speaking, .muted, .ending: return true
@@ -186,8 +192,9 @@ struct LiveVoiceCallSheet: View {
     private var header: some View {
         HStack(spacing: 12) {
             Button {
-                // The sheet's dismissal minimises a running call.
-                dismiss()
+                // The sheet's dismissal minimises a running call; a waiting
+                // one hangs up.
+                if waitsToStart { onEnd() } else { dismiss() }
             } label: {
                 Image(systemName: isMinimisable ? "chevron.down" : "xmark")
                     .font(.body.weight(.semibold))

@@ -231,15 +231,23 @@ struct GeminiLiveVoiceSheet: View {
     /// Passed to the call screen for its own sheets; not observed.
     let appState: AppState
     var engine: Engine = .gemini
+    /// Up before its call opens, for a widget's Talk or Siri waiting on
+    /// Hermes (`AppState.waitingCall`).
+    var waitsToStart = false
     let onClose: () -> Void
     let onRetry: () -> Void
+
+    /// The screen shows its call connecting, without the last call's lines,
+    /// until the call's own connecting state takes over.
+    private var isWaiting: Bool { waitsToStart && !controller.isActive }
 
     var body: some View {
         LiveVoiceCallSheet(
             title: engine.title,
-            phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
-            statusText: statusText,
-            transcript: controller.transcript,
+            phase: isWaiting ? .connecting : Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
+            waitsToStart: isWaiting,
+            statusText: isWaiting ? AppLocalization.string("Connecting…") : statusText,
+            transcript: isWaiting ? [] : controller.transcript,
             assistantLabel: speakerLabel,
             jobs: jobs,
             appState: appState,

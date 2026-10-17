@@ -285,6 +285,8 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
+                // Siri's call shows its screen while it waits for Hermes.
+                appState.presentWaitingCallIfNeeded()
                 // A screenshot waits for Conduit to settle after connecting.
                 // Settling can end on state this view doesn't observe, so
                 // the route is retried on a short timer; the launch
@@ -355,6 +357,8 @@ struct ConduitApp: App {
         }
         switch outcome {
         case .failed(let message):
+            // Its call screen, if one came up for it, goes.
+            appState.endWaitingCall(owner: .siri)
             // A screenshot is kept when Hermes can't be reached: it is
             // attached once Hermes connects and Conduit settles.
             let request = routed?.screenQuestion
@@ -368,6 +372,7 @@ struct ConduitApp: App {
             }
         case .superseded:
             // A newer request took over while this one found Hermes gone.
+            // A call screen up for this one waits for that one instead.
             if screenQuestionOpened == false, let request = routed?.screenQuestion {
                 appState.settleSupersededScreenQuestion(
                     request,
@@ -378,7 +383,9 @@ struct ConduitApp: App {
         case .deferred:
             return routed?.screenQuestion != nil && connection.isSettling
         case .idle, .routed:
-            break
+            // A call screen that came up for a launch that didn't open its
+            // call (nothing pending now, or voice refused it) goes.
+            appState.endWaitingCall(owner: .siri)
         }
         return false
     }
@@ -403,6 +410,7 @@ struct ConduitApp: App {
         guard let expired = pendingVoiceIntents.expireClaimIfCurrent(claim) else {
             return
         }
+        appState.endWaitingCall(owner: .siri)
         if expired.source == .siri {
             appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
         } else if let request = expired.screenQuestion {

@@ -128,8 +128,9 @@ extension AppState {
     /// and Live sheets stay: one up is a call in progress, which prepare
     /// already refuses for anything but a plain open. This runs before the
     /// outcome is known on purpose: Talk's call screen can't present over
-    /// them, and a launch that fails reports it over the chat.
-    private func revealChatForWidgetLaunch() {
+    /// them, and a launch that fails reports it over the chat. A call
+    /// screen up early for its launch (Talk, Siri) needs the same room.
+    func revealChatForWidgetLaunch() {
         dismissSidebarDrawer()
         requestSettingsDismissal()
         showModelPicker = false

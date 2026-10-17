@@ -137,6 +137,8 @@ final class WidgetLaunchCoordinator {
     }
 
     var hasPendingRequest: Bool { request != nil }
+    /// The link still waiting to be carried out, if any.
+    var pendingLink: WidgetLaunchLink? { request?.link }
 
     func receive(_ link: WidgetLaunchLink) {
         if let request, request.link == link, request.inFlight { return }
