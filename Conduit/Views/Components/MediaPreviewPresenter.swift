@@ -202,7 +202,12 @@ final class MediaPreviewPresenter {
         sessions[key] = session
         controller.dataSource = session
         controller.delegate = session
-        controller.modalPresentationStyle = .fullScreen
+        // Over, not in place of, the screens under it: a `.fullScreen`
+        // preview takes the app's views out of the window, and closing it
+        // put them back, which re-laid out every live tab. Under the
+        // Artifacts page that re-layout of the Chats list never settled and
+        // the watchdog killed the app.
+        controller.modalPresentationStyle = .overFullScreen
         presenter.present(controller, animated: true) {
             session.didPresent = true
         }
