@@ -675,9 +675,9 @@ extension TranscriptPerformanceFixtureTests {
                 phases["text", default: []].append((CACurrentMediaTime() - start) * 1000)
 
                 start = CACurrentMediaTime()
-                let heights = views.map { view in
+                let heights = views.map { view -> CGFloat in
                     let measured: UIView = (view.subviews.first as? UITextView) ?? view
-                    return ceil(measured.sizeThatFits(CGSize(width: 366, height: .greatestFiniteMagnitude)).height)
+                    return ceil(measured.sizeThatFits(CGSize(width: 366, height: CGFloat.greatestFiniteMagnitude)).height)
                 }
                 phases["measure", default: []].append((CACurrentMediaTime() - start) * 1000)
 
@@ -704,7 +704,7 @@ extension TranscriptPerformanceFixtureTests {
             let medians = ["create", "text", "measure", "draw", "remove"].map { key in
                 (key, Self.median(Array((phases[key] ?? []).dropFirst())))
             }
-            let total = medians.reduce(0) { $0 + $1.1 }
+            let total = medians.reduce(0.0) { $0 + $1.1 }
             print("SCROLL_PROBE kinds \(kind.name) total=\(Self.ms(total)) "
                 + medians.map { "\($0.0)=\(Self.ms($0.1))" }.joined(separator: " "))
         }
