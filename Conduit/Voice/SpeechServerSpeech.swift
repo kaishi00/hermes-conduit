@@ -50,6 +50,8 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     /// Whether the running response has sent audio: audio with no
     /// transcript can't be checked, so it fails like a wrong one.
     private var responseHadAudio = false
+    /// Whether any sentence was sent to be spoken.
+    private var askedToSpeak = false
     private var finishRequested = false
     private var started = false
     private var receivedPCM = false
@@ -206,6 +208,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         speaking = words
         spokenTranscript = ""
         responseHadAudio = false
+        askedToSpeak = true
         send(Self.userItem(words))
         send(["type": "response.create"])
     }
@@ -219,7 +222,13 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         speaking = nil
         spokenTranscript = ""
         speakNext()
-        if finishRequested, speaking == nil, queued.isEmpty { complete(.success(receivedPCM)) }
+        guard finishRequested, speaking == nil, queued.isEmpty else { return }
+        // Asked to speak and sent no audio: the reply goes to this iPhone.
+        if askedToSpeak, !receivedPCM {
+            fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.")))
+        } else {
+            complete(.success(receivedPCM))
+        }
     }
 
     private func failNotReadingBack() {

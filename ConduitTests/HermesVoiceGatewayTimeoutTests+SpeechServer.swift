@@ -266,6 +266,20 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(cancelled)
     }
 
+    func testSpeechServerSpeechThatSendsNoAudioFails() async throws {
+        let socket = SpeechServerSocket()
+        let stream = SpeechServerSpeechStream(socket: socket, onStart: { _ in }, onPCM16: { _, _ in })
+        try await stream.append("Hello.")
+        let finishing = Task { try await stream.finish() }
+        let sent = await Self.speechServerEventually { socket.sentTypes.contains("response.create") }
+        XCTAssertTrue(sent)
+        socket.deliver(#"{"type":"response.done"}"#)
+        do {
+            _ = try await finishing.value
+            XCTFail("A silent response must fail so the iPhone speaks the reply")
+        } catch VoiceAudioError.unavailable {}
+    }
+
     func testSpeechServerSpeechSplitsSentencesAndComparesLoosely() {
         XCTAssertEqual(SpeechServerSpeechStream.splitSentences("One. Two").ready, "One.")
         XCTAssertEqual(SpeechServerSpeechStream.splitSentences("One. Two").rest, " Two")
