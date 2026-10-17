@@ -182,7 +182,7 @@ final class GeminiLiveConversationController: ObservableObject {
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
 
-    static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
+    static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links, and places as map or place cards. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
 
     /// A Watch call finds and reads chats (through its grant, or the phone)
     /// but can't open one: the phone isn't in view.

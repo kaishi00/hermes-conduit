@@ -3518,6 +3518,12 @@ final class AppState: ObservableObject {
         supervisor.openChat = { [weak self] match in
             self?.openChatFromLiveCall(match.sessionID) ?? false
         }
+        supervisor.onScreenCardShown = { [weak self] card in
+            guard let self, let recorder = self.voiceCallRecorder else { return }
+            self.captureVoiceCall()
+            recorder.screen(card)
+            self.checkpointVoiceCall(recorder)
+        }
         supervisor.onThreadTurnStarted = { [weak self] job, thread in
             guard let self, let recorder = self.voiceCallRecorder else { return }
             self.captureVoiceCall()

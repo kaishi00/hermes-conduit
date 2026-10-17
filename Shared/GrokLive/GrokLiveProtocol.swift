@@ -313,14 +313,6 @@ enum GrokLiveProtocol {
                 return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: [GeminiLiveProtocol.FunctionCall.invalidArgumentsKey: "true"])
             }
         }
-        var arguments: [String: String] = [:]
-        for (key, value) in parsed {
-            if let string = value as? String {
-                arguments[key] = string
-            } else if let number = value as? NSNumber {
-                arguments[key] = number.stringValue
-            }
-        }
-        return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: arguments)
+        return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: GeminiLiveProtocol.FunctionCall.stringArguments(parsed))
     }
 }

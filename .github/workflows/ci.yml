@@ -103,6 +103,12 @@ jobs:
         # plugin release on hermes-conduit-notifier main.
         run: python3 scripts/check-plugin-version.py --repo-root .
 
+      - name: Card schema matches the plugin's
+        # Conduit/Cards/card-schema.json and the shared test vectors are
+        # copies of hermes-conduit-notifier main's cards/, so the two sides
+        # read one definition.
+        run: python3 scripts/check-card-schema.py --repo-root .
+
       - name: Select the hosted smoke suite
         id: smoke
         run: |
