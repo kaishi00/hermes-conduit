@@ -108,10 +108,10 @@ enum MarkdownProseRun {
         }
     }
 
-    /// TextKit puts a paragraph's line spacing under its last line when
-    /// another paragraph follows in the same text view, where a block's
-    /// own view ended without it. The gaps take it back out.
-    static func gap(_ spacing: CGFloat, below lineSpacing: CGFloat) -> CGFloat {
+    /// TextKit puts a paragraph's line spacing above its first line when
+    /// another paragraph comes before it in the same text view, where the
+    /// paragraph's own view began without it. The gaps take it back out.
+    static func gap(_ spacing: CGFloat, above lineSpacing: CGFloat) -> CGFloat {
         max(1, spacing - lineSpacing)
     }
 
@@ -198,7 +198,6 @@ enum MarkdownProseRun {
 
         func listItems(_ items: [String], ordered: Bool) -> [Paragraph] {
             let markerColumn = ChatTypography.dimension(ordered ? 24 : 12, chatSize: chatTextSize)
-            let textStart = markerColumn + Spacing.listMarkerToText
             return items.enumerated().map { (index, item) -> Paragraph in
                 let marker = ordered ? "\(index + 1)." : "•"
                 let markerAttributes: [NSAttributedString.Key: Any] = [
@@ -210,7 +209,10 @@ enum MarkdownProseRun {
                 // The marker sits right-aligned in its column, as the list
                 // view's trailing-aligned marker frame put it, and a tab
                 // takes the text to where that view's text column began.
-                // Wrapped lines start there too.
+                // Wrapped lines start there too. A marker wider than its
+                // column ("10." at a large text size) moves its item's
+                // text along rather than past the next tab interval.
+                let textStart = max(markerColumn, markerWidth) + Spacing.listMarkerToText
                 style.firstLineHeadIndent = max(0, markerColumn - markerWidth)
                 style.headIndent = textStart
                 style.tabStops = [NSTextTab(textAlignment: .natural, location: textStart, options: [:])]
@@ -227,7 +229,7 @@ enum MarkdownProseRun {
                     style: style,
                     spacingAfter: isLast
                         ? 0
-                        : gap(Spacing.betweenListItems, below: Spacing.listItemLineSpacing)
+                        : gap(Spacing.betweenListItems, above: Spacing.listItemLineSpacing)
                 )
             }
         }
@@ -256,9 +258,9 @@ enum MarkdownProseRun {
                 assertionFailure("only blocks that join a prose run reach its text")
                 blockParagraphs = []
             }
-            guard !blockParagraphs.isEmpty else { continue }
+            guard let first = blockParagraphs.first else { continue }
             if let above = paragraphs.indices.last {
-                paragraphs[above].spacingAfter = gap(gapAbove, below: paragraphs[above].style.lineSpacing)
+                paragraphs[above].spacingAfter = gap(gapAbove, above: first.style.lineSpacing)
                 paragraphs[above].endsBlock = true
             }
             paragraphs.append(contentsOf: blockParagraphs)

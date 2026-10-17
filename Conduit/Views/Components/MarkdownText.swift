@@ -45,6 +45,7 @@ struct MarkdownText: View {
     @Environment(\.chatTextSize) private var chatTextSize
     @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
 
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
@@ -80,9 +81,11 @@ struct MarkdownText: View {
         // A settled answer in the chat draws its prose runs in one text
         // view each. A streaming reply keeps a view per block, so a new
         // delta never re-lays out the paragraphs above it, and so does
-        // every answer under VoiceOver, which stops at each block's view.
+        // every answer under VoiceOver or Switch Control, which step
+        // through each block's view.
         let proseRuns = joinsProseRuns
             && !voiceOverEnabled
+            && !switchControlEnabled
             && !isStreaming
             && newestCharacterOpacities.isEmpty
             && rendering.selectableText == nil

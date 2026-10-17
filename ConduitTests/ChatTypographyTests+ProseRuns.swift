@@ -143,7 +143,10 @@ extension ChatTypographyTests {
         return window
     }
 
-    /// Where each landmark's first character is drawn, in window points.
+    /// Where each landmark's first character is drawn, in window points:
+    /// the glyph's leading edge, and the top of the caret in front of it.
+    /// (A caret sits a point before a glyph inside a line, but at a text
+    /// view's leading edge it can't, so its x would differ by a point.)
     @MainActor
     private func landmarkOrigins(_ landmarks: [String], in root: UIView) -> [String: CGPoint] {
         var origins: [String: CGPoint] = [:]
@@ -153,10 +156,13 @@ extension ChatTypographyTests {
             for landmark in landmarks where origins[landmark] == nil {
                 let location = text.range(of: landmark).location
                 guard location != NSNotFound,
-                      let position = textView.position(from: textView.beginningOfDocument, offset: location)
+                      let start = textView.position(from: textView.beginningOfDocument, offset: location),
+                      let end = textView.position(from: start, offset: 1),
+                      let glyph = textView.textRange(from: start, to: end)
                 else { continue }
-                let caret = textView.caretRect(for: position)
-                origins[landmark] = textView.convert(caret.origin, to: nil)
+                let caret = textView.caretRect(for: start)
+                let x = textView.firstRect(for: glyph).minX
+                origins[landmark] = textView.convert(CGPoint(x: x, y: caret.minY), to: nil)
             }
         }
         return origins

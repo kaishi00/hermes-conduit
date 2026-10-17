@@ -277,9 +277,59 @@ extension TranscriptPerformanceFixtureTests {
         ))
         print("SCROLL_PROBE setup " + Self.mountedSpan(in: scrollView))
 
+        // Who resized the content or moved the offset inside a frame.
+        final class ProbeLayoutLog {
+            var frame = -1
+            var sizes: [(frame: Int, line: String)] = []
+            var moves: [String] = []
+        }
+        let layoutLog = ProbeLayoutLog()
+        func describeMode() -> String {
+            "mode=\(engine.mode) dragging=\(engine.isDragging)"
+        }
+        let layoutObservations = [
+            scrollView.observe(\.contentSize, options: [.old, .new]) { view, change in
+                MainActor.assumeIsolated {
+                    layoutLog.sizes.append((layoutLog.frame, String(
+                        format: "size %.0f -> %.0f offset=%.0f bottomDistance=%.0f ",
+                        change.oldValue?.height ?? -1, change.newValue?.height ?? -1, view.contentOffset.y,
+                        view.contentSize.height - view.bounds.height + view.adjustedContentInset.bottom - view.contentOffset.y
+                    ) + describeMode()))
+                }
+            },
+            scrollView.observe(\.contentOffset, options: [.old, .new]) { view, change in
+                guard let old = change.oldValue?.y, let new = change.newValue?.y, abs(new - old) > 100 else { return }
+                MainActor.assumeIsolated {
+                    let stack = Thread.callStackSymbols.dropFirst(2).prefix(24).compactMap { symbol -> String? in
+                        let parts = symbol.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+                        guard parts.count == 4 else { return nil }
+                        return String(parts[1]) + " " + String(parts[3].prefix(110))
+                    }
+                    layoutLog.moves.append(String(
+                        format: "frame=%ld offset %.0f -> %.0f size=%.0f ", layoutLog.frame, old, new, view.contentSize.height
+                    ) + describeMode() + "\n" + stack.map { "SCROLL_PROBE trace   " + $0 }.joined(separator: "\n"))
+                }
+            }
+        ]
+        defer { layoutObservations.forEach { $0.invalidate() } }
+        func reportLayout(_ phase: String, _ frames: [ProbeFrame]) {
+            let jumpFrames = Set(frames.filter { abs($0.offsetError) > 0.5 }.map(\.index))
+            let near = layoutLog.sizes.filter { size in jumpFrames.contains { abs($0 - size.frame) <= 1 } }
+            print("SCROLL_PROBE trace \(phase) sizeChanges=\(layoutLog.sizes.count) bigMoves=\(layoutLog.moves.count)")
+            for size in near.prefix(30) {
+                print("SCROLL_PROBE trace \(phase) frame=\(size.frame) \(size.line)")
+            }
+            for move in layoutLog.moves.prefix(4) {
+                print("SCROLL_PROBE trace \(phase) " + move)
+            }
+            layoutLog.sizes = []
+            layoutLog.moves = []
+        }
+
         // One display frame: the finger moves the content, then the frame's
         // layout and render commit run, then whatever the main queue holds.
         func frame(_ index: Int, to offsetY: CGFloat) -> ProbeFrame {
+            layoutLog.frame = index
             let before = ProbeCounters.read()
             let heightBefore = scrollView.contentSize.height
             let start = CACurrentMediaTime()
@@ -313,6 +363,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("up-new-rows", upFrames)
+        reportLayout("up-new-rows", upFrames)
         print("SCROLL_PROBE up-new-rows end " + Self.mountedSpan(in: scrollView))
 
         // Back down over the same rows.
@@ -325,6 +376,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("down-seen-rows", downFrames)
+        reportLayout("down-seen-rows", downFrames)
         print("SCROLL_PROBE down-seen-rows end " + Self.mountedSpan(in: scrollView))
 
         // Up again over rows that have been shown once.
@@ -337,6 +389,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("up-seen-rows", againFrames)
+        reportLayout("up-seen-rows", againFrames)
         print("SCROLL_PROBE up-seen-rows end " + Self.mountedSpan(in: scrollView))
 
         // Still: no finger, nothing streaming.
