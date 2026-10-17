@@ -116,9 +116,9 @@ enum VoiceSpokenCommands {
         }
     }
 
-    /// Asking a live call to hang up (English). These end a GPT-Live call
-    /// alongside the user's end phrases, as end_conversation ends a Gemini
-    /// or Grok call when the user asks.
+    /// Asking a live call to hang up (English). These end a live call
+    /// (GPT-Live, Gemini, Grok) alongside the user's end phrases, even when
+    /// the model doesn't close it itself.
     static let hangUpPhrases = [
         "hang up", "end the call", "end this call", "end call",
         "end the conversation", "end this conversation", "close the call",

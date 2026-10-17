@@ -2844,16 +2844,18 @@ final class WatchDirectCallModel: ObservableObject {
     /// no turn is coming (the transcript arrived after the reply, or the
     /// model didn't answer), once the words went quiet with the model not
     /// mid-turn. A quiet utterance must end like a sentence: a pause
-    /// mid-sentence ("By" of "By the way…") never ends the call.
+    /// mid-sentence ("By" of "By the way…") never ends the call. Grok's
+    /// transcripts are whole utterances already, punctuated or not.
+    /// Asking to hang up ("end call") ends it too.
     private func endIfUserSaidGoodbye(finished: Bool) {
         guard isActive, endRequestedAt == nil, !endPhrases.isEmpty, let line = exchangeUserLine,
               transcript.indices.contains(line) else { return }
         let text = transcript[line].text
         if !finished {
             guard !modelTurnActive, let heard = lastUserSpeechAt, now - heard >= Self.quietGoodbyeDelay,
-                  Self.endsAnUtterance(text) else { return }
+                  engine == .grok || Self.endsAnUtterance(text) else { return }
         }
-        guard VoiceSpokenCommands.matchesSpokenCommand(text, phrases: endPhrases) else { return }
+        guard VoiceSpokenCommands.asksToEndCall(text, endPhrases: endPhrases) else { return }
         exchangeUserLine = nil
         WatchCallLog.shared.note("directGoodbyeHeard", ["afterTurn": finished])
         requestEnd()

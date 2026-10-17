@@ -38,6 +38,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     var onConnectionReplaced: (@MainActor () -> Void)?
     private(set) var connectionGeneration = 0
     var stateDescription: String { "\(state)" }
+    /// xAI transcribes the user's speech once an utterance is complete.
+    var transcribesWholeUtterances: Bool { true }
 
     private let client: GrokLiveConnecting
     private let instructions: String

@@ -117,6 +117,7 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)?
     var isReady = false
     var connectionGeneration = 0
+    var transcribesWholeUtterances = false
     private(set) var started = 0
     private(set) var stopped = 0
     private(set) var sent: [[String: Any]] = []
@@ -2742,6 +2743,48 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.inputTranscription("By"))
         try? await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(controller.isEnding, "an unfinished utterance is never an end")
+        controller.stop()
+    }
+
+    func testGeminiLiveAskingToHangUpEndsTheCall() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        // Not in the end phrases, but asking to hang up all the same.
+        session.onEvent?(.inputTranscription("Okay, end call."))
+        session.onEvent?(.outputTranscription("Talk soon!"))
+        session.onEvent?(.turnComplete)
+        XCTAssertTrue(controller.isEnding)
+        controller.stop()
+    }
+
+    func testGeminiLiveEmptiedEndPhrasesKeepHangUpRequestsFromEnding() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: [], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("End call."))
+        session.onEvent?(.outputTranscription("Sure."))
+        session.onEvent?(.turnComplete)
+        XCTAssertFalse(controller.isEnding, "an emptied list turns ending by voice off")
+        controller.stop()
+    }
+
+    func testGrokLiveUnpunctuatedLateGoodbyeStillEnds() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["bye"], clock: Date.init)
+        session.transcribesWholeUtterances = true
+        controller.lateEndPhraseDelay = 0.01
+        await controller.start()
+        session.becomeReady()
+
+        // xAI's transcript of the whole utterance lands after the reply,
+        // with no punctuation.
+        session.onEvent?(.outputTranscription("Bye!"))
+        session.onEvent?(.turnComplete)
+        session.onEvent?(.inputTranscription("bye"))
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(controller.isEnding)
         controller.stop()
     }
 

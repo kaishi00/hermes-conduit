@@ -178,7 +178,7 @@ final class GeminiLiveConversationController: ObservableObject {
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
     \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? watchFindChatParagraph + "\n" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
-    \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
+    \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye to you, or asks to end, hang up or close the call, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
 
@@ -692,12 +692,12 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The profile's end phrases, read once when the conversation starts.
     private var activeEndPhrases: [String] = []
 
-    /// A finished user utterance that is exactly one of the profile's end
-    /// phrases ends the conversation, even if the model doesn't call
-    /// end_conversation.
+    /// A finished user utterance that is one of the profile's end phrases,
+    /// or asks to hang up ("end call"), ends the conversation, even if the
+    /// model doesn't call end_conversation.
     private func endIfUserSaidGoodbye(_ entryID: UUID) {
         guard endRequestedAt == nil, let entry = transcript.first(where: { $0.id == entryID }) else { return }
-        guard VoiceSpokenCommands.matchesSpokenCommand(entry.text, phrases: activeEndPhrases) else { return }
+        guard VoiceSpokenCommands.asksToEndCall(entry.text, endPhrases: activeEndPhrases) else { return }
         requestEnd()
     }
 
@@ -724,14 +724,16 @@ final class GeminiLiveConversationController: ObservableObject {
     func endIfUnansweredGoodbye() {
         guard isActive, endRequestedAt == nil, !modelTurnActive,
               let exchangeUserEntry, let entry = transcript.first(where: { $0.id == exchangeUserEntry }),
-              Self.endsAnUtterance(entry.text),
-              VoiceSpokenCommands.matchesSpokenCommand(entry.text, phrases: activeEndPhrases) else { return }
+              session?.transcribesWholeUtterances == true || Self.endsAnUtterance(entry.text),
+              VoiceSpokenCommands.asksToEndCall(entry.text, endPhrases: activeEndPhrases) else { return }
         requestEnd(awaitingReply: true)
     }
 
     /// Gemini closes a finished utterance's transcript with sentence
     /// punctuation; a chunk that stops without it ("By" of "By the way…")
-    /// may be a pause mid-sentence, which must never end the call.
+    /// may be a pause mid-sentence, which must never end the call. Grok's
+    /// transcripts are whole utterances already, punctuated or not
+    /// (`transcribesWholeUtterances`), so they skip this.
     nonisolated static func endsAnUtterance(_ text: String) -> Bool {
         guard let last = text.trimmingCharacters(in: .whitespacesAndNewlines).last else { return false }
         return ".!?。！？".contains(last)

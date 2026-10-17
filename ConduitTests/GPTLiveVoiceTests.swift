@@ -368,6 +368,9 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGPTLiveBriefingBuildsTheRulesPersonaAndMemorySections() {
         let plain = GPTLiveConversationController.briefing()
         XCTAssertTrue(plain.contains("[Conduit voice app rules."))
+        // Simple talk stays on the call; only real work is delegated.
+        XCTAssertTrue(plain.contains("Answer yourself, without delegating"))
+        XCTAssertTrue(plain.contains("Never say something was done"))
         XCTAssertFalse(plain.contains("<hermes_persona>"))
         XCTAssertFalse(plain.contains("<hermes_memory>"))
 

@@ -23,6 +23,10 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var connectionGeneration: Int { get }
     /// The session's state, for logs.
     var stateDescription: String { get }
+    /// True when each input transcription is a whole finished utterance
+    /// (Grok Live's come once the user stopped), so it needn't end like a
+    /// sentence to count as finished. Gemini's arrive in pieces.
+    var transcribesWholeUtterances: Bool { get }
     func start()
     func stop()
     /// `onSent` runs once the socket took the message; `onFailure` when it
@@ -39,6 +43,7 @@ extension GeminiLiveSessionControlling {
         set {}
     }
     var stateDescription: String { "" }
+    var transcribesWholeUtterances: Bool { false }
     func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)
