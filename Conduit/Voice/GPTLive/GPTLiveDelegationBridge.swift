@@ -35,6 +35,9 @@
 //  request that went, word for word: the model's summary of them can lose
 //  their start or be a stray word ("Hermes").
 //
+//  "Look up: <query>" runs a quick web search on the Hermes host's backend
+//  and answers on the delegation, never as a Hermes job.
+//
 //  Job updates with no delegation left to answer (a job started before a
 //  reconnect, a job waiting for input) go out as session context, only
 //  while the conversation is idle.
@@ -70,6 +73,8 @@ final class GPTLiveDelegationBridge {
     }
 
     private let supervisor: GeminiLiveJobSupervising
+    /// The Hermes host's web search, for "Look up:" delegations.
+    private let webSearch: GeminiLiveWebSearching?
     /// Open delegations, keyed by the job answering them.
     private var openDelegations: [UUID: String] = [:]
     /// Delegations already seen, so a repeated event never starts a second job.
@@ -137,8 +142,9 @@ final class GPTLiveDelegationBridge {
     /// A second request for the last reply within this long is the same one.
     static let readBackWindow: TimeInterval = 10
 
-    init(supervisor: GeminiLiveJobSupervising, now: @escaping () -> Date = Date.init) {
+    init(supervisor: GeminiLiveJobSupervising, webSearch: GeminiLiveWebSearching? = nil, now: @escaping () -> Date = Date.init) {
         self.supervisor = supervisor
+        self.webSearch = webSearch
         self.now = now
     }
 
@@ -286,6 +292,16 @@ final class GPTLiveDelegationBridge {
         // user's earlier chats, looked up, opened and read by Conduit. None
         // is work for Hermes, and none waits for the user's OK.
         let markedWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        // "Look up: weather in Boston": a quick web search on the Hermes
+        // host's backend, answered on the delegation in seconds rather than
+        // as a Hermes job that searches and writes it up first.
+        if let query = Self.lookUpMarker(in: markedWords) {
+            spokenWords?.settleWords(.delegation(id))
+            // GPT-Live can leave a delegation's text empty: the user's own words then.
+            let reply = await lookUpReply(query.isEmpty ? spoken : query)
+            guard callGeneration == call, !isEnding else { return [] }
+            return [.delegationReply(delegationID: id, text: reply, channel: .commentary)]
+        }
         // "Health: {...}": the user's shared data, read straight from the
         // host by Conduit, not a Hermes job.
         if let marked = VoiceHostTool.marked(in: markedWords, tools: supervisor.hostTools) {
@@ -1169,6 +1185,28 @@ final class GPTLiveDelegationBridge {
     static func modeMarker(in request: String) -> Bool? {
         guard let range = request.range(of: #"^\s*mode\s*:\s*(ask first|send directly)\b"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return request[range].lowercased().contains("ask first")
+    }
+
+    /// "Look up: weather in Boston" (or "Lookup:") at the very start of a
+    /// delegation: the search query, "" when none came.
+    static func lookUpMarker(in request: String) -> String? {
+        guard let range = request.range(of: #"^\s*look\s*-?\s*up\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        return request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A "Look up:" delegation's answer, as Gemini's web_search gets it.
+    /// Not UI copy, so not localized.
+    private func lookUpReply(_ query: String) async -> String {
+        guard !query.isEmpty else { return "[No search query came with the lookup. Ask the user what to look up.]" }
+        guard let webSearch else { return "[Web lookups aren't available on this call. Delegate it to Hermes instead.]" }
+        do {
+            let results = try await webSearch.webSearch(query: query)
+            guard !results.isEmpty else { return "[\(GeminiLiveToolBridge.lookupAnswerNote)]\nNo results." }
+            return "[\(GeminiLiveToolBridge.lookupAnswerNote)]\n\(GeminiLiveToolBridge.searchSummary(results))"
+        } catch {
+            // The host's own reason lets the model tell the user what's wrong.
+            return "[The lookup failed: \(error.localizedDescription) Tell the user in a few words.]"
+        }
     }
 
     /// "Find chat: GPU setup" at the very start of a delegation: the words

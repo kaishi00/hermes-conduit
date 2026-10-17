@@ -2295,6 +2295,9 @@ final class AppState: ObservableObject {
     /// starts and dropped when it closes.
     private var gptLivePersonality: String?
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
+    /// Whether the next GPT-Live call does its own web lookups ("Look up:")
+    /// on the host's search backend, read when it starts.
+    private var gptLiveWebLookUps = false
 
     /// The host text the live modes hold between a call's start and close,
     /// by field.
@@ -2361,6 +2364,7 @@ final class AppState: ObservableObject {
                         + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                        + (self?.gptLiveWebLookUps == true ? GPTLiveConversationController.webLookUpRule : "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     // A call Hermes made opens with its brief instead (#449),
@@ -2372,9 +2376,13 @@ final class AppState: ObservableObject {
             availability: { [weak self] in
                 let status = try await client.availability()
                 if status.isAvailable, let self {
+                    // Off only when the user turned web lookups off.
+                    let wantsLookUps = self.geminiLiveSearchMode != .off
+                    async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
                     self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
                     self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
                     await self.prepareVoiceHostTools(for: .gptLive)
+                    self.gptLiveWebLookUps = await lookUps
                 }
                 return status
             },
@@ -2389,11 +2397,13 @@ final class AppState: ObservableObject {
                     + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
                     + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                    + (self?.gptLiveWebLookUps == true ? GPTLiveConversationController.webLookUpRule : "")
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                     + (self?.liveVoiceStyle.instructions ?? "")
             },
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
             supervisor: self.voiceBackgroundJobSupervisor,
+            webSearch: hostContext,
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -2487,6 +2497,7 @@ final class AppState: ObservableObject {
     /// between conversations, nor once nothing presents one.
     private func dropGPTLiveHostContext() {
         gptLiveMemoryContext = nil
+        gptLiveWebLookUps = false
         gptLivePersonality = nil
     }
 

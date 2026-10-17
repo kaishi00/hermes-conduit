@@ -371,6 +371,8 @@ extension HermesVoiceGatewayTimeoutTests {
         // Simple talk stays on the call; only real work is delegated.
         XCTAssertTrue(plain.contains("Answer yourself, without delegating"))
         XCTAssertTrue(plain.contains("Never say something was done"))
+        XCTAssertFalse(plain.contains("Look up:"), "web lookups are added only when the host has a search backend")
+        XCTAssertTrue(GPTLiveConversationController.webLookUpRule.contains("delegate \"Look up:\""))
         XCTAssertFalse(plain.contains("<hermes_persona>"))
         XCTAssertFalse(plain.contains("<hermes_memory>"))
 
@@ -600,6 +602,37 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(settledChannel, .speakable)
         XCTAssertTrue(text.contains("All green."))
         XCTAssertNil(supervisor.takePendingNotice(), "The result is announced once, on the delegation")
+    }
+
+    func testGPTLiveLookUpSearchesTheWebOnTheDelegationWithoutAHermesJob() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let search = FakeGeminiLiveWebSearch()
+        search.results = [GeminiLiveWebResult(title: "Boston weather", url: "https://example.com", snippet: "Sunny, 18°C")]
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor, webSearch: search)
+
+        let reply = await bridge.handleDelegation(id: "del_1", request: "Look up: weather in Boston tomorrow")
+        XCTAssertEqual(search.queries, ["weather in Boston tomorrow"])
+        XCTAssertTrue(fake.submissions.isEmpty, "a lookup is never a Hermes job")
+        guard case .delegationReply("del_1", let text, .commentary)? = reply.first, reply.count == 1 else {
+            return XCTFail("Expected the results on the delegation, got \(reply)")
+        }
+        XCTAssertTrue(text.contains("Sunny, 18°C"))
+        XCTAssertTrue(text.contains(GeminiLiveToolBridge.lookupAnswerNote))
+
+        // The host's failure is told, not turned into a job.
+        search.error = URLError(.timedOut)
+        let failed = await bridge.handleDelegation(id: "del_2", request: "lookup: news today")
+        guard case .delegationReply("del_2", let failure, _)? = failed.first else { return XCTFail("\(failed)") }
+        XCTAssertTrue(failure.contains("The lookup failed"))
+        XCTAssertTrue(fake.submissions.isEmpty)
+    }
+
+    func testGPTLiveLookUpMarkerNeedsItsOwnStart() {
+        XCTAssertEqual(GPTLiveDelegationBridge.lookUpMarker(in: " Look up: the score"), "the score")
+        XCTAssertEqual(GPTLiveDelegationBridge.lookUpMarker(in: "Look-up:"), "")
+        XCTAssertNil(GPTLiveDelegationBridge.lookUpMarker(in: "please look up: the score"))
+        XCTAssertNil(GPTLiveDelegationBridge.lookUpMarker(in: "Look up the score"))
     }
 
     func testGPTLiveResultOfAJobWhoseCallEndedArrivesAsIdleSessionContext() async {
