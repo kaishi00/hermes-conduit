@@ -42,7 +42,9 @@ struct SpeechServerVoiceSettingsView: View {
                     lastAskedRow(status.lastRequestAt)
                     HStack {
                         Button(role: .destructive) { Task { await rotate() } } label: {
-                            if isRotating { ProgressView() } else { Text(AppLocalization.string("Make a new key")) }
+                            if isRotating {
+                                ProgressView().accessibilityLabel(Text(AppLocalization.string("Making a new key…")))
+                            } else { Text(AppLocalization.string("Make a new key")) }
                         }
                         .accessibilityLabel(Text(AppLocalization.string("Make a new key")))
                         .disabled(isRotating)

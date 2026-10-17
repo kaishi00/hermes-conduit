@@ -556,7 +556,16 @@ struct VoiceSettingsView: View {
             return setupStep(title, detail: AppLocalization.string("On this iPhone"), state: .done)
         }
         if resolvedSpeechOutput == .speechServer {
-            return setupStep(title, detail: AppLocalization.string("Your speech server"), state: .done)
+            let waiting = AppLocalization.string("Your speech server. Give it the model address and key shown under Assistant speech.")
+            guard let voice = service.speechServerVoice else {
+                return setupStep(title, detail: waiting, state: .pending)
+            }
+            if voice.pluginMissing || !voice.available || voice.modelAddress == nil {
+                return setupStep(title, detail: voice.reason ?? waiting, state: .attention)
+            }
+            return voice.lastRequestAt == nil
+                ? setupStep(title, detail: waiting, state: .pending)
+                : setupStep(title, detail: AppLocalization.string("Your speech server"), state: .done)
         }
         let name = providerName(service.snapshot.selectedTTSProvider, kind: .tts)
         if service.snapshot.capability.supportsSpeech {
@@ -1628,6 +1637,9 @@ struct VoiceSettingsView: View {
         microphonePermission = AVAudioApplication.shared.recordPermission
         await service.reload()
         values = service.snapshot.values
+        if resolvedSpeechOutput == .speechServer, service.speechServerVoice == nil {
+            _ = await service.speechServerVoiceStatus()
+        }
     }
 
     private func save(value: String, field: VoiceTypedField) async {

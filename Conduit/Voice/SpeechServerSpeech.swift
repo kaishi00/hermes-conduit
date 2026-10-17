@@ -47,6 +47,9 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     /// The words the running response should say, and what it said so far.
     private var speaking: String?
     private var spokenTranscript = ""
+    /// Whether the running response has sent audio: audio with no
+    /// transcript can't be checked, so it fails like a wrong one.
+    private var responseHadAudio = false
     private var finishRequested = false
     private var started = false
     private var receivedPCM = false
@@ -202,12 +205,14 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         let words = queued.removeFirst()
         speaking = words
         spokenTranscript = ""
+        responseHadAudio = false
         send(Self.userItem(words))
         send(["type": "response.create"])
     }
 
     private func responseFinished() {
-        if let words = speaking, !Self.isReadingBack(spokenTranscript, words: words) {
+        if let words = speaking, !Self.isReadingBack(spokenTranscript, words: words)
+            || (responseHadAudio && Self.comparable(spokenTranscript).isEmpty) {
             failNotReadingBack()
             return
         }
@@ -283,6 +288,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             }
             try onPCM16(pcm, Self.sampleRate)
             receivedPCM = true
+            responseHadAudio = true
         case "response.output_audio_transcript.delta", "response.audio_transcript.delta":
             guard let delta = event["delta"] as? String, let words = speaking else { return }
             spokenTranscript += delta

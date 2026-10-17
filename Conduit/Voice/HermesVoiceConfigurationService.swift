@@ -142,6 +142,9 @@ final class HermesVoiceConfigurationService: ObservableObject {
     @Published private(set) var errorMessage: String?
     /// The last speech server status read for this profile, for the setup step.
     @Published private(set) var speechServer: SpeechServerStatus?
+    /// The last read of what the speech server needs to speak the replies,
+    /// for the Assistant voice step.
+    @Published private(set) var speechServerVoice: SpeechServerVoiceStatus?
 
     private let requester: VoiceConfigurationRequesting
     let profile: String
@@ -199,6 +202,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         snapshot = parsed
         // The speech server step refreshes with the rest once it was shown.
         if speechServer != nil { _ = await speechServerStatus() }
+        if speechServerVoice != nil { _ = await speechServerVoiceStatus() }
         // Toolset config was added after some public gateways. Its absence is
         // a capability limitation, not a failed text-chat connection.
         if (try? stt.get()) == nil && (try? tts.get()) == nil {
@@ -386,15 +390,18 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// What the speech server needs to speak Classic's replies: the model
     /// address and key the notifier's Local Live route takes.
     func speechServerVoiceStatus() async -> SpeechServerVoiceStatus {
+        let status: SpeechServerVoiceStatus
         do {
             let response = try await requester.requestJSON(
                 path: profilePath(SpeechServerSpeechStream.statusPath), method: "GET", body: nil)
-            return SpeechServerVoiceStatus(response: response, dashboardBaseURL: dashboardBaseURL)
+            status = SpeechServerVoiceStatus(response: response, dashboardBaseURL: dashboardBaseURL)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return .pluginMissing
+            status = .pluginMissing
         } catch {
-            return SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
+            status = SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
         }
+        if !Task.isCancelled { speechServerVoice = status }
+        return status
     }
 
     /// A new key for the speech server; the old one stops working at once.
