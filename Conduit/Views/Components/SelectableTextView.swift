@@ -151,7 +151,7 @@ struct SelectableTextView: UIViewRepresentable {
         context.coordinator.quoteAction = context.environment.chatQuoteAction
         let hostView = makeUIViewForTests(
             coordinator: context.coordinator,
-            drawsUntilTouched: Self.drawsUntilTouched(in: context.environment)
+            drawsUntilTouched: drawsUntilTouched(in: context.environment)
         )
         hostView.selectionTint = context.environment.textSelectionTint
         return hostView
@@ -161,7 +161,7 @@ struct SelectableTextView: UIViewRepresentable {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
         // VoiceOver or Switch Control came on: they read the text view.
-        if uiView.canvas != nil, !Self.drawsUntilTouched(in: context.environment) {
+        if uiView.canvas != nil, !drawsUntilTouched(in: context.environment) {
             uiView.needsTextView = true
         }
         updateUIViewForTests(uiView, coordinator: context.coordinator)
@@ -170,10 +170,13 @@ struct SelectableTextView: UIViewRepresentable {
 
     /// Whether this text is drawn until something needs its text view: on
     /// in a chat, except for VoiceOver and Switch Control, which read the
-    /// text view. A touch mounts it (SelectableTextViewHostView), and so
-    /// does a selection made elsewhere in the same message.
-    static func drawsUntilTouched(in environment: EnvironmentValues) -> Bool {
-        environment.selectableTextDrawsUntilTouched
+    /// text view, and for text that doesn't wrap: a code block's tiles
+    /// would be as wide as its longest line. A touch mounts it
+    /// (SelectableTextViewHostView), and so does a selection made elsewhere
+    /// in the same message.
+    func drawsUntilTouched(in environment: EnvironmentValues) -> Bool {
+        wrapsLines
+            && environment.selectableTextDrawsUntilTouched
             && !environment.accessibilityVoiceOverEnabled
             && !environment.accessibilitySwitchControlEnabled
     }
@@ -229,7 +232,10 @@ struct SelectableTextView: UIViewRepresentable {
                 coordinator.canvasPresentation = presentation
                 coordinator.presentationGeneration &+= 1
             }
-            guard uiView.textView != nil || uiView.needsTextView else {
+            // A block that appears while a selection is live mounts at once,
+            // so the selection can reach it.
+            guard uiView.textView != nil || uiView.needsTextView
+                || selectionCoordinator?.hasActiveSelection == true else {
                 deferSelectionRegistration(in: uiView, coordinator: coordinator)
                 return
             }
@@ -1204,9 +1210,21 @@ final class SelectableTextViewHostView: UIView {
         canvas?.frame = bounds
     }
 
-    /// A touch gets the real text view, mounted over the drawing as the
-    /// touch begins: links, selection, menus and drags then behave exactly
-    /// as they always have. Scrolling stays cheap, as the finger is still.
+    /// Assistive technology gets the text view, whose links are targets:
+    /// Voice Control and Full Keyboard Access can't be detected, so a drawn
+    /// host mounts its text view when one asks for its elements.
+    override var accessibilityElements: [Any]? {
+        get {
+            guard canvas != nil else { return super.accessibilityElements }
+            return [mountedTextView]
+        }
+        set { super.accessibilityElements = newValue }
+    }
+
+    /// A touch gets the real text view, mounted in place of the drawing as
+    /// the touch begins: links, selection, menus and drags then behave
+    /// exactly as they always have. Scrolling stays cheap, as the finger is
+    /// still.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if textView == nil, canvas != nil, event?.type == .touches,
            isUserInteractionEnabled, !isHidden, alpha > 0.01,
@@ -1228,21 +1246,18 @@ final class SelectableTextViewHostView: UIView {
         return fallback
     }
 
-    /// Mounts a drawn host's text view over its canvas, which hides once
-    /// the text view has drawn (it lays out and draws with this turn's
-    /// commit): the two draw the same glyphs in the same places, so nothing
-    /// on screen changes.
+    /// Mounts a drawn host's text view in place of its canvas. The text
+    /// view lays out and draws in the commit that hides the canvas, and
+    /// the two draw the same glyphs in the same places, so nothing on
+    /// screen changes; left showing, the canvas would draw every glyph
+    /// twice and thicken the text.
     func embedTextView(_ textView: UITextView) {
         guard self.textView == nil else { return }
         self.textView = textView
         textView.tintColor = selectionTint
         embedMountedTextView()
         textView.frame = bounds
-        guard let canvas else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak canvas] in
-            guard let self, let canvas, self.textView != nil else { return }
-            canvas.isHidden = true
-        }
+        canvas?.isHidden = true
     }
 
     func cancelDeferredSelectionRegistration() {

@@ -5,7 +5,7 @@ import UIKit
 /// text costs to draw, and a chat mounts text afresh as rows scroll in,
 /// though most of it is only ever read. TextKit 2 lays the text out here as
 /// it does inside the text view, so sizes, line breaks and glyphs land where
-/// the text view puts them once a touch mounts it over this drawing
+/// the text view puts them once a touch mounts it in place of this drawing
 /// (SelectableTextViewHostView).
 final class SelectableTextCanvas: UIView {
     /// Each tile is its own backing store, kept well under the largest a
@@ -35,8 +35,10 @@ final class SelectableTextCanvas: UIView {
         textLayoutManager.delegate = linkStyle
         contentStorage.addTextLayoutManager(textLayoutManager)
         contentStorage.primaryTextLayoutManager = textLayoutManager
-        isAccessibilityElement = true
-        accessibilityTraits = .staticText
+        // Assistive technology reads the text view instead, whose links
+        // stay targets (SelectableTextViewHostView.accessibilityElements).
+        isAccessibilityElement = false
+        accessibilityElementsHidden = true
         registerForTraitChanges([
             UITraitUserInterfaceStyle.self,
             UITraitAccessibilityContrast.self,
@@ -64,7 +66,6 @@ final class SelectableTextCanvas: UIView {
         if !self.text.isEqual(to: text) {
             self.text = text
             contentStorage.attributedString = text
-            accessibilityLabel = text.string
             layoutWidth = nil
         }
         self.font = font
@@ -110,14 +111,22 @@ final class SelectableTextCanvas: UIView {
         return height
     }
 
+    /// Hidden once the text view mounts, the canvas only measures: its
+    /// tiles and their backing stores go.
+    override var isHidden: Bool {
+        didSet {
+            if isHidden != oldValue { setNeedsLayout() }
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = wrapsLines ? bounds.width : 100_000
-        if layoutWidth != width {
+        if !isHidden, layoutWidth != width {
             layOut(atWidth: width)
             redrawTiles()
         }
-        let count = bounds.height > 0 ? Int(ceil(bounds.height / Self.tileHeight)) : 0
+        let count = !isHidden && bounds.height > 0 ? Int(ceil(bounds.height / Self.tileHeight)) : 0
         while tiles.count < count {
             let tile = SelectableTextCanvasTile(canvas: self)
             tiles.append(tile)

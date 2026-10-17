@@ -80,21 +80,8 @@ extension ChatTypographyTests {
         for (name, view) in drawnTextSamples() where name != "empty" {
             let (window, drawn, plain) = drawnAndPlainHosts(of: view, width: 300)
             defer { window.isHidden = true }
-            let drawnPixels = Self.pixels(of: drawn)
-            let plainPixels = Self.pixels(of: plain)
-            guard drawnPixels.count == plainPixels.count, !drawnPixels.isEmpty else {
-                report.append("\(name): sizes differ \(drawn.bounds.size) vs \(plain.bounds.size)")
-                continue
-            }
-            var differing = 0
-            var inked = 0
-            for index in stride(from: 0, to: drawnPixels.count, by: 4) {
-                let delta = (0..<3).map { abs(Int(drawnPixels[index + $0]) - Int(plainPixels[index + $0])) }.max() ?? 0
-                if delta > 48 { differing += 1 }
-                if plainPixels[index] < 200 { inked += 1 }
-            }
-            if inked == 0 || Double(differing) > Double(inked) * 0.02 {
-                report.append("\(name): \(differing) of \(inked) inked pixels differ")
+            if let difference = Self.inkDifference(Self.pixels(of: drawn), Self.pixels(of: plain)) {
+                report.append("\(name): \(difference)")
             }
         }
         XCTAssertTrue(report.isEmpty, report.joined(separator: "; "))
@@ -106,6 +93,7 @@ extension ChatTypographyTests {
         let (window, drawn, _) = drawnAndPlainHosts(of: view, width: 300)
         defer { window.isHidden = true }
         let sizeBefore = drawn.bounds.size
+        let drawnPixels = Self.pixels(of: drawn)
         XCTAssertNil(drawn.hitTest(CGPoint(x: 10, y: 5), with: nil) as? UITextView, "only a touch mounts the text view")
         XCTAssertNil(drawn.textView)
 
@@ -113,21 +101,59 @@ extension ChatTypographyTests {
         XCTAssertTrue(drawn.textView === textView)
         XCTAssertEqual(textView.attributedText.string, drawn.canvas?.text.string)
         XCTAssertEqual(textView.frame, drawn.bounds)
-        XCTAssertFalse(drawn.canvas?.isHidden ?? true, "the drawing stays until the text view has drawn")
-        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        XCTAssertTrue(drawn.canvas?.isHidden ?? false)
+        XCTAssertTrue(drawn.canvas?.isHidden ?? false, "the text view draws in the commit that hides the drawing")
+        drawn.canvas?.layoutIfNeeded()
+        XCTAssertEqual(drawn.canvas?.subviews.count, 0, "a hidden drawing keeps no tiles")
         XCTAssertEqual(drawn.bounds.size, sizeBefore)
         XCTAssertEqual(drawn.displayedText, textView.text)
+        // Drawn twice over, every glyph's edges would darken.
+        XCTAssertNil(Self.inkDifference(Self.pixels(of: drawn), drawnPixels))
+    }
+
+    /// Measuring lays the text out at a new width before the canvas takes
+    /// it; the resize still redraws every tile.
+    @MainActor
+    func testDrawnTextRedrawsAtANewWidth() throws {
+        let view = SelectableTextView(
+            text: String(repeating: "Lines wrap again when the column narrows. ", count: 6),
+            lineSpacing: 4
+        )
+        let (window, drawn, _) = drawnAndPlainHosts(of: view, width: 300)
+        defer { window.isHidden = true }
+        let canvas = try XCTUnwrap(drawn.canvas)
+        canvas.subviews.forEach { $0.layer.displayIfNeeded() }
+        XCTAssertFalse(canvas.subviews.contains { $0.layer.needsDisplay() })
+
+        drawn.frame.size = CGSize(width: 200, height: canvas.height(atWidth: 200))
+        drawn.layoutIfNeeded()
+        canvas.layoutIfNeeded()
+        XCTAssertFalse(canvas.subviews.isEmpty)
+        XCTAssertTrue(canvas.subviews.allSatisfy { $0.layer.needsDisplay() })
+    }
+
+    /// A code block's line can run thousands of points, and tiles that wide
+    /// are too big to back: text that doesn't wrap keeps its text view.
+    @MainActor
+    func testTextThatDoesntWrapIsNotDrawn() {
+        var environment = EnvironmentValues()
+        environment.selectableTextDrawsUntilTouched = true
+        XCTAssertTrue(SelectableTextView(text: "Wraps").drawsUntilTouched(in: environment))
+        let code = SelectableTextView(text: String(repeating: "x", count: 3_000), wrapsLines: false)
+        XCTAssertFalse(code.drawsUntilTouched(in: environment))
     }
 
     /// A selection that becomes visible in one block mounts the message's
-    /// other blocks, so it can be dragged across them.
+    /// other blocks, so it can be dragged across them, and so does a block
+    /// that appears while it is live.
     @MainActor
     func testAVisibleSelectionMountsTheMessagesOtherBlocks() throws {
+        SelectableTextViewPool.removeAll()
+        defer { SelectableTextViewPool.removeAll() }
         let selection = MarkdownSelectionCoordinator()
         let segments = [
             MarkdownSelectionSegmentDescriptor(id: "block-0", order: 0, separatorBefore: ""),
-            MarkdownSelectionSegmentDescriptor(id: "block-1", order: 1, separatorBefore: "\n\n")
+            MarkdownSelectionSegmentDescriptor(id: "block-1", order: 1, separatorBefore: "\n\n"),
+            MarkdownSelectionSegmentDescriptor(id: "block-2", order: 2, separatorBefore: "\n\n")
         ]
         selection.replaceSegments(segments, revision: "drawn")
         let first = SelectableTextView(text: "First block", selectionCoordinator: selection, selectionSegment: segments[0])
@@ -145,17 +171,32 @@ extension ChatTypographyTests {
         XCTAssertNotNil(secondHost.textView)
         XCTAssertTrue(selection.isSegmentRegistered("block-1"))
         XCTAssertEqual(selection.activeSpans.map(\.segmentID), ["block-0"], "mounting kept the selection")
+
+        let third = SelectableTextView(text: "Third block", selectionCoordinator: selection, selectionSegment: segments[2])
+        let thirdHost = third.makeUIViewForTests(coordinator: third.makeCoordinator(), drawsUntilTouched: true)
+        XCTAssertNotNil(thirdHost.textView, "a block that appears under a live selection mounts")
+        XCTAssertTrue(selection.isSegmentRegistered("block-2"))
         selection.clearSelection()
         SelectableTextView.dismantleUIView(firstHost, coordinator: first.makeCoordinator())
         SelectableTextView.dismantleUIView(secondHost, coordinator: second.makeCoordinator())
+        SelectableTextView.dismantleUIView(thirdHost, coordinator: third.makeCoordinator())
     }
 
+    /// Voice Control and Full Keyboard Access can't be detected, and they
+    /// target the links in text: assistive technology asking drawn text
+    /// for its elements gets the text view.
     @MainActor
-    func testDrawnTextReadsAsItsText() {
-        let view = SelectableTextView(text: "Read by Voice Control as text")
+    func testAssistiveTechnologyGetsTheTextView() throws {
+        let view = SelectableTextView(text: "Read by Voice Control with its links")
         let drawn = view.makeUIViewForTests(coordinator: view.makeCoordinator(), drawsUntilTouched: true)
-        XCTAssertEqual(drawn.canvas?.accessibilityLabel, "Read by Voice Control as text")
-        XCTAssertTrue(drawn.canvas?.isAccessibilityElement ?? false)
+        XCTAssertNil(drawn.textView)
+        XCTAssertFalse(drawn.canvas?.isAccessibilityElement ?? true)
+
+        let elements = try XCTUnwrap(drawn.accessibilityElements)
+        let textView = try XCTUnwrap(drawn.textView)
+        XCTAssertEqual(elements.count, 1)
+        XCTAssertTrue(elements.first as? UITextView === textView)
+        XCTAssertEqual(textView.text, "Read by Voice Control with its links")
     }
 
     // MARK: - Helpers
@@ -228,6 +269,23 @@ extension ChatTypographyTests {
         plain.layoutIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         return (window, drawn, plain)
+    }
+
+    /// Nil when two renderings (`pixels(of:)`) look alike: at most 2% of
+    /// the inked pixels differ by more than antialiasing does.
+    private static func inkDifference(_ drawnPixels: [UInt8], _ plainPixels: [UInt8]) -> String? {
+        guard drawnPixels.count == plainPixels.count, !drawnPixels.isEmpty else {
+            return "sizes differ: \(drawnPixels.count / 4) vs \(plainPixels.count / 4) pixels"
+        }
+        var differing = 0
+        var inked = 0
+        for index in stride(from: 0, to: drawnPixels.count, by: 4) {
+            let delta = (0..<3).map { abs(Int(drawnPixels[index + $0]) - Int(plainPixels[index + $0])) }.max() ?? 0
+            if delta > 48 { differing += 1 }
+            if plainPixels[index] < 200 { inked += 1 }
+        }
+        guard inked == 0 || Double(differing) > Double(inked) * 0.02 else { return nil }
+        return "\(differing) of \(inked) inked pixels differ"
     }
 
     @MainActor

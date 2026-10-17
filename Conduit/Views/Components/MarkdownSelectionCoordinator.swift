@@ -213,7 +213,14 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     private var isOwnerNativeChromeSuppressed = false
     /// Segments drawn without a text view so far (SelectableTextCanvas),
     /// each with what mounts it, keyed by segment and owned by their host.
-    private var deferredMounts: [String: (owner: ObjectIdentifier, mount: () -> Void)] = [:]
+    private var deferredMounts: [String: DeferredMount] = [:]
+
+    /// Held weakly, so a host that went away can't match a new one made
+    /// at its address.
+    private struct DeferredMount {
+        weak var owner: AnyObject?
+        let mount: () -> Void
+    }
 
     func replaceSegments(_ descriptors: [MarkdownSelectionSegmentDescriptor], revision: String) {
         let before = visibleSelectionSnapshot()
@@ -292,16 +299,16 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// then a selection can't reach it, so a selection that becomes visible
     /// mounts every deferred segment first (`mountDeferredSegments`).
     func deferRegistration(segmentID: String, owner: AnyObject, mount: @escaping () -> Void) {
-        deferredMounts[segmentID] = (ObjectIdentifier(owner), mount)
+        deferredMounts[segmentID] = DeferredMount(owner: owner, mount: mount)
     }
 
     func cancelDeferredRegistration(segmentID: String, owner: AnyObject) {
-        guard deferredMounts[segmentID]?.owner == ObjectIdentifier(owner) else { return }
+        guard deferredMounts[segmentID]?.owner === owner else { return }
         deferredMounts[segmentID] = nil
     }
 
     func hasDeferredRegistration(_ segmentID: String, owner: AnyObject) -> Bool {
-        deferredMounts[segmentID]?.owner == ObjectIdentifier(owner)
+        deferredMounts[segmentID]?.owner === owner
     }
 
     /// Mounts the text view of every segment still drawn without one, so a
