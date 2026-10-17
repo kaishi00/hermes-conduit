@@ -307,6 +307,12 @@ final class MarkdownRendering {
         MarkdownRichContentPolicy.needsBounding(unitsByBlock: richUnitsByBlock)
     }
 
+    /// Found and built on first use, by the main actor's view bodies only.
+    @MainActor private var foundProseRuns: [Range<Int>]?
+    /// Each run's text, built once per settled rendering so a row that
+    /// scrolls back in hands its text view the same string.
+    @MainActor private var proseRunTexts: [Int: NSAttributedString] = [:]
+
     init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
         self.references = references
@@ -315,10 +321,13 @@ final class MarkdownRendering {
     }
 
     /// The prose runs a chat draws in one text view each.
-    private(set) lazy var proseRuns: [Range<Int>] = MarkdownProseRun.ranges(in: blocks)
-    /// Each run's text, built once per settled rendering so a row that
-    /// scrolls back in hands its text view the same string.
-    private var proseRunTexts: [Int: NSAttributedString] = [:]
+    @MainActor
+    var proseRuns: [Range<Int>] {
+        if let foundProseRuns { return foundProseRuns }
+        let runs = MarkdownProseRun.ranges(in: blocks)
+        foundProseRuns = runs
+        return runs
+    }
 
     @MainActor
     func proseRunText(

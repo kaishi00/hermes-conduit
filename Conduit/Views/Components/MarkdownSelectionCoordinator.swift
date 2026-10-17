@@ -19,12 +19,17 @@ struct MarkdownSelectionSpan: Equatable, Hashable {
 }
 
 enum MarkdownSelectionSegmentPlan {
-    /// `joiningRuns` are prose runs drawn in one text view each
-    /// (MarkdownProseRun): a run is one segment, named for its first block.
+    /// `joiningRuns` are prose runs drawn in one text view each, sorted and
+    /// apart, as `MarkdownProseRun.ranges(in:)` returns them: a run is one
+    /// segment, named for its first block.
     static func descriptors(
         for blocks: [MarkdownBlock],
         joiningRuns runs: [Range<Int>] = []
     ) -> [MarkdownSelectionSegmentDescriptor] {
+        assert(
+            zip(runs, runs.dropFirst()).allSatisfy { $0.upperBound <= $1.lowerBound },
+            "prose runs must be sorted and must not overlap"
+        )
         var descriptors: [MarkdownSelectionSegmentDescriptor] = []
         var order = 0
         var runEnds: [Int: Int] = [:]
@@ -126,7 +131,8 @@ enum MarkdownSelectionSegmentPlan {
     }
 
     /// Number of plan descriptors a block contributes. Must mirror
-    /// `descriptors(for:)` exactly — the large-document preparation slices
+    /// `descriptors(for:)` without joined runs (the large-document path
+    /// never joins them) exactly — the large-document preparation slices
     /// the plan per block using these counts, so any drift would misassign
     /// a block's selection segments.
     static func segmentCount(of block: MarkdownBlock) -> Int {
