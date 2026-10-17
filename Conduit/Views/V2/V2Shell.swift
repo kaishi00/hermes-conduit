@@ -151,6 +151,9 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
+    /// The tab shown before this render's switch: a first visit slides in
+    /// from its side.
+    @State private var lastTab: V2Tab = .chats
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -253,6 +256,7 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
+                lastTab = tab
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
@@ -282,6 +286,21 @@ struct V2Shell: View {
         V2VoiceButton(context: voiceContext)
     }
 
+    private static let tabSlideDistance: CGFloat = 28
+
+    /// Where `tab` waits while `shown` is on screen: a little toward its
+    /// side of the bar (right of `shown` waits right), so opening it slides
+    /// it in from there. Zero for the shown tab and under Reduce Motion.
+    private func tabSlideOffset(_ tab: V2Tab, from shown: V2Tab) -> CGFloat {
+        guard !reduceMotion,
+              let index = V2Tab.destinations.firstIndex(of: tab),
+              let shownIndex = V2Tab.destinations.firstIndex(of: shown),
+              index != shownIndex else { return 0 }
+        // The bar mirrors right to left; the offset doesn't.
+        let later: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+        return (index > shownIndex ? later : -later) * Self.tabSlideDistance
+    }
+
     /// The four tabs over a custom glass capsule, the gold voice button
     /// beside it, on every iOS version. iOS 26's own tab bar has no place
     /// for a separate circle: a search-role tab sat inside the bar as a
@@ -301,18 +320,29 @@ struct V2Shell: View {
                         }
                         // Nothing inside a tab animates with the switch.
                         .animation(nil, value: selectedTab)
-                        // Only the tab being opened fades in, quickly; the one
-                        // left goes at once. Fading two full screens of glass
-                        // and backdrop into each other dropped frames, and a
-                        // plain swap read as a blink. Scoped to the opacity.
+                        // Only the tab being opened moves: it slides the last
+                        // few points in from its side of the bar as it fades
+                        // in; the one left goes at once. Fading two full
+                        // screens of glass and backdrop into each other
+                        // dropped frames, and a plain swap read as a blink.
+                        // A hidden tab waits off center on its own side, so
+                        // the slide needs no start state. Scoped to offset
+                        // and opacity.
+                        .animation(isSelected ? ConduitMotion.tabSlideIn : nil) {
+                            $0.offset(x: tabSlideOffset(tab, from: selectedTab))
+                        }
                         .animation(isSelected ? ConduitMotion.tabFadeIn : nil) {
                             $0.opacity(isSelected ? 1 : 0)
                         }
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
                         // A tab's first visit inserts it already selected:
-                        // the same fade, not the bar's overshoot spring.
-                        .transition(.opacity.animation(ConduitMotion.tabFadeIn))
+                        // the same slide from the tab it left.
+                        .transition(
+                            .offset(x: tabSlideOffset(tab, from: lastTab))
+                                .combined(with: .opacity)
+                                .animation(ConduitMotion.tabSlideIn)
+                        )
                 }
             }
         }
