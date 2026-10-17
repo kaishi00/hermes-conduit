@@ -3810,6 +3810,9 @@ final class AppState: ObservableObject {
     @Published var cronRuns: [CronRun] = []
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
+    /// Bumped by a job delete so a list load that started before it can't
+    /// bring the deleted job back.
+    private var cronJobsGeneration = 0
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -25061,6 +25064,7 @@ final class AppState: ObservableObject {
     func loadCronJobs() async {
         guard !cronJobsLoading else { return }
         let profile = activeProfile
+        let generation = cronJobsGeneration
         cronJobsLoading = true
         defer { cronJobsLoading = false }
 
@@ -25069,11 +25073,11 @@ final class AppState: ObservableObject {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
         } catch {
@@ -25168,6 +25172,7 @@ final class AppState: ObservableObject {
                 method: "DELETE"
             )
             guard profile == activeProfile else { return false }
+            cronJobsGeneration += 1
             cronJobs.removeAll { $0.id == job.id }
             return true
         } catch {
