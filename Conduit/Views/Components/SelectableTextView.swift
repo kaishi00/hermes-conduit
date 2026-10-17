@@ -156,7 +156,13 @@ struct SelectableTextView: UIViewRepresentable {
 
     @MainActor
     func makeUIViewForTests(coordinator: Coordinator) -> SelectableTextViewHostView {
-        let hostView = SelectableTextViewHostView(frame: .zero)
+        // The kind of text view this mount needs, made once: a plain one
+        // swapped straight for a coordinated one cost two UITextViews per
+        // block each time a row scrolled into view.
+        let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+        let hostView = SelectableTextViewHostView(
+            textView: makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
+        )
         updateUIViewForTests(hostView, coordinator: coordinator)
         return hostView
     }
@@ -898,9 +904,9 @@ final class SelectableTextViewHostView: UIView {
     weak var mountedSelectionCoordinator: MarkdownSelectionCoordinator?
     var mountedSelectionSegment: MarkdownSelectionSegmentDescriptor?
 
-    override init(frame: CGRect) {
-        self.mountedTextView = SelectableTextView.makeTextView()
-        super.init(frame: frame)
+    init(textView: UITextView) {
+        self.mountedTextView = textView
+        super.init(frame: .zero)
         embedMountedTextView()
     }
 

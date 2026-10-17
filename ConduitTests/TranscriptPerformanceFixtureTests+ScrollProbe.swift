@@ -334,8 +334,173 @@ extension TranscriptPerformanceFixtureTests {
         XCTAssertGreaterThan(upFrames.count, 0, "the probe scrolled")
     }
 
+    private static func median(_ values: [Double]) -> Double {
+        percentile(values.sorted(), 0.5)
+    }
+
+    /// One row type at a time: what mounting it from nothing and taking it
+    /// down again costs, the work a row pays each time LazyVStack brings it
+    /// back into view.
+    func testScrollProbeReportsMountCostByRow() throws {
+        let suiteName = "transcript-scroll-probe-mount"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let transcript = Self.probeTranscript(turns: 2)
+        let rows: [(String, ChatMessage)] = [
+            ("user", transcript[0]),
+            ("long-answer", transcript[4]),
+            ("short-answer", transcript[9]),
+        ]
+
+        let host = UIHostingController(rootView: AnyView(EmptyView()))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        func commit() {
+            host.view.layoutIfNeeded()
+            CATransaction.flush()
+            RunLoop.current.run(until: Date())
+        }
+
+        for (name, message) in rows {
+            var mounts: [Double] = []
+            var unmounts: [Double] = []
+            var counters = ProbeCounters()
+            var textViews = 0
+            for pass in 0..<12 {
+                let before = ProbeCounters.read()
+                let start = CACurrentMediaTime()
+                host.rootView = AnyView(DormancyHarnessEnvironment.applying(
+                    VStack(spacing: 0) {
+                        MessageBubble(message: message, gatewayResolver: nil)
+                    }
+                    .padding(.horizontal, 18)
+                    .id("\(name)-\(pass)")
+                    .environmentObject(appState)
+                ))
+                commit()
+                mounts.append((CACurrentMediaTime() - start) * 1000)
+                counters = ProbeCounters.read() - before
+                textViews = Self.mountedRowEstimate(in: host.view)
+
+                let downStart = CACurrentMediaTime()
+                host.rootView = AnyView(EmptyView())
+                commit()
+                unmounts.append((CACurrentMediaTime() - downStart) * 1000)
+            }
+            print(String(
+                format: "SCROLL_PROBE mount %@ first=%.2fms median=%.2fms unmount=%.2fms textViews=%ld ",
+                name, mounts[0], Self.median(Array(mounts.dropFirst())), Self.median(Array(unmounts.dropFirst())),
+                textViews
+            ) + counters.summary)
+        }
+
+        // The same 20 blocks a long answer mounts, on their own: UIKit text
+        // views step by step, then SwiftUI Text for comparison.
+        let blocks: [NSAttributedString] = (0..<20).map { index in
+            NSAttributedString(
+                string: index % 4 == 0
+                    ? "Import \(index)"
+                    : "The import step reads each source file, hashes it and compares the hash with the cache \(index).",
+                attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor.label]
+            )
+        }
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        host.view.addSubview(container)
+        var plain = [String: [Double]]()
+        var coordinated = [String: [Double]]()
+        for _ in 0..<8 {
+            var start = CACurrentMediaTime()
+            let textViews = blocks.map { _ in SelectableTextView.makeTextView() }
+            plain["create", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            start = CACurrentMediaTime()
+            for (textView, text) in zip(textViews, blocks) { textView.attributedText = text }
+            plain["text", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            start = CACurrentMediaTime()
+            let heights = textViews.map { SelectableTextView.measuredWrappingHeight(of: $0, at: 366) }
+            plain["measure", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            start = CACurrentMediaTime()
+            var y: CGFloat = 0
+            for (textView, height) in zip(textViews, heights) {
+                textView.frame = CGRect(x: 18, y: y, width: 366, height: height)
+                y += height
+                container.addSubview(textView)
+            }
+            container.layoutIfNeeded()
+            CATransaction.flush()
+            plain["draw", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            start = CACurrentMediaTime()
+            textViews.forEach { $0.removeFromSuperview() }
+            CATransaction.flush()
+            plain["remove", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            let selection = MarkdownSelectionCoordinator()
+            start = CACurrentMediaTime()
+            let hostViews = blocks.enumerated().map { index, text in
+                let view = SelectableTextView(
+                    attributedText: text,
+                    selectionCoordinator: selection,
+                    selectionSegment: MarkdownSelectionSegmentDescriptor(id: "block-\(index)", order: index, separatorBefore: "\n")
+                )
+                return view.makeUIViewForTests(coordinator: view.makeCoordinator())
+            }
+            coordinated["make", default: []].append((CACurrentMediaTime() - start) * 1000)
+
+            start = CACurrentMediaTime()
+            y = 0
+            for hostView in hostViews {
+                hostView.frame = CGRect(x: 18, y: y, width: 366, height: 44)
+                y += 44
+                container.addSubview(hostView)
+            }
+            container.layoutIfNeeded()
+            CATransaction.flush()
+            coordinated["draw", default: []].append((CACurrentMediaTime() - start) * 1000)
+            hostViews.forEach { $0.removeFromSuperview() }
+            CATransaction.flush()
+        }
+        container.removeFromSuperview()
+        for key in ["create", "text", "measure", "draw", "remove"] {
+            print(String(format: "SCROLL_PROBE uikit20 plain %@ first=%.2fms median=%.2fms", key, plain[key]![0], Self.median(Array(plain[key]!.dropFirst()))))
+        }
+        for key in ["make", "draw"] {
+            print(String(format: "SCROLL_PROBE uikit20 coordinated %@ first=%.2fms median=%.2fms", key, coordinated[key]![0], Self.median(Array(coordinated[key]!.dropFirst()))))
+        }
+
+        var swiftUIMounts: [Double] = []
+        let attributed = blocks.map { (try? AttributedString($0, including: \.uiKit)) ?? AttributedString($0.string) }
+        for pass in 0..<8 {
+            let start = CACurrentMediaTime()
+            host.rootView = AnyView(
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(attributed.indices, id: \.self) { index in
+                        Text(attributed[index]).lineSpacing(4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .id("text-\(pass)")
+            )
+            commit()
+            swiftUIMounts.append((CACurrentMediaTime() - start) * 1000)
+            host.rootView = AnyView(EmptyView())
+            commit()
+        }
+        print(String(format: "SCROLL_PROBE swiftui20 Text mount first=%.2fms median=%.2fms", swiftUIMounts[0], Self.median(Array(swiftUIMounts.dropFirst()))))
+    }
+
     /// Text views on screen, a stand-in for how many rows LazyVStack keeps.
-    private static func mountedRowEstimate(in scrollView: UIScrollView) -> Int {
+    private static func mountedRowEstimate(in scrollView: UIView) -> Int {
         var count = 0
         func walk(_ view: UIView) {
             if view is UITextView { count += 1 }
