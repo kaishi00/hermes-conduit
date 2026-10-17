@@ -666,6 +666,93 @@
           ]
         }
       ]
+    },
+    {
+      "name": "A URL that could end a Markdown link early is dropped",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.5,
+                "source": "Google",
+                "url": "https://a.example/x?q=1)[click](javascript:alert(1))"
+              },
+              "hours": {
+                "text": "8–5",
+                "source": "Yelp",
+                "url": "https://yelp.example/biz/tartine"
+              },
+              "photo": {
+                "url": "https://img.example/a b.jpg",
+                "source": "Yelp"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.5,
+                "source": "Google"
+              },
+              "hours": {
+                "text": "8–5",
+                "source": "Yelp",
+                "url": "https://yelp.example/biz/tartine"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A title keeps its brackets and a cycling route is kept",
+      "input": [
+        {
+          "type": "map",
+          "title": "[x](https://evil.example) **bold**",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "from": 0,
+            "to": 1,
+            "mode": "cycling"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "title": "[x](https://evil.example) **bold**",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "to": 1,
+            "from": 0,
+            "mode": "cycling"
+          }
+        }
+      ]
     }
   ]
 }

@@ -12,7 +12,8 @@
 //
 //  - unknown keys are dropped;
 //  - text has control characters turned into spaces, is trimmed, and is cut
-//    to maxLength code points (a URL that's too long is invalid instead);
+//    to maxLength code points (a URL that's too long, or holds a space,
+//    quote, bracket or parenthesis, is invalid instead);
 //  - an invalid optional value is dropped, an invalid list item is dropped
 //    (then the list is cut to maxItems), and an invalid required value
 //    makes its object invalid;
@@ -54,7 +55,12 @@ struct RichCardSchema {
     /// The valid cards in `value`, normalized; invalid ones are dropped.
     func normalizeCards(_ value: Any?) -> [[String: Any]] {
         guard let list = value as? [Any] else { return [] }
-        return Array(list.compactMap(normalizeCard).prefix(maxCards))
+        var cards: [[String: Any]] = []
+        for raw in list {
+            if cards.count == maxCards { break }
+            if let card = normalizeCard(raw) { cards.append(card) }
+        }
+        return cards
     }
 
     /// One card, or nil when it isn't valid.
@@ -91,11 +97,12 @@ struct RichCardSchema {
             return .valid(result)
         case "array":
             guard let list = value as? [Any], let itemSchema = schema["items"] as? [String: Any] else { return .invalid }
-            var items: [Any] = list.compactMap {
-                if case .valid(let clean) = normalize(itemSchema, $0) { return clean }
-                return nil
+            let maxItems = schema["maxItems"] as? Int
+            var items: [Any] = []
+            for raw in list {
+                if let maxItems, items.count == maxItems { break }
+                if case .valid(let clean) = normalize(itemSchema, raw) { items.append(clean) }
             }
-            if let maxItems = schema["maxItems"] as? Int { items = Array(items.prefix(maxItems)) }
             if items.count < (schema["minItems"] as? Int ?? 0) { return .invalid }
             return .valid(items)
         case "string":
@@ -152,11 +159,15 @@ struct RichCardSchema {
         return String(String.UnicodeScalarView(scalars))
     }
 
+    /// No spaces, quotes, brackets or parentheses: the plugin also puts a
+    /// URL inside a Markdown link, where any of them could end it early.
+    private static let uriExcluded = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "()<>[]{}\"'`\\"))
+
     private static func isURI(_ text: String) -> Bool {
         let lowered = text.lowercased()
         guard lowered.hasPrefix("https://") || lowered.hasPrefix("http://") else { return false }
         let rest = text.unicodeScalars.dropFirst(lowered.hasPrefix("https://") ? 8 : 7)
-        return !rest.isEmpty && !rest.contains { CharacterSet.whitespacesAndNewlines.contains($0) }
+        return !rest.isEmpty && !rest.contains { uriExcluded.contains($0) }
     }
 
     private static func isBoolean(_ number: NSNumber) -> Bool {
