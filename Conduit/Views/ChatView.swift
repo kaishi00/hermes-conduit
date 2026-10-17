@@ -351,6 +351,8 @@ struct ChatView: View {
                 handler: appState.quoteIntoComposer
             )
         )
+        // The rows show AppState through this, not by observing it.
+        .chatRows()
     }
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
@@ -886,7 +888,10 @@ struct MessageBubble: View {
     /// A thinking or tool row's place in its turn's run of steps, which
     /// draws as one card. Nil outside the chat transcript.
     var step: ChatStepPlacement? = nil
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
 
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
@@ -898,7 +903,7 @@ struct MessageBubble: View {
                 UserBubble(
                     message: message,
                     gatewayResolver: gatewayResolver,
-                    agentName: message.reactions.isEmpty ? "" : appState.conversationAgentIdentity.name
+                    agentName: message.reactions.isEmpty ? "" : rowState.agentIdentity.name
                 )
             }
         case .assistant:
@@ -1706,7 +1711,10 @@ struct SettledAssistantMessageContent: View, Equatable {
 struct AssistantMessageActions: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
     @State private var copied = false
 
     var body: some View {
@@ -1732,8 +1740,8 @@ struct AssistantMessageActions: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .disabled(!appState.canQuoteIntoComposer() || !message.content.contains(where: { !$0.isWhitespace }))
-        .opacity(appState.canQuoteIntoComposer() ? 1 : 0.45)
+        .disabled(!rowState.canQuoteIntoComposer || !message.content.contains(where: { !$0.isWhitespace }))
+        .opacity(rowState.canQuoteIntoComposer ? 1 : 0.45)
         .accessibilityLabel(AppLocalization.string("Quote this response"))
 
         Button {
@@ -1746,8 +1754,8 @@ struct AssistantMessageActions: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .disabled(appState.isBusy || appState.isBranchingChat || appState.offlineChatPresentation != nil)
-        .opacity(appState.isBusy || appState.isBranchingChat || appState.offlineChatPresentation != nil ? 0.45 : 1)
+        .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
+        .opacity(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline ? 0.45 : 1)
         .accessibilityLabel("Branch from this response")
     }
 
@@ -1771,7 +1779,10 @@ struct ReadAloudButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @ObservedObject var controller: MessageReadAloudController
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
 
     private var isActive: Bool {
         controller.isActiveMessage(message.id)
@@ -1783,7 +1794,7 @@ struct ReadAloudButton: View {
     }
 
     private var unavailable: Bool {
-        appState.readAloudUnavailableReason != nil || appState.offlineChatPresentation != nil
+        rowState.readAloudUnavailable || rowState.isOffline
     }
 
     var body: some View {
@@ -1830,7 +1841,10 @@ struct AssistantBubble: View {
     /// read-aloud state transition. Only ReadAloudButton observes it.
     let readAloudController: MessageReadAloudController
     let gatewayResolver: GatewayMediaDataURLResolver?
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
     @State private var showsTapback = false
@@ -1842,7 +1856,7 @@ struct AssistantBubble: View {
         // instead of the update being pruned above the gate. Release
         // builds compile the note out.
         let _ = TranscriptPerf.note(.settledBubbleBody)
-        let identity = appState.conversationAgentIdentity
+        let identity = rowState.agentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
                 message: message,
@@ -1941,7 +1955,9 @@ private struct ReviewSummaryCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let activity: ReviewActivity
     let timestamp: String
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed (`ChatRowState`).
+    private var appState: AppState { rowActions.required }
     @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
 
@@ -2234,12 +2250,15 @@ struct SettledThinkingCardContent: View, Equatable {
 struct ThinkingCard: View {
     let message: ChatMessage
     var grouped = false
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
-        if appState.displayPreferences.showReasoning, !message.content.isEmpty {
+        if rowState.displayPreferences.showReasoning, !message.content.isEmpty {
             SettledThinkingCardContent(
                 message: message,
                 sizeCategory: sizeCategory,
@@ -2478,14 +2497,17 @@ struct ToolCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     var grouped = false
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
     @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
-        if appState.displayPreferences.showToolProgress, message.tool != nil {
+        if rowState.displayPreferences.showToolProgress, message.tool != nil {
             SettledToolCardContent(
                 message: message,
-                expandToolsByDefault: appState.displayPreferences.expandToolsByDefault,
+                expandToolsByDefault: rowState.displayPreferences.expandToolsByDefault,
                 sizeCategory: sizeCategory,
                 grouped: grouped
             )
@@ -2544,7 +2566,9 @@ enum ClarifyCardLayout {
 struct ClarifyCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed (`ChatRowState`).
+    private var appState: AppState { rowActions.required }
     // Per-question draft state, keyed by the gateway qid: typed custom text
     // and in-progress multi-select selections. Multi-select intentionally
     // buffers locally — an RPC fires only on that question's confirm.
@@ -2937,7 +2961,9 @@ struct ClarifyQuestionRow: View {
 struct ApprovalCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed (`ChatRowState`).
+    private var appState: AppState { rowActions.required }
     @State private var confirmAlways = false
 
     var body: some View {
@@ -3140,7 +3166,9 @@ struct ApprovalCard: View {
 struct InputPromptCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed (`ChatRowState`).
+    private var appState: AppState { rowActions.required }
     /// The typed secret. Deliberately view state only — never AppState, the
     /// message model or any cache — even though a lazy transcript can drop
     /// it if the row scrolls far away: retyping is the accepted cost of the
@@ -3380,10 +3408,13 @@ struct ChatLiveTurnRows: View {
 struct StreamingBubble: View {
     let text: String
     let active: Bool
-    @EnvironmentObject var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
 
     var body: some View {
-        let identity = appState.conversationAgentIdentity
+        let identity = rowState.agentIdentity
         return VStack(alignment: .leading, spacing: 6) {
             // Streaming uses the same reading column and Markdown renderer as
             // a completed reply. Only the active mark/status changes, so the
@@ -3413,7 +3444,7 @@ struct StreamingBubble: View {
                 text: text,
                 active: active,
                 gatewayMediaDataURL: { path in
-                    await appState.gatewayMediaDataURL(for: path, profile: appState.activeProfile)
+                    await appState.gatewayMediaDataURL(for: path, profile: rowState.activeProfile)
                 }
             )
             .frame(maxWidth: .infinity, alignment: .leading)

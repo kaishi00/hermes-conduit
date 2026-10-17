@@ -84,6 +84,7 @@ struct OfflineChatTranscriptView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showsBanner)
         .accessibilityIdentifier("offline-chat-transcript")
+        .chatRows()
     }
 }
 

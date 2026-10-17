@@ -106,6 +106,7 @@ final class SettledMessageIsolationTests: XCTestCase {
                     readAloudController: appState.messageReadAloudController,
                     gatewayResolver: resolver
                 )
+                .chatRows()
                 .environmentObject(appState)
             )
         )
@@ -189,6 +190,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolver
         )
+        .chatRows()
         .environmentObject(appState)
         .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
@@ -202,6 +204,35 @@ final class SettledMessageIsolationTests: XCTestCase {
         XCTAssertGreaterThan(
             TranscriptPerf.selectableTextViewUpdateCalls, 0,
             "changed content must update the selectable text view"
+        )
+    }
+
+    /// An AppState publish that changes nothing a row shows leaves the row
+    /// alone (rows used to observe AppState, so each publish redrew every
+    /// row on screen); one that changes what it shows redraws it: a newer
+    /// reply decides whether this one still takes a reaction.
+    func testAppStatePublishRedrawsARowOnlyWhenWhatItShowsChanges() throws {
+        let appState = try makeAppState()
+        let host = mountRow(message: markdownMessage(), appState: appState, resolver: nil)
+        drainUntil(0.5) { false }
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a publish that changes nothing the row shows must not redraw it"
+        )
+
+        appState.messages = [markdownMessage(id: "newest")]
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        drainUntil(2.0) { TranscriptPerf.settledMessageBubbleBodyEvaluations > 0 }
+        XCTAssertGreaterThan(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a newer reply changes what the row shows"
         )
     }
 
@@ -219,6 +250,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolverB
         )
+        .chatRows()
         .environmentObject(appState)
         .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
@@ -710,6 +742,7 @@ private struct SettledGateHarnessRow: View {
                 readAloudController: readAloudController,
                 gatewayResolver: gatewayResolver
             )
+            .chatRows()
             .environmentObject(appState),
             sizeCategory: sizeCategory
         )

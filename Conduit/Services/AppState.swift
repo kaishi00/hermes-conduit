@@ -19133,10 +19133,15 @@ final class AppState: ObservableObject {
         return .newest(role: "assistant")
     }
 
-    func canReact(to message: ChatMessage) -> Bool {
+    /// Whether a reaction can be sent at all, whatever the message.
+    var reactionsAvailable: Bool {
         offlineChatPresentation == nil
             && activeSessionId != nil
             && (client != nil || messageReactionSender != nil)
+    }
+
+    func canReact(to message: ChatMessage) -> Bool {
+        reactionsAvailable
             && message.content.contains(where: { !$0.isWhitespace })
             && reactionTarget(for: message) != nil
     }

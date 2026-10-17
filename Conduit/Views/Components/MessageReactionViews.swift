@@ -144,7 +144,10 @@ struct MessageReactButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Binding var isPresented: Bool
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
 
     private var mine: String? {
         message.reactions.first(where: \.isFromUser)?.emoji
