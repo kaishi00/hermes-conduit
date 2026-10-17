@@ -54,7 +54,7 @@ struct V2TasksView: View {
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { width in
-                pageWidth = width
+                if abs(width - pageWidth) > 0.5 { pageWidth = width }
             }
             .v2ProfileSwitchContent()
         }

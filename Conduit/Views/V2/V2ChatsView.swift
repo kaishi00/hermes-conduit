@@ -280,7 +280,9 @@ struct V2ChatsView: View {
 
     private func select(_ newSelection: V2FilterSelection) {
         Haptics.selection()
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filterRaw = newSelection.rawValue }
+        // Snaps: re-filtering the whole list isn't worth animating, and an
+        // `@AppStorage` write ignored the `withAnimation` it used to sit in.
+        filterRaw = newSelection.rawValue
     }
 
     /// Under Reduce Motion the lists only crossfade.
