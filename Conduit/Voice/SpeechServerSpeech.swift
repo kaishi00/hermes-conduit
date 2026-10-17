@@ -149,17 +149,18 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     // MARK: Sentences
 
     /// Whole sentences ready to speak, and the unfinished rest. A sentence
-    /// ends at . ! ? … or a line break followed by whitespace; a very long
-    /// one is cut at its last space.
+    /// ends at 。！？ or a line break, or at . ! ? … followed by whitespace
+    /// (so "3.5" stays whole); a very long one is cut at its last space, or
+    /// anywhere in text without spaces.
     static func splitSentences(_ text: String) -> (ready: String, rest: String) {
         var cut: String.Index?
         var index = text.startIndex
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
-            if character.isNewline {
+            if character.isNewline || "。！？".contains(character) {
                 cut = next
-            } else if ".!?…。！？".contains(character), next < text.endIndex, text[next].isWhitespace {
+            } else if ".!?…".contains(character), next < text.endIndex, text[next].isWhitespace {
                 cut = next
             }
             index = next
@@ -167,8 +168,10 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         if let cut {
             return (String(text[..<cut]), String(text[cut...]))
         }
-        if text.count > maximumChunkCharacters, let space = text.lastIndex(where: { $0 == " " }) {
-            return (String(text[..<space]), String(text[space...]))
+        if text.count > maximumChunkCharacters {
+            let split = text.lastIndex(where: { $0 == " " })
+                ?? text.index(text.startIndex, offsetBy: maximumChunkCharacters)
+            return (String(text[..<split]), String(text[split...]))
         }
         return ("", text)
     }
@@ -436,6 +439,13 @@ struct SpeechServerVoiceStatus: Equatable {
     /// The flags to start Hugging Face speech-to-speech with.
     var serverFlags: String? {
         guard let modelAddress, let apiKey else { return nil }
-        return "--llm_backend chat-completions --responses_api_base_url \(modelAddress) --responses_api_api_key \(apiKey) --model_name \(modelName) --stream_batch_sentences 1 --num_pipelines 2"
+        return "--llm_backend chat-completions --responses_api_base_url \(Self.shellQuoted(modelAddress)) --responses_api_api_key \(Self.shellQuoted(apiKey)) --model_name \(Self.shellQuoted(modelName)) --stream_batch_sentences 1 --num_pipelines 2"
+    }
+
+    /// `value` as one shell word: as is when it's plain, else single-quoted.
+    static func shellQuoted(_ value: String) -> String {
+        let plain = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.:/=@%+,"))
+        if !value.isEmpty, value.unicodeScalars.allSatisfy(plain.contains) { return value }
+        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

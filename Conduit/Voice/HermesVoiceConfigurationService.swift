@@ -402,7 +402,14 @@ final class HermesVoiceConfigurationService: ObservableObject {
         do {
             let response = try await requester.requestJSON(
                 path: profilePath(SpeechServerSpeechStream.keyPath), method: "POST", body: [:])
-            return (response["api_key"] as? String)?.isEmpty == false
+            if (response["api_key"] as? String)?.isEmpty == false {
+                errorMessage = nil
+                return true
+            }
+            let reason = (response["error"] as? String ?? response["detail"] as? String)
+                .flatMap { $0.isEmpty ? nil : $0 } ?? AppLocalization.string("Your Hermes host didn't send a key.")
+            errorMessage = AppLocalization.string("Could not make a new key: \(reason)")
+            return false
         } catch {
             errorMessage = AppLocalization.string("Could not make a new key: \(UserFacingError.message(for: error))")
             return false

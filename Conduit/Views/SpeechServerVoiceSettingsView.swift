@@ -13,6 +13,7 @@ import UIKit
 
 struct SpeechServerVoiceSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var status: SpeechServerVoiceStatus?
     @State private var isRotating = false
@@ -72,10 +73,14 @@ struct SpeechServerVoiceSettingsView: View {
     }
 
     private func copyRow(title: String, value: String, identifier: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        // At accessibility text sizes the button goes under the title.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout())
+        return VStack(alignment: .leading, spacing: 4) {
+            layout {
                 Text(verbatim: title).font(.subheadline.weight(.semibold))
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Button(AppLocalization.string("Copy")) {
                     UIPasteboard.general.string = value
                     UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
