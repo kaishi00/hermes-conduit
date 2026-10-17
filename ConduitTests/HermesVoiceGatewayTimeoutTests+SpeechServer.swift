@@ -329,6 +329,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(SpeechServerSpeechStream.isReadingBack("it's 5", words: "It's 5 o'clock."))
         XCTAssertTrue(SpeechServerSpeechStream.isReadingBack("", words: "Anything"))
         XCTAssertEqual(SpeechServerSpeechStream.comparable("Café"), SpeechServerSpeechStream.comparable("cafe"))
+        XCTAssertEqual(SpeechServerSpeechStream.splitSentences("One. Two. Three").ready, "One.")
         XCTAssertFalse(SpeechServerSpeechStream.isReadingBack("Of course", words: "It's 5 o'clock."))
         XCTAssertFalse(SpeechServerSpeechStream.isReadingBack("It's 5 o'clock. Anything else?", words: "It's 5 o'clock."))
     }

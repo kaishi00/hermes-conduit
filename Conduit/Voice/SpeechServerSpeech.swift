@@ -168,10 +168,14 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
+            // The first sentence end: one sentence a response, so the
+            // first one's audio doesn't wait for the rest.
             if character.isNewline || "。！？".contains(character) {
                 cut = next
+                break
             } else if ".!?…".contains(character), next < text.endIndex, text[next].isWhitespace {
                 cut = next
+                break
             }
             index = next
         }
@@ -204,7 +208,8 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
 
     private func enqueue(_ text: String) {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty else { return }
+        // Punctuation or emoji alone has nothing to read back or check.
+        guard !Self.comparable(words).isEmpty else { return }
         queued.append(words)
         speakNext()
     }
@@ -225,8 +230,10 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     private func responseFinished() {
         if let words = speaking {
             guard responseHadAudio else {
+                // The cancel goes out before the socket closes.
                 send(["type": "response.cancel"], afterEnd: true)
-                fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.")))
+                complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply."))))
+                closeAfterSending()
                 return
             }
             guard Self.comparable(spokenTranscript) == Self.comparable(words) else {
