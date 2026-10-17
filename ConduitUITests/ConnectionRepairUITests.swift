@@ -44,13 +44,14 @@ final class ConnectionRepairUITests: XCTestCase {
     }
 
     func testNativeRepairTestsReconnectsAndReturnsToChat() {
-        // Full native repair: seeded URL → credentials → staged success →
-        // Reconnect Now (scripted activation) → back on chat, never bounced
-        // to the login card.
+        // Full native repair: seeded URL → staged test (Credentials
+        // required) → credentials → staged success → Reconnect Now
+        // (scripted activation) → back on chat, never bounced to the login
+        // card.
         let app = XCUIApplication()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
-            "-CONNECTION_SETUP_TEST_RESULT", "success",
+            "-CONNECTION_SETUP_TEST_RESULT", "auth:password",
             "-CONDUIT_REPAIR_ACTIVATION", "success"
         ]
         app.launch()
@@ -64,6 +65,11 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertEqual(urlField.value as? String, Identity.stubDashboardURL)
         tapVisible(app.buttons[Identity.next], in: app)
 
+        // Discovery first: the address goes straight to the staged test,
+        // which asks for credentials once it proves a password dashboard.
+        XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
+        tapVisible(app.buttons[Identity.testRun], in: app)
+        tapVisible(app.buttons[Identity.enterCredentials], in: app)
         let username = app.textFields[Identity.username]
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)
@@ -160,7 +166,7 @@ final class ConnectionRepairUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
-            "-CONNECTION_SETUP_TEST_RESULT", "success",
+            "-CONNECTION_SETUP_TEST_RESULT", "auth:password",
             "-CONDUIT_REPAIR_ACTIVATION", "transportFailure"
         ]
         app.launch()
@@ -174,6 +180,11 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertEqual(urlField.value as? String, Identity.stubDashboardURL)
         tapVisible(app.buttons[Identity.next], in: app)
 
+        // Discovery first: the address goes straight to the staged test,
+        // which asks for credentials once it proves a password dashboard.
+        XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
+        tapVisible(app.buttons[Identity.testRun], in: app)
+        tapVisible(app.buttons[Identity.enterCredentials], in: app)
         let username = app.textFields[Identity.username]
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)

@@ -1,10 +1,10 @@
 import XCTest
 
 /// Round-2 Connection Setup wizard UI coverage: the guided flow opens from the
-/// login card's entry point, walks Dashboard → Credentials → Access Method,
-/// supports back navigation, shows Copy Prompt on the No / I don't know
-/// paths, and reaches the Tailscale branch. Everything runs offline — no
-/// step performs network I/O.
+/// login card's entry point, walks Dashboard → Access Method (never a
+/// credentials question before discovery), supports back navigation, shows
+/// Copy Prompt on the No / I don't know paths, and reaches the Tailscale
+/// branch. Everything runs offline — no step performs network I/O.
 final class ConnectionSetupUITests: XCTestCase {
     private enum Identity {
         static let connectionSetup = "login.connection-setup"
@@ -22,18 +22,17 @@ final class ConnectionSetupUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testLANDetailsValidationReviewAndHandoffWithoutConnecting() {
+    func testLANDetailsDiscoveryFirstCredentialsReviewAndHandoffWithoutConnecting() {
         let app = XCUIApplication()
-        // The staged connection test runs against a deterministic stub probe:
-        // UI tests never depend on a real Hermes server.
-        app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "success"]
+        // The staged connection test runs against a deterministic stub probe
+        // for a password dashboard (Credentials required until credentials
+        // are entered): UI tests never depend on a real Hermes server.
+        app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
         app.launch()
         openSetup(app)
-        stepLabel(app, "Step 1 of 3")
+        stepLabel(app, "Step 1 of 2")
         tapVisible(app.buttons[Identity.answerYes], in: app)
-        stepLabel(app, "Step 2 of 3")
-        tapVisible(app.buttons[Identity.answerYes], in: app)
-        stepLabel(app, "Step 3 of 3")
+        stepLabel(app, "Step 2 of 2")
         tapVisible(app.buttons["setup.method-lan"], in: app)
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
@@ -53,6 +52,15 @@ final class ConnectionSetupUITests: XCTestCase {
         port.typeText(XCUIKeyboardKey.delete.rawValue + "9119")
         dismissKeyboard(app)
         tapVisible(app.buttons["setup.next"], in: app)
+        // Discovery first: the address alone reaches the staged test, with
+        // no credentials screen in between.
+        XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["setup.username"].exists, "No credentials are asked for before discovery")
+        tapVisible(app.buttons["setup.test.run"], in: app)
+        // Discovery proved a password dashboard: only now are credentials
+        // asked for.
+        XCTAssertTrue(app.staticTexts["setup.test.credentials-required"].waitForExistence(timeout: 5))
+        tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
         let username = app.textFields["setup.username"]
         tapVisible(username, in: app)
         username.typeText("round3-user")
@@ -60,7 +68,6 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(password, in: app)
         password.typeText("round3-private-fixture")
         tapVisible(app.buttons["setup.next"], in: app)
-        // The staged test screen sits between credentials and Review.
         XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))
         tapVisible(app.buttons["setup.test.run"], in: app)
         XCTAssertTrue(app.staticTexts["setup.test.ready"].waitForExistence(timeout: 5))
@@ -87,13 +94,14 @@ final class ConnectionSetupUITests: XCTestCase {
         // Continue opens once the dashboard says it takes a password.
         XCTAssertTrue(app.buttons["login.connect"].isEnabled)
         XCTAssertFalse(app.staticTexts["Connecting…"].exists)
-        // Reopening uses the in-memory login fields, including the password.
+        // Reopening uses the in-memory login fields, including the password,
+        // so the wizard shows the credentials again before testing.
         openSetup(app)
-        tapVisible(app.buttons[Identity.answerYes], in: app)
         tapVisible(app.buttons[Identity.answerYes], in: app)
         tapVisible(app.buttons["setup.use-existing"], in: app)
         XCTAssertEqual(app.textFields["setup.url"].value as? String, "http://192.168.1.28:9119")
         tapVisible(app.buttons["setup.next"], in: app)
+        XCTAssertTrue(app.secureTextFields["setup.password"].waitForExistence(timeout: 5))
         tapVisible(app.buttons["setup.next"], in: app)
         XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))
         tapVisible(app.buttons["setup.test.run"], in: app)
@@ -104,18 +112,16 @@ final class ConnectionSetupUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         openSetup(app)
-        stepLabel(app, "Step 1 of 3")
+        stepLabel(app, "Step 1 of 2")
         tapVisible(app.buttons[Identity.answerYes], in: app)
-        stepLabel(app, "Step 2 of 3")
-        tapVisible(app.buttons[Identity.answerYes], in: app)
-        stepLabel(app, "Step 3 of 3")
+        stepLabel(app, "Step 2 of 2")
         tapVisible(app.buttons[Identity.methodTailscale], in: app)
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
         tapVisible(host, in: app)
         host.typeText("machine.tailnet.ts.net")
         tapVisible(app.buttons["setup.next"], in: app)
-        XCTAssertTrue(app.textFields["setup.username"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5), "The address alone reaches the staged test")
         tapVisible(app.buttons[Identity.back], in: app)
         XCTAssertEqual(host.value as? String, "machine.tailnet.ts.net")
         XCTAssertTrue(app.staticTexts["https://machine.tailnet.ts.net"].exists)
@@ -194,7 +200,7 @@ final class ConnectionSetupUITests: XCTestCase {
         openSetup(app)
 
         // Step 1: dashboard readiness, answered No → Ask Hermes guidance.
-        stepLabel(app, "Step 1 of 3")
+        stepLabel(app, "Step 1 of 2")
         let no = app.buttons[Identity.answerNo]
         XCTAssertTrue(no.waitForExistence(timeout: 5), "Dashboard answers missing. Tree:\n\(app.debugDescription)")
         if !no.isHittable { app.swipeUp() }
@@ -226,15 +232,9 @@ final class ConnectionSetupUITests: XCTestCase {
         XCTAssertTrue(pollHittability(of: continueButton, timeout: 3))
         continueButton.tap()
 
-        // Step 2: credentials, answered Yes.
-        stepLabel(app, "Step 2 of 3")
-        let yes = app.buttons[Identity.answerYes]
-        XCTAssertTrue(yes.waitForExistence(timeout: 5))
-        if !yes.isHittable { app.swipeUp() }
-        yes.tap()
-
-        // Step 3: access method, choose Tailscale.
-        stepLabel(app, "Step 3 of 3")
+        // Step 2: access method, choose Tailscale. No credentials question:
+        // how the dashboard signs in is discovered by the connection test.
+        stepLabel(app, "Step 2 of 2")
         let tailscale = app.buttons[Identity.methodTailscale]
         XCTAssertTrue(tailscale.waitForExistence(timeout: 5), "Tailscale method card missing. Tree:\n\(app.debugDescription)")
         if !tailscale.isHittable { app.swipeUp() }
@@ -251,10 +251,10 @@ final class ConnectionSetupUITests: XCTestCase {
         let back = app.buttons[Identity.back]
         XCTAssertTrue(back.waitForExistence(timeout: 5))
         back.tap()
-        stepLabel(app, "Step 3 of 3")
+        stepLabel(app, "Step 2 of 2")
 
         back.tap()
-        stepLabel(app, "Step 2 of 3")
+        stepLabel(app, "Step 1 of 2")
 
         let done = app.buttons[Identity.done]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
@@ -270,7 +270,7 @@ final class ConnectionSetupUITests: XCTestCase {
         app.launch()
         openSetup(app)
 
-        stepLabel(app, "Step 1 of 3")
+        stepLabel(app, "Step 1 of 2")
         let unknown = app.buttons[Identity.answerUnknown]
         XCTAssertTrue(unknown.waitForExistence(timeout: 5))
         if !unknown.isHittable { app.swipeUp() }
@@ -293,7 +293,7 @@ final class ConnectionSetupUITests: XCTestCase {
         XCTAssertTrue(hittable, "Continue must stay reachable on a compact iPhone layout")
 
         continueButton.tap()
-        stepLabel(app, "Step 2 of 3")
+        stepLabel(app, "Step 2 of 2")
     }
 
     /// The setup cards must be selectable across their whole visible area,
@@ -312,15 +312,19 @@ final class ConnectionSetupUITests: XCTestCase {
         let serverField = serverFieldAgain(app)
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
         tapCardWhitespace(app, on: app.buttons[Identity.connectionSetup], side: .leading)
-        stepLabel(app, "Step 1 of 3")
+        stepLabel(app, "Step 1 of 2")
 
-        // 2. Answer card: right of the short "Yes" label, inside the card.
+        // 2. Answer card: the card's own leading padding, left of the "No"
+        // label. No keeps the question up and shows its guidance.
+        tapCardWhitespace(app, on: app.buttons[Identity.answerNo], side: .leading)
+        XCTAssertTrue(
+            app.buttons[Identity.copyPrompt].waitForExistence(timeout: 5),
+            "Tapping the answer card's padding must select it. Tree:\n\(app.debugDescription)"
+        )
+
+        // 3. Answer card: right of the short "Yes" label, inside the card.
         tapCardWhitespace(app, on: app.buttons[Identity.answerYes], side: .trailing)
-        stepLabel(app, "Step 2 of 3")
-
-        // 3. Answer card: the card's own leading padding, left of the label.
-        tapCardWhitespace(app, on: app.buttons[Identity.answerYes], side: .leading)
-        stepLabel(app, "Step 3 of 3")
+        stepLabel(app, "Step 2 of 2")
 
         // 4. Access-method card: its leading padding, left of the title.
         tapCardWhitespace(app, on: app.buttons["setup.method-lan"], side: .leading)

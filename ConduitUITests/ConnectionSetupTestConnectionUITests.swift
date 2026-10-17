@@ -1,9 +1,11 @@
 import XCTest
 
-/// Round-4 Connection Setup UI coverage: the staged connection-test screen
-/// between credentials and Review. Both tests run against the deterministic
-/// stub probe selected by the `-CONNECTION_SETUP_TEST_RESULT` launch
-/// argument (DEBUG-only) — no test depends on a real Hermes server.
+/// Round-4 Connection Setup UI coverage: the staged connection-test screen,
+/// reached from the address alone (discovery first) and again after
+/// credentials once a password dashboard asks for them. Every test runs
+/// against the deterministic stub probe selected by the
+/// `-CONNECTION_SETUP_TEST_RESULT` launch argument (DEBUG-only) — no test
+/// depends on a real Hermes server.
 final class ConnectionSetupTestConnectionUITests: XCTestCase {
     private enum Identity {
         static let answerYes = "setup.answer-yes"
@@ -26,10 +28,10 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
 
     func testStagedTestSuccessShowsAllStagesAndEnablesHandoff() {
         let app = XCUIApplication()
-        app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "success"]
+        app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
         app.launch()
 
-        walkToTestScreen(app)
+        walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
 
         // On success the wizard advances to Review, which shows every passed
@@ -58,7 +60,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:authenticationRejected"]
         app.launch()
 
-        walkToTestScreen(app)
+        walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
 
         // The failed test stays on the test screen: the two successful
@@ -89,7 +91,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:rateLimited"]
         app.launch()
 
-        walkToTestScreen(app)
+        walkToTestScreen(app, enteringCredentials: true)
         tapVisible(app.buttons[Identity.testRun], in: app)
 
         XCTAssertTrue(app.staticTexts["setup.test.failure"].waitForExistence(timeout: 5))
@@ -157,6 +159,36 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // The Round-3 typed handoff: the address fills in, nothing connects
         // automatically.
         tapVisible(app.buttons[Identity.useSettings], in: app)
+        assertDiscoveryFirstLoginCard(app)
+    }
+
+    func testSignInChoiceOutcomeOffersCredentialsOrTheHandoff() {
+        // Password and browser sign-in both work and no credentials were
+        // tested: Review authorizes the address-only handoff and offers
+        // Enter Credentials to test the password method instead.
+        let app = XCUIApplication()
+        app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:signInChoice"]
+        app.launch()
+
+        walkToTestScreen(app)
+        tapVisible(app.buttons[Identity.testRun], in: app)
+
+        let choice = app.staticTexts["setup.test.sign-in-choice"]
+        XCTAssertTrue(choice.waitForExistence(timeout: 5))
+        XCTAssertTrue(choice.label.contains("more than one way to sign in"), "Got: \(choice.label)")
+        let authRow = stageRow(app, Identity.stageAuthentication)
+        XCTAssertTrue(authRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(authRow.label.lowercased().contains("choice of sign-in method"), "Got: \(authRow.label)")
+        XCTAssertFalse(authRow.label.lowercased().contains("login successful"))
+        XCTAssertTrue(app.buttons[Identity.useSettings].isEnabled)
+
+        tapVisible(app.buttons["setup.test.choice-enter-credentials"], in: app)
+        XCTAssertTrue(app.textFields["setup.username"].waitForExistence(timeout: 5), "Enter Credentials leads to the credentials step")
+    }
+
+    /// The login card after a wizard handoff: the tested address, the
+    /// Continue (discovery) action, and no credential field yet.
+    private func assertDiscoveryFirstLoginCard(_ app: XCUIApplication) {
         let server = app.textFields["login.server-url"]
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
@@ -168,9 +200,12 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
 
     // MARK: - Walk helpers
 
-    /// Opens setup and walks Dashboard → Credentials → LAN → details →
-    /// credentials, landing on the staged test screen.
-    private func walkToTestScreen(_ app: XCUIApplication) {
+    /// Opens setup and walks Dashboard → LAN → details, landing on the
+    /// staged test screen straight from the address. With
+    /// `enteringCredentials`, it first runs the test to the Credentials
+    /// required outcome and enters credentials, landing on the test screen
+    /// again — the discovery-first route to a password test.
+    private func walkToTestScreen(_ app: XCUIApplication, enteringCredentials: Bool = false) {
         let serverField = app.textFields["login.server-url"]
         XCTAssertTrue(serverField.waitForExistence(timeout: 10), "Login screen did not appear. Tree:\n\(app.debugDescription)")
         let setup = app.buttons["login.connection-setup"]
@@ -183,10 +218,10 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // the first answer races the transition (a hosted failure waited out
         // exactly this race). The wizard's own step label is the semantic
         // "Step 1 is active" marker — wait for it before the first answer.
-        waitForStep(app, "Step 1 of 3")
+        waitForStep(app, "Step 1 of 2")
 
         tapVisible(app.buttons[Identity.answerYes], in: app)
-        tapVisible(app.buttons[Identity.answerYes], in: app)
+        waitForStep(app, "Step 2 of 2")
         tapVisible(app.buttons[Identity.methodLan], in: app)
         tapVisible(app.buttons[Identity.detailsReady], in: app)
 
@@ -199,13 +234,19 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         dismissKeyboard(app)
         tapVisible(app.buttons[Identity.next], in: app)
 
-        let username = app.textFields["setup.username"]
-        tapVisible(username, in: app)
-        username.typeText("round4-user")
-        let password = app.secureTextFields["setup.password"]
-        tapVisible(password, in: app)
-        password.typeText("round4-private-fixture")
-        tapVisible(app.buttons[Identity.next], in: app)
+        if enteringCredentials {
+            XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
+            tapVisible(app.buttons[Identity.testRun], in: app)
+            XCTAssertTrue(app.staticTexts["setup.test.credentials-required"].waitForExistence(timeout: 5))
+            tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
+            let username = app.textFields["setup.username"]
+            tapVisible(username, in: app)
+            username.typeText("round4-user")
+            let password = app.secureTextFields["setup.password"]
+            tapVisible(password, in: app)
+            password.typeText("round4-private-fixture")
+            tapVisible(app.buttons[Identity.next], in: app)
+        }
 
         XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
         XCTAssertTrue(stageRow(app, Identity.stageServer).waitForExistence(timeout: 5))

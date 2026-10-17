@@ -13,16 +13,17 @@
 //  confirmation) ride on the same provider-discovery request the normal
 //  login flow performs first; stage 3 is the full native connect (password
 //  login + ws-ticket mint) for password-capable dashboards WITH present
-//  credentials. Two dashboards legitimately stop before stage 3's login: one
-//  that answers discovery with an unauthenticated redirect to a sign-in page
-//  ends in the supported `requiresInteractiveSignIn` outcome, and a
-//  password-capable dashboard whose tested configuration carries no usable
+//  credentials. The sign-in mode comes from the shared
+//  `DashboardSignInResolver`, the same decision the login card and Repair
+//  make. Several dashboards legitimately stop before stage 3's login: one
+//  that signs in through a browser (an unauthenticated redirect to a sign-in
+//  service, an OAuth provider with or without native_pkce) ends in the
+//  supported `requiresInteractiveSignIn` outcome; one offering password AND
+//  browser sign-in without credentials to test ends in `requiresSignInChoice`;
+//  and a password dashboard whose tested configuration carries no usable
 //  credentials ends in the supported `requiresCredentials` partial outcome —
 //  credential absence is not an authentication mode, and an empty-credential
-//  login is never sent. An OAuth-only Hermes provider plus the advertised
-//  native_pkce capability ends in the same interactive handoff; the view then
-//  uses Hermes' native browser flow rather than the embedded WebView. The
-//  probe commits nothing: no cookie store write, no
+//  login is never sent. The probe commits nothing: no cookie store write, no
 //  Keychain, no AppState mutation, no websocket, no screen changes. A
 //  successful native test RETURNS the validated transaction memory-only
 //  (Round 6): Repair mode may promote it to an explicit reconnect, and the
@@ -89,8 +90,10 @@ enum ConnectionSetupStageState: Equatable {
     /// The dashboard answered, but authentication must continue
     /// interactively in the browser after the handoff. A supported terminal
     /// outcome — explicitly NOT a success (the user has not authenticated)
-    /// and NOT a failure (nothing went wrong).
-    case requiresInteractiveSignIn
+    /// and NOT a failure (nothing went wrong). Carries the sign-in the
+    /// shared decision chose, which is what Repair's Sign In to Reconnect
+    /// opens for this result.
+    case requiresInteractiveSignIn(DashboardInteractiveSignIn)
     /// The dashboard is a native password dashboard, but the test
     /// configuration carries no usable credentials to test it with. A
     /// supported partial outcome: transport and dashboard identity are
@@ -99,6 +102,12 @@ enum ConnectionSetupStageState: Equatable {
     /// failure, and NOT an authentication mode — credential availability is
     /// a property of the seed, never of the dashboard.
     case requiresCredentials
+    /// The dashboard offers both password sign-in and a browser sign-in, and
+    /// the test had no credentials to try. A supported terminal outcome like
+    /// `requiresInteractiveSignIn`: the user picks a method on the login
+    /// screen, or enters credentials to test the password method now.
+    /// Carries the browser sign-in on offer.
+    case requiresSignInChoice(DashboardBrowserSignInOffer)
     case failed(ConnectionFailure)
 
     /// VoiceOver state word, so success/failure is never communicated by
@@ -110,6 +119,7 @@ enum ConnectionSetupStageState: Equatable {
         case .succeeded: return AppLocalization.string("passed")
         case .requiresInteractiveSignIn: return AppLocalization.string("browser sign-in required")
         case .requiresCredentials: return AppLocalization.string("credentials required")
+        case .requiresSignInChoice: return AppLocalization.string("choice of sign-in method")
         case .failed: return AppLocalization.string("failed")
         }
     }
@@ -125,13 +135,18 @@ enum ConnectionSetupTestEvent: Equatable {
     /// in the appropriate approved surface. Emitted once, at the
     /// authentication stage, after server and dashboard have succeeded. No
     /// password login, ticket mint, or WebView follows inside the probe.
-    case requiresInteractiveSignIn(ConnectionSetupTestStage)
+    case requiresInteractiveSignIn(ConnectionSetupTestStage, DashboardInteractiveSignIn)
     /// Terminal partial outcome: the dashboard is a native password
     /// dashboard but the tested configuration carries no usable credentials.
     /// Emitted once, at the authentication stage, after server and dashboard
     /// have succeeded — INSTEAD of any login attempt. No password login and
     /// no ticket mint follow; an empty-credential login is never sent.
     case requiresCredentials(ConnectionSetupTestStage)
+    /// Terminal outcome: the dashboard offers password and browser sign-in
+    /// and the tested configuration carries no credentials. Emitted once, at
+    /// the authentication stage; no login attempt, ticket mint, or WebView
+    /// follows inside the probe.
+    case requiresSignInChoice(ConnectionSetupTestStage, DashboardBrowserSignInOffer)
     case failed(ConnectionSetupTestStage, ConnectionFailure)
 }
 
@@ -171,6 +186,38 @@ struct ConnectionSetupTestState: Equatable {
         AppLocalization.string("This dashboard uses browser-based sign-in. Sign in now to reconnect to it.")
     }
 
+    /// The sign-in-choice outcome's copy: both methods work, neither has
+    /// been tried. Never a success claim.
+    static var signInChoiceMessage: String {
+        AppLocalization.string("This dashboard offers more than one way to sign in. Choose one on the login screen, or enter your username and password to test them now.")
+    }
+
+    /// The sign-in-choice message in the Repair context.
+    static var repairSignInChoiceMessage: String {
+        AppLocalization.string("This dashboard offers more than one way to sign in. Sign in now to reconnect, or enter your username and password to test them first.")
+    }
+
+    /// The one VoiceOver announcement for a run's terminal event, in the
+    /// copy the screen shows for it: Repair's own wording where Review
+    /// shows it (Repair has no login screen to go back to). Nil for the
+    /// stage transitions in between, which stay quiet.
+    static func completionAnnouncement(for event: ConnectionSetupTestEvent, repairing: Bool) -> String? {
+        switch event {
+        case .succeeded(.authentication):
+            return readyMessage
+        case .requiresInteractiveSignIn(.authentication, _):
+            return repairing ? repairInteractiveMessage : interactiveReadyMessage
+        case .requiresCredentials(.authentication):
+            return credentialsRequiredMessage
+        case .requiresSignInChoice(.authentication, _):
+            return repairing ? repairSignInChoiceMessage : signInChoiceMessage
+        case .failed(_, let failure):
+            return failure.userTitle
+        default:
+            return nil
+        }
+    }
+
     subscript(stage: ConnectionSetupTestStage) -> ConnectionSetupStageState {
         get {
             switch stage {
@@ -200,12 +247,15 @@ struct ConnectionSetupTestState: Equatable {
         case .succeeded(let stage):
             guard self[stage] == .running else { return }
             self[stage] = .succeeded
-        case .requiresInteractiveSignIn(let stage):
+        case .requiresInteractiveSignIn(let stage, let signIn):
             guard self[stage] == .pending || self[stage] == .running else { return }
-            self[stage] = .requiresInteractiveSignIn
+            self[stage] = .requiresInteractiveSignIn(signIn)
         case .requiresCredentials(let stage):
             guard self[stage] == .pending || self[stage] == .running else { return }
             self[stage] = .requiresCredentials
+        case .requiresSignInChoice(let stage, let offer):
+            guard self[stage] == .pending || self[stage] == .running else { return }
+            self[stage] = .requiresSignInChoice(offer)
         case .failed(let stage, let failure):
             guard self[stage] == .pending || self[stage] == .running else { return }
             self[stage] = .failed(failure)
@@ -224,9 +274,14 @@ struct ConnectionSetupTestState: Equatable {
     /// server and dashboard succeeded, and authentication stopped at
     /// "browser sign-in required" — never a success, never a failure.
     var requiresInteractiveSignIn: Bool {
-        server == .succeeded
-            && dashboard == .succeeded
-            && authentication == .requiresInteractiveSignIn
+        interactiveSignIn != nil
+    }
+
+    /// The sign-in the interactive outcome names, when the test ended in it.
+    var interactiveSignIn: DashboardInteractiveSignIn? {
+        guard server == .succeeded, dashboard == .succeeded,
+              case .requiresInteractiveSignIn(let signIn) = authentication else { return nil }
+        return signIn
     }
 
     /// The staged test ended in the supported credentials-required partial
@@ -238,6 +293,21 @@ struct ConnectionSetupTestState: Equatable {
         server == .succeeded
             && dashboard == .succeeded
             && authentication == .requiresCredentials
+    }
+
+    /// The staged test ended in the sign-in-choice outcome: server and
+    /// dashboard succeeded, and the dashboard offers password and browser
+    /// sign-in with no credentials tested.
+    var requiresSignInChoice: Bool {
+        browserSignInOffer != nil
+    }
+
+    /// The browser sign-in the sign-in-choice outcome offers, when the test
+    /// ended in it.
+    var browserSignInOffer: DashboardBrowserSignInOffer? {
+        guard server == .succeeded, dashboard == .succeeded,
+              case .requiresSignInChoice(let offer) = authentication else { return nil }
+        return offer
     }
 
     /// The first failed stage in run order, if any.
@@ -261,6 +331,7 @@ struct ConnectionSetupTestState: Equatable {
         case .succeeded: return stage.successLabel
         case .requiresInteractiveSignIn: return AppLocalization.string("Browser sign-in required")
         case .requiresCredentials: return AppLocalization.string("Credentials required")
+        case .requiresSignInChoice: return AppLocalization.string("Choose how to sign in")
         case .pending, .failed: return stage.objectiveLabel
         }
     }
@@ -342,7 +413,8 @@ struct ConnectionSetupTestAcquisition: CustomStringConvertible, CustomDebugStrin
 /// credentials sees exactly one discovery request, one password-login
 /// attempt, and one ticket mint. A password-capable dashboard without
 /// present credentials — and an interactive-auth dashboard — sees exactly
-/// one discovery request and nothing else.
+/// one discovery request and nothing else, plus the native capability
+/// check when discovery names a native-capable provider and no password.
 struct ConnectionSetupProbe: ConnectionSetupTesting {
     private static let logger = Logger(subsystem: "com.milim.relay", category: "connection-setup-test")
 
@@ -388,55 +460,47 @@ struct ConnectionSetupProbe: ConnectionSetupTesting {
         onEvent(.succeeded(.server))
 
         // Stage 2: the discovery answer must identify a Hermes dashboard
-        // with the authentication shape the probe can exercise. An arbitrary
-        // website answering 200 (unrecognized body) and a recognizable
-        // provider answer with no usable authentication route is not a Hermes
-        // password dashboard. Native-capable OAuth is classified explicitly
-        // below rather than being confused with an arbitrary web redirect.
+        // and a sign-in mode, decided by the same resolver the login card
+        // and Repair use. An arbitrary website answering 200, a provider
+        // list naming no usable sign-in, and a failed native capability
+        // check for a dashboard that offers nothing else all fail here —
+        // never a quiet downgrade to another mode.
         onEvent(.started(.dashboard))
-        switch discovery {
-        case .interactiveSignInRequired:
-            // The dashboard requires interactive (browser) sign-in. The
-            // probe has verified everything it can — transport and dashboard
-            // identity plus the expected auth behavior — and reports the
-            // supported terminal outcome. It stays side-effect-free: no
-            // native login attempt, no ticket mint, no WebView, no
-            // cookie/Keychain writes. The actual sign-in happens over the
-            // approved interactive surface, never inside the probe.
+        let mode: DashboardSignInMode
+        do {
+            mode = try await DashboardSignInResolver(client: client).mode(for: discovery)
+        } catch {
+            guard !Self.wasCancelled(error) else { return nil }
+            Self.reportFailure(.dashboard, ConnectionFailureClassifier.classify(error), to: onEvent)
+            return nil
+        }
+        switch mode {
+        case .interactive(let signIn):
+            // The dashboard signs in through a browser: Hermes' native
+            // system-browser flow, a sign-in service in front of it, or an
+            // older Hermes' own sign-in page. The probe has verified
+            // everything it can and reports the supported terminal outcome.
+            // It stays side-effect-free: no native login attempt, no ticket
+            // mint, no WebView, no cookie/Keychain writes. The actual sign-in
+            // happens over the approved interactive surface, never inside
+            // the probe.
             onEvent(.succeeded(.dashboard))
             onEvent(.started(.authentication))
-            onEvent(.requiresInteractiveSignIn(.authentication))
+            onEvent(.requiresInteractiveSignIn(.authentication, signIn))
             return nil
-        case .unrecognized:
-            Self.reportFailure(.dashboard, .unexpectedServerResponse, to: onEvent)
-            return nil
-        case .providers(let providers):
-            let supportsPassword = HermesProviderCheck.supportsPassword(providers)
-            let supportsOAuth = HermesProviderCheck.hasNativeOAuthProvider(providers)
-            if supportsOAuth && (!supportsPassword || !result.hasUsableCredentials) {
-                let supportsNativeOAuth: Bool
-                do {
-                    supportsNativeOAuth = try await client.supportsNativeOAuth()
-                } catch {
-                    guard !Self.wasCancelled(error) else { return nil }
-                    Self.reportFailure(
-                        .dashboard,
-                        ConnectionFailureClassifier.classify(error),
-                        to: onEvent
-                    )
-                    return nil
-                }
-                if supportsNativeOAuth {
-                    onEvent(.succeeded(.dashboard))
-                    onEvent(.started(.authentication))
-                    onEvent(.requiresInteractiveSignIn(.authentication))
-                    return nil
-                }
-            }
-            guard supportsPassword else {
-                Self.reportFailure(.dashboard, .unexpectedServerResponse, to: onEvent)
+        case .passwordOrBrowser(let offer):
+            // Password and browser sign-in both work. Credentials in the
+            // tested configuration mean the user signs in with a password:
+            // test that, without the native capability check the password
+            // never needed. Without them, the choice itself is the outcome.
+            guard result.hasUsableCredentials else {
+                onEvent(.succeeded(.dashboard))
+                onEvent(.started(.authentication))
+                onEvent(.requiresSignInChoice(.authentication, offer))
                 return nil
             }
+        case .password:
+            break
         }
         onEvent(.succeeded(.dashboard))
 
@@ -499,12 +563,17 @@ struct ConnectionSetupTestProbeStub: ConnectionSetupTesting {
         case success
         case interactiveSignInRequired = "auth:interactiveSignInRequired"
         case credentialsRequired = "auth:credentialsRequired"
+        /// A password dashboard tested discovery-first: credentials
+        /// required until the tested configuration carries them, then
+        /// success.
+        case password = "auth:password"
+        case signInChoice = "auth:signInChoice"
         case serverHostNotFound = "server:hostNotFound"
         case dashboardUnexpected = "dashboard:unexpectedServerResponse"
         case authRejected = "auth:authenticationRejected"
         case authRateLimited = "auth:rateLimited"
 
-        func run(_ onEvent: (ConnectionSetupTestEvent) -> Void) {
+        func run(_ result: ConnectionSetupResult, _ onEvent: (ConnectionSetupTestEvent) -> Void) {
             switch self {
             case .success:
                 onEvent(.started(.server))
@@ -519,7 +588,9 @@ struct ConnectionSetupTestProbeStub: ConnectionSetupTesting {
                 onEvent(.started(.dashboard))
                 onEvent(.succeeded(.dashboard))
                 onEvent(.started(.authentication))
-                onEvent(.requiresInteractiveSignIn(.authentication))
+                // Deterministic and offline: nothing the stub decides needs
+                // a capability check if Sign In to Reconnect opens it.
+                onEvent(.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)))
             case .credentialsRequired:
                 onEvent(.started(.server))
                 onEvent(.succeeded(.server))
@@ -527,6 +598,18 @@ struct ConnectionSetupTestProbeStub: ConnectionSetupTesting {
                 onEvent(.succeeded(.dashboard))
                 onEvent(.started(.authentication))
                 onEvent(.requiresCredentials(.authentication))
+            case .password:
+                guard result.hasUsableCredentials else {
+                    return Self.credentialsRequired.run(result, onEvent)
+                }
+                Self.success.run(result, onEvent)
+            case .signInChoice:
+                onEvent(.started(.server))
+                onEvent(.succeeded(.server))
+                onEvent(.started(.dashboard))
+                onEvent(.succeeded(.dashboard))
+                onEvent(.started(.authentication))
+                onEvent(.requiresSignInChoice(.authentication, .legacyOAuth))
             case .serverHostNotFound:
                 onEvent(.started(.server))
                 onEvent(.failed(.server, .hostNotFound))
@@ -535,6 +618,11 @@ struct ConnectionSetupTestProbeStub: ConnectionSetupTesting {
                 onEvent(.succeeded(.server))
                 onEvent(.started(.dashboard))
                 onEvent(.failed(.dashboard, .unexpectedServerResponse))
+            case .authRejected where !result.hasUsableCredentials,
+                 .authRateLimited where !result.hasUsableCredentials:
+                // A real probe never sends a login without credentials:
+                // discovery stops at Credentials required first.
+                Self.credentialsRequired.run(result, onEvent)
             case .authRejected:
                 onEvent(.started(.server))
                 onEvent(.succeeded(.server))
@@ -572,12 +660,12 @@ struct ConnectionSetupTestProbeStub: ConnectionSetupTesting {
         cloudflareAccess: CloudflareAccessCredentials?,
         onEvent: @escaping (ConnectionSetupTestEvent) -> Void
     ) async -> ConnectionSetupTestAcquisition? {
-        script.run(onEvent)
+        script.run(result, onEvent)
         // The stub's transaction is built through the DEBUG factory (inert
         // empty cookie set). Repair UI tests script the ACTIVATION outcome
         // separately (`-CONDUIT_REPAIR_ACTIVATION`), so this transaction is
         // never committed by the stub itself.
-        guard script == .success else { return nil }
+        guard script == .success || (script == .password && result.hasUsableCredentials) else { return nil }
         return ConnectionSetupTestAcquisition(
             configuration: result,
             nativeConnection: .debugStub(ticket: "connection-setup-stub-ticket")
