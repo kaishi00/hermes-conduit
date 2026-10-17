@@ -1,0 +1,98 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "1DF32F41-6003-445B-BDAF-FD00BAF2E28C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "04-chat-code_0_3B9371E3-0E8F-4288-874F-8CCAA21524B8.png",
+        "timestamp" : 1792276784.051
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "637BF1F6-5282-467B-9021-088D269D2D79.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-missing-Fix the flaky upload test_0_E1FA9DA4-A15A-4E45-A963-5DB379B0286E.png",
+        "timestamp" : 1792276783.832
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "62233DC7-0AB3-4099-922C-6E230F604102.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "03-chat-trip_0_55D002E2-F5D4-4E18-88A5-54468C7F98A6.png",
+        "timestamp" : 1792276765.143
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "DAC17372-9DF3-49BD-9253-D7FABFD82FBC.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-missing-Weekend trip to Big Sur_0_9093E3A8-ABE3-415C-9E05-92EBB761CA43.png",
+        "timestamp" : 1792276764.909
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "7A2E1940-3122-4823-9215-2E28A8EE89F1.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02-chat-steps_0_502E9651-FC90-4FFD-872D-348312D140DA.png",
+        "timestamp" : 1792276746.074
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "BDEC861A-5D07-4820-8CA4-DD182C59137B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "01-chats_0_3B1463EE-2702-4E23-86B1-560D0646BC8F.png",
+        "timestamp" : 1792276736.896
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "C6FC9931-548B-4EF8-BD1E-E5012479119A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-finish-setup_0_C0A3532C-C5A6-4798-B4DF-76CD406C7FA7.png",
+        "timestamp" : 1792276728.432
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "5C56D0F8-60BE-47FB-B737-DF915DFD5E65.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-after-sign-in_0_F199B466-7076-4278-B551-7265A8FFB883.png",
+        "timestamp" : 1792276717.702
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A90CFEB0-C138-4211-9176-6D8BB7256A47.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-password-step_0_2EE61691-65CD-402E-ACF1-5CDE156F9D01.png",
+        "timestamp" : 1792276713.485
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "E2D1E15B-FA44-43CB-A321-E726EB087015.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-address_0_041452FF-0411-4396-8862-4039794DA2BC.png",
+        "timestamp" : 1792276703.731
+      }
+    ],
+    "testIdentifier" : "AppStoreScreenshotTests/testCaptureAppStoreScreens()",
+    "testIdentifierURL" : "test://com.apple.xcode/Conduit/ConduitScreenshots/AppStoreScreenshotTests/testCaptureAppStoreScreens"
+  }
+]
