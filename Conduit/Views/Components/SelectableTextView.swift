@@ -152,6 +152,7 @@ struct SelectableTextView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
         tearDownMountedTextView(in: uiView)
+        SelectableTextViewPool.recycle(uiView.mountedTextView)
     }
 
     @MainActor
@@ -462,6 +463,9 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     private func makeMountedTextView(needsCoordinatedTextView: Bool) -> UITextView {
+        if let reused = SelectableTextViewPool.take(coordinated: needsCoordinatedTextView) {
+            return reused
+        }
         if needsCoordinatedTextView {
             let textView = MarkdownSelectionTextView(frame: .zero)
             Self.configureBaseTextView(textView)
@@ -789,6 +793,14 @@ private final class MarkdownSelectionTextView: UITextView {
         onTouchBegan?(self, localPoint)
     }
 
+    /// Clears what a touch in progress left behind, before the pool hands
+    /// this view to another block.
+    func prepareForReuse() {
+        gestureRecognizers?
+            .compactMap { $0 as? MarkdownSelectionObserverGestureRecognizer }
+            .forEach { $0.prepareForReuse() }
+    }
+
     func coordinatedCopiedAttributedText() -> NSAttributedString? {
         guard
             let selectionCoordinator,
@@ -888,6 +900,10 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
         coordinator.updateSelection(windowPoint: windowPoint)
     }
 
+    fileprivate func prepareForReuse() {
+        isDrivingSelectionTouch = false
+    }
+
     func handleTouchEnd() {
         let wasDriving = isDrivingSelectionTouch
         isDrivingSelectionTouch = false
@@ -896,6 +912,42 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
             coordinator.isSelectionGestureActive || wasDriving
         else { return }
         coordinator.endSelection()
+    }
+}
+
+/// Text views whose rows scrolled out of view, kept for the rows that
+/// scroll in next. Making a UITextView is the larger part of what a Markdown
+/// block costs to mount, and a chat takes rows down and builds them again
+/// all the time it scrolls. A recycled view keeps nothing that `configure`
+/// doesn't set again: its delegate, selection and coordinator are cleared
+/// when it is taken down. Only used on the main thread, like the views.
+private enum SelectableTextViewPool {
+    static let capacity = 64
+    nonisolated(unsafe) private static var plain: [UITextView] = []
+    nonisolated(unsafe) private static var coordinated: [UITextView] = []
+    private static let memoryWarning = NotificationCenter.default.addObserver(
+        forName: UIApplication.didReceiveMemoryWarningNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        plain.removeAll()
+        coordinated.removeAll()
+    }
+
+    static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
+        wantsCoordinated ? coordinated.popLast() : plain.popLast()
+    }
+
+    static func recycle(_ textView: UITextView) {
+        _ = memoryWarning
+        textView.removeFromSuperview()
+        textView.selectedRange = NSRange(location: 0, length: 0)
+        if let coordinatedTextView = textView as? MarkdownSelectionTextView {
+            coordinatedTextView.prepareForReuse()
+            if coordinated.count < capacity { coordinated.append(textView) }
+        } else if plain.count < capacity {
+            plain.append(textView)
+        }
     }
 }
 
