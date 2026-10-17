@@ -153,7 +153,9 @@ struct RichMapPicture: View {
             }
         }
         .frame(height: height)
-        .accessibilityElement(children: .ignore)
+        // Decorative: the button around it, or the rows beside it, name the
+        // places.
+        .accessibilityHidden(true)
     }
 
     private func key(width: CGFloat) -> String {
