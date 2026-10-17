@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct SpeechServerVoiceSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
@@ -90,7 +91,7 @@ struct SpeechServerVoiceSettingsView: View {
     private func agentSetupButton(_ setup: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {
-                UIPasteboard.general.string = setup
+                Self.copy(setup)
                 UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
             } label: {
                 Label(AppLocalization.string("Copy setup for your agent"), systemImage: "doc.on.doc")
@@ -104,6 +105,13 @@ struct SpeechServerVoiceSettingsView: View {
         }
     }
 
+    /// The key is a credential: what this screen copies leaves the
+    /// clipboard after ten minutes, time enough to paste it on the server.
+    private static func copy(_ text: String) {
+        UIPasteboard.general.setItems([[UTType.plainText.identifier: text]],
+                                      options: [.expirationDate: Date().addingTimeInterval(600)])
+    }
+
     private func copyRow(title: String, value: String, identifier: String) -> some View {
         // At accessibility text sizes the button goes under the title.
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -114,7 +122,7 @@ struct SpeechServerVoiceSettingsView: View {
                 Text(verbatim: title).font(.subheadline.weight(.semibold))
                 if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Button(AppLocalization.string("Copy")) {
-                    UIPasteboard.general.string = value
+                    Self.copy(value)
                     UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
                 }
                 .buttonStyle(.borderless)

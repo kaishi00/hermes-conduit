@@ -326,7 +326,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                 // answered with nothing, so the server says nothing, or
                 // with the greeting, which the call then plays as a reply.
                 let isCheck = text.trimmingCharacters(in: .whitespacesAndNewlines) == check.marker
-                if isCheck, !hasGreeted, let greeting = greeting?(), !greeting.isEmpty {
+                if isCheck, !hasGreeted, let greeting = greeting?()?.trimmingCharacters(in: .whitespacesAndNewlines), !greeting.isEmpty {
                     hasGreeted = true
                     readinessResponseOpen = false
                     sendTurnDelta(turnID, text: greeting)
