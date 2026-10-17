@@ -272,13 +272,15 @@ struct ChatView: View {
             }
             // VoiceOver reads only the saved copy while it is up.
             .accessibilityHidden(showsOfflineCopy)
+            // A chat picked in the saved list covers a transcript still up
+            // from before (a profile switch): that one is hidden, not drawn
+            // under it. It stays laid out, so its scroll position holds.
+            .opacity(showsOfflineCopy ? 0 : 1)
             // The read-only saved copy (#99) sits OVER the live scroll view
             // instead of feeding it: the live view stays mounted with the
             // same empty transcript a cold launch always had, so its viewport
             // ownership, restoration, and follow logic are untouched. The
-            // first real transcript clears the copy in the same update. A
-            // chat picked in the saved list covers a transcript still up
-            // from before (a profile switch) too.
+            // first real transcript clears the copy in the same update.
             .overlay {
                 if showsOfflineCopy, let offline = appState.offlineChatPresentation {
                     OfflineChatTranscriptView(presentation: offline)
