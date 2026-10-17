@@ -3374,6 +3374,8 @@ private struct AboutSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let profile: String
     @EnvironmentObject private var appState: AppState
+    @State private var confirmingSavedChatsDelete = false
+    @State private var savedChatsDeleted = false
 
     var body: some View {
         SettingsDetailContainer {
@@ -3393,6 +3395,9 @@ private struct AboutSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Data handling"), symbol: "hand.raised", tint: .conduitAura) {
                 Text("Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Text("Conduit keeps your Chats lists and recent conversations on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                deleteSavedChatsButton
             }
             ConduitSettingsSection(title: AppLocalization.string("Links"), symbol: "link", tint: .conduitAccent) {
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/privacy/")!) {
@@ -3427,6 +3432,30 @@ private struct AboutSettingsDetail: View {
         }.navigationTitle("About & privacy")
     }
 
+    private var deleteSavedChatsButton: some View {
+        Button(role: .destructive) {
+            confirmingSavedChatsDelete = true
+        } label: {
+            Label(
+                savedChatsDeleted ? AppLocalization.string("Saved Chats Deleted") : AppLocalization.string("Delete Saved Chats"),
+                systemImage: savedChatsDeleted ? "checkmark" : "trash"
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6).frame(minHeight: 48)
+        }
+        .disabled(savedChatsDeleted)
+        .conduitGlassControl(cornerRadius: 17, tint: .red.opacity(0.18), prominent: false)
+        .accessibilityIdentifier("settings.about.delete-saved-chats")
+        .confirmationDialog("Delete the chats saved on this device?", isPresented: $confirmingSavedChatsDelete, titleVisibility: .visible) {
+            Button("Delete Saved Chats", role: .destructive) {
+                appState.deleteSavedChats()
+                savedChatsDeleted = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes the saved Chats lists, conversation copies and pictures for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.")
+        }
+    }
 }
 
 /// A settings page: its sections on the backdrop, the title small in the

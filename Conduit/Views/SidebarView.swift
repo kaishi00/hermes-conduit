@@ -360,8 +360,8 @@ struct SessionList: View {
             }
             let layout = SidebarOfflineLayout.visibility(
                 showingProjects: showingProjects,
-                hasOfflineCopy: appState.offlineChatPresentation != nil,
-                displayedSessionsEmpty: displayedSessions.isEmpty
+                displayedSessionsEmpty: displayedSessions.isEmpty,
+                isLoadingList: appState.isLoadingChatList
             )
             List {
                 if showingProjects {
@@ -377,21 +377,11 @@ struct SessionList: View {
                     }
                     projectContent(hasPinnedSessions: !pinned.isEmpty)
                 }
-                if layout.savedSection, let offline = appState.offlineChatPresentation {
-                    // While the saved copy is up (#99), its saved session list
-                    // shows ABOVE the live sections, which keep rendering as
-                    // soon as the live catalog arrives. Read-only — only
-                    // conversations with a saved transcript open, and they
-                    // open inside the offline copy.
-                    Section {
-                        ForEach(offline.snapshot.sessions) { session in
-                            offlineSessionRow(session, presentation: offline)
-                        }
-                    } header: {
-                        Text("Saved on this device")
-                    } footer: {
-                        Text("Read-only copies from your last connection.")
-                    }
+                if layout.loadingState {
+                    ProgressView("Loading chats…")
+                        .frame(maxWidth: .infinity, minHeight: 140)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
                 if layout.emptyState {
                     ContentUnavailableView(
@@ -543,11 +533,12 @@ struct SessionList: View {
     }
 
     /// The rows a source filter lists: cron runs only under Cron, plus the
-    /// pinned ones in All (#485).
+    /// pinned ones in All (#485). Until this profile's live list lands, the
+    /// rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         SidebarSourceRows.rows(
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             source: source,
             category: appState.sessionCategory,
             isPinned: appState.isSessionPinned
@@ -775,33 +766,6 @@ struct SessionList: View {
         }
     }
 
-    private func offlineSessionRow(
-        _ session: OfflineCachedSession,
-        presentation: OfflineChatPresentation
-    ) -> some View {
-        let isSaved = presentation.snapshot.transcript(for: session.id) != nil
-        let isDisplayed = presentation.displayedSessionID == session.id
-        return Button {
-            Haptics.selection()
-            appState.showOfflineCachedSession(session.id)
-            appState.dismissSidebarDrawer()
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.title)
-                    .font(.subheadline.weight(isDisplayed ? .semibold : .regular))
-                    .lineLimit(1)
-                Text(isSaved ? session.displayUpdatedLabel() : AppLocalization.string("Not saved offline"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isSaved)
-        .opacity(isSaved ? 1 : 0.5)
-        .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
-    }
-
     private func sessionRow(_ session: SessionSummary) -> some View {
         sessionRowChrome(sessionRowButton(session, nest: nil), session: session, nest: nil)
     }
@@ -836,7 +800,7 @@ struct SessionList: View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             SessionRow(
                 session: session,
@@ -2312,26 +2276,27 @@ enum SidebarPinnedSessions {
     }
 }
 
-/// Which session-list parts the sidebar shows while a saved offline copy
-/// (#99) may be up. The saved section never replaces the live sections: a
-/// live catalog published before the live transcript replaces the copy (the
-/// owed-bootstrap window) renders alongside it.
+/// Which session-list parts the sidebar shows before the live list lands.
+/// The rows saved last time draw through the live sections themselves, so
+/// there is no separate saved section; with nothing saved and the list on
+/// its way, a loading state stands in for "no chats".
 enum SidebarOfflineLayout {
     struct Visibility: Equatable {
-        let savedSection: Bool
         let liveSections: Bool
         let emptyState: Bool
+        let loadingState: Bool
     }
 
     static func visibility(
         showingProjects: Bool,
-        hasOfflineCopy: Bool,
-        displayedSessionsEmpty: Bool
+        displayedSessionsEmpty: Bool,
+        isLoadingList: Bool
     ) -> Visibility {
-        Visibility(
-            savedSection: !showingProjects && hasOfflineCopy,
+        let empty = !showingProjects && displayedSessionsEmpty
+        return Visibility(
             liveSections: !showingProjects,
-            emptyState: !showingProjects && !hasOfflineCopy && displayedSessionsEmpty
+            emptyState: empty && !isLoadingList,
+            loadingState: empty && isLoadingList
         )
     }
 }

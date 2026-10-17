@@ -797,7 +797,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
 
 // MARK: - Session
 
-struct SessionSummary: Identifiable, Equatable {
+struct SessionSummary: Identifiable, Equatable, Codable {
     let id: String
     /// The durable database identity used by `session.resume`. Hermes stream
     /// events and notifications may carry the live runtime identity instead.
@@ -837,7 +837,7 @@ struct SessionSummary: Identifiable, Equatable {
 /// A server-owned workspace from Hermes' `projects.*` capability. Projects are
 /// profile-scoped and define session membership by their folders; Conduit only
 /// presents that authoritative grouping and never tries to infer it locally.
-struct ProjectSummary: Identifiable, Equatable {
+struct ProjectSummary: Identifiable, Equatable, Codable {
     let id: String
     var title: String
     var primaryPath: String?

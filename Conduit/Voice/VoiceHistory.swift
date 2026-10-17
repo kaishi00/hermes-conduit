@@ -22,8 +22,8 @@ private let voiceHistoryLogger = Logger(subsystem: "com.milim.relay", category: 
 // MARK: - Tags
 
 /// Conduit's label for a session voice started, kept on the Hermes host.
-struct VoiceSessionTag: Equatable {
-    enum Kind: String, Equatable {
+struct VoiceSessionTag: Equatable, Codable {
+    enum Kind: String, Equatable, Codable {
         /// A saved Gemini Live or GPT-Live call.
         case call
         /// A chat classic Voice started fresh.

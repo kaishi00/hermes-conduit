@@ -2,7 +2,8 @@
 //  OfflineChatTranscriptView.swift
 //  Conduit
 //
-//  Read-only presentation of the saved offline copy (#99).
+//  Read-only presentation of the saved offline copy (#99), and of a chat
+//  picked in the saved Chats list while it opens.
 //
 
 import SwiftUI
@@ -13,18 +14,33 @@ struct OfflineChatTranscriptView: View {
 
     private static let topAnchor = "offline-chat-top"
 
+    /// A chat picked in the saved list with no copy of its own, on its way
+    /// in: it says so, without the saved-copy banner.
+    private var isOpeningPickedChat: Bool {
+        presentation.isPickedChat
+            && presentation.displayedMessages.isEmpty
+            && (appState.isConnecting || appState.isConnected)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            OfflineChatBanner(savedAt: presentation.displayedTranscript?.savedAt)
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
+            if !isOpeningPickedChat {
+                OfflineChatBanner(savedAt: presentation.displayedTranscript?.savedAt)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 10)
+            }
             ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 18) {
                     Color.clear
                         .frame(height: 1)
                         .id(Self.topAnchor)
-                    if presentation.displayedMessages.isEmpty {
+                    if isOpeningPickedChat {
+                        ProgressView("Opening conversation…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 60)
+                    } else if presentation.displayedMessages.isEmpty {
                         Text("No saved copy of this conversation")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)

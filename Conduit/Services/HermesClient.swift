@@ -3324,7 +3324,10 @@ enum MessageNormalizer {
         return "recently"
     }
 
-    private static func formattedSessionTimestamp(_ timestamp: Double) -> String {
+    /// A row's time as the session list shows it: the time alone today,
+    /// else the day and time. The saved chat list re-runs it at launch, so
+    /// a row saved yesterday doesn't still read as today's.
+    static func formattedSessionTimestamp(_ timestamp: Double) -> String {
         // The SAME unit normalization the ordering instant uses: a µs/ns
         // payload must not display one date and rank by another.
         guard let seconds = normalizedSessionTimestamp(timestamp) else {

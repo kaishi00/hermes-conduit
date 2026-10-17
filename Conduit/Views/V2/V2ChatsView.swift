@@ -490,7 +490,8 @@ struct V2ChatsView: View {
                     } label: {
                         Label("Mark all as read", systemImage: "envelope.open")
                     }
-                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
+                    // The saved rows aren't the live list it marks.
+                    .disabled(appState.isShowingSavedChatList || !sourceRows(nil).contains { appState.isSessionUnread($0) })
                 }
             }
         } label: {
@@ -554,11 +555,12 @@ struct V2ChatsView: View {
     // MARK: - Rows
 
     /// The rows a source lists (cron runs only under Scheduled, plus the
-    /// pinned ones in All, #485).
+    /// pinned ones in All, #485). Until this profile's live list lands,
+    /// the rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         SidebarSourceRows.rows(
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             source: source,
             category: appState.sessionCategory,
             isPinned: appState.isSessionPinned
@@ -569,8 +571,8 @@ struct V2ChatsView: View {
         guard !selection.isEmpty else { return mainListRows(sourceRows(nil)) }
         return selection.rows(
             everything: sourceRows(nil),
-            sessions: appState.activeProfileSessions,
-            cronSessions: appState.activeProfileCronSessions,
+            sessions: appState.listedSessions,
+            cronSessions: appState.listedCronSessions,
             category: appState.sessionCategory,
             hasStatus: hasStatus
         )
@@ -629,8 +631,8 @@ struct V2ChatsView: View {
         let expanded = expandedNestIDs
         let layout = SidebarOfflineLayout.visibility(
             showingProjects: false,
-            hasOfflineCopy: appState.offlineChatPresentation != nil,
-            displayedSessionsEmpty: displayed.isEmpty
+            displayedSessionsEmpty: displayed.isEmpty,
+            isLoadingList: appState.isLoadingChatList
         )
         return List {
             searchField
@@ -646,25 +648,11 @@ struct V2ChatsView: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
             }
 
-            if layout.savedSection, let offline = appState.offlineChatPresentation {
-                Section {
-                    ForEach(offline.snapshot.sessions) { session in
-                        offlineSessionRow(session, presentation: offline)
-                    }
-                    // A row, not a footer: a plain List paints footers as an
-                    // opaque band across the backdrop.
-                    Text("Read-only copies from your last connection.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
-                } header: {
-                    sectionHeader(AppLocalization.string("Saved on this device"))
-                }
+            if layout.loadingState {
+                ProgressView("Loading chats…")
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             if layout.emptyState {
@@ -972,32 +960,6 @@ struct V2ChatsView: View {
         return parts.joined(separator: " · ")
     }
 
-    private func offlineSessionRow(
-        _ session: OfflineCachedSession,
-        presentation: OfflineChatPresentation
-    ) -> some View {
-        let isSaved = presentation.snapshot.transcript(for: session.id) != nil
-        return Button {
-            Haptics.selection()
-            appState.showOfflineCachedSession(session.id)
-            appState.dismissSidebarDrawer()
-        } label: {
-            V2SessionRow(
-                title: session.title,
-                time: isSaved ? session.displayUpdatedLabel() : "",
-                preview: isSaved ? "" : AppLocalization.string("Not saved offline"),
-                status: .none,
-                isSelected: presentation.displayedSessionID == session.id,
-                icon: .chat
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(!isSaved)
-        .opacity(isSaved ? 1 : 0.5)
-        .accessibilityHint(isSaved ? "" : AppLocalization.string("This conversation has no saved copy on this device"))
-        .v2ListRow(dividerInset: V2SessionRow.iconTextInset)
-    }
-
     // MARK: - Reveal
 
     /// Expands the parents of the open conversation so returning to the
@@ -1267,7 +1229,7 @@ private struct V2ChatsRow: View {
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             V2SessionRow(
                 title: session.title,
@@ -1334,7 +1296,7 @@ private struct V2ChatsRow: View {
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            appState.requestOpenSession(session.id)
+            appState.openListedSession(session)
         } label: {
             HStack(spacing: 7) {
                 Rectangle()
