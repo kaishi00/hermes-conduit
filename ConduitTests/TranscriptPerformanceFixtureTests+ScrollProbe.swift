@@ -582,6 +582,23 @@ extension TranscriptPerformanceFixtureTests {
             view.textContainer.lineFragmentPadding = 0
             return view
         }
+        /// The text view inside a host view, pinned with constraints the
+        /// way SelectableTextViewHostView does today, or framed by hand.
+        func hosted(constraints: Bool) -> UIView {
+            let child = textView(textKit1: false)
+            let hostView = constraints ? UIView() : ProbeFramingHostView()
+            hostView.addSubview(child)
+            if constraints {
+                child.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    child.leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
+                    child.trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
+                    child.topAnchor.constraint(equalTo: hostView.topAnchor),
+                    child.bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
+                ])
+            }
+            return hostView
+        }
         func label() -> UILabel {
             let view = UILabel()
             view.numberOfLines = 0
@@ -602,6 +619,8 @@ extension TranscriptPerformanceFixtureTests {
             Kind(name: "tk1-reused", joined: false, reused: true) { textView(textKit1: true) },
             Kind(name: "tk2-joined", joined: true, reused: false) { textView(textKit1: false) },
             Kind(name: "tk1-joined", joined: true, reused: false) { textView(textKit1: true) },
+            Kind(name: "tk2-constraint-host", joined: false, reused: false) { hosted(constraints: true) },
+            Kind(name: "tk2-frame-host", joined: false, reused: false) { hosted(constraints: false) },
             Kind(name: "label", joined: false, reused: false) { label() },
         ]
 
@@ -623,7 +642,7 @@ extension TranscriptPerformanceFixtureTests {
 
                 start = CACurrentMediaTime()
                 for (view, text) in zip(views, texts) {
-                    if let view = view as? UITextView {
+                    if let view = (view as? UITextView) ?? (view.subviews.first as? UITextView) {
                         view.attributedText = text
                     } else if let view = view as? UILabel {
                         view.attributedText = text
@@ -632,7 +651,10 @@ extension TranscriptPerformanceFixtureTests {
                 phases["text", default: []].append((CACurrentMediaTime() - start) * 1000)
 
                 start = CACurrentMediaTime()
-                let heights = views.map { ceil($0.sizeThatFits(CGSize(width: 366, height: .greatestFiniteMagnitude)).height) }
+                let heights = views.map { view in
+                    let measured = view.subviews.first as? UITextView ?? view
+                    return ceil(measured.sizeThatFits(CGSize(width: 366, height: .greatestFiniteMagnitude)).height)
+                }
                 phases["measure", default: []].append((CACurrentMediaTime() - start) * 1000)
 
                 start = CACurrentMediaTime()
@@ -700,6 +722,13 @@ extension TranscriptPerformanceFixtureTests {
         }
         walk(scrollView)
         return count
+    }
+}
+
+private final class ProbeFramingHostView: UIView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        subviews.first?.frame = bounds
     }
 }
 
