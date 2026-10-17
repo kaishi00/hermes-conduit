@@ -284,7 +284,7 @@ struct MarkdownProseRunView: View {
 
 /// Prose runs share one text view. Set by the chat, where answers mount and
 /// unmount as the transcript scrolls; elsewhere every block keeps its own.
-struct MarkdownJoinsProseRunsKey: EnvironmentKey {
+private struct MarkdownJoinsProseRunsKey: EnvironmentKey {
     static let defaultValue = false
 }
 
