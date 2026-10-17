@@ -18,6 +18,9 @@ struct SpeechServerVoiceSettingsView: View {
     @State private var status: SpeechServerVoiceStatus?
     @State private var isRotating = false
     @State private var rotateError: String?
+    /// Bumped by each load (a profile switch), so a rotate that finishes
+    /// later doesn't show the old profile's status.
+    @State private var generation = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -115,6 +118,7 @@ struct SpeechServerVoiceSettingsView: View {
 
     /// A profile switch starts from that profile's status.
     private func load() async {
+        generation += 1
         status = nil
         rotateError = nil
         let loaded = await service.speechServerVoiceStatus()
@@ -123,14 +127,14 @@ struct SpeechServerVoiceSettingsView: View {
     }
 
     private func rotate() async {
-        let current = service
+        let started = generation
         isRotating = true
         defer { isRotating = false }
         rotateError = nil
         let rotated = await service.rotateSpeechServerVoiceKey()
         let loaded = await service.speechServerVoiceStatus()
         // A profile switch meanwhile loads that profile's own status.
-        guard service === current else { return }
+        guard generation == started else { return }
         if !rotated { rotateError = service.errorMessage }
         status = loaded
     }
