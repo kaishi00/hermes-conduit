@@ -119,6 +119,7 @@ struct SelectableTextView: UIViewRepresentable {
         return textView
     }
 
+    @MainActor
     private static func configureBaseTextView(_ textView: UITextView) {
         textView.isEditable = false
         textView.isSelectable = true
@@ -476,6 +477,7 @@ struct SelectableTextView: UIViewRepresentable {
         return Self.makeTextView()
     }
 
+    @MainActor
     private static func tearDownMountedTextView(in hostView: SelectableTextViewHostView) {
         let textView = hostView.mountedTextView
         textView.delegate = nil
