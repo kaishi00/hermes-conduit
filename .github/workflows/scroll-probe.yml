@@ -59,6 +59,14 @@ jobs:
       - name: Build and boot the simulator in parallel
         run: bash scripts/ci-hosted-build.sh
 
+      # Cloud threads can read a job's annotations but not its log.
+      - name: Name the build errors
+        if: failure()
+        run: |
+          grep -hE '(^|: )error:' ci-lane/build/build.log 2>/dev/null \
+            | sed -e "s|$PWD/||g" -e 's/%/%25/g' | sort -u | head -n 10 \
+            | while IFS= read -r line; do echo "::error::$line"; done
+
       - name: Run the probe
         run: |
           set -uo pipefail

@@ -951,6 +951,7 @@ enum SelectableTextViewPool {
     /// Call after `tearDownMountedTextView`, which clears the delegate,
     /// the coordinator and the selection registration.
     static func recycle(_ textView: UITextView) {
+        assert(textView.delegate == nil, "recycle after tearDownMountedTextView")
         _ = memoryWarning
         // Pooled twice, one view would be handed to two blocks.
         guard !plain.contains(where: { $0 === textView }),
