@@ -375,6 +375,14 @@ struct V2ChatsView: View, Equatable {
             guard appState.isConnected, showingProjects, shell.isTabActive else { return }
             await appState.refreshProjects()
         }
+        // The list's first read once the connection is up (a sign-in lands
+        // here before its catalog sync has published anything): when that
+        // sync settles without a catalog, the list reads it itself. Only
+        // while the list shows, like the rest of its updates.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)|\(isShown)") {
+            guard isShown else { return }
+            await appState.loadSessionCatalogIfNeeded()
+        }
         // Running and Needs approval follow the gateway's live registry
         // while the list is on screen; a hidden tab or a conversation
         // pushed over the list stops polling.
@@ -748,12 +756,21 @@ struct V2ChatsView: View, Equatable {
             }
 
             if layout.emptyState && !contentSearch.isSearching {
-                ContentUnavailableView(
-                    selection.emptyStateFilter.emptyTitle,
-                    systemImage: "tray",
-                    description: Text(isSearching
+                // Only a catalog Hermes answered says "No Sessions": right
+                // after a sign-in the list is empty until its first read
+                // lands, and a failed read says it failed.
+                SessionListPlaceholderView(
+                    placeholder: SessionListPlaceholder.resolve(
+                        hasRows: false,
+                        hasOfflineCopy: false,
+                        catalogPhase: appState.sessionCatalogPhase,
+                        isRefreshing: appState.isRefreshingSessionCatalog
+                    ),
+                    emptyTitle: selection.emptyStateFilter.emptyTitle,
+                    emptyDescription: isSearching
                         ? AppLocalization.string("Try a different search.")
-                        : selection.emptyStateFilter.emptyDescription)
+                        : selection.emptyStateFilter.emptyDescription,
+                    retry: { Task { await appState.refreshSessionCatalog() } }
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)

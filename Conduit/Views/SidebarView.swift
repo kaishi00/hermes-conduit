@@ -383,13 +383,20 @@ struct SessionList: View {
                         .listRowSeparator(.hidden)
                 }
                 if layout.emptyState {
-                    ContentUnavailableView(
-                        statusFilter?.emptyTitle
+                    SessionListPlaceholderView(
+                        placeholder: SessionListPlaceholder.resolve(
+                            hasRows: false,
+                            hasOfflineCopy: false,
+                            catalogPhase: appState.sessionCatalogPhase,
+                            isRefreshing: appState.isRefreshingSessionCatalog
+                        ),
+                        emptyTitle: statusFilter?.emptyTitle
                             ?? (selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions")),
-                        systemImage: statusFilter?.emptySystemImage ?? "tray",
-                        description: Text(searchText.isEmpty
+                        emptyDescription: searchText.isEmpty
                             ? statusFilter?.emptyDescription ?? AppLocalization.string("Sessions will appear here once created.")
-                            : AppLocalization.string("Try a different search."))
+                            : AppLocalization.string("Try a different search."),
+                        emptySystemImage: statusFilter?.emptySystemImage ?? "tray",
+                        retry: { Task { await appState.refreshSessionCatalog() } }
                     )
                 }
 
@@ -457,6 +464,11 @@ struct SessionList: View {
         }
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
+        }
+        // The list's first read once the connection is up, when the
+        // connect's own catalog sync settled without publishing one.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)") {
+            await appState.loadSessionCatalogIfNeeded()
         }
         // Working / Needs input (#454) follow the gateway's live registry
         // while the list is on screen.
@@ -2344,6 +2356,41 @@ enum SidebarOfflineLayout {
             emptyState: empty && !isLoadingList,
             loadingState: empty && isLoadingList
         )
+    }
+}
+
+/// The Chats list without rows: loading until the catalog arrives, the
+/// failure with Try Again when the read failed, and the empty state only once
+/// Hermes answered an empty catalog (SessionListPlaceholder).
+struct SessionListPlaceholderView: View {
+    let placeholder: SessionListPlaceholder
+    let emptyTitle: String
+    let emptyDescription: String
+    var emptySystemImage = "tray"
+    let retry: () -> Void
+
+    var body: some View {
+        switch placeholder {
+        case .none:
+            EmptyView()
+        case .loading:
+            ProgressView(AppLocalization.string("Loading chats…"))
+                .frame(maxWidth: .infinity, minHeight: 140)
+        case .failed(let message):
+            ContentUnavailableView {
+                Label(AppLocalization.string("Couldn’t Load Chats"), systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(message)
+            } actions: {
+                Button(AppLocalization.string("Try Again"), action: retry)
+            }
+        case .empty:
+            ContentUnavailableView(
+                emptyTitle,
+                systemImage: emptySystemImage,
+                description: Text(emptyDescription)
+            )
+        }
     }
 }
 
