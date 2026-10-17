@@ -670,6 +670,43 @@ final class MarkdownReferenceLinkTests: XCTestCase {
                        "The definition must not be visible anywhere in the rendered message")
     }
 
+    // MARK: - Settled fragment cache
+
+    /// A row that scrolls back into view builds its fragments again: a
+    /// settled one comes back from the cache with its references resolved,
+    /// while a streaming tail that fades its newest characters is built
+    /// each time.
+    @MainActor
+    func testSettledFragmentIsParsedOnceAndKeepsItsReferences() throws {
+        let references = MarkdownReferenceContext(definitionsMarkdown: "[docs]: https://example.com/cached")
+        let body = UIFont.preferredFont(forTextStyle: .body)
+        func bridged(_ source: String, font: UIFont = body, opacities: [Double] = []) -> NSAttributedString {
+            InlineMarkdownContent.bridged(
+                source: source,
+                references: references,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                font: font,
+                trailingCharacterOpacities: opacities
+            )
+        }
+
+        let first = bridged("See [the docs][docs].")
+        XCTAssertTrue(bridged("See [the docs][docs].") === first, "a settled fragment is parsed once")
+        XCTAssertEqual(first.string, "See the docs.")
+        let link = try XCTUnwrap(first.attribute(.link, at: 4, effectiveRange: nil) as? URL)
+        XCTAssertEqual(link.absoluteString, "https://example.com/cached")
+
+        XCTAssertFalse(
+            bridged("See [the docs][docs].", opacities: [0.4]) === first,
+            "a fading streaming tail is built each time"
+        )
+        XCTAssertFalse(
+            bridged("See [the docs][docs].", font: .preferredFont(forTextStyle: .headline)) === first,
+            "another font is another string"
+        )
+    }
+
     private func allSubviews(of view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + allSubviews(of: $0) }
     }
