@@ -439,14 +439,12 @@ struct V2ChatsView: View {
             } else {
                 Button {
                     Haptics.medium()
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.createNewSession() }
+                    appState.startNewChat()
                 } label: {
                     V2CapsuleIcon(systemImage: "square.and.pencil")
                 }
                 .buttonStyle(PressableButtonStyle())
-                // The saved copy has no live gateway to create a chat on.
-                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
+                .disabled(!appState.canTapNewChat)
                 .accessibilityLabel(AppLocalization.string("New Chat"))
             }
         }

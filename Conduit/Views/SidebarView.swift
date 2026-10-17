@@ -234,8 +234,7 @@ struct SessionList: View {
             HStack(spacing: 10) {
                 Button {
                     Haptics.medium()
-                    appState.dismissSidebarDrawer()
-                    Task { await appState.createNewSession() }
+                    appState.startNewChat()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
@@ -250,9 +249,8 @@ struct SessionList: View {
                     .background(Color.conduitAccent, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
-                // The saved copy has no live gateway to create a chat on.
-                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
-                .opacity(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil ? 0.6 : 1)
+                .disabled(!appState.canTapNewChat)
+                .opacity(appState.canTapNewChat ? 1 : 0.6)
 
                 // A call of its own, not tied to the open chat: its work
                 // runs as jobs on the Voice Jobs model.

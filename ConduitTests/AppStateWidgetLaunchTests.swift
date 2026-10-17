@@ -810,6 +810,90 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNotEqual(appState.settingsDismissRequest, settingsDismissals, "Settings is asked to close too")
     }
 
+    /// New Chat tapped while Conduit connects shows its chat at once, as the
+    /// empty chat it will be, and Hermes creates it once connected.
+    func testNewChatWhileConnectingShowsItsChatAtOnce() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-connecting.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c2")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.widgetSessionCreatorOverride = { _, _ in ("in-app-new", "in-app-new", "default") }
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        XCTAssertFalse(appState.canTapNewChat, "with no connection on its way there is nothing to wait for")
+        appState.isConnecting = true
+        appState.showSidebar = true
+        XCTAssertTrue(appState.canTapNewChat, "New Chat works while Conduit connects")
+
+        appState.startNewChat()
+
+        XCTAssertEqual(appState.pendingNewChat, workspace)
+        XCTAssertFalse(appState.showSidebar, "the new chat shows straight away")
+        XCTAssertEqual(appState.displayedChatTitle, AppLocalization.string("New conversation"))
+        XCTAssertNil(appState.activeChatSessionSummary)
+        XCTAssertFalse(appState.composerIsEnabled, "nothing typed there could be sent yet")
+        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Connecting…"))
+        appState.startNewChat()
+        XCTAssertEqual(appState.pendingNewChat, workspace, "another tap shows the same new chat")
+
+        appState.widgetSettledCatalogOwner = workspace
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "in-app-new")
+        XCTAssertFalse(appState.showsPendingNewChat)
+    }
+
+    /// A New Chat from the app that can't start says so in the app's words;
+    /// a widget's keeps the widget's, and shows its chat as its link arrives.
+    func testNewChatThatCantStartSaysSo() async throws {
+        struct CreateRefused: Error {}
+        let suite = "AppStateWidgetLaunchTests.new-chat-failed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c3")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.widgetSessionCreatorOverride = { _, _ in throw CreateRefused() }
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = workspace
+        let openChat = appState.activeSessionId
+        appState.isConnecting = true
+
+        appState.startNewChat()
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertFalse(appState.showsPendingNewChat)
+        XCTAssertEqual(appState.activeSessionId, openChat)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
+
+        appState.isConnected = false
+        appState.isConnecting = true
+        appState.showSidebar = true
+        let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(newChat.url))
+        XCTAssertEqual(appState.pendingNewChat, workspace)
+        XCTAssertFalse(appState.showSidebar, "the widget's new chat shows as its link arrives")
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertFalse(appState.showsPendingNewChat)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+    }
+
     private func session(_ id: String, profile: String? = "default") -> SessionSummary {
         SessionSummary(
             id: id,

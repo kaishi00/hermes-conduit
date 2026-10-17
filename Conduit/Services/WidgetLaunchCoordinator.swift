@@ -108,8 +108,15 @@ final class WidgetLaunchCoordinator {
     private let prepare: Operation
     private let perform: Operation
     private let finish: @MainActor (WidgetLaunchOutcome) -> Void
+    /// Told the pending link whenever it changes, and nil once there is none.
+    private let pendingLinkChanged: @MainActor (WidgetLaunchLink?) -> Void
     private var generation: UInt64 = 0
-    private var request: Request?
+    private var request: Request? {
+        didSet {
+            guard oldValue !== request else { return }
+            pendingLinkChanged(request?.link)
+        }
+    }
     private var activeLease: WidgetLaunchLease?
     private var activeLeaseExpiryTask: Task<Void, Never>?
     private var handedOffTalkGeneration: UInt64?
@@ -119,12 +126,14 @@ final class WidgetLaunchCoordinator {
         now: @escaping () -> Duration,
         prepare: @escaping Operation,
         perform: @escaping Operation,
-        finish: @escaping @MainActor (WidgetLaunchOutcome) -> Void
+        finish: @escaping @MainActor (WidgetLaunchOutcome) -> Void,
+        pendingLinkChanged: @escaping @MainActor (WidgetLaunchLink?) -> Void = { _ in }
     ) {
         self.now = now
         self.prepare = prepare
         self.perform = perform
         self.finish = finish
+        self.pendingLinkChanged = pendingLinkChanged
     }
 
     var hasPendingRequest: Bool { request != nil }

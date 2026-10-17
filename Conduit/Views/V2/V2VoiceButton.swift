@@ -284,13 +284,17 @@ struct V2VoiceButton: View {
 struct V2NewChatButton: View {
     let context: V2VoiceContext
     @EnvironmentObject private var appState: AppState
-    /// A creation in flight: a second tap doesn't make a second chat.
+    /// A creation in a project's folder in flight: a second tap doesn't
+    /// make a second chat.
     @State private var isCreating = false
 
-    /// Dimmed while disconnected (a tap would do nothing) and on the saved
-    /// copy, which has no live gateway to create a chat on.
+    /// A plain new chat answers while Conduit connects, as the pencil does.
+    /// One in a project's folder is dimmed while disconnected (a tap would
+    /// do nothing) and on the saved copy, which has no live gateway to
+    /// create a chat on.
     private var canAct: Bool {
-        appState.isConnected && appState.turnState != .synchronizing && appState.offlineChatPresentation == nil
+        guard folder != nil else { return appState.canTapNewChat }
+        return appState.isConnected && appState.turnState != .synchronizing && appState.offlineChatPresentation == nil
     }
 
     private var folder: String? {
@@ -307,11 +311,15 @@ struct V2NewChatButton: View {
 
     var body: some View {
         Button {
+            guard let path = folder else {
+                Haptics.medium()
+                appState.startNewChat()
+                return
+            }
             guard !isCreating else { return }
             isCreating = true
             Haptics.medium()
             appState.dismissSidebarDrawer()
-            let path = folder
             Task { @MainActor in
                 defer { isCreating = false }
                 await appState.createNewSession(cwd: path)

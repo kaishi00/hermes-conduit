@@ -271,18 +271,21 @@ struct ChatView: View {
                 )
             }
             // VoiceOver reads only the saved copy while it is up.
-            .accessibilityHidden(showsOfflineCopy)
+            .accessibilityHidden(showsOfflineCopy || appState.showsPendingNewChat)
             // A chat picked in the saved list covers a transcript still up
             // from before (a profile switch): that one is hidden, not drawn
             // under it. It stays laid out, so its scroll position holds.
-            .opacity(showsOfflineCopy ? 0 : 1)
+            .opacity(showsOfflineCopy || appState.showsPendingNewChat ? 0 : 1)
             // The read-only saved copy (#99) sits OVER the live scroll view
             // instead of feeding it: the live view stays mounted with the
             // same empty transcript a cold launch always had, so its viewport
             // ownership, restoration, and follow logic are untouched. The
             // first real transcript clears the copy in the same update.
+            // A New Chat on its way covers both, as the empty chat it will be.
             .overlay {
-                if showsOfflineCopy, let offline = appState.offlineChatPresentation {
+                if appState.showsPendingNewChat {
+                    PendingNewChatView()
+                } else if showsOfflineCopy, let offline = appState.offlineChatPresentation {
                     OfflineChatTranscriptView(presentation: offline)
                 }
             }
@@ -3409,6 +3412,26 @@ struct StreamingBubble: View {
 }
 
 // MARK: - Empty State
+
+/// A New Chat Hermes hasn't created yet, drawn as the live transcript draws
+/// an empty chat, so the real one takes its place without a jump.
+private struct PendingNewChatView: View {
+    @Environment(\.v2ComposerRests) private var composerFloats
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
+                Color.clear
+                    .frame(height: 1)
+                EmptyChatState().padding(.top, 60)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+        }
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+        .accessibilityIdentifier("pending-new-chat")
+    }
+}
 
 struct EmptyChatState: View {
     @EnvironmentObject var appState: AppState

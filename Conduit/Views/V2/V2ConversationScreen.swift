@@ -261,7 +261,8 @@ private struct V2ConversationMenu: View {
                 } label: {
                     Label(AppLocalization.string("Refresh conversation"), systemImage: "arrow.clockwise")
                 }
-                .disabled(!appState.isConnected || appState.isChatRefreshing)
+                // A New Chat on its way has nothing to refresh yet.
+                .disabled(!appState.isConnected || appState.isChatRefreshing || appState.showsPendingNewChat)
                 Button(action: onArtifacts) {
                     Label(AppLocalization.string("Artifacts"), systemImage: "square.grid.2x2")
                 }

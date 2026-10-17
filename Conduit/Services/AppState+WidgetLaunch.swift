@@ -10,7 +10,11 @@ extension AppState {
               components.host?.lowercased() == "widget" else { return false }
         guard let link = WidgetLaunchLink(url: url) else { return true }
         cancelChatResumeRestoration()
+        newChatLaunchStartedInApp = false
         widgetLaunchCoordinator.receive(link)
+        // A New Chat's chat shows straight away, empty, while it waits for
+        // what its launch needs.
+        if showsPendingNewChat { revealChatForWidgetLaunch() }
         return true
     }
 

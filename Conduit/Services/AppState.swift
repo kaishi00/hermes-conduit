@@ -662,16 +662,28 @@ final class AppState: ObservableObject {
                 return await self.performWidgetLaunch(link, lease: lease)
             },
             finish: { [weak self] outcome in
-                guard let self, case .failed(let message) = outcome else { return }
+                guard let self else { return }
+                let startedInApp = self.newChatLaunchStartedInApp
+                self.newChatLaunchStartedInApp = false
+                guard case .failed(let widgetMessage) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
+                // The widget's words send someone back to the widget.
+                let message = startedInApp
+                    ? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+                    : widgetMessage
                 self.errorMessage = message
                 // The composer shows errorMessage; over the V2 lists (the
                 // chat covered) nothing would, and the tap looks ignored.
                 // Only V2 draws the notice.
                 if self.showSidebar, V2ShellPreference.isOn { self.showNotice(message, systemImage: "exclamationmark.circle") }
+            },
+            pendingLinkChanged: { [weak self] link in
+                self?.widgetLaunchPendingLinkChanged(link)
             }
         )
     }()
+    /// The app's own New Chat, not a widget, sent the pending launch.
+    var newChatLaunchStartedInApp = false
     /// A widget action waits out the return-to-app refresh: that refresh
     /// can drop a socket that died in the background and restore the last
     /// chat, which would fail a new chat or take over the screen it opened.
@@ -1641,13 +1653,14 @@ final class AppState: ObservableObject {
     /// currently-running flag. New code should use `turnState` for actions.
     var isBusy: Bool { turnState.isRunning }
     /// The read-only offline copy never accepts input: nothing typed there
-    /// could be delivered, and it is not the live conversation.
+    /// could be delivered, and it is not the live conversation. Nor does a
+    /// New Chat Hermes hasn't created yet.
     var composerIsEnabled: Bool {
-        turnState.acceptsComposerActions && offlineChatPresentation == nil
+        turnState.acceptsComposerActions && offlineChatPresentation == nil && !showsPendingNewChat
     }
 
     func composerAction(hasText: Bool, hasAttachments: Bool) -> ComposerAction {
-        guard offlineChatPresentation == nil else { return .unavailable }
+        guard offlineChatPresentation == nil, !showsPendingNewChat else { return .unavailable }
         return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
@@ -1656,6 +1669,11 @@ final class AppState: ObservableObject {
     }
 
     var composerPlaceholder: String {
+        if showsPendingNewChat {
+            return isConnected
+                ? AppLocalization.string("Checking agent activity…")
+                : AppLocalization.string("Connecting…")
+        }
         if offlineChatPresentation != nil {
             return AppLocalization.string("Read-only saved copy")
         }
@@ -4193,7 +4211,8 @@ final class AppState: ObservableObject {
     /// is on screen (a picked chat's row title), otherwise the live
     /// conversation's.
     var displayedChatTitle: String {
-        offlineChatPresentation?.picked?.title
+        if showsPendingNewChat { return AppLocalization.string("New conversation") }
+        return offlineChatPresentation?.picked?.title
             ?? offlineChatPresentation?.displayedTranscript?.title
             ?? activeSessionTitle
     }
@@ -4301,6 +4320,8 @@ final class AppState: ObservableObject {
             requestOpenSession(isSavedChatRow(session) ? session.storedSessionId ?? session.id : session.id)
             return
         }
+        // A newer destination than a New Chat or widget action on its way.
+        widgetLaunchCoordinator.supersede()
         let profile = activeProfile
         chatPickedFromSavedList = SavedChatListPick(dashboardID: dashboardID, profile: profile, session: session)
         let snapshot = offlineChatPresentation.flatMap { $0.dashboardID == dashboardID && $0.profile == profile ? $0.snapshot : nil }
@@ -4346,6 +4367,19 @@ final class AppState: ObservableObject {
             guard let self, self.offlineChatPresentation?.isPickedChat == true else { return }
             self.dismissOfflineChatPresentation()
         }
+    }
+
+    /// The widget coordinator's pending link changed. A New Chat on its way
+    /// shows as its chat, except during a call, which refuses it.
+    func widgetLaunchPendingLinkChanged(_ link: WidgetLaunchLink?) {
+        let pending = link?.action == .newChat && !isVoiceCallInProgress ? link?.workspace : nil
+        guard pending != pendingNewChat else { return }
+        pendingNewChat = pending
+        // The new chat is the one on screen now, not a chat picked in the
+        // saved list before it.
+        guard pending != nil else { return }
+        chatPickedFromSavedList = nil
+        if offlineChatPresentation?.isPickedChat == true { dismissOfflineChatPresentation() }
     }
 
 #if DEBUG
@@ -4624,7 +4658,7 @@ final class AppState: ObservableObject {
     var activeChatSessionSummary: SessionSummary? {
         // While an offline copy is on screen the title is that copy's, which
         // can be another chat than the active id.
-        guard activeRoomSurface == nil, offlineChatPresentation == nil,
+        guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
               let sessionId = activeSessionId, !sessionId.isEmpty,
               botConversationProfile(for: sessionId) == nil else { return nil }
         let rows = activeProfileSessions + activeProfileCronSessions
@@ -8706,6 +8740,8 @@ final class AppState: ObservableObject {
         guard let dashboardID = activeDashboardID else { return }
         guard groupCapabilities?.foundationSupported == true else { return }
         guard room.isDisbanded == false else { return }
+        // A newer destination than a New Chat or widget action on its way.
+        widgetLaunchCoordinator.supersede()
 
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
@@ -18334,6 +18370,64 @@ final class AppState: ObservableObject {
             return "default"
         }
         return profiles.first { $0.caseInsensitiveCompare(normalized) == .orderedSame } ?? normalized
+    }
+
+    // MARK: - New Chat
+
+    /// A New Chat on its way: the app's own, tapped while Conduit connects or
+    /// synchronizes, or a widget's. Its chat shows at once as the new, empty
+    /// one it will be, and Hermes creates it once it can.
+    @Published private(set) var pendingNewChat: WidgetWorkspaceID?
+    /// The app's own New Chat is creating its chat right now.
+    @Published private(set) var isStartingNewChat = false
+
+    var showsPendingNewChat: Bool { pendingNewChat != nil }
+
+    /// New Chat does something now: starts a chat, has one wait for the
+    /// connection, or shows the one already on its way.
+    var canTapNewChat: Bool {
+        !isStartingNewChat && (canStartNewChatNow || canQueueNewChat || showsPendingNewChat)
+    }
+
+    private var canStartNewChatNow: Bool {
+        isConnected && !isConnecting && !isProfileSwitching && client != nil
+            && turnState != .synchronizing && offlineChatPresentation == nil
+    }
+
+    /// A connection is coming that a New Chat can wait for. Not during a
+    /// call, which refuses a waiting New Chat as it does a widget's, nor a
+    /// profile switch, whose own chat comes first.
+    private var canQueueNewChat: Bool {
+        activeDashboardID != nil && !showLogin && !isVoiceCallInProgress && !isProfileSwitching
+            && (isConnecting || isConnected)
+    }
+
+    /// The New Chat buttons. Connected, the chat starts as before. While
+    /// Conduit connects or synchronizes, the new chat shows straight away
+    /// and is created once Hermes can take it, the way a widget's New Chat
+    /// waits (AppState+WidgetLaunch.swift).
+    func startNewChat() {
+        dismissSidebarDrawer()
+        guard !showsPendingNewChat, !isStartingNewChat else { return }
+        if canStartNewChatNow {
+            isStartingNewChat = true
+            Task {
+                await createNewSession()
+                isStartingNewChat = false
+            }
+            return
+        }
+        guard canQueueNewChat, let dashboardID = activeDashboardID,
+              let link = WidgetLaunchLink(
+                  action: .newChat,
+                  workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: activeProfile),
+                  reference: nil
+              ) else { return }
+        // As for a widget's link: the automatic resume would otherwise take
+        // the screen the new chat is on.
+        cancelChatResumeRestoration()
+        newChatLaunchStartedInApp = true
+        widgetLaunchCoordinator.receive(link)
     }
 
     func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {

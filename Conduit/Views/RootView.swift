@@ -449,7 +449,8 @@ struct MainView: View {
                                 .frame(width: 40, height: 40)
                         }
                         .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
-                        .disabled(!appState.isConnected || appState.isChatRefreshing)
+                        // A New Chat on its way has nothing to refresh yet.
+                        .disabled(!appState.isConnected || appState.isChatRefreshing || appState.showsPendingNewChat)
                         .accessibilityLabel("Refresh conversation")
                     }
                 }

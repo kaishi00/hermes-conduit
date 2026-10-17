@@ -408,6 +408,34 @@ final class WidgetLaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(outcomes, [.failed("offline")])
     }
 
+    func testReportsThePendingLinkUntilItsRequestEnds() async throws {
+        let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        let talk = try XCTUnwrap(WidgetLaunchLink(action: .talk, workspace: workspace, reference: nil))
+        let finished = AsyncLaunchGate()
+        var isReady = false
+        var pending: [WidgetLaunchLink?] = []
+        let coordinator = WidgetLaunchCoordinator(
+            now: { .zero },
+            prepare: { _, _ in isReady ? .handled : .deferred },
+            perform: { _, _ in .handled },
+            finish: { _ in Task { await finished.signal() } },
+            pendingLinkChanged: { pending.append($0) }
+        )
+
+        coordinator.receive(newChat)
+        XCTAssertEqual(pending, [newChat])
+        coordinator.receive(talk)
+        XCTAssertEqual(pending, [newChat, nil, talk], "a newer link replaces the pending one")
+        coordinator.supersede()
+        XCTAssertEqual(pending, [newChat, nil, talk, nil])
+
+        coordinator.receive(newChat)
+        isReady = true
+        coordinator.readinessChanged()
+        await finished.wait()
+        XCTAssertEqual(pending, [newChat, nil, talk, nil, newChat, nil], "a finished launch is no longer pending")
+    }
+
     private var workspace: WidgetWorkspaceID {
         WidgetWorkspaceID(dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!, profile: "default")
     }

@@ -261,6 +261,28 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.sessions.isEmpty)
     }
 
+    /// New Chat tapped after a chat was picked in the saved list is what
+    /// shows and opens; a chat picked after it takes over again.
+    func testNewChatAndAPickedChatTakeOverFromEachOther() throws {
+        let (appState, store, dashboard) = makeAppState()
+        appState.showLogin = false
+        seedCopy(store, dashboard: dashboard)
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a"), session("stored-b")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.openListedSession(appState.listedSessions[1])
+        XCTAssertEqual(appState.offlineChatPresentation?.isPickedChat, true)
+
+        appState.startNewChat()
+        XCTAssertTrue(appState.showsPendingNewChat)
+        XCTAssertNil(appState.chatPickedFromSavedListIDForTesting, "the new chat opens, not the chat picked before it")
+        XCTAssertNil(appState.offlineChatPresentation)
+
+        appState.openListedSession(appState.listedSessions[0])
+        XCTAssertFalse(appState.showsPendingNewChat, "a chat picked after New Chat takes over")
+        XCTAssertEqual(appState.chatPickedFromSavedListIDForTesting, "stored-a")
+    }
+
     func testAuthoritativeTranscriptReplacesTheCopyWholesale() {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
