@@ -151,8 +151,8 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
-    /// The tab shown before this render's switch: a first visit slides in
-    /// from its side.
+    /// The last selected tab. Set after the switch, so the transition of a
+    /// first visit reads the tab it left and slides in from that side.
     @State private var lastTab: V2Tab = .chats
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
@@ -337,11 +337,12 @@ struct V2Shell: View {
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
                         // A tab's first visit inserts it already selected:
-                        // the same slide from the tab it left.
+                        // the same slide and fade from the tab it left, each
+                        // on its own timing (no slide under Reduce Motion).
                         .transition(
-                            .offset(x: tabSlideOffset(tab, from: lastTab))
-                                .combined(with: .opacity)
+                            AnyTransition.offset(x: tabSlideOffset(tab, from: lastTab))
                                 .animation(ConduitMotion.tabSlideIn)
+                                .combined(with: AnyTransition.opacity.animation(ConduitMotion.tabFadeIn))
                         )
                 }
             }

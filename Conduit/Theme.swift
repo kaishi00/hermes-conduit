@@ -122,6 +122,7 @@ enum ConduitMotion {
     /// rest, so it can be short.
     static let tabFadeIn = Animation.easeOut(duration: 0.12)
     /// A tab's screen sliding the last few points into place as it opens.
+    /// Callers zero the slide under Reduce Motion (`V2Shell.tabSlideOffset`).
     static let tabSlideIn = Animation.spring(response: 0.3, dampingFraction: 0.88)
 
     /// Under Reduce Motion every spring becomes the plain settle fade.
