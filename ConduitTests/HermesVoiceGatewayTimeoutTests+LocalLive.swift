@@ -227,6 +227,36 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    func testLocalLiveSessionKeepsARetriedCheckOutOfTheChatAndPlaysTheFirstReply() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var turns: [String] = []
+        var events: [GeminiLiveProtocol.ServerEvent] = []
+        session.onTurn = { id, _ in turns.append(id) }
+        session.onEvent = { events.append($0) }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        let marker = try await localLiveReadinessMarker(socket)
+        socket.deliver(["type": "conduit.turn", "turn_id": "t1", "text": marker])
+        await localLiveSettle(until: { session.state == .ready })
+
+        // The server retries the check's ask: answered with nothing again.
+        socket.deliver(["type": "conduit.turn", "turn_id": "t2", "text": marker])
+        await localLiveSettle(until: { socket.sent.count >= 4 })
+        XCTAssertEqual(socket.sent.last?["turn_id"] as? String, "t2")
+        XCTAssertEqual(turns, [])
+
+        // The user's first turn, with the check's response.done never seen:
+        // its reply still plays.
+        socket.deliver(["type": "conduit.turn", "turn_id": "t3", "text": "What's on today?"])
+        socket.deliver(["type": "response.output_audio_transcript.delta", "delta": "Two meetings."])
+        await localLiveSettle(until: { !events.isEmpty })
+        XCTAssertEqual(turns, ["t3"])
+        XCTAssertEqual(events, [.outputTranscription("Two meetings.")])
+        session.stop()
+    }
+
     func testLocalLiveSessionSaysTheGreetingAsTheCheckAnswerOncePerCall() async throws {
         let (session, sockets) = makeLocalLiveSession()
         var events: [GeminiLiveProtocol.ServerEvent] = []

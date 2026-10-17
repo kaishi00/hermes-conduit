@@ -154,14 +154,17 @@ struct SpeechServerVoiceSettingsView: View {
     /// A profile switch starts from that profile's status.
     private func load() async {
         generation += 1
+        let started = generation
         status = nil
         rotateError = nil
         let loaded = await service.speechServerVoiceStatus()
-        guard !Task.isCancelled else { return }
+        // A rotate meanwhile shows the new key, not this older read.
+        guard !Task.isCancelled, generation == started else { return }
         status = loaded
     }
 
     private func rotate() async {
+        generation += 1
         let started = generation
         isRotating = true
         defer { isRotating = false }

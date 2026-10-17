@@ -79,6 +79,9 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var readinessCheck: (id: UUID, marker: String)?
     /// The check's own response hasn't finished: its events aren't the call's.
     private var readinessResponseOpen = false
+    /// Words of checks already answered: a server retrying one after the
+    /// call went ready gets nothing again, never a Hermes turn.
+    private var answeredMarkers: Set<String> = []
     /// Turns the plugin opened on the current connection: only those can
     /// be answered there.
     private var openTurns: Set<String> = []
@@ -113,6 +116,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         lastSetupClose = nil
         hasConnectedOnce = false
         hasGreeted = false
+        answeredMarkers = []
         state = .connecting
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
@@ -332,9 +336,19 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                     sendTurnDelta(turnID, text: greeting)
                 }
                 sendTurnDone(turnID)
-                if isCheck { becomeReady() }
+                if isCheck {
+                    answeredMarkers.insert(check.marker)
+                    becomeReady()
+                }
                 return
             }
+            if answeredMarkers.contains(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                sendTurnDone(turnID)
+                return
+            }
+            // The server asks for a new reply only once the check's response
+            // is over: what follows is the call's own.
+            readinessResponseOpen = false
             onTurn?(turnID, text)
         case .cancel(let turnID):
             guard openTurns.remove(turnID) != nil else { return }
