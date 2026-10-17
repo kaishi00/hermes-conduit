@@ -5,8 +5,9 @@
 //  The sign-in flow behind the sign-in screen and the Add a dashboard sheet:
 //  the address first, then only what that dashboard needs (a username and
 //  password, or its browser sign-in). A saved dashboard signs in from its
-//  row. The auth sequence is the one LoginView ran before the V2 screens;
-//  only where the fields live changed.
+//  row. How a dashboard signs in is the shared DashboardSignInResolver's
+//  decision, the same one Connection Setup's test and Repair make, and an
+//  answer only counts for the address and token it was asked with.
 //
 
 import Foundation
@@ -21,42 +22,30 @@ enum LoginFailurePlace: Equatable {
 
 /// How a dashboard signs in, from its provider discovery.
 enum LoginRoute: Equatable {
-    /// Username and password. `nativeOAuth` is set when the dashboard also
-    /// offers its single sign-on in the browser.
-    case password(nativeOAuth: NativeOAuthChoice?)
-    case nativeOAuth(NativeOAuthChoice)
-    /// The dashboard's own sign-in page in the in-app browser.
-    case browser
+    /// Username and password. `browserOffer` is set when the dashboard also
+    /// offers a browser sign-in: the step's "Sign in with browser instead".
+    case password(browserOffer: DashboardBrowserSignInOffer?)
+    /// Safari (Hermes' native sign-in) or the dashboard's own sign-in page
+    /// in the in-app browser.
+    case interactive(DashboardInteractiveSignIn)
 
-    struct NativeOAuthChoice: Equatable {
-        let provider: String?
+    init(_ mode: DashboardSignInMode) {
+        switch mode {
+        case .password: self = .password(browserOffer: nil)
+        case .passwordOrBrowser(let offer): self = .password(browserOffer: offer)
+        case .interactive(let signIn): self = .interactive(signIn)
+        }
     }
 
-    /// The same decisions LoginView made before the address came first,
-    /// without typed credentials to weigh: a dashboard that takes a password
-    /// gets the password step, and its single sign-on becomes the step's
-    /// "Sign in with browser instead".
-    static func discover(using client: NativeAuthClient) async throws -> LoginRoute {
-        switch try await client.authProviderDiscovery() {
-        case .interactiveSignInRequired, .unrecognized:
-            return .browser
-        case .providers(let providers):
-            let supportsPassword = HermesProviderCheck.supportsPassword(providers)
-            let supportsOAuth = HermesProviderCheck.hasNativeOAuthProvider(providers)
-            let choice = NativeOAuthChoice(provider: HermesProviderCheck.nativeOAuthProvider(providers))
-            if supportsPassword {
-                // A failed capability check only hides the browser choice;
-                // it never routes single sign-on into the embedded browser.
-                guard supportsOAuth, (try? await client.supportsNativeOAuth()) == true else {
-                    return .password(nativeOAuth: nil)
-                }
-                return .password(nativeOAuth: choice)
-            }
-            if supportsOAuth, try await client.supportsNativeOAuth() {
-                return .nativeOAuth(choice)
-            }
-            return .browser
-        }
+    /// The shared decision, without typed credentials to weigh: a dashboard
+    /// that takes a password gets the password step, and its browser
+    /// sign-in becomes the step's alternative. A dashboard that offers both
+    /// asks for its native capability only once that alternative is picked,
+    /// so a failing check never hides the password or quietly turns into
+    /// another sign-in. A page that isn't Hermes, or a provider list naming
+    /// no sign-in, is an error, never the browser.
+    static func discover(using client: any DashboardSignInTransport) async throws -> LoginRoute {
+        LoginRoute(try await DashboardSignInResolver.resolve(using: client))
     }
 }
 
@@ -65,7 +54,8 @@ struct LoginTarget {
     let baseURL: String
     let label: String
     let cloudflare: CloudflareAccessCredentials?
-    let nativeOAuth: LoginRoute.NativeOAuthChoice?
+    /// The browser sign-in the dashboard also offers, if any.
+    let browserOffer: DashboardBrowserSignInOffer?
 }
 
 /// A native single sign-on sheet to present.
@@ -179,11 +169,20 @@ enum LoginAddress {
 final class LoginFlowModel: ObservableObject {
     private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
 
-    // The address step.
-    @Published var address = ""
-    @Published var cloudflareEnabled = false
-    @Published var cloudflareClientID = ""
-    @Published var cloudflareClientSecret = ""
+    // The address step. An edit makes any answer still on its way for the
+    // old address (or token) stale: it is dropped, never followed.
+    @Published var address = "" {
+        didSet { if address != oldValue { inputsChanged() } }
+    }
+    @Published var cloudflareEnabled = false {
+        didSet { if cloudflareEnabled != oldValue { inputsChanged() } }
+    }
+    @Published var cloudflareClientID = "" {
+        didSet { if cloudflareClientID != oldValue { inputsChanged() } }
+    }
+    @Published var cloudflareClientSecret = "" {
+        didSet { if cloudflareClientSecret != oldValue { inputsChanged() } }
+    }
     @Published var showsAdvanced = false
 
     // The sign-in step.
@@ -236,9 +235,25 @@ final class LoginFlowModel: ObservableObject {
     /// Addresses a browser or single sign-on attempt saved before anyone
     /// signed in to them: the sheets need the dashboard to exist first.
     private var unfinishedAddresses: Set<String> = []
+    /// Bumped by every edit of the address or the Cloudflare token: an
+    /// answer counts only while the inputs it was asked with are on screen.
+    private var inputGeneration = 0
+    private let makeTransport: (String, CloudflareAccessCredentials?) -> any DashboardSignInTransport
+
+    init(
+        makeTransport: @escaping (String, CloudflareAccessCredentials?) -> any DashboardSignInTransport = {
+            NativeAuthClient(baseURL: $0, cloudflareAccess: $1)
+        }
+    ) {
+        self.makeTransport = makeTransport
+    }
 
     func attach(_ appState: AppState) {
         self.appState = appState
+    }
+
+    private func inputsChanged() {
+        inputGeneration += 1
     }
 
     // MARK: Fields
@@ -394,7 +409,7 @@ final class LoginFlowModel: ObservableObject {
         appState.lastConnectionFailure = nil
         let cloudflare = appState.dashboardScopedCloudflareAccess(for: dashboard.normalizedURL)
         do {
-            let route = try await LoginRoute.discover(using: NativeAuthClient(baseURL: dashboard.normalizedURL, cloudflareAccess: cloudflare))
+            let route = try await LoginRoute.discover(using: makeTransport(dashboard.normalizedURL, cloudflare))
             follow(route, baseURL: dashboard.normalizedURL, label: dashboard.label, cloudflare: cloudflare, place: .dashboard(dashboard.id))
         } catch is CancellationError {
             return
@@ -439,13 +454,19 @@ final class LoginFlowModel: ObservableObject {
             isWorking = false
             runningPlace = nil
         }
+        // The answer belongs to the address and token typed now: an edit
+        // while it is on its way drops it, so a late answer never opens a
+        // sign-in, a sheet or a saved dashboard for what is no longer typed.
+        let generation = inputGeneration
+        let typedCloudflare = self.typedCloudflare
         var firstError: Error?
         for baseURL in addresses {
             // A saved dashboard at this address lends its Cloudflare token
             // when none was typed.
             let cloudflare = typedCloudflare ?? appState.dashboardScopedCloudflareAccess(for: baseURL)
             do {
-                let route = try await LoginRoute.discover(using: NativeAuthClient(baseURL: baseURL, cloudflareAccess: cloudflare))
+                let route = try await LoginRoute.discover(using: makeTransport(baseURL, cloudflare))
+                guard generation == inputGeneration else { return }
                 address = baseURL
                 appState.rememberDashboardURL(baseURL)
                 let saved = appState.savedDashboardRegistry.dashboard(atNormalizedURL: baseURL)
@@ -461,6 +482,7 @@ final class LoginFlowModel: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
+                guard generation == inputGeneration else { return }
                 firstError = firstError ?? error
                 guard LoginAddress.shouldTryNextCandidate(after: error) else { break }
             }
@@ -477,13 +499,25 @@ final class LoginFlowModel: ObservableObject {
         opensSignInStep: Bool = true
     ) {
         switch route {
-        case .password(let nativeOAuth):
+        case .password(let browserOffer):
             if let previous = target, previous.baseURL != baseURL { password = "" }
-            target = LoginTarget(baseURL: baseURL, label: label, cloudflare: cloudflare, nativeOAuth: nativeOAuth)
+            target = LoginTarget(baseURL: baseURL, label: label, cloudflare: cloudflare, browserOffer: browserOffer)
             prefillUsername(for: baseURL)
             if opensSignInStep { showsCredentials = true }
-        case .nativeOAuth(let choice):
-            startNativeOAuth(baseURL: baseURL, provider: choice.provider, cloudflare: cloudflare, place: place)
+        case .interactive(let signIn):
+            open(signIn, baseURL: baseURL, cloudflare: cloudflare, place: place)
+        }
+    }
+
+    private func open(
+        _ signIn: DashboardInteractiveSignIn,
+        baseURL: String,
+        cloudflare: CloudflareAccessCredentials?,
+        place: LoginFailurePlace
+    ) {
+        switch signIn {
+        case .nativeOAuth(let provider):
+            startNativeOAuth(baseURL: baseURL, provider: provider, cloudflare: cloudflare, place: place)
         case .browser:
             startBrowserSignIn(baseURL: baseURL, cloudflare: cloudflare, place: place)
         }
@@ -527,8 +561,14 @@ final class LoginFlowModel: ObservableObject {
             isWorking = false
             runningPlace = nil
         }
+        // What is saved is what was sent: the fields stay editable while the
+        // sign-in runs, so they are read once, here.
+        let username = self.username
+        let password = self.password
+        let saveSignIn = self.saveSignIn
+        let useBiometrics = self.useBiometrics
         do {
-            let client = NativeAuthClient(baseURL: target.baseURL, cloudflareAccess: target.cloudflare)
+            let client = makeTransport(target.baseURL, target.cloudflare)
             let authenticated = try await client.connect(username: username, password: password)
             if let dashboardID = appState.resolveDashboardID(forURL: target.baseURL, registerIfMissing: true) {
                 if saveSignIn {
@@ -559,11 +599,35 @@ final class LoginFlowModel: ObservableObject {
         }
     }
 
-    /// The sign-in step's "Sign in with browser instead".
-    func signInWithBrowserInstead() {
-        guard let target, let choice = target.nativeOAuth else { return }
+    /// The sign-in step's "Sign in with browser instead". A provider that
+    /// can sign in natively asks the dashboard for that capability now that
+    /// it is picked: a failed check shows on the step, with the password
+    /// still there, and never opens another sign-in instead.
+    func signInWithBrowserInstead() async {
+        guard let target, let offer = target.browserOffer, !isWorking else { return }
         clearFailure()
-        startNativeOAuth(baseURL: target.baseURL, provider: choice.provider, cloudflare: target.cloudflare, place: .credentials)
+        if let decided = offer.decidedSignIn {
+            open(decided, baseURL: target.baseURL, cloudflare: target.cloudflare, place: .credentials)
+            return
+        }
+        isWorking = true
+        runningPlace = .credentials
+        defer {
+            isWorking = false
+            runningPlace = nil
+        }
+        let generation = inputGeneration
+        let resolver = DashboardSignInResolver(client: makeTransport(target.baseURL, target.cloudflare))
+        do {
+            let signIn = try await resolver.signIn(for: offer)
+            guard generation == inputGeneration, self.target?.baseURL == target.baseURL else { return }
+            open(signIn, baseURL: target.baseURL, cloudflare: target.cloudflare, place: .credentials)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == inputGeneration, self.target?.baseURL == target.baseURL else { return }
+            show(error: error, at: .credentials)
+        }
     }
 
     // MARK: Sign-in codes
