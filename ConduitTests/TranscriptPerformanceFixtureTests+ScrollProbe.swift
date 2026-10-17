@@ -366,6 +366,15 @@ extension TranscriptPerformanceFixtureTests {
         if let wait = environment["PROBE_WAIT"].flatMap(Double.init) {
             RunLoop.current.run(until: Date().addingTimeInterval(wait))
         }
+        // Or a sampler: say the chat is ready, then scroll once it has
+        // started (it writes the go file).
+        if let marker = environment["PROBE_MARKER"] {
+            FileManager.default.createFile(atPath: marker + ".ready", contents: Data())
+            let deadline = Date().addingTimeInterval(180)
+            while !FileManager.default.fileExists(atPath: marker + ".go"), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            }
+        }
 
         let step: CGFloat = 24
         let distance = min(9000, scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
@@ -431,8 +440,7 @@ extension TranscriptPerformanceFixtureTests {
         Self.report("idle", idleFrames)
         print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
 
-        // The recorder hangs if the process it records exits first: hold
-        // until it has saved its trace.
+        // Hold while the sampler writes its report.
         if let marker = environment["PROBE_MARKER"] {
             FileManager.default.createFile(atPath: marker, contents: Data())
             let release = marker + ".release"
@@ -805,12 +813,18 @@ extension TranscriptPerformanceFixtureTests {
         var minY = CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude
         var count = 0
+        var hosts: [String] = []
         func walk(_ view: UIView) {
-            if view is SelectableTextViewHostView, view.window != nil {
+            if let host = view as? SelectableTextViewHostView, view.window != nil {
                 let frame = view.convert(view.bounds, to: scrollView)
                 minY = min(minY, frame.minY)
                 maxY = max(maxY, frame.maxY)
                 count += 1
+                hosts.append(String(
+                    format: "%.0f+%.0f%@ %@",
+                    frame.minY, frame.height, host.textView == nil ? "" : "(tv)",
+                    String(host.displayedText.prefix(18)).replacingOccurrences(of: "\n", with: " ")
+                ))
             }
             view.subviews.forEach(walk)
         }
@@ -819,7 +833,7 @@ extension TranscriptPerformanceFixtureTests {
             format: "offset=%.0f visible=%.0f..%.0f textViews=%ld textViewSpan=%.0f..%.0f",
             scrollView.contentOffset.y, scrollView.contentOffset.y, scrollView.contentOffset.y + scrollView.bounds.height,
             count, count > 0 ? minY : 0, count > 0 ? maxY : 0
-        )
+        ) + " hosts=[" + hosts.joined(separator: " | ") + "]"
     }
 
     /// Text views on screen, a stand-in for how many rows LazyVStack keeps.

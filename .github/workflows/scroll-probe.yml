@@ -79,19 +79,14 @@ jobs:
         timeout-minutes: 8
         run: bash .github/scroll-probe/run.sh frames
 
-      - name: Record the probe under the Time Profiler
+      - name: Sample the probe
         if: always()
-        timeout-minutes: 18
-        run: bash .github/scroll-probe/run.sh record
+        timeout-minutes: 15
+        run: bash .github/scroll-probe/run.sh sample
 
-      - name: Export the profile
+      - name: Summarise the samples
         if: always()
-        timeout-minutes: 11
-        run: bash .github/scroll-probe/run.sh export
-
-      - name: Summarise the profile
-        if: always()
-        timeout-minutes: 9
+        timeout-minutes: 6
         run: bash .github/scroll-probe/run.sh summary
 
       - name: Profile call tree
