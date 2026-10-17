@@ -962,12 +962,40 @@ enum InlineMarkdownContent {
         return attributed
     }
 
-    private struct BridgedKey: Hashable {
+    /// Everything a bridged fragment depends on, boxed for NSCache.
+    private final class BridgedKey: NSObject {
         let source: String
         let definitions: String
         let foregroundStyle: Color
         let font: UIFont
         let usesAccentSurface: Bool
+
+        init(source: String, definitions: String, foregroundStyle: Color, font: UIFont, usesAccentSurface: Bool) {
+            self.source = source
+            self.definitions = definitions
+            self.foregroundStyle = foregroundStyle
+            self.font = font
+            self.usesAccentSurface = usesAccentSurface
+        }
+
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(source)
+            hasher.combine(definitions)
+            hasher.combine(foregroundStyle)
+            hasher.combine(font)
+            hasher.combine(usesAccentSurface)
+            return hasher.finalize()
+        }
+
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? BridgedKey else { return false }
+            return source == other.source
+                && definitions == other.definitions
+                && foregroundStyle == other.foregroundStyle
+                && font == other.font
+                && usesAccentSurface == other.usesAccentSurface
+        }
     }
 
     /// Settled fragments parsed and bridged once. LazyVStack takes a row
@@ -975,8 +1003,12 @@ enum InlineMarkdownContent {
     /// back, and each block used to run Foundation's Markdown parser and
     /// the UIKit bridge again on the way in. Returning the same string also
     /// lets the text view's presentation check match on identity.
-    private static var bridgedCache: [BridgedKey: NSAttributedString] = [:]
-    private static let bridgedCacheLimit = 2048
+    private static let bridgedCache: NSCache<BridgedKey, NSAttributedString> = {
+        let cache = NSCache<BridgedKey, NSAttributedString>()
+        cache.countLimit = 2048
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
 
     @MainActor
     static func bridged(
@@ -1010,10 +1042,9 @@ enum InlineMarkdownContent {
             font: font,
             usesAccentSurface: usesAccentSurface
         )
-        if let cached = bridgedCache[key] { return cached }
+        if let cached = bridgedCache.object(forKey: key) { return cached }
         let value = build()
-        if bridgedCache.count >= bridgedCacheLimit { bridgedCache.removeAll(keepingCapacity: true) }
-        bridgedCache[key] = value
+        bridgedCache.setObject(value, forKey: key, cost: value.length * 2)
         return value
     }
 }
@@ -1427,8 +1458,10 @@ enum MarkdownTableLayout {
 private struct MarkdownTableWidthProbe: View {
     /// The width the last table read. A table mounting again as its row
     /// scrolls back into view starts from it, so its columns are laid out
-    /// once instead of at the fallback width and again a frame later.
-    static var lastWidth: CGFloat = 0
+    /// once instead of at the fallback width and again a frame later. After
+    /// the chat's width changes, the first table to mount re-resolves once,
+    /// as every table used to. Only read and written on the main thread.
+    nonisolated(unsafe) static var lastWidth: CGFloat = 0
 
     @Binding var width: CGFloat
 
