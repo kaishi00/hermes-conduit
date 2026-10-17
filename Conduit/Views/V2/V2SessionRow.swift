@@ -277,6 +277,77 @@ struct V2SessionRow: View {
     }
 }
 
+/// A chat the search found by its messages: the title, then up to two lines
+/// of the matching text with the matched words picked out.
+struct V2ContentMatchRow: View {
+    let title: String
+    let time: String
+    let snippet: SessionSearchSnippet
+    var isUnread = false
+    var isSelected = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ZStack {
+                if isUnread {
+                    Circle()
+                        .fill(Color.conduitAccent)
+                        .frame(width: 7, height: 7)
+                }
+            }
+            .frame(width: 12)
+            .frame(minHeight: 21)
+            .padding(.trailing, 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    Spacer(minLength: 4)
+                    Text(time)
+                        .font(.footnote)
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
+                if !snippet.runs.isEmpty {
+                    Text(snippet.attributed())
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.vertical, 9)
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if isSelected {
+                Color.primary.opacity(0.05)
+            }
+        }
+        .contentShape(Rectangle())
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text(accessibilityValue))
+    }
+
+    private var accessibilityValue: String {
+        [
+            isUnread ? AppLocalization.string("Unread") : nil,
+            snippet.plainText.isEmpty ? nil : snippet.plainText,
+            time.isEmpty ? nil : time
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
+    }
+}
+
 /// The 0.5 pt hairline under a row, inset to the text column.
 struct V2RowDivider: View {
     var leadingInset: CGFloat = 32
