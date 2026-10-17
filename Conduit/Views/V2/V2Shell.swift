@@ -285,6 +285,7 @@ struct V2Shell: View {
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
                 appState.showSidebar = false
+                settlingTabs = []
             }
     }
 
@@ -324,7 +325,7 @@ struct V2Shell: View {
                 // the visited ones right after.
                 if visitedTabs.contains(tab) || selectedTab == tab {
                     let isSelected = selectedTab == tab
-                    let isLeaving = settlingTabs.contains(tab) && !isSelected
+                    let isLeaving = settlingTabs.contains(tab) && !isSelected && !reduceMotion
                     let moves = isSelected || isLeaving
                     let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
@@ -497,8 +498,8 @@ struct V2Shell: View {
     /// at once.
     private func switchTab(to tab: V2Tab) {
         guard selectedTab != tab else { return }
-        leavingTab = selectedTab
         if !reduceMotion {
+            leavingTab = selectedTab
             settlingTabs.insert(selectedTab)
             tabSwitchToken &+= 1
         }
