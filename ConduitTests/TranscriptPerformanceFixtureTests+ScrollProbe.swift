@@ -478,6 +478,36 @@ extension TranscriptPerformanceFixtureTests {
             print(String(format: "SCROLL_PROBE uikit20 coordinated %@ first=%.2fms median=%.2fms", key, coordinated[key]![0], Self.median(Array(coordinated[key]!.dropFirst()))))
         }
 
+        // Foundation's Markdown parser plus the UIKit bridge, per fragment.
+        var parses: [Double] = []
+        for _ in 0..<8 {
+            let start = CACurrentMediaTime()
+            for block in blocks {
+                _ = SelectableTextView.bridge(
+                    InlineMarkdownContent.attributed(source: "**Step** " + block.string, references: .empty),
+                    defaultFont: .preferredFont(forTextStyle: .body),
+                    defaultColor: .label,
+                    linkColor: .link
+                )
+            }
+            parses.append((CACurrentMediaTime() - start) * 1000)
+        }
+        print(String(format: "SCROLL_PROBE parse20 first=%.2fms median=%.2fms", parses[0], Self.median(Array(parses.dropFirst()))))
+
+        // A view that draws its own content, the size of a long answer.
+        var drawnOverlays: [Double] = []
+        for _ in 0..<8 {
+            let start = CACurrentMediaTime()
+            let overlay = ProbeDrawnView(frame: CGRect(x: 0, y: 0, width: 366, height: 1200))
+            container.addSubview(overlay)
+            host.view.addSubview(container)
+            CATransaction.flush()
+            overlay.removeFromSuperview()
+            container.removeFromSuperview()
+            drawnOverlays.append((CACurrentMediaTime() - start) * 1000)
+        }
+        print(String(format: "SCROLL_PROBE drawnOverlay366x1200 first=%.2fms median=%.2fms", drawnOverlays[0], Self.median(Array(drawnOverlays.dropFirst()))))
+
         var swiftUIMounts: [Double] = []
         let attributed = blocks.map { (try? AttributedString($0, including: \.uiKit)) ?? AttributedString($0.string) }
         for pass in 0..<8 {
@@ -509,4 +539,18 @@ extension TranscriptPerformanceFixtureTests {
         walk(scrollView)
         return count
     }
+}
+
+private final class ProbeDrawnView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ rect: CGRect) {}
 }

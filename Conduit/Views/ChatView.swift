@@ -3393,22 +3393,23 @@ struct ConduitAgentMark: View {
     var body: some View {
         if isActive {
             ConduitBreathing { breath in
-                mark(breath: breath)
+                mark
+                    .shadow(color: (glow ?? .conduitAccent).opacity(0.42), radius: 3 + 6 * breath)
+                    .scaleEffect(1 + 0.06 * breath)
             }
         } else {
-            mark(breath: 0)
+            // At rest the glow is invisible, so there's no shadow to draw:
+            // this mark heads every answer in the chat.
+            mark
         }
     }
 
-    private func mark(breath: CGFloat) -> some View {
-        let color = glow ?? .conduitAccent
-        return ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
+    private var mark: some View {
+        ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
             .overlay {
                 Circle()
-                    .strokeBorder(color.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
+                    .strokeBorder((glow ?? .conduitAccent).opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
             }
-            .shadow(color: color.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
-            .scaleEffect(1 + 0.06 * breath)
     }
 }
 

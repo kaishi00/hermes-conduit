@@ -188,7 +188,7 @@ private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
 
     func updateUIView(_ uiView: MarkdownSelectionHighlightView, context: Context) {
         uiView.coordinator = coordinator
-        uiView.setNeedsDisplay()
+        uiView.refresh()
     }
 
     /// Match the content exactly — see MarkdownSelectionHandleOverlay.
@@ -197,33 +197,56 @@ private struct MarkdownSelectionHighlightOverlay: UIViewRepresentable {
     }
 }
 
+/// Covers the whole message, so the highlight is a shape layer's path: a
+/// view that drew its own content kept a transparent bitmap the size of
+/// the message, made again each time its row scrolled into view.
 private final class MarkdownSelectionHighlightView: UIView {
     weak var coordinator: MarkdownSelectionCoordinator?
+
+    override class var layerClass: AnyClass { CAShapeLayer.self }
+
+    private var shapeLayer: CAShapeLayer { layer as! CAShapeLayer }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false
         backgroundColor = .clear
         isUserInteractionEnabled = false
-        contentMode = .redraw
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: MarkdownSelectionHighlightView, _: UITraitCollection) in
+            view.refresh()
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func draw(_ rect: CGRect) {
-        guard let coordinator, let window else { return }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        refresh()
+    }
 
-        UIColor.systemBlue.withAlphaComponent(0.24).setFill()
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        refresh()
+    }
+
+    func refresh() {
+        guard let coordinator, let window else {
+            shapeLayer.path = nil
+            return
+        }
+        let path = UIBezierPath()
         for windowRect in coordinator.highlightRects(in: window) {
             let localRect = convert(windowRect, from: window)
             guard localRect.intersects(bounds) else { continue }
-            UIBezierPath(
+            path.append(UIBezierPath(
                 roundedRect: localRect.intersection(bounds).insetBy(dx: -0.5, dy: -0.5),
                 cornerRadius: 2
-            ).fill()
+            ))
         }
+        shapeLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.24).resolvedColor(with: traitCollection).cgColor
+        shapeLayer.path = path.isEmpty ? nil : path.cgPath
     }
 }
 
@@ -938,6 +961,61 @@ enum InlineMarkdownContent {
         }
         return attributed
     }
+
+    private struct BridgedKey: Hashable {
+        let source: String
+        let definitions: String
+        let foregroundStyle: Color
+        let font: UIFont
+        let usesAccentSurface: Bool
+    }
+
+    /// Settled fragments parsed and bridged once. LazyVStack takes a row
+    /// down when it scrolls out of view and builds it again when it comes
+    /// back, and each block used to run Foundation's Markdown parser and
+    /// the UIKit bridge again on the way in. Returning the same string also
+    /// lets the text view's presentation check match on identity.
+    private static var bridgedCache: [BridgedKey: NSAttributedString] = [:]
+    private static let bridgedCacheLimit = 2048
+
+    @MainActor
+    static func bridged(
+        source: String,
+        references: MarkdownReferenceContext,
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        font: UIFont,
+        trailingCharacterOpacities: [Double]
+    ) -> NSAttributedString {
+        func build() -> NSAttributedString {
+            SelectableTextView.bridge(
+                attributed(
+                    source: source,
+                    references: references,
+                    foregroundStyle: foregroundStyle,
+                    trailingCharacterOpacities: trailingCharacterOpacities
+                ),
+                defaultFont: font,
+                defaultColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
+                linkColor: usesAccentSurface ? .white : .link
+            )
+        }
+        // A streaming tail fades its newest characters each frame.
+        guard trailingCharacterOpacities.isEmpty else { return build() }
+
+        let key = BridgedKey(
+            source: source,
+            definitions: references.definitionsMarkdown,
+            foregroundStyle: foregroundStyle,
+            font: font,
+            usesAccentSurface: usesAccentSurface
+        )
+        if let cached = bridgedCache[key] { return cached }
+        let value = build()
+        if bridgedCache.count >= bridgedCacheLimit { bridgedCache.removeAll(keepingCapacity: true) }
+        bridgedCache[key] = value
+        return value
+    }
 }
 
 private struct InlineMarkdown: View {
@@ -961,11 +1039,13 @@ private struct InlineMarkdown: View {
         font ?? ChatTypography.font(for: .body, chatSize: chatTextSize)
     }
 
-    private var attributed: AttributedString {
-        InlineMarkdownContent.attributed(
+    private var attributed: NSAttributedString {
+        InlineMarkdownContent.bridged(
             source: source,
             references: references,
             foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            font: effectiveFont,
             trailingCharacterOpacities: trailingCharacterOpacities
         )
     }
@@ -1345,15 +1425,25 @@ enum MarkdownTableLayout {
 /// knowledge — crossing the structural complexity threshold must not
 /// change whether a previously fitting table fits.
 private struct MarkdownTableWidthProbe: View {
+    /// The width the last table read. A table mounting again as its row
+    /// scrolls back into view starts from it, so its columns are laid out
+    /// once instead of at the fallback width and again a frame later.
+    static var lastWidth: CGFloat = 0
+
     @Binding var width: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
             Color.clear
-                .onAppear { width = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+                .onAppear { record(proxy.size.width) }
+                .onChange(of: proxy.size.width) { _, newWidth in record(newWidth) }
         }
         .frame(height: 0)
+    }
+
+    private func record(_ newWidth: CGFloat) {
+        if newWidth > 0 { Self.lastWidth = newWidth }
+        width = newWidth
     }
 }
 
@@ -1370,10 +1460,11 @@ struct MarkdownTable: View {
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
 
     /// The chat's proposed width for this block, read by a zero-height
-    /// probe above the scroll view. Zero means "unknown yet" (first pass);
-    /// the layout then falls back to cap-and-scroll and re-resolves a frame
-    /// later, once the width is known.
-    @State private var availableWidth: CGFloat = 0
+    /// probe above the scroll view. It starts from the last width a table
+    /// read; zero means "unknown yet" (first pass), and the layout then
+    /// falls back to cap-and-scroll and re-resolves a frame later, once the
+    /// width is known.
+    @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
 
@@ -1505,9 +1596,10 @@ struct LargeMarkdownTable: View {
     /// complexity threshold (rows/cells/bytes) must not change whether a
     /// previously fitting table fits: with the real container width the
     /// shared layout engine's fit-or-shrink behavior applies identically in
-    /// both presentations. Zero means "unknown yet" (first pass); the
-    /// cap-and-scroll fallback re-resolves a frame later.
-    @State private var availableWidth: CGFloat = 0
+    /// both presentations. It starts from the last width a table read;
+    /// zero means "unknown yet" (first pass), and the cap-and-scroll
+    /// fallback re-resolves a frame later.
+    @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
 
