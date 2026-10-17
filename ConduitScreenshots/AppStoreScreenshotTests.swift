@@ -70,7 +70,20 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     private func backToTabs() {
-        app.returnToV2Tabs(revealing: app.buttons["Chats"])
+        let chatsTab = app.buttons["Chats"]
+        app.returnToV2Tabs(revealing: chatsTab)
+        if !chatsTab.waitForExistence(timeout: 3) {
+            // The V2 conversation's Back is the navigation bar's first
+            // button; its label follows the previous screen.
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            if back.exists, back.identifier != "conversation.menu" {
+                back.tap()
+            } else {
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+                start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
+            }
+        }
+        if !chatsTab.waitForExistence(timeout: 5) { snap("debug-back-failed") }
         settle()
     }
 
