@@ -46,6 +46,7 @@
     "HermesVoiceConfigurationServiceTests": 0.018,
     "InteractionHapticsTests": 0.024,
     "InterfaceOrientationTests": 0.003,
+    "KanbanColumnBoardTests": 3.0,
     "KanbanSelectionLayoutTests": 0.198,
     "KanbanTests": 0.717,
     "KanbanV2CorrectnessTests": 1.35,
