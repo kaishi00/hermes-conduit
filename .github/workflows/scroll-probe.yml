@@ -86,4 +86,23 @@ jobs:
           for name in kinds frames mount; do
             echo "===== $name"
             grep -E "SCROLL_PROBE|error:|failed|passed" "probe-$name.log" | grep -v "^Test Suite" || tail -n 80 "probe-$name.log"
-          done
+          done > probe-summary.txt
+          cat probe-summary.txt
+          # Cloud threads read annotations, not the log: the summary goes
+          # out as notices and warnings (10 of each per step), 6 KB apiece.
+          python3 - probe-summary.txt <<'PY'
+          import sys
+          lines = open(sys.argv[1], errors="replace").read().splitlines()
+          chunks, current = [], ""
+          for line in lines:
+              if current and len(current) + len(line) > 6000:
+                  chunks.append(current)
+                  current = ""
+              current += line[:1000] + "\n"
+          if current:
+              chunks.append(current)
+          for index, chunk in enumerate(chunks[:20]):
+              kind = "notice" if index < 10 else "warning"
+              body = chunk.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::{kind} title=probe {index + 1}/{len(chunks)}::{body}")
+          PY
