@@ -53,11 +53,13 @@ tests)
 frames)
   # Drawn text (the default) against text views everywhere, interleaved:
   # the first process in a job runs slower, so each kind gets two runs.
+  # The last run leaves the drifting backdrop out, to show its share.
   run_probe drawn-1 "$frames"
   run_probe textviews-1 "$frames" TEST_RUNNER_PROBE_TEXT_VIEWS=1
   run_probe drawn-2 "$frames"
   run_probe textviews-2 "$frames" TEST_RUNNER_PROBE_TEXT_VIEWS=1
-  for name in drawn-1 textviews-1 drawn-2 textviews-2; do summarise "$name"; done > probe-summary.txt
+  run_probe drawn-still "$frames" TEST_RUNNER_PROBE_NO_BACKDROP=1
+  for name in drawn-1 textviews-1 drawn-2 textviews-2 drawn-still; do summarise "$name"; done > probe-summary.txt
   cat probe-summary.txt
   python3 "$HERE/annotate.py" probe-summary.txt probe
   ;;
@@ -91,10 +93,18 @@ sample)
   log "ready after ${waited}s: $([ -e "$marker.ready" ] && echo yes || echo no), test host pid=${pid:-none}"
   sampler=""
   if [ -n "$pid" ]; then
-    sudo sample "$pid" 60 1 -mayDie -file "$PWD/sample.txt" > sample.log 2>&1 &
+    # Symbols are read after sampling (no -mayDie): read first, they took
+    # longer than the whole scroll. Through a pty (script -F) its first
+    # line lands at once, so the scroll starts once sampling has.
+    script -q -F sample.log sudo sample "$pid" 60 1 -file "$PWD/sample.txt" > /dev/null 2>&1 &
     sampler=$!
-    sleep 3
-    kill -0 "$sampler" 2>/dev/null || log "sampler exited: $(head -c 300 sample.log | tr '\n' ' ')"
+    for waited in $(seq 1 20); do
+      grep -q "Sampling process" sample.log 2>/dev/null && break
+      kill -0 "$sampler" 2>/dev/null || break
+      sleep 1
+    done
+    sleep 1
+    log "sampling after ${waited}s: $(head -c 200 sample.log | tr '\r\n' '  ')"
   fi
   touch "$marker.go"
   for waited in $(seq 1 180); do
@@ -111,7 +121,7 @@ sample)
       sudo kill -INT "$sampler" 2>/dev/null || true
       wait_for "$sampler" 60 || { log "sampler hung, killed"; sudo kill -9 "$sampler" 2>/dev/null || true; }
     fi
-    log "sampler: $(tail -c 300 sample.log | tr '\n' ' ')"
+    log "sampler: $(tail -c 300 sample.log | tr '\r\n' '  ')"
   fi
   touch "$marker.release"
   if wait_for "$probe_pid" 300; then log "probe finished"; else log "probe still running after 300s, stopping it"; pkill -f "test-without-building" || true; fi

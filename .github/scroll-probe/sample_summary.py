@@ -12,7 +12,7 @@ import re
 import sys
 
 PATH = sys.argv[1]
-LOOP = re.compile(r"ProbeFrameClock.*\brun\(")
+LOOP = re.compile(r"ProbeFrameClock.*\brun\(|scrollFrames")
 # Where an idle run loop sleeps until its next event.
 WAITS = ("__CFRunLoopServiceMachPort",)
 

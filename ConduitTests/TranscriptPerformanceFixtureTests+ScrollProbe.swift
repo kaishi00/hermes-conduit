@@ -237,20 +237,39 @@ extension TranscriptPerformanceFixtureTests {
         let environment = ProcessInfo.processInfo.environment
         ChatView.probeKeepsTextViews = environment["PROBE_TEXT_VIEWS"] == "1"
         defer { ChatView.probeKeepsTextViews = false }
-        print("SCROLL_PROBE setup profiled=\(environment["PROBE_WAIT"] ?? "no") textViews=\(ChatView.probeKeepsTextViews ? "always" : "on touch")")
+        let backdrop = environment["PROBE_NO_BACKDROP"] != "1"
+        print("SCROLL_PROBE setup profiled=\(environment["PROBE_MARKER"] == nil ? "no" : "yes") textViews=\(ChatView.probeKeepsTextViews ? "always" : "on touch") backdrop=\(backdrop ? "drifting" : "none")")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.messages = Self.probeTranscript(turns: 60)
 
+        // The chat as the app shows it (RootView): over the drifting
+        // backdrop, in a navigation stack.
         let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
-            ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
-                .environmentObject(appState)
+            NavigationStack {
+                ZStack {
+                    if backdrop { ConduitBackdrop(drifts: true) }
+                    ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
+                }
+            }
+            .environmentObject(appState)
         ))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        // On screen in the app's scene: a window outside any scene is laid
+        // out but never drawn, and rows scrolled into it never get their
+        // views. The app's own windows (sign-in, with its own drifting
+        // backdrop) hide meanwhile.
+        let scene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first,
+            "the test host has a window scene"
+        )
+        let appWindows = scene.windows.filter { !$0.isHidden }
+        appWindows.forEach { $0.isHidden = true }
+        let window = UIWindow(windowScene: scene)
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer {
             window.isHidden = true
             window.rootViewController = nil
+            appWindows.forEach { $0.isHidden = false }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
 
@@ -344,13 +363,14 @@ extension TranscriptPerformanceFixtureTests {
         // loop spends awake. Driving layout by hand left SwiftUI's own pass
         // out: new rows were laid out but their views never went in.
         let clock = ProbeFrameClock()
+        let awakeTime = ProbeAwakeTime()
         let observer = CFRunLoopObserverCreateWithHandler(
             kCFAllocatorDefault,
             CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue,
             true,
             CFIndex.max
         ) { _, activity in
-            MainActor.assumeIsolated { clock.observe(activity) }
+            awakeTime.observe(activity)
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         defer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
@@ -360,12 +380,12 @@ extension TranscriptPerformanceFixtureTests {
         func scrollFrames(steps: Int, delta: CGFloat) -> [ProbeFrame] {
             var frames: [ProbeFrame] = []
             var index = 0
-            var markBefore = clock.mark
+            var markBefore = awakeTime.mark
             var countersBefore = ProbeCounters.read()
             var heightBefore = scrollView.contentSize.height
             var target = scrollView.contentOffset.y
             clock.tick = {
-                let mark = clock.mark
+                let mark = awakeTime.mark
                 if index > 0 {
                     frames.append(ProbeFrame(
                         index: index - 1,
@@ -373,15 +393,16 @@ extension TranscriptPerformanceFixtureTests {
                         counters: ProbeCounters.read() - countersBefore,
                         offsetError: scrollView.contentOffset.y - target,
                         contentHeightChange: scrollView.contentSize.height - heightBefore,
-                        mountedRows: 0
+                        mountedRows: Self.mountedRowEstimate(in: scrollView)
                     ))
                 }
                 guard index < steps else { return false }
-                markBefore = mark
                 countersBefore = ProbeCounters.read()
                 heightBefore = scrollView.contentSize.height
                 target = scrollView.contentOffset.y + delta
                 layoutLog.frame = index
+                // The bookkeeping above stays out of the next frame.
+                markBefore = awakeTime.mark
                 if delta != 0 { scrollView.contentOffset.y = target }
                 index += 1
                 return true
@@ -390,11 +411,7 @@ extension TranscriptPerformanceFixtureTests {
             return frames
         }
 
-        // A profiler attaches to this process while it waits.
-        if let wait = environment["PROBE_WAIT"].flatMap(Double.init) {
-            RunLoop.current.run(until: Date().addingTimeInterval(wait))
-        }
-        // Or a sampler: say the chat is ready, then scroll once it has
+        // A sampler: say the chat is ready, then scroll once it has
         // started (it writes the go file).
         if let marker = environment["PROBE_MARKER"] {
             FileManager.default.createFile(atPath: marker + ".ready", contents: Data())
@@ -836,8 +853,9 @@ extension TranscriptPerformanceFixtureTests {
     }
 
     /// The share of the viewport's middle (clear of the bars and the
-    /// composer) that differs from its commonest colour, the background.
-    /// Negative when it can't be read.
+    /// composer) that sits on a sharp edge, as text's strokes do and the
+    /// backdrop's soft glows don't: near zero when the rows scrolled into
+    /// view draw nothing. Negative when it can't be read.
     private static func viewportInk(of scrollView: UIScrollView) -> Double {
         guard let window = scrollView.window else { return -1 }
         let frame = scrollView.convert(scrollView.bounds, to: window).intersection(window.bounds)
@@ -867,26 +885,21 @@ extension TranscriptPerformanceFixtureTests {
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
-        guard drawn, width * height > 0 else { return -4 }
-        func key(_ index: Int) -> Int {
-            Int(pixels[index] >> 3) << 10 | Int(pixels[index + 1] >> 3) << 5 | Int(pixels[index + 2] >> 3)
-        }
-        var counts: [Int: Int] = [:]
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            counts[key(index), default: 0] += 1
-        }
-        guard let background = counts.max(by: { $0.value < $1.value })?.key else { return -5 }
-        let channels = [background >> 10, (background >> 5) & 31, background & 31]
-        var differing = 0
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            let pixel = key(index)
-            if abs((pixel >> 10) - channels[0]) > 5
-                || abs(((pixel >> 5) & 31) - channels[1]) > 5
-                || abs((pixel & 31) - channels[2]) > 5 {
-                differing += 1
+        guard drawn, width > 1, height > 0 else { return -4 }
+        var edges = 0
+        for y in 0..<height {
+            let row = y * width * 4
+            for x in 1..<width {
+                let left = row + (x - 1) * 4
+                let pixel = left + 4
+                if abs(Int(pixels[pixel]) - Int(pixels[left])) > 40
+                    || abs(Int(pixels[pixel + 1]) - Int(pixels[left + 1])) > 40
+                    || abs(Int(pixels[pixel + 2]) - Int(pixels[left + 2])) > 40 {
+                    edges += 1
+                }
             }
         }
-        return Double(differing) / Double(width * height)
+        return Double(edges) / Double(width * height)
     }
 
     /// Where the mounted text views sit in content coordinates, to tell a
@@ -930,17 +943,13 @@ extension TranscriptPerformanceFixtureTests {
     }
 }
 
-/// Measures display frames by the time the main run loop spends awake: an
-/// observer that runs after every other one stamps each wake and sleep, and
-/// a display link ticks the probe once per frame.
-@MainActor
-private final class ProbeFrameClock: NSObject {
+/// The main run loop's awake time, stamped by an observer that runs after
+/// every other one at each wake and sleep. Not actor-isolated: it runs twice
+/// a frame, where an actor check would add to what it measures.
+private final class ProbeAwakeTime: @unchecked Sendable {
     private var busy: CFTimeInterval = 0
     private var wokeAt = CACurrentMediaTime()
     private var awake = true
-    private var finished = false
-    /// Called once per display frame; returns false to stop.
-    var tick: (() -> Bool)?
 
     /// Awake time so far, counting the stretch the loop is awake in now.
     var mark: CFTimeInterval {
@@ -949,7 +958,7 @@ private final class ProbeFrameClock: NSObject {
 
     func observe(_ activity: CFRunLoopActivity) {
         let now = CACurrentMediaTime()
-        if activity == .afterWaiting {
+        if activity.rawValue == CFRunLoopActivity.afterWaiting.rawValue {
             wokeAt = now
             awake = true
         } else if awake {
@@ -957,6 +966,14 @@ private final class ProbeFrameClock: NSObject {
             awake = false
         }
     }
+}
+
+/// Ticks the probe once per display frame, as a display link ticks the app.
+@MainActor
+private final class ProbeFrameClock: NSObject {
+    private var finished = false
+    /// Called once per display frame; returns false to stop.
+    var tick: (() -> Bool)?
 
     /// Ticks until `tick` returns false (or two minutes pass).
     func run() {
