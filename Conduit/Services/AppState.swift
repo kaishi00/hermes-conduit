@@ -10882,9 +10882,12 @@ final class AppState: ObservableObject {
             // to a process that no longer exists after a relaunch.
             let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
             // The rest of a due full read runs once this sync is over, so
-            // the drawer still fills in without holding up the chat.
+            // the drawer still fills in without holding up the chat. Only a
+            // sync that published its list schedules it: an abandoned one
+            // leaves the read to the sync that replaced it.
+            var publishedCatalog = false
             defer {
-                if catalogLoad.olderPagesDeferred {
+                if catalogLoad.olderPagesDeferred, publishedCatalog {
                     loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
                 }
             }
@@ -10937,6 +10940,7 @@ final class AppState: ObservableObject {
             // independent of its outcome, which is also `.completed` for a
             // failed catalog load and `.superseded` after a published one.
             onCatalogPublished()
+            publishedCatalog = true
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
@@ -21891,6 +21895,12 @@ final class AppState: ObservableObject {
                 // still an authoritative fallback when the history endpoint is
                 // unavailable.
             }
+        }
+        // A retry budget or an empty page can also land here. The deferred
+        // read only tops up the dashboard's list, so it never takes the
+        // gateway's instead.
+        if yieldsToNewerReads {
+            throw CatalogReadSuperseded()
         }
         let fallbackStartedAt = Date()
         do {
