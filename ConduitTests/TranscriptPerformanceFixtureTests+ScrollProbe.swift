@@ -366,9 +366,10 @@ extension TranscriptPerformanceFixtureTests {
         percentile(values.sorted(), 0.5)
     }
 
-    /// One row type at a time: what mounting it from nothing and taking it
-    /// down again costs, the work a row pays each time LazyVStack brings it
-    /// back into view.
+    /// One row type at a time: what mounting it and taking it down again
+    /// costs, the work a row pays each time LazyVStack brings it back into
+    /// view. The first pass mounts fresh text views; later passes get them
+    /// from the reuse pool.
     func testScrollProbeReportsMountCostByRow() throws {
         let suiteName = "transcript-scroll-probe-mount"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -752,25 +753,29 @@ extension TranscriptPerformanceFixtureTests {
 private enum ProbePublishTrace {
     static var appPublishes = 0
     static var enginePublishes = 0
-    private static var stacks: [String: Int] = [:]
-    private static var order: [String] = []
+    private static var stacks: [[UInt]: Int] = [:]
+    private static var order: [[UInt]] = []
 
     /// Counts each AppState publish and keeps the distinct call stacks
     /// that caused them, so the log names the property that published.
+    /// Only return addresses are taken inside a frame; they are turned
+    /// into names when printed, so the trace adds little to frame times.
     static func recordAppPublish() {
         appPublishes += 1
-        let frames = Thread.callStackSymbols.dropFirst(2).prefix(16).map { line in
-            // "3   Conduit   0x0000 symbol + 12": keep the symbol.
-            line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true).dropFirst(3).joined()
-        }
-        let key = frames.joined(separator: "\n    ")
+        let key = Thread.callStackReturnAddresses.dropFirst(2).prefix(16).map(\.uintValue)
         if stacks[key] == nil { order.append(key) }
         stacks[key, default: 0] += 1
     }
 
     static func printStacks() {
         for key in order.prefix(12) {
-            print("SCROLL_PROBE appPublish count=\(stacks[key] ?? 0)\n    " + key)
+            let names = key.map { address -> String in
+                var info = Dl_info()
+                guard dladdr(UnsafeRawPointer(bitPattern: address), &info) != 0,
+                      let symbol = info.dli_sname else { return String(format: "0x%lx", address) }
+                return String(cString: symbol)
+            }
+            print("SCROLL_PROBE appPublish count=\(stacks[key] ?? 0)\n    " + names.joined(separator: "\n    "))
         }
     }
 }

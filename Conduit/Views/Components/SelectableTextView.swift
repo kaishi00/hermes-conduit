@@ -940,11 +940,16 @@ enum SelectableTextViewPool {
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
-        wantsCoordinated ? coordinated.popLast() : plain.popLast()
+        _ = memoryWarning
+        return wantsCoordinated ? coordinated.popLast() : plain.popLast()
     }
 
     static func recycle(_ textView: UITextView) {
         _ = memoryWarning
+        // Pooled twice, one view would be handed to two blocks.
+        guard !plain.contains(where: { $0 === textView }),
+              !coordinated.contains(where: { $0 === textView })
+        else { return }
         textView.removeFromSuperview()
         textView.attributedText = NSAttributedString()
         textView.selectedRange = NSRange(location: 0, length: 0)
