@@ -70,20 +70,32 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     private func backToTabs() {
+        // The tab bar stays in the hierarchy under a pushed chat, so wait for
+        // it to be hittable, not to exist.
         let chatsTab = app.buttons["Chats"]
-        app.returnToV2Tabs(revealing: chatsTab)
-        if !chatsTab.waitForExistence(timeout: 3) {
-            // The V2 conversation's Back is the navigation bar's first
-            // button; its label follows the previous screen.
-            let back = app.navigationBars.buttons.element(boundBy: 0)
-            if back.exists, back.identifier != "conversation.menu" {
+        if !chatsTab.isHittable {
+            // The V2 conversation's Back is the top-left round button.
+            let screen = app.frame
+            let back = app.buttons.allElementsBoundByIndex.first { button in
+                let f = button.frame
+                return button.isHittable && f.minX < screen.width * 0.15 && f.minY < screen.height * 0.12
+            }
+            if let back {
                 back.tap()
             } else {
                 let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                 start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
             }
         }
-        if !chatsTab.waitForExistence(timeout: 5) { snap("debug-back-failed") }
+        let deadline = Date().addingTimeInterval(8)
+        while !chatsTab.isHittable, Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        if !chatsTab.isHittable {
+            snap("debug-back-failed")
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "debug-back-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
         settle()
     }
 
