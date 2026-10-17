@@ -38,9 +38,12 @@ tests)
 probe)
   # Interleaved: the first process in a job runs slower.
   run_probe warm TEST_RUNNER_PROBE_CONFIG=nolist
-  run_probe stacks-1 TEST_RUNNER_PROBE_CONFIG=nolist TEST_RUNNER_PROBE_STACKS=1
-  run_probe stacks-2 TEST_RUNNER_PROBE_CONFIG=nolist TEST_RUNNER_PROBE_STACKS=1
-  for name in stacks-1 stacks-2; do
+  run_probe nolist-1 TEST_RUNNER_PROBE_CONFIG=nolist
+  run_probe nocomposer-1 TEST_RUNNER_PROBE_CONFIG=nocomposer
+  run_probe nolist-2 TEST_RUNNER_PROBE_CONFIG=nolist
+  run_probe nocomposer-2 TEST_RUNNER_PROBE_CONFIG=nocomposer
+  run_probe nocomposer-stacks TEST_RUNNER_PROBE_CONFIG=nocomposer TEST_RUNNER_PROBE_STACKS=1
+  for name in nolist-1 nocomposer-1 nolist-2 nocomposer-2 nocomposer-stacks; do
     echo "===== $name"
     grep -E "PUBLISH_PROBE|SCROLL_PROBE stacks|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 30 "probe-$name.log"
     awk '/: error: /{p=1} p{print; n++} n>=30{exit}' "probe-$name.log"

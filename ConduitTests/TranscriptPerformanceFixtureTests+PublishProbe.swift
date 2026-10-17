@@ -42,7 +42,7 @@ extension TranscriptPerformanceFixtureTests {
         print("PUBLISH_PROBE setup config=\(config) chats=\(appState.sessions.count) runs=\(appState.cronSessions.count)")
 
         let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
-            PublishProbeCoveredChat(appState: appState, showsList: config != "nolist")
+            PublishProbeCoveredChat(appState: appState, showsList: config == "gated" || config == "ungated", omitsComposer: config == "nocomposer")
                 .environmentObject(appState)
         ))
         let scene = try XCTUnwrap(
@@ -160,6 +160,7 @@ extension TranscriptPerformanceFixtureTests {
 private struct PublishProbeCoveredChat: View {
     let appState: AppState
     let showsList: Bool
+    let omitsComposer: Bool
     @State private var path = [1]
 
     var body: some View {
@@ -176,6 +177,7 @@ private struct PublishProbeCoveredChat: View {
                 ZStack {
                     ConduitBackdrop(drifts: true)
                     ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
+                        .environment(\.chatProbeOmitsComposer, omitsComposer)
                 }
             }
         }

@@ -22,8 +22,18 @@ private struct OptionalAccessibilityHint: ViewModifier {
     }
 }
 
+// PROBE: temporary A/B seam, removed before the PR.
+struct ChatProbeOmitsComposerKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var chatProbeOmitsComposer: Bool {
+        get { self[ChatProbeOmitsComposerKey.self] }
+        set { self[ChatProbeOmitsComposerKey.self] = newValue }
+    }
+}
+
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.chatProbeOmitsComposer) private var probeOmitsComposer // PROBE
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: someone is typing in the composer, which hides the minimised
     /// call's bar.
@@ -231,7 +241,7 @@ struct ChatView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             // Composer + control bar
-            ComposerBar()
+            if !probeOmitsComposer { ComposerBar() } // PROBE
         }
     }
 
