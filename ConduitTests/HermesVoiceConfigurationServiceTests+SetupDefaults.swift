@@ -86,6 +86,48 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(VoiceSpeechOutput.resolved(chosen: nil, snapshot: openAI.capability), .hermes)
     }
 
+    /// A provider Conduit has no catalog entry for (a plugin's, or a
+    /// custom OpenAI-compatible one) that Hermes reports ready is ready,
+    /// even though Hermes computes `is_active` only for the built-ins it can
+    /// match to `tts.provider`.
+    func testAReadyProviderConduitDoesNotKnowIsReady() {
+        for row: [String: Any] in [
+            ["name": "Speechbox", "tts_provider": "speechbox", "status": "ready", "is_active": false],
+            ["name": "Speechbox", "status": "ready"],
+            ["name": "Speechbox voices", "tts_provider": "speechbox", "status": ["state": "ready"]],
+        ] {
+            let snapshot = setupSnapshot(selectedTTS: "speechbox", ttsRows: [row, setupEdgeRow(active: false)])
+
+            XCTAssertTrue(snapshot.capability.supportsSpeech, "\(row)")
+            XCTAssertNil(snapshot.capability.unavailableReason)
+            XCTAssertEqual(VoiceSetupDefaults.providerReadiness("speechbox", in: snapshot.ttsProviders), .ready)
+        }
+    }
+
+    /// The same provider reporting a problem is not ready.
+    func testAProviderConduitDoesNotKnowThatIsNotReadyIsNotReady() {
+        let snapshot = setupSnapshot(
+            selectedTTS: "speechbox",
+            ttsRows: [["name": "Speechbox", "tts_provider": "speechbox", "status": "needs_keys", "is_active": true], setupEdgeRow(active: false)]
+        )
+
+        XCTAssertFalse(snapshot.capability.supportsSpeech)
+        XCTAssertEqual(VoiceSetupDefaults.providerReadiness("speechbox", in: snapshot.ttsProviders), .notReady(status: "needs_keys"))
+    }
+
+    /// Two rows naming one provider: the one Hermes marks active decides.
+    func testTheActiveRowSpeaksForAProviderListedTwice() {
+        let snapshot = setupSnapshot(
+            selectedTTS: "speechbox",
+            ttsRows: [
+                ["name": "Speechbox", "tts_provider": "speechbox", "status": "needs_keys", "is_active": false],
+                ["name": "Speechbox (plugin)", "tts_provider": "speechbox", "status": "ready", "is_active": true],
+            ]
+        )
+
+        XCTAssertTrue(snapshot.capability.supportsSpeech)
+    }
+
     func testSetupDefaultsEdgeHasAReadableName() {
         XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "edge", kind: .tts)?.displayName, "Edge TTS")
     }
