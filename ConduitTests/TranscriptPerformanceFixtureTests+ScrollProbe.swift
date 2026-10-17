@@ -214,6 +214,12 @@ extension TranscriptPerformanceFixtureTests {
             over8, over16
         ))
         print("SCROLL_PROBE \(phase) totals \(total.summary)")
+        let textFrames = frames.filter { $0.counters.textRebuild > 0 }.map(\.milliseconds).sorted(by: >)
+        print(String(
+            format: "SCROLL_PROBE %@ sum=%.0fms textFrames=%ld textFrameSum=%.0fms worst=%@",
+            phase, frames.reduce(0) { $0 + $1.milliseconds }, textFrames.count, textFrames.reduce(0, +),
+            textFrames.prefix(10).map { String(format: "%.0f", $0) }.joined(separator: ",")
+        ))
         print("SCROLL_PROBE \(phase) chatBodyFrames=\(chatBodyFrames) offsetJumps=\(jumps.count) contentResizes=\(resized.count) mountedRows(last)=\(frames.last?.mountedRows ?? 0)")
         for jump in jumps.prefix(5) {
             print(String(format: "SCROLL_PROBE %@ jump frame=%ld error=%.1fpt heightChange=%.1fpt", phase, jump.index, jump.offsetError, jump.contentHeightChange))
@@ -228,6 +234,9 @@ extension TranscriptPerformanceFixtureTests {
         let suiteName = "transcript-scroll-probe"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
+        MarkdownProseRun.probeTurnsOff = ProcessInfo.processInfo.environment["PROBE_JOINS"] == "0"
+        defer { MarkdownProseRun.probeTurnsOff = false }
+        print("SCROLL_PROBE setup joins=\(MarkdownProseRun.probeTurnsOff ? "off" : "on")")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.messages = Self.probeTranscript(turns: 60)
 

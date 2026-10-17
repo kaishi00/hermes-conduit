@@ -84,9 +84,12 @@ jobs:
           }
           # Each run is its own process, so none warms another's caches.
           frames=TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame
-          run_probe prose-runs-1 "$frames"
-          run_probe prose-runs-2 "$frames"
-          for name in prose-runs-1 prose-runs-2; do
+          # Runs on and off, interleaved, on the same runner.
+          run_probe joined-1 "$frames"
+          run_probe separate-1 "$frames" TEST_RUNNER_PROBE_JOINS=0
+          run_probe joined-2 "$frames"
+          run_probe separate-2 "$frames" TEST_RUNNER_PROBE_JOINS=0
+          for name in joined-1 separate-1 joined-2 separate-2; do
             echo "===== $name"
             # Three slowest frames per phase; the stacks only when asked for.
             grep -E "SCROLL_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" \
