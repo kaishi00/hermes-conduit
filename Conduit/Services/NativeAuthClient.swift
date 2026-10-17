@@ -108,16 +108,20 @@ extension NativeAuthConnection {
 /// deployments unclassifiable.
 enum AuthProviderDiscoveryResult {
     /// The dashboard answered `/api/auth/providers` with recognizable Hermes
-    /// provider JSON. The array may be empty (a valid Hermes answer meaning
-    /// "no providers configured") or name non-password providers only.
+    /// provider JSON. The array may name non-password providers only, or be
+    /// empty (Hermes itself answers 503 when no provider is registered, so
+    /// an empty list names no sign-in method).
     case providers([[String: Any]])
     /// Discovery was answered by a redirect to a sign-in page — the expected
     /// unauthenticated behavior of a dashboard/edge that routes to
-    /// interactive (browser) authentication.
+    /// interactive (browser) authentication. Either the redirect left the
+    /// dashboard's origin (never followed), or a followed same-origin
+    /// redirect landed on a page without Hermes provider structure: a
+    /// sign-in portal mounted on the dashboard's own origin.
     case interactiveSignInRequired
-    /// A 2xx response arrived, but it carries no recognizable Hermes
-    /// auth/provider structure: malformed JSON, a JSON object without a
-    /// `providers` array, or arbitrary web content.
+    /// A 2xx response arrived directly, without a redirect, but it carries
+    /// no recognizable Hermes auth/provider structure: malformed JSON, a
+    /// JSON object without a `providers` array, or arbitrary web content.
     case unrecognized
 }
 
@@ -139,12 +143,23 @@ extension AuthProviderDiscoveryResult: Equatable {
     }
 }
 
-/// The single definition of "this dashboard offers password login", shared by
-/// the normal login flow and the Connection Setup probe so the compatibility
-/// check can never drift between them.
+/// The single definition of "this dashboard offers password login", read by
+/// `DashboardSignInResolver` for the login card, the Connection Setup probe
+/// and Repair so the compatibility check can never drift between them.
 enum HermesProviderCheck {
     static func supportsPassword(_ providers: [[String: Any]]) -> Bool {
         providers.contains { $0["supports_password"] as? Bool == true }
+    }
+
+    /// Hermes listed its session providers without `supports_password`
+    /// before password sign-in existed; those are OAuth providers that sign
+    /// in through the dashboard's own browser flow.
+    static func hasLegacySessionProvider(_ providers: [[String: Any]]) -> Bool {
+        providers.contains {
+            $0["supports_password"] == nil
+                && $0["supports_session"] as? Bool != false
+                && $0["name"] is String
+        }
     }
 
     static func hasNativeOAuthProvider(_ providers: [[String: Any]]) -> Bool {
@@ -253,14 +268,18 @@ final class NativeAuthClient {
 
         // A 2xx answer only means "Hermes providers" when the body carries
         // the provider array. An empty array is a valid Hermes answer; a
-        // body without the array (arbitrary web content, malformed JSON) is
-        // an unrecognized server response and must never read as the
-        // interactive-auth signal.
-        guard let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any] else {
-            return .unrecognized
-        }
-        guard let providers = json["providers"] as? [[String: Any]] else {
-            return .unrecognized
+        // body without the array (arbitrary web content, malformed JSON)
+        // answered directly is an unrecognized server response and must
+        // never read as the interactive-auth signal. Reached through a
+        // redirect, the same page is that signal: the delegate follows only
+        // same-origin redirects, so the request was bounced to a sign-in
+        // portal on the dashboard's own origin (a forward-auth gate in front
+        // of a path-mounted Hermes), exactly as a cross-origin redirect
+        // bounces it to a sign-in service.
+        let wasRedirected = http.url != nil && http.url != request.url
+        guard let json = try? JSONSerialization.jsonObject(with: result.data) as? [String: Any],
+              let providers = json["providers"] as? [[String: Any]] else {
+            return wasRedirected ? .interactiveSignInRequired : .unrecognized
         }
         return .providers(providers)
     }

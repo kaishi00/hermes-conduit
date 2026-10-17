@@ -31,6 +31,7 @@
     "CrossProfilePresentationCacheTests": 1.563,
     "CustomHeadersTests": 0.05,
     "DashboardCookieClearingTests": 0.663,
+    "DashboardSignInDecisionTests": 1.0,
     "DashboardTicketBridgeTests": 15.309,
     "GatewayRestartTests": 0.12,
     "HapticsEmissionTests": 0.012,

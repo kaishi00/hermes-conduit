@@ -77,6 +77,10 @@ enum ConnectionFailureClassifier {
         if let bridgeError = error as? DashboardTicketBridgeError {
             return classify(bridgeError)
         }
+        if error is DashboardSignInError {
+            // Discovery answered, but with no sign-in Conduit can use.
+            return .unexpectedServerResponse
+        }
         // URLSession surfaces transport failures as NSError values in the
         // NSURLErrorDomain (e.g. injected through URLProtocol test seams).
         // Recover the typed error so classification stays code-based even
