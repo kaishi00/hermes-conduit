@@ -184,6 +184,46 @@ final class SessionCatalogCacheTests: XCTestCase {
         )
     }
 
+    func testChatSyncReadsOnlyTheNewestPageWhenAFullReadIsDue() {
+        XCTAssertEqual(
+            SessionCatalogCache.pageBudget(fullHistoryDue: true, deferringOlderPages: true),
+            1
+        )
+        XCTAssertEqual(
+            SessionCatalogCache.pageBudget(fullHistoryDue: true, deferringOlderPages: false),
+            SessionCatalogCache.maximumHistoryPages
+        )
+        XCTAssertEqual(
+            SessionCatalogCache.pageBudget(fullHistoryDue: false, deferringOlderPages: false),
+            1
+        )
+    }
+
+    func testNewestPageAloneLeavesTheFullReadDue() {
+        var cache = SessionCatalogCache()
+        let loadedAt = Date(timeIntervalSince1970: 100)
+
+        // A non-terminal newest page commits without a history marker.
+        XCTAssertTrue(
+            cache.commit(
+                liveSessions: [session(id: "newest", title: "Newest")],
+                liveKey: "default:exclude",
+                cronSessions: [],
+                cronKey: "default:cron",
+                historyMarkers: [:],
+                at: cache.mutationGeneration
+            )
+        )
+
+        XCTAssertTrue(
+            cache.shouldLoadFullHistory(
+                forKey: "default:exclude",
+                forceRefresh: false,
+                now: loadedAt
+            )
+        )
+    }
+
     func testCronHistoryRefreshesAfterCacheLifetime() {
         var cache = SessionCatalogCache()
         let loadedAt = Date(timeIntervalSince1970: 100)
