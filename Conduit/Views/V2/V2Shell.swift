@@ -141,6 +141,7 @@ extension EnvironmentValues {
 struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @State private var selectedTab: V2Tab = .chats
     /// The app opens on the Chats list. Nothing is pushed during the
     /// launch's first layout: a push then, even without animation, left the
@@ -472,12 +473,13 @@ struct V2Shell: View {
     private static let profileSwitchDistance: CGFloat = 44
 
     /// 1 when the picked profile sits right of the current one in the strip,
-    /// -1 when left.
+    /// -1 when left. The strip mirrors right to left; the offset doesn't.
     private func profileSwitchDirection(to profile: String) -> CGFloat {
         let profiles = appState.profiles
         guard let from = profiles.firstIndex(of: appState.activeProfile),
               let to = profiles.firstIndex(of: profile) else { return 1 }
-        return to < from ? -1 : 1
+        let later: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+        return to < from ? -later : later
     }
 
     private func fadeContentBackIn() {
@@ -498,6 +500,9 @@ struct V2ProfileSwitchContent: ViewModifier {
         content
             .opacity(shell.contentFaded ? 0 : 1)
             .offset(x: shell.contentShift)
+            // Out of sight, the old profile's rows take no taps.
+            .allowsHitTesting(!shell.contentFaded)
+            .accessibilityHidden(shell.contentFaded)
     }
 }
 
