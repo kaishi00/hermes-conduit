@@ -3547,6 +3547,9 @@ final class AppState: ObservableObject {
     private var owedPostConnectBootstrap: OwedPostConnectBootstrap?
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
+    /// Counts catalog reads as they start, so the slow read a chat sync left
+    /// for later can tell that a newer read began while it was paging.
+    private var catalogReadSequence: UInt64 = 0
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -3579,6 +3582,10 @@ final class AppState: ObservableObject {
         /// the previous snapshot instead of evicting it.
         let isAuthoritative: Bool
     }
+
+    /// A deferred catalog read that a newer read overtook. It publishes
+    /// nothing and stays quiet: the newer read owns the list.
+    private struct CatalogReadSuperseded: Error {}
 
     private struct ProfileCatalogLoad {
         let sessions: [SessionSummary]
@@ -15404,7 +15411,8 @@ final class AppState: ObservableObject {
     private func loadSessions(
         forceRefresh: Bool,
         requiredViewportTransitionGeneration: UInt64?,
-        reportsFailure: Bool = true
+        reportsFailure: Bool = true,
+        yieldsToNewerReads: Bool = false
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -15420,10 +15428,11 @@ final class AppState: ObservableObject {
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
-                loadedSessions = try await profileSessions(
+                loadedSessions = try await profileCatalog(
                     using: activeClient,
-                    forceRefresh: forceRefresh
-                )
+                    forceRefresh: forceRefresh,
+                    yieldsToNewerReads: yieldsToNewerReads
+                ).sessions
             } else {
                 return false
             }
@@ -21694,13 +21703,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Profiles and preferences
 
-    /// The dashboard endpoint is authoritative. `session.list` is only a
-    /// legacy fallback because it is backed by the gateway's current runtime
-    /// database and can otherwise leak or omit profile history.
-    private func profileSessions(using client: HermesClient, forceRefresh: Bool = false) async throws -> [SessionSummary] {
-        try await profileCatalog(using: client, forceRefresh: forceRefresh).sessions
-    }
-
     /// Reads the older pages a chat sync left out, after it. Quiet on
     /// failure: the drawer keeps the newest page, and the next list load
     /// tries the full read again.
@@ -21710,16 +21712,23 @@ final class AppState: ObservableObject {
             await self.loadSessions(
                 forceRefresh: false,
                 requiredViewportTransitionGeneration: nil,
-                reportsFailure: false
+                reportsFailure: false,
+                yieldsToNewerReads: true
             )
         }
     }
 
+    /// The dashboard endpoint is authoritative. `session.list` is only a
+    /// legacy fallback because it is backed by the gateway's current runtime
+    /// database and can otherwise leak or omit profile history.
     private func profileCatalog(
         using client: HermesClient,
         forceRefresh: Bool = false,
-        deferringOlderPages: Bool = false
+        deferringOlderPages: Bool = false,
+        yieldsToNewerReads: Bool = false
     ) async throws -> ProfileCatalogLoad {
+        catalogReadSequence &+= 1
+        let readSequence = catalogReadSequence
         if let loadCatalog = chatResumeLifecycleOperations.loadCatalog {
             return ProfileCatalogLoad(
                 sessions: try await loadCatalog(client, forceRefresh),
@@ -21817,6 +21826,11 @@ final class AppState: ObservableObject {
                           self.client === client else {
                         throw DashboardTicketBridgeError.notReady
                     }
+                    // Up to 25 pages take a while: a read started meanwhile
+                    // saw newer rows, so this one must not land after it.
+                    if yieldsToNewerReads, readSequence != catalogReadSequence {
+                        throw CatalogReadSuperseded()
+                    }
 
                     let combined = uniqueSessions(
                         merged + (cronSessions ?? cachedCronSessions ?? publishedCronSnapshot)
@@ -21865,6 +21879,9 @@ final class AppState: ObservableObject {
                       self.client === client else {
                     throw DashboardTicketBridgeError.notReady
                 }
+                // The deferred read only tops up a list the dashboard already
+                // gave; the gateway's list must not replace it.
+                if yieldsToNewerReads { throw error }
                 sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(error.localizedDescription, privacy: .public)")
                 // Keep older dashboard installations usable; the gateway is
                 // still an authoritative fallback when the history endpoint is
