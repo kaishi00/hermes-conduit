@@ -223,7 +223,8 @@ final class ConnectionSetupSettingsTests: XCTestCase {
     func testInteractiveEntryCanContinueWithEmptyCredentialsAfterEditingTheAddress() throws {
         // Edit-after-failure must not dead-end at a meaningless password
         // screen for an interactive-auth deployment: with both fields empty
-        // and a buildable address, the Settings entry continues to the test.
+        // and a buildable address, the edited address goes straight back to
+        // the test, whose discovery decides.
         var flow = ConnectionSetupFlow(
             entry: .currentConnection,
             draft: ConnectionSetupDraft(existingServerURL: currentURL)
@@ -233,17 +234,29 @@ final class ConnectionSetupSettingsTests: XCTestCase {
         XCTAssertEqual(flow.step, .connectionDetails)
         flow.draft.existingServerURL = "https://fixed.example/hermes"
         flow.submitDetails()
-        XCTAssertEqual(flow.step, .loginCredentials)
-        XCTAssertTrue(flow.draft.username.isEmpty)
-        XCTAssertTrue(flow.draft.password.isEmpty)
-        flow.submitCredentials()
         XCTAssertEqual(flow.step, .connectionTest, "Empty credentials must not block the Settings interactive path")
         XCTAssertNil(flow.validationError)
     }
 
-    func testLoginEntryStillRequiresCredentialsBeforeTheTest() {
-        // The empty-credential relaxation is scoped to the Settings entry;
-        // the LoginView wizard keeps its strict requirement.
+    func testSettingsCredentialsStepStillAcceptsBothFieldsEmpty() {
+        // Settings seeded with a saved password shows it for review; clearing
+        // both fields (the address now points at a browser-auth dashboard)
+        // still reaches the test instead of dead-ending.
+        var flow = seededFlow(password: "fixture")
+        flow.submitDetails()
+        XCTAssertEqual(flow.step, .loginCredentials)
+        flow.draft.username = ""
+        flow.draft.password = ""
+        flow.submitCredentials()
+        XCTAssertEqual(flow.step, .connectionTest)
+        XCTAssertNil(flow.validationError)
+    }
+
+    func testCredentialsStepAsksForBothFieldsOnceAPasswordIsKnownToApply() {
+        // The login card's authentication-recovery entry follows a rejected
+        // password, so the dashboard is known to use one: its credentials
+        // step asks for both fields. (First run never reaches this step
+        // before discovery; see ConnectionSetupFlowTests.)
         var flow = ConnectionSetupFlow(entry: .credentials, draft: ConnectionSetupDraft(
             existingServerURL: currentURL
         ))
@@ -272,7 +285,7 @@ final class ConnectionSetupSettingsTests: XCTestCase {
             XCTAssertTrue(flow.applyTestEvent(event, generation: generation))
         }
         XCTAssertTrue(flow.applyTestEvent(.started(.authentication), generation: generation))
-        XCTAssertTrue(flow.applyTestEvent(.requiresInteractiveSignIn(.authentication), generation: generation))
+        XCTAssertTrue(flow.applyTestEvent(.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)), generation: generation))
         XCTAssertEqual(flow.step, .review)
 
         XCTAssertTrue(flow.testedSettingsUnchanged, "The untouched interactive deployment is Done-eligible")

@@ -18,7 +18,7 @@ final class ConnectionSetupFlowTests: XCTestCase {
         XCTAssertEqual(String(describing: flow.step), "connectionDetails")
     }
 
-    func testDetailsCredentialsReviewAndTypedResultPreserveBackEdits() throws {
+    func testDiscoveryFirstDetailsCredentialsReviewAndTypedResultPreserveBackEdits() throws {
         var flow = ConnectionSetupFlow(entry: .network)
         flow.selectAccessMethod(.lan)
         flow.confirmDetailsReady()
@@ -28,9 +28,20 @@ final class ConnectionSetupFlowTests: XCTestCase {
         flow.draft.lan.host = "192.168.1.28"
         flow.draft.lan.port = "9119"
         flow.submitDetails()
+        XCTAssertEqual(flow.step, .connectionTest, "The address alone reaches the test: discovery decides whether a password applies")
+
+        // Discovery proves a password dashboard; only now are credentials
+        // asked for, and the credentials step takes the spent test's place.
+        let generation = try XCTUnwrap(flow.beginTest())
+        for event in StagedTestDriver.successEvents.prefix(5) {
+            flow.applyTestEvent(event, generation: generation)
+        }
+        flow.applyTestEvent(.requiresCredentials(.authentication), generation: generation)
+        flow.editAfterFailedTest(.loginCredentials)
         XCTAssertEqual(flow.step, .loginCredentials)
         flow.submitCredentials()
-        XCTAssertEqual(flow.step, .loginCredentials)
+        XCTAssertEqual(flow.step, .loginCredentials, "Once a password is known to apply, the step asks for both fields")
+        XCTAssertEqual(flow.validationError, .credentialsRequired)
         flow.draft.username = "eric"
         flow.draft.password = "in-memory-fixture"
         flow.submitCredentials()
@@ -43,9 +54,11 @@ final class ConnectionSetupFlowTests: XCTestCase {
         XCTAssertEqual(flow.step, .loginCredentials)
         XCTAssertTrue(flow.draft.password == "in-memory-fixture")
         flow.back()
+        XCTAssertEqual(flow.step, .connectionDetails, "Back from the credentials step returns to the address, not a spent test")
         XCTAssertEqual(flow.draft.lan.port, "9119")
         flow.draft.lan.port = "9120"
         flow.submitDetails()
+        XCTAssertEqual(flow.step, .loginCredentials, "Typed credentials are shown again before they are sent to the edited address")
         flow.submitCredentials()
         XCTAssertEqual(flow.step, .connectionTest)
         StagedTestDriver.runSuccessfulTest(on: &flow)
@@ -145,11 +158,29 @@ final class ConnectionSetupFlowTests: XCTestCase {
 
     // MARK: - Core question transitions
 
-    func testDashboardYesAdvancesToCredentials() {
+    func testDashboardYesAdvancesToAccessMethodWithoutACredentialsQuestion() {
         var flow = ConnectionSetupFlow(entry: .start)
         flow.answerDashboard(.yes)
-        XCTAssertEqual(flow.step, .credentials)
+        XCTAssertEqual(flow.step, .accessMethod, "First run never asks about credentials before discovery")
         XCTAssertEqual(flow.dashboardAnswer, .yes)
+        XCTAssertNil(flow.credentialsAnswer)
+    }
+
+    func testFreshFirstRunReachesTheConnectionTestWithEmptyCredentials() throws {
+        // The fixture-matrix row: a fresh first-run with only an address
+        // reaches discovery (the staged test) without a credentials screen.
+        var flow = ConnectionSetupFlow(entry: .start)
+        flow.answerDashboard(.yes)
+        flow.selectAccessMethod(.reverseProxy)
+        flow.confirmDetailsReady()
+        flow.draft.reverseProxyURL = "https://dashboard.example.test/hermes"
+        flow.submitDetails()
+        XCTAssertEqual(flow.step, .connectionTest)
+        XCTAssertFalse(flow.path.contains(.loginCredentials))
+        XCTAssertFalse(flow.path.contains(.credentials))
+        let configuration = try flow.draft.testConfiguration()
+        XCTAssertEqual(configuration.serverURL, "https://dashboard.example.test/hermes")
+        XCTAssertFalse(configuration.hasUsableCredentials, "The probe stops at Credentials required; it never sends an empty login")
     }
 
     func testDashboardNoAndUnknownStayWithGuidanceUntilConfirmedReady() {
@@ -159,7 +190,7 @@ final class ConnectionSetupFlowTests: XCTestCase {
         XCTAssertEqual(flow.dashboardAnswer, .no)
 
         flow.confirmDashboardReady()
-        XCTAssertEqual(flow.step, .credentials)
+        XCTAssertEqual(flow.step, .accessMethod)
         XCTAssertEqual(
             flow.dashboardAnswer, .no,
             "Confirming readiness is navigation — it must not rewrite the recorded answer to Yes"
@@ -178,7 +209,7 @@ final class ConnectionSetupFlowTests: XCTestCase {
 
         // Re-confirming from the restored state advances cleanly again.
         flow.confirmDashboardReady()
-        XCTAssertEqual(flow.step, .credentials)
+        XCTAssertEqual(flow.step, .accessMethod)
     }
 
     func testDashboardUnknownThenConfirmAdvances() {
@@ -186,19 +217,13 @@ final class ConnectionSetupFlowTests: XCTestCase {
         flow.answerDashboard(.unknown)
         XCTAssertEqual(flow.step, .dashboard)
         flow.confirmDashboardReady()
-        XCTAssertEqual(flow.step, .credentials)
-    }
-
-    func testCredentialsYesAdvancesToAccessMethod() {
-        var flow = ConnectionSetupFlow(entry: .start)
-        flow.answerDashboard(.yes)
-        flow.answerCredentials(.yes)
         XCTAssertEqual(flow.step, .accessMethod)
     }
 
     func testCredentialsNoAndUnknownStayWithGuidanceUntilConfirmedReady() {
-        var flow = ConnectionSetupFlow(entry: .start)
-        flow.answerDashboard(.yes)
+        // The credentials question belongs to authentication recovery (a
+        // rejected password proved the dashboard uses one).
+        var flow = ConnectionSetupFlow(entry: .credentials)
         flow.answerCredentials(.no)
         XCTAssertEqual(flow.step, .credentials)
         XCTAssertEqual(flow.credentialsAnswer, .no)
@@ -214,7 +239,7 @@ final class ConnectionSetupFlowTests: XCTestCase {
     func testRepeatedConfirmationsAreIdempotent() {
         var flow = ConnectionSetupFlow(entry: .start)
         flow.answerDashboard(.yes)
-        flow.answerCredentials(.yes)
+        flow.answerDashboard(.yes)
         flow.selectAccessMethod(.lan)
         flow.confirmDetailsReady()
         XCTAssertEqual(flow.step, .connectionDetails)
@@ -222,7 +247,7 @@ final class ConnectionSetupFlowTests: XCTestCase {
         flow.confirmDetailsReady()
         flow.confirmDetailsReady()
         XCTAssertEqual(flow.step, .connectionDetails)
-        XCTAssertEqual(flow.path.count, 5, "Path must stay entry step + one entry per real navigation")
+        XCTAssertEqual(flow.path.count, 4, "Path must stay entry step + one entry per real navigation")
     }
 
     func testEntryAtCredentialsSkipsDashboardQuestion() {
@@ -243,7 +268,6 @@ final class ConnectionSetupFlowTests: XCTestCase {
         ] {
             var flow = ConnectionSetupFlow(entry: .start)
             flow.answerDashboard(.yes)
-            flow.answerCredentials(.yes)
             flow.selectAccessMethod(method)
             XCTAssertEqual(flow.step, expectedStep, "\(method) must route to \(expectedStep)")
             XCTAssertEqual(flow.accessMethod, method)
@@ -262,7 +286,6 @@ final class ConnectionSetupFlowTests: XCTestCase {
     func testDetailsReadyFollowsBranchConfirmation() {
         var flow = ConnectionSetupFlow(entry: .start)
         flow.answerDashboard(.yes)
-        flow.answerCredentials(.yes)
         flow.selectAccessMethod(.tailscale)
         flow.confirmDetailsReady()
         XCTAssertEqual(flow.step, .connectionDetails)
@@ -277,14 +300,11 @@ final class ConnectionSetupFlowTests: XCTestCase {
         XCTAssertEqual(flow.step, .dashboard, "Back on the entry step must be a no-op")
 
         flow.answerDashboard(.yes)
-        flow.answerCredentials(.yes)
         flow.selectAccessMethod(.tailscale)
         XCTAssertTrue(flow.canGoBack)
 
         flow.back()
         XCTAssertEqual(flow.step, .accessMethod)
-        flow.back()
-        XCTAssertEqual(flow.step, .credentials)
         flow.back()
         XCTAssertEqual(flow.step, .dashboard)
         XCTAssertFalse(flow.canGoBack)
@@ -317,24 +337,23 @@ final class ConnectionSetupFlowTests: XCTestCase {
 
     // MARK: - Progress labeling
 
-    func testProgressLabelsCoverTheThreeCoreQuestions() {
-        XCTAssertEqual(ConnectionSetupFlow(entry: .start).progressLabel, "Step 1 of 3")
+    func testProgressLabelsCoverTheTwoFirstRunQuestions() {
+        XCTAssertEqual(ConnectionSetupFlow(entry: .start).progressLabel, "Step 1 of 2")
 
         var flow = ConnectionSetupFlow(entry: .start)
         flow.answerDashboard(.yes)
-        XCTAssertEqual(flow.progressLabel, "Step 2 of 3")
-        flow.answerCredentials(.yes)
-        XCTAssertEqual(flow.progressLabel, "Step 3 of 3")
+        XCTAssertEqual(flow.progressLabel, "Step 2 of 2")
 
         flow.selectAccessMethod(.lan)
         XCTAssertNil(flow.progressLabel, "Branch screens sit outside the numbered question sequence")
 
-        // Non-question entries are unnumbered too.
+        // Non-question entries are unnumbered too, including the
+        // authentication-recovery credentials question.
         XCTAssertNil(ConnectionSetupFlow(entry: .tls).progressLabel)
         XCTAssertNil(ConnectionSetupFlow(entry: .cloudflare).progressLabel)
+        XCTAssertNil(ConnectionSetupFlow(entry: .credentials).progressLabel)
         var detailsFlow = ConnectionSetupFlow(entry: .start)
         detailsFlow.answerDashboard(.yes)
-        detailsFlow.answerCredentials(.yes)
         detailsFlow.selectAccessMethod(.lan)
         detailsFlow.confirmDetailsReady()
         XCTAssertNil(detailsFlow.progressLabel)
@@ -345,14 +364,13 @@ final class ConnectionSetupFlowTests: XCTestCase {
     func testDashboardReadyConfirmationIsStepGated() {
         var flow = ConnectionSetupFlow(entry: .start)
         flow.confirmDashboardReady()
-        XCTAssertEqual(flow.step, .credentials, "The legitimate call from the dashboard step advances")
+        XCTAssertEqual(flow.step, .accessMethod, "The legitimate call from the dashboard step advances")
         XCTAssertEqual(flow.path.count, 2)
 
         // A stray call from any other step must be a deterministic no-op.
-        flow.answerCredentials(.yes)
         flow.confirmDashboardReady()
         XCTAssertEqual(flow.step, .accessMethod)
-        XCTAssertEqual(flow.path.count, 3, "Stray confirmDashboardReady calls must not mutate the path")
+        XCTAssertEqual(flow.path.count, 2, "Stray confirmDashboardReady calls must not mutate the path")
 
         flow.selectAccessMethod(.lan)
         let before = flow.path
@@ -366,9 +384,9 @@ final class ConnectionSetupFlowTests: XCTestCase {
         flow.confirmDetailsReady()
         flow.draft.lan.host = "192.168.1.28"
         flow.draft.lan.port = "9119"
-        flow.submitDetails()
         flow.draft.username = "eric"
         flow.draft.password = "fixture"
+        flow.submitDetails()
         flow.submitCredentials()
         XCTAssertEqual(flow.step, .connectionTest)
         StagedTestDriver.runSuccessfulTest(on: &flow)

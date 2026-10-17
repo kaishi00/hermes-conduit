@@ -201,10 +201,6 @@ final class ConnectionRepairTests: XCTestCase {
         flow.back()
         XCTAssertEqual(flow.step, .connectionDetails)
         flow.submitDetails()
-        XCTAssertEqual(flow.step, .loginCredentials)
-        XCTAssertTrue(flow.draft.username.isEmpty)
-        XCTAssertTrue(flow.draft.password.isEmpty)
-        flow.submitCredentials()
         XCTAssertEqual(flow.step, .connectionTest, "Empty credentials must not block the repair test path")
         XCTAssertNil(flow.validationError)
 
@@ -220,6 +216,149 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertFalse(flow.canUseSettings, "Credentials required never authorizes Reconnect Now")
         flow.editAfterFailedTest(.loginCredentials)
         XCTAssertEqual(flow.step, .loginCredentials)
+        flow.back()
+        XCTAssertEqual(flow.step, .connectionDetails, "The credentials step replaced the spent test")
+    }
+
+    // MARK: - Sign In to Reconnect fencing
+
+    /// A Repair flow whose staged test ended in `terminal` (an interactive
+    /// outcome), sitting on Review.
+    private func repairFlowAtReview(ending terminal: ConnectionSetupTestEvent) throws -> ConnectionSetupFlow {
+        var flow = ConnectionSetupFlow(
+            entry: .repairConnection,
+            draft: ConnectionSetupDraft(existingServerURL: ConnectionRepairTests.failedURL)
+        )
+        XCTAssertEqual(flow.step, .connectionTest)
+        let generation = try XCTUnwrap(flow.beginTest())
+        for event in StagedTestDriver.successEvents.prefix(5) {
+            flow.applyTestEvent(event, generation: generation)
+        }
+        flow.applyTestEvent(terminal, generation: generation)
+        XCTAssertEqual(flow.step, .review)
+        return flow
+    }
+
+    func testSignInToReconnectAnswerIsDroppedAfterAnEditOrANewerTest() throws {
+        for terminal in [
+            ConnectionSetupTestEvent.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)),
+            .requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted"))
+        ] {
+            var flow = try repairFlowAtReview(ending: terminal)
+            let result = try XCTUnwrap(flow.complete())
+            let request = ConnectionRepairSignInRequest(
+                configuration: result,
+                revision: flow.draftRevision,
+                generation: flow.testGeneration
+            )
+            XCTAssertTrue(request.isCurrent(in: flow), "\(terminal)")
+
+            // The user goes Back and edits the address while the capability
+            // check runs: its late answer must not open a sign-in at all.
+            var edited = flow
+            edited.back()
+            edited.back()
+            XCTAssertEqual(edited.step, .connectionDetails)
+            edited.draft.existingServerURL = "https://other.example.test"
+            XCTAssertFalse(request.isCurrent(in: edited), "\(terminal): an edited draft")
+
+            // A newer test supersedes it too, even for the same address.
+            var retested = flow
+            retested.invalidateTestForRepairRetry()
+            XCTAssertFalse(request.isCurrent(in: retested), "\(terminal): a newer test")
+        }
+    }
+
+    func testSignInChoiceInRepairOffersThePasswordRoute() throws {
+        var flow = try repairFlowAtReview(ending: .requiresSignInChoice(.authentication, .legacyOAuth))
+        XCTAssertTrue(flow.canUseSettings, "Sign In to Reconnect is available for the choice")
+        flow.enterCredentialsForSignInChoice()
+        XCTAssertEqual(flow.step, .loginCredentials, "Enter Credentials leads to a password test instead")
+        XCTAssertFalse(flow.canUseSettings)
+    }
+
+    /// Counts capability checks; Sign In to Reconnect has no discovery seam
+    /// at all, so it can only open what the staged test decided.
+    private final class CapabilitySeam {
+        var calls = 0
+        let answer: Result<Bool, Error>
+
+        init(_ answer: Result<Bool, Error>) {
+            self.answer = answer
+        }
+
+        var resolver: DashboardSignInResolver {
+            DashboardSignInResolver(supportsNativeOAuth: { [self] in
+                calls += 1
+                return try answer.get()
+            })
+        }
+    }
+
+    private enum CapabilityFixture: Error { case unavailable }
+
+    func testSignInToReconnectOpensTheSignInTheTestDecided() async throws {
+        for signIn in [
+            DashboardInteractiveSignIn.nativeOAuth(provider: "self-hosted"),
+            .nativeOAuth(provider: nil),
+            .browser(.legacyOAuth),
+            .browser(.authProxyRedirect)
+        ] {
+            let flow = try repairFlowAtReview(ending: .requiresInteractiveSignIn(.authentication, signIn))
+            // Whatever the dashboard would answer now, the tested decision
+            // stands: no second discovery, no capability check.
+            let seam = CapabilitySeam(.failure(CapabilityFixture.unavailable))
+            let opened = try await ConnectionRepairSignIn.signIn(for: flow.testState, resolver: seam.resolver)
+            XCTAssertEqual(opened, signIn)
+            XCTAssertEqual(seam.calls, 0, "\(signIn)")
+        }
+    }
+
+    func testSignInToReconnectFromAChoiceChecksCapabilityOnlyForANativeCapableOffer() async throws {
+        let native = CapabilitySeam(.success(true))
+        let nativeFlow = try repairFlowAtReview(
+            ending: .requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted"))
+        )
+        let nativeOpened = try await ConnectionRepairSignIn.signIn(for: nativeFlow.testState, resolver: native.resolver)
+        XCTAssertEqual(nativeOpened, .nativeOAuth(provider: "self-hosted"))
+        XCTAssertEqual(native.calls, 1)
+
+        let older = CapabilitySeam(.success(false))
+        let olderOpened = try await ConnectionRepairSignIn.signIn(for: nativeFlow.testState, resolver: older.resolver)
+        XCTAssertEqual(olderOpened, .browser(.legacyOAuth))
+
+        let legacy = CapabilitySeam(.success(true))
+        let legacyFlow = try repairFlowAtReview(ending: .requiresSignInChoice(.authentication, .legacyOAuth))
+        let legacyOpened = try await ConnectionRepairSignIn.signIn(for: legacyFlow.testState, resolver: legacy.resolver)
+        XCTAssertEqual(legacyOpened, .browser(.legacyOAuth))
+        XCTAssertEqual(legacy.calls, 0)
+    }
+
+    func testSignInToReconnectFailsClosedWhenAChoicesCapabilityCheckFails() async throws {
+        let flow = try repairFlowAtReview(
+            ending: .requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted"))
+        )
+        do {
+            let opened = try await ConnectionRepairSignIn.signIn(
+                for: flow.testState,
+                resolver: CapabilitySeam(.failure(CapabilityFixture.unavailable)).resolver
+            )
+            XCTFail("A failed capability check must not open a sign-in, got \(String(describing: opened))")
+        } catch {
+            XCTAssertEqual(error as? CapabilityFixture, .unavailable, "An error, never the browser view instead")
+        }
+    }
+
+    func testSignInToReconnectOpensNothingForAPasswordOutcome() async throws {
+        var flow = ConnectionSetupFlow(
+            entry: .repairConnection,
+            draft: ConnectionSetupDraft(existingServerURL: ConnectionRepairTests.failedURL, username: "u", password: "p")
+        )
+        StagedTestDriver.runSuccessfulTest(on: &flow)
+        let seam = CapabilitySeam(.success(true))
+        let opened = try await ConnectionRepairSignIn.signIn(for: flow.testState, resolver: seam.resolver)
+        XCTAssertNil(opened, "A password outcome reconnects through its tested candidate, never a browser")
+        XCTAssertEqual(seam.calls, 0)
     }
 
     // MARK: - Candidate lifecycle (spec 11, 17, 32)

@@ -87,14 +87,57 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
     var debugDescription: String { description }
 }
 
+/// What Repair's Sign In to Reconnect opens: the sign-in the current staged
+/// test decided through the shared `DashboardSignInResolver`, never a second
+/// discovery that could disagree with it.
+enum ConnectionRepairSignIn {
+    /// The tested interactive outcome's sign-in, or, for the sign-in-choice
+    /// outcome, its browser sign-in, whose native capability check runs now
+    /// that it is picked. A failed check is an error: never the browser view
+    /// or a password instead. Nil when the test ended in neither outcome.
+    static func signIn(
+        for testState: ConnectionSetupTestState,
+        resolver: DashboardSignInResolver
+    ) async throws -> DashboardInteractiveSignIn? {
+        if let signIn = testState.interactiveSignIn {
+            return signIn
+        }
+        if let offer = testState.browserSignInOffer {
+            return try await resolver.signIn(for: offer)
+        }
+        return nil
+    }
+}
+
+/// One Sign In to Reconnect resolution, bound to the draft revision and test
+/// generation it started from (the `ConnectionRepairCandidate.isCurrent`
+/// idiom). A choice's capability check runs while the wizard stays
+/// interactive, so its answer opens a sign-in only if the user has not
+/// edited the draft or started another test in the meantime.
+struct ConnectionRepairSignInRequest {
+    let configuration: ConnectionSetupResult
+    let revision: Int
+    let generation: Int
+
+    func isCurrent(in flow: ConnectionSetupFlow) -> Bool {
+        flow.draftRevision == revision
+            && flow.testGeneration == generation
+            && flow.hasCurrentInteractiveAuthOutcome
+    }
+}
+
 /// Round 6: the Repair review's action model, built by ConnectionSetupView
 /// when the wizard runs in Repair mode. The view evaluates candidate
 /// currency; the form only renders states and forwards taps.
 struct ConnectionSetupRepairReview {
-    /// The staged test ended in an interactive sign-in outcome — the final
-    /// action is Sign In to Reconnect, not Reconnect Now. The view selects
-    /// native OAuth or the legacy browser bridge from fresh discovery.
+    /// The staged test ended in an interactive sign-in outcome (or a choice
+    /// that includes one) — the final action is Sign In to Reconnect, not
+    /// Reconnect Now, which opens the sign-in that test decided
+    /// (`ConnectionRepairSignIn`).
     let isInteractive: Bool
+    /// The dashboard also offers password sign-in (the sign-in-choice
+    /// outcome): Enter Credentials leads to a password test instead.
+    let offersPasswordSignIn: Bool
     /// A validated native transaction exists and is still current. Reconnect
     /// Now requires it; a consumed candidate forces a fresh test.
     let isCandidateAvailable: Bool
@@ -103,6 +146,7 @@ struct ConnectionSetupRepairReview {
     let isActivating: Bool
     let reconnectNow: () -> Void
     let signInToReconnect: () -> Void
+    let enterCredentials: () -> Void
     let testAgain: () -> Void
 }
 

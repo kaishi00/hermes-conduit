@@ -43,10 +43,6 @@ struct ConnectionRepairSetupSheet: View {
 }
 
 struct ConnectionSetupView: View {
-    private enum RepairSignInMode {
-        case browser
-        case nativeOAuth(provider: String?)
-    }
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
@@ -67,7 +63,9 @@ struct ConnectionSetupView: View {
     @State private var activationFailure: ConnectionFailure?
     @State private var showRepairSignIn = false
     @State private var repairSignInConfiguration: ConnectionSetupResult?
-    @State private var repairSignInMode: RepairSignInMode = .browser
+    /// What Sign In to Reconnect opens; set together with the
+    /// configuration right before the sheet is presented.
+    @State private var repairSignIn: DashboardInteractiveSignIn?
     @State private var repairNativeOAuthDashboardID = UUID()
     private let onComplete: (ConnectionSetupResult) -> Void
     /// Round 6 (Repair): the explicit activation boundary. Nil outside
@@ -174,12 +172,14 @@ struct ConnectionSetupView: View {
             testSucceededAtRevision: flow.testSucceededAtRevision
         ) ?? false
         return ConnectionSetupRepairReview(
-            isInteractive: flow.testState.requiresInteractiveSignIn,
+            isInteractive: flow.testState.requiresInteractiveSignIn || flow.testState.requiresSignInChoice,
+            offersPasswordSignIn: flow.testState.requiresSignInChoice,
             isCandidateAvailable: candidateCurrent,
             activationFailure: activationFailure,
             isActivating: isActivating,
             reconnectNow: { reconnectNow() },
             signInToReconnect: { beginRepairSignIn() },
+            enterCredentials: { flow.enterCredentialsForSignInChoice() },
             testAgain: { testAgainAfterFailedActivation() }
         )
     }
@@ -190,8 +190,8 @@ struct ConnectionSetupView: View {
     /// the existing AuthWebView. Sign-in happens only on this explicit action.
     @ViewBuilder
     private var repairSignInSheet: some View {
-        if let configuration = repairSignInConfiguration {
-            switch repairSignInMode {
+        if let configuration = repairSignInConfiguration, let repairSignIn {
+            switch repairSignIn {
             case .nativeOAuth(let provider):
                 NativeOAuthSignInSheet(
                     baseURL: configuration.serverURL,
@@ -246,7 +246,8 @@ struct ConnectionSetupView: View {
                 )
             }
         } else {
-            // Unreachable: the sheet is only presented with a configuration.
+            // Unreachable: the sheet is only presented with a configuration
+            // and a sign-in.
             Color.clear.onAppear { showRepairSignIn = false }
         }
     }
@@ -273,37 +274,50 @@ struct ConnectionSetupView: View {
     private func beginRepairSignIn() {
         guard !isActivating, flow.canUseSettings, onRepair != nil else { return }
         guard let result = flow.complete() else { return }
+        // The staged test already decided the sign-in through the shared
+        // resolver; a choice's browser sign-in checks native capability now
+        // that it is picked. That answer counts only for the draft and test
+        // it started from: an edit or a newer test while it ran opens
+        // nothing.
+        let request = ConnectionRepairSignInRequest(
+            configuration: result,
+            revision: flow.draftRevision,
+            generation: flow.testGeneration
+        )
+        let testState = flow.testState
+        let access = flow.cloudflareAccessForDraft()
+        // A request goes out only for a choice's capability check.
+        let resolver = DashboardSignInResolver(supportsNativeOAuth: {
+            try await NativeAuthClient(baseURL: request.configuration.serverURL, cloudflareAccess: access)
+                .supportsNativeOAuth()
+        })
         isActivating = true
         Task { @MainActor in
             defer { isActivating = false }
-            let client = NativeAuthClient(
-                baseURL: result.serverURL,
-                cloudflareAccess: flow.cloudflareAccessForDraft()
-            )
+            let resolved: DashboardInteractiveSignIn?
             do {
-                let discovery = try await client.authProviderDiscovery()
-                if case .providers(let providers) = discovery,
-                   HermesProviderCheck.hasNativeOAuthProvider(providers),
-                   try await client.supportsNativeOAuth() {
-                    guard let dashboardID = appState.resolveDashboardID(
-                        forURL: result.serverURL,
-                        registerIfMissing: true
-                    ) else {
-                        activationFailure = .unexpectedServerResponse
-                        return
-                    }
-                    repairNativeOAuthDashboardID = dashboardID
-                    repairSignInMode = .nativeOAuth(
-                        provider: HermesProviderCheck.nativeOAuthProvider(providers)
-                    )
-                } else {
-                    repairSignInMode = .browser
-                }
-                repairSignInConfiguration = result
-                showRepairSignIn = true
+                resolved = try await ConnectionRepairSignIn.signIn(for: testState, resolver: resolver)
+            } catch is CancellationError {
+                return
             } catch {
+                guard request.isCurrent(in: flow) else { return }
                 activationFailure = ConnectionFailureClassifier.classify(error)
+                return
             }
+            guard request.isCurrent(in: flow), let interactive = resolved else { return }
+            if case .nativeOAuth = interactive {
+                guard let dashboardID = appState.resolveDashboardID(
+                    forURL: request.configuration.serverURL,
+                    registerIfMissing: true
+                ) else {
+                    activationFailure = .unexpectedServerResponse
+                    return
+                }
+                repairNativeOAuthDashboardID = dashboardID
+            }
+            repairSignIn = interactive
+            repairSignInConfiguration = request.configuration
+            showRepairSignIn = true
         }
     }
 
@@ -357,28 +371,14 @@ struct ConnectionSetupView: View {
                 // Announce only events the model actually applied — dropped
                 // stale events never speak.
                 guard flow.wrappedValue.applyTestEvent(event, generation: generation) else { return }
-                // One completion announcement per run; individual stage
+                // One completion announcement per run, in the wording the
+                // screen shows for this context; individual stage
                 // transitions stay quiet.
-                switch event {
-                case .succeeded(.authentication):
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: ConnectionSetupTestState.readyMessage
-                    )
-                case .requiresInteractiveSignIn(.authentication):
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: ConnectionSetupTestState.interactiveReadyMessage
-                    )
-                case .requiresCredentials(.authentication):
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: ConnectionSetupTestState.credentialsRequiredMessage
-                    )
-                case .failed(_, let failure):
-                    UIAccessibility.post(notification: .announcement, argument: failure.userTitle)
-                default:
-                    break
+                if let announcement = ConnectionSetupTestState.completionAnnouncement(
+                    for: event,
+                    repairing: flow.wrappedValue.isRepairingConnection
+                ) {
+                    UIAccessibility.post(notification: .announcement, argument: announcement)
                 }
             })
             // Round 6 (Repair): promote the validated transaction into the
@@ -468,7 +468,7 @@ struct ConnectionSetupView: View {
         }
     }
 
-    // MARK: - Step 2: Dashboard credentials
+    // MARK: - Authentication recovery: dashboard credentials
 
     private var credentialsStep: some View {
         readinessQuestion(
@@ -497,7 +497,7 @@ struct ConnectionSetupView: View {
         }
     }
 
-    // MARK: - Step 3: Access method
+    // MARK: - Step 2: Access method
 
     private var accessMethodStep: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -598,7 +598,7 @@ struct ConnectionSetupView: View {
         ) {
             ConnectionSetupPanel {
                 ConnectionSetupListItem(marker: .check, text: AppLocalization.string("The Hermes dashboard is running."))
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You have dashboard login credentials."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You can sign in to the Hermes dashboard."))
                 ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the Hermes machine’s local IP address."))
                 ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the dashboard port."))
                 ConnectionSetupListItem(marker: .check, text: AppLocalization.string("This device is on the same reachable network."))
@@ -647,7 +647,7 @@ struct ConnectionSetupView: View {
                 ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes."))
                 ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any custom port."))
                 ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any path prefix your proxy uses."))
-                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your dashboard login credentials."))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("A way to sign in to the dashboard."))
             }
             ConnectionSetupNote(
                 symbol: "lock.shield",

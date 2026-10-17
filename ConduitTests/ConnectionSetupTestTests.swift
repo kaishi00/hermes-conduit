@@ -36,7 +36,9 @@ enum StagedTestDriver {
 final class ConnectionSetupTestTests: XCTestCase {
     // MARK: - Flow factory
 
-    /// A flow sitting at `.connectionTest` via the full LAN walk.
+    /// A flow sitting at `.connectionTest` via the full LAN walk, carrying
+    /// password credentials (as after an earlier password outcome), so the
+    /// path runs details → credentials → test.
     private func makeFlowAtTestStep(
         username: String = "probe-user",
         password: String = "in-memory-fixture"
@@ -46,10 +48,24 @@ final class ConnectionSetupTestTests: XCTestCase {
         flow.confirmDetailsReady()
         flow.draft.lan.host = "192.168.1.28"
         flow.draft.lan.port = "9119"
-        flow.submitDetails()
         flow.draft.username = username
         flow.draft.password = password
+        flow.submitDetails()
+        XCTAssertEqual(flow.step, .loginCredentials, "Credentials already in the draft are shown before they are sent")
         flow.submitCredentials()
+        XCTAssertEqual(flow.step, .connectionTest)
+        return flow
+    }
+
+    /// A first-run flow at `.connectionTest` straight from the address:
+    /// discovery first, no credentials asked for.
+    private func makeDiscoveryFirstFlowAtTestStep() -> ConnectionSetupFlow {
+        var flow = ConnectionSetupFlow(entry: .start)
+        flow.answerDashboard(.yes)
+        flow.selectAccessMethod(.reverseProxy)
+        flow.confirmDetailsReady()
+        flow.draft.reverseProxyURL = "https://dashboard.example.test/hermes"
+        flow.submitDetails()
         XCTAssertEqual(flow.step, .connectionTest)
         return flow
     }
@@ -273,13 +289,20 @@ final class ConnectionSetupTestTests: XCTestCase {
     // MARK: - Interactive sign-in outcome (flow model)
 
     /// The staged interactive-auth run: server and dashboard succeed and
-    /// authentication stops at "browser sign-in required".
-    static let interactiveAuthEvents: [ConnectionSetupTestEvent] = [
-        .started(.server), .succeeded(.server),
-        .started(.dashboard), .succeeded(.dashboard),
-        .started(.authentication),
-        .requiresInteractiveSignIn(.authentication)
-    ]
+    /// authentication stops at "browser sign-in required" for `signIn`.
+    static func interactiveAuthEvents(
+        opening signIn: DashboardInteractiveSignIn
+    ) -> [ConnectionSetupTestEvent] {
+        [
+            .started(.server), .succeeded(.server),
+            .started(.dashboard), .succeeded(.dashboard),
+            .started(.authentication),
+            .requiresInteractiveSignIn(.authentication, signIn)
+        ]
+    }
+
+    /// The auth-proxy-redirect run, the most common interactive outcome.
+    static let interactiveAuthEvents = interactiveAuthEvents(opening: .browser(.authProxyRedirect))
 
     @discardableResult
     private static func runInteractiveTest(on flow: inout ConnectionSetupFlow) -> Int? {
@@ -297,7 +320,7 @@ final class ConnectionSetupTestTests: XCTestCase {
         XCTAssertEqual(flow.step, .review, "The supported interactive outcome advances to Review")
         XCTAssertEqual(flow.testState.server, .succeeded)
         XCTAssertEqual(flow.testState.dashboard, .succeeded)
-        XCTAssertEqual(flow.testState.authentication, .requiresInteractiveSignIn)
+        XCTAssertEqual(flow.testState.authentication, .requiresInteractiveSignIn(.browser(.authProxyRedirect)))
         XCTAssertNil(flow.testState.failedStage, "Interactive auth is not a failure")
         XCTAssertFalse(flow.testState.allSucceeded, "Authentication is never marked succeeded")
         XCTAssertFalse(flow.hasCurrentSuccessfulTest)
@@ -377,7 +400,7 @@ final class ConnectionSetupTestTests: XCTestCase {
         // Run A's interactive completion arrives late: dropped.
         flow.back()
         let applied = flow.applyTestEvent(
-            .requiresInteractiveSignIn(.authentication), generation: generationA
+            .requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)), generation: generationA
         )
         XCTAssertFalse(applied, "A stale interactive completion must never apply")
         XCTAssertTrue(flow.hasCurrentSuccessfulTest, "Run B stays authoritative")
@@ -415,14 +438,81 @@ final class ConnectionSetupTestTests: XCTestCase {
     func testReducerKeepsInteractiveOutcomeMonotonic() {
         var state = ConnectionSetupTestState()
         state.apply(.started(.authentication))
-        state.apply(.requiresInteractiveSignIn(.authentication))
-        XCTAssertEqual(state.authentication, .requiresInteractiveSignIn)
+        state.apply(.requiresInteractiveSignIn(.authentication, .nativeOAuth(provider: "google")))
+        XCTAssertEqual(state.authentication, .requiresInteractiveSignIn(.nativeOAuth(provider: "google")))
         // A terminal stage never reverts, whatever arrives later.
         state.apply(.failed(.authentication, .authenticationRejected))
         state.apply(.succeeded(.authentication))
         state.apply(.started(.authentication))
-        state.apply(.requiresInteractiveSignIn(.authentication))
-        XCTAssertEqual(state.authentication, .requiresInteractiveSignIn)
+        state.apply(.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)))
+        XCTAssertEqual(
+            state.authentication, .requiresInteractiveSignIn(.nativeOAuth(provider: "google")),
+            "Not even a later interactive outcome rewrites which sign-in the test decided"
+        )
+    }
+
+    // MARK: - Sign-in choice outcome (flow model)
+
+    static let signInChoiceEvents: [ConnectionSetupTestEvent] = [
+        .started(.server), .succeeded(.server),
+        .started(.dashboard), .succeeded(.dashboard),
+        .started(.authentication),
+        .requiresSignInChoice(.authentication, .nativeCapable(provider: "google"))
+    ]
+
+    func testSignInChoiceAuthorizesTheAddressOnlyHandoffAndOffersCredentials() throws {
+        var flow = makeDiscoveryFirstFlowAtTestStep()
+        let generation = try XCTUnwrap(flow.beginTest())
+        for event in Self.signInChoiceEvents {
+            XCTAssertTrue(flow.applyTestEvent(event, generation: generation))
+        }
+        XCTAssertEqual(flow.step, .review, "The choice is a supported terminal outcome")
+        XCTAssertTrue(flow.testState.requiresSignInChoice)
+        XCTAssertFalse(flow.testState.requiresInteractiveSignIn)
+        XCTAssertFalse(flow.fullyAuthenticated, "Nothing was signed in to")
+        XCTAssertTrue(flow.canUseSettings)
+        let result = try XCTUnwrap(flow.complete())
+        XCTAssertEqual(result.serverURL, "https://dashboard.example.test/hermes")
+        XCTAssertTrue(result.password.isEmpty, "The login screen offers the choice; no password is invented")
+
+        // The password method: Enter Credentials leaves Review for the
+        // credentials step, and the fresh test tries the password.
+        flow.enterCredentialsForSignInChoice()
+        XCTAssertEqual(flow.step, .loginCredentials)
+        XCTAssertEqual(flow.testState, ConnectionSetupTestState(), "The choice outcome never outlives the test step")
+        flow.back()
+        XCTAssertEqual(flow.step, .connectionDetails, "The credentials step replaced the spent test")
+    }
+
+    func testEnterCredentialsForSignInChoiceIsGatedToACurrentChoice() throws {
+        var flow = makeDiscoveryFirstFlowAtTestStep()
+        flow.enterCredentialsForSignInChoice()
+        XCTAssertEqual(flow.step, .connectionTest, "No choice outcome, nothing to act on")
+        ConnectionSetupTestTests.runInteractiveTest(on: &flow)
+        flow.enterCredentialsForSignInChoice()
+        XCTAssertEqual(flow.step, .review, "A browser-only outcome offers no password path")
+    }
+
+    func testStaleSignInChoiceEventIsDropped() throws {
+        var flow = makeDiscoveryFirstFlowAtTestStep()
+        let stale = try XCTUnwrap(flow.beginTest())
+        flow.applyTestEvent(.started(.server), generation: stale)
+        flow.cancelTest()
+        for event in Self.signInChoiceEvents {
+            XCTAssertFalse(flow.applyTestEvent(event, generation: stale))
+        }
+        XCTAssertFalse(flow.canUseSettings)
+        XCTAssertEqual(flow.step, .connectionTest)
+    }
+
+    func testSignInChoiceRowCarriesItsOwnMeaning() {
+        var state = ConnectionSetupTestState()
+        state.apply(.started(.authentication))
+        state.apply(.requiresSignInChoice(.authentication, .legacyOAuth))
+        XCTAssertEqual(state.rowLabel(for: .authentication), "Choose how to sign in")
+        XCTAssertEqual(state.accessibilityLabel(for: .authentication), "Authentication, choice of sign-in method")
+        state.apply(.succeeded(.authentication))
+        XCTAssertEqual(state.authentication, .requiresSignInChoice(.legacyOAuth), "A terminal stage never reverts")
     }
 
     // MARK: - Recovery routing (spec 11/12/17)
@@ -532,10 +622,50 @@ final class ConnectionSetupTestTests: XCTestCase {
         )
     }
 
+    func testCompletionAnnouncementMatchesTheScreensWordingInEachContext() {
+        let interactive = ConnectionSetupTestEvent.requiresInteractiveSignIn(.authentication, .browser(.legacyOAuth))
+        let choice = ConnectionSetupTestEvent.requiresSignInChoice(.authentication, .legacyOAuth)
+        XCTAssertEqual(
+            ConnectionSetupTestState.completionAnnouncement(for: interactive, repairing: false),
+            ConnectionSetupTestState.interactiveReadyMessage
+        )
+        XCTAssertEqual(
+            ConnectionSetupTestState.completionAnnouncement(for: choice, repairing: false),
+            ConnectionSetupTestState.signInChoiceMessage
+        )
+        // Repair has no login screen: its announcements say what its Review
+        // offers (Sign In to Reconnect, Enter Credentials).
+        XCTAssertEqual(
+            ConnectionSetupTestState.completionAnnouncement(for: interactive, repairing: true),
+            ConnectionSetupTestState.repairInteractiveMessage
+        )
+        XCTAssertEqual(
+            ConnectionSetupTestState.completionAnnouncement(for: choice, repairing: true),
+            ConnectionSetupTestState.repairSignInChoiceMessage
+        )
+        for repairing in [false, true] {
+            XCTAssertEqual(
+                ConnectionSetupTestState.completionAnnouncement(for: .succeeded(.authentication), repairing: repairing),
+                ConnectionSetupTestState.readyMessage
+            )
+            XCTAssertEqual(
+                ConnectionSetupTestState.completionAnnouncement(for: .requiresCredentials(.authentication), repairing: repairing),
+                ConnectionSetupTestState.credentialsRequiredMessage
+            )
+            XCTAssertEqual(
+                ConnectionSetupTestState.completionAnnouncement(for: .failed(.server, .hostNotFound), repairing: repairing),
+                ConnectionFailure.hostNotFound.userTitle
+            )
+            for quiet in [ConnectionSetupTestEvent.started(.server), .succeeded(.server), .succeeded(.dashboard)] {
+                XCTAssertNil(ConnectionSetupTestState.completionAnnouncement(for: quiet, repairing: repairing), "\(quiet)")
+            }
+        }
+    }
+
     func testInteractiveOutcomeCopyNeverClaimsAuthentication() {
         var state = ConnectionSetupTestState()
         state.apply(.started(.authentication))
-        state.apply(.requiresInteractiveSignIn(.authentication))
+        state.apply(.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)))
 
         XCTAssertEqual(
             state.rowLabel(for: .authentication),
@@ -669,11 +799,15 @@ final class ConnectionSetupTestTests: XCTestCase {
         // auth mode, so the "password" forbidden word below — which guards
         // row labels and ready claims, not recovery notices — does not
         // apply to it.
+        // The sign-in-choice messages are likewise recovery notices that
+        // must name the password method the dashboard offers.
         var allStrings = [
             ConnectionSetupTestState.readyMessage,
             ConnectionSetupTestState.interactiveReadyMessage,
+            ConnectionSetupTestState.repairInteractiveMessage,
             "Browser sign-in required",
-            "Credentials required"
+            "Credentials required",
+            "Choose how to sign in"
         ]
         for stage in ConnectionSetupTestStage.allCases {
             allStrings.append(contentsOf: [stage.objectiveLabel, stage.runningLabel, stage.successLabel])
@@ -957,7 +1091,7 @@ final class ConnectionSetupTestTests: XCTestCase {
             .started(.dashboard),
             .succeeded(.dashboard),
             .started(.authentication),
-            .requiresInteractiveSignIn(.authentication)
+            .requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect))
         ])
         let host = "probe-interactive.example"
         XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/providers", host: host), 1)
@@ -995,7 +1129,7 @@ final class ConnectionSetupTestTests: XCTestCase {
             .started(.dashboard),
             .succeeded(.dashboard),
             .started(.authentication),
-            .requiresInteractiveSignIn(.authentication),
+            .requiresInteractiveSignIn(.authentication, .nativeOAuth(provider: "google")),
         ])
         XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/providers", host: host), 1)
         XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 1)
@@ -1013,6 +1147,78 @@ final class ConnectionSetupTestTests: XCTestCase {
             .started(.dashboard),
             .failed(.dashboard, .unexpectedServerResponse)
         ])
+    }
+
+    // MARK: - Shared sign-in decision at the probe
+
+    func testProbeLegacyOAuthWithoutNativeCapabilityIsInteractiveNotUnexpected() async {
+        // The deployed-dashboard shape: an OIDC provider, and a status body
+        // without auth_flows. Browser sign-in is the honest supported
+        // outcome, as on the login card — never "unexpected response".
+        let host = "probe-legacy-oauth.example"
+        let events = await runProbe("https://\(host)")
+        XCTAssertEqual(events, Self.interactiveAuthEvents(opening: .browser(.legacyOAuth)))
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 1)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 0)
+    }
+
+    func testProbePrePasswordHermesProvidersAreInteractive() async {
+        let host = "probe-legacy-fieldless.example"
+        let events = await runProbe("https://\(host)")
+        XCTAssertEqual(events, Self.interactiveAuthEvents(opening: .browser(.legacyOAuth)))
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 0)
+    }
+
+    func testProbeMixedProvidersWithoutCredentialsReportTheChoice() async {
+        let host = "probe-mixed-native.example"
+        let events = await runProbeWithCredentials("https://\(host)", username: "", password: "")
+        XCTAssertEqual(events, Self.signInChoiceEvents)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 0)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/ws-ticket", host: host), 0)
+        XCTAssertEqual(
+            SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 0,
+            "The choice does not depend on the capability check; picking the browser sign-in runs it"
+        )
+    }
+
+    func testProbeMixedProvidersWithCredentialsTestThePassword() async {
+        let host = "probe-mixed-native.example"
+        let events = await runProbe("https://\(host)")
+        XCTAssertEqual(events, StagedTestDriver.successEvents)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 1)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 0)
+    }
+
+    func testProbeMixedDashboardTestsAPasswordEvenWhenItsCapabilityCheckWouldFail() async {
+        // The dashboard advertises a password, and the user entered one:
+        // testing it needs nothing from /api/status, so a status endpoint
+        // that fails (or that a proxy blocks) cannot stop the password test.
+        let host = "probe-mixed-status-5xx.example"
+        let withCredentials = await runProbe("https://\(host)")
+        XCTAssertEqual(withCredentials, StagedTestDriver.successEvents)
+        let withoutCredentials = await runProbeWithCredentials("https://\(host)", username: "", password: "")
+        XCTAssertEqual(withoutCredentials, Self.signInChoiceEvents)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 0)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 1)
+    }
+
+    func testProbeMalformedOr5xxCapabilityFailsWithoutADowngrade() async {
+        for (host, failure) in [
+            ("probe-status-malformed.example", ConnectionFailure.unexpectedServerResponse),
+            ("probe-status-5xx.example", .dashboardUnavailable)
+        ] {
+            let events = await runProbe("https://\(host)")
+            XCTAssertEqual(events, [
+                .started(.server),
+                .succeeded(.server),
+                .started(.dashboard),
+                .failed(.dashboard, failure)
+            ], host)
+            XCTAssertEqual(
+                SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 0,
+                "\(host): a failed capability check never falls back to password sign-in"
+            )
+        }
     }
 
     // MARK: - Side-effect freedom (spec 21)
@@ -1136,7 +1342,13 @@ private final class SetupProbeURLProtocol: URLProtocol {
         "probe-interactive.example",
         "probe-native-oauth.example",
         "probe-empty-providers.example",
-        "probe-malformed.example"
+        "probe-malformed.example",
+        "probe-legacy-oauth.example",
+        "probe-legacy-fieldless.example",
+        "probe-mixed-native.example",
+        "probe-status-malformed.example",
+        "probe-status-5xx.example",
+        "probe-mixed-status-5xx.example"
     ]
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -1263,6 +1475,66 @@ private final class SetupProbeURLProtocol: URLProtocol {
         case "probe-success.example":
             switch request.url?.path {
             case "/api/auth/providers": return providers
+            case "/auth/password-login": return acceptedLogin
+            case "/api/auth/ws-ticket": return ticket
+            default: return nil
+            }
+        case "probe-legacy-oauth.example":
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"providers":[{"name":"self-hosted","display_name":"Self-Hosted OIDC","supports_password":false}]}"#.utf8)
+                )
+            case "/api/status":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"status":"ok"}"#.utf8)
+                )
+            default: return nil
+            }
+        case "probe-legacy-fieldless.example":
+            return request.url?.path == "/api/auth/providers"
+                ? Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"providers":[{"name":"nous","display_name":"Nous Research"}]}"#.utf8)
+                )
+                : nil
+        case "probe-mixed-native.example":
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"providers":[{"name":"basic","supports_password":true},{"name":"google","supports_password":false}]}"#.utf8)
+                )
+            case "/api/status":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"auth_flows":["cookie","native_pkce"]}"#.utf8)
+                )
+            case "/auth/password-login": return acceptedLogin
+            case "/api/auth/ws-ticket": return ticket
+            default: return nil
+            }
+        case "probe-status-malformed.example", "probe-status-5xx.example", "probe-mixed-status-5xx.example":
+            switch request.url?.path {
+            case "/api/auth/providers":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data((host == "probe-mixed-status-5xx.example"
+                        ? #"{"providers":[{"name":"basic","supports_password":true},{"name":"google","supports_password":false}]}"#
+                        : #"{"providers":[{"name":"google","supports_password":false}]}"#).utf8)
+                )
+            case "/api/status":
+                return host == "probe-status-malformed.example"
+                    ? Fixture(statusCode: 200, headers: ["Content-Type": "text/html"], body: Data("<html>status</html>".utf8))
+                    : Fixture(statusCode: 503, headers: ["Content-Type": "application/json"], body: Data(#"{"detail":"unavailable"}"#.utf8))
             case "/auth/password-login": return acceptedLogin
             case "/api/auth/ws-ticket": return ticket
             default: return nil

@@ -71007,88 +71007,6 @@
         }
       }
     },
-    "Conduit will check the dashboard address and try your credentials now. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit prüft jetzt die Dashboard-Adresse und testet deine Zugangsdaten. Nichts wird gespeichert, und Conduit verbindet sich noch nicht – du bestätigst alles auf dem Bildschirm „Überprüfung“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit comprobará ahora la dirección del panel y probará tus credenciales. No se guarda nada y Conduit aún no se conectará: lo confirmarás todo en la pantalla Revisión."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit va vérifier l'adresse du tableau de bord et essayer vos identifiants maintenant. Rien n'est enregistré et Conduit ne se connectera pas encore : vous confirmerez tout sur l'écran Vérification."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit akan memeriksa alamat dasbor dan mencoba kredensial Anda sekarang. Tidak ada yang disimpan, dan Conduit belum akan terhubung — Anda akan mengonfirmasi semuanya di layar Tinjauan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit ora controllerà l'indirizzo della dashboard e proverà le tue credenziali. Non viene salvato nulla e Conduit non si connetterà ancora: confermerai tutto nella schermata Revisione."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduitは今からダッシュボードのアドレスを確認し、認証情報を試します。何も保存されず、まだ接続もしません。すべての内容は「確認」画面で最終確認します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit이 지금 대시보드 주소를 확인하고 자격 증명을 시도해요. 아무것도 저장되지 않으며 아직 연결하지도 않아요. 모든 내용은 ‘검토’ 화면에서 확인해요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit sprawdzi teraz adres panelu i wypróbuje Twoje dane logowania. Nic nie zostanie zapisane, a Conduit jeszcze się nie połączy — wszystko potwierdzisz na ekranie „Przegląd”."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Conduit vai verificar o endereço do painel e testar suas credenciais agora. Nada é salvo, e o Conduit ainda não vai se conectar — você confirmará tudo na tela Revisão."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit сейчас проверит адрес дашборда и ваши учётные данные. Ничего не сохраняется, и Conduit пока не подключится — всё это вы подтвердите на экране «Проверка»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit şimdi panel adresini denetleyip kimlik bilgilerinizi deneyecek. Hiçbir şey kaydedilmez ve Conduit henüz bağlanmaz — her şeyi İnceleme ekranında onaylayacaksınız."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 现在会检查仪表盘地址并尝试你的凭据。不会保存任何内容，Conduit 也尚未连接——你将在「审核」页确认所有信息。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 現在會檢查儀表板位址並試用你的認證資訊。不會儲存任何內容，Conduit 也還不會連線：你會在「檢閱」畫面上確認所有內容。"
-          }
-        }
-      }
-    },
     "Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks." : {
       "localizations" : {
         "de" : {
@@ -144586,252 +144504,6 @@
         }
       }
     },
-    "Step 1 of 3" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schritt 1 von 3"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Paso 1 de 3"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Étape 1 sur 3"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Langkah 1 dari 3"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passaggio 1 di 3"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ステップ1/3"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1/3단계"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Krok 1 z 3"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etapa 1 de 3"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Шаг 1 из 3"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adım 1 / 3"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 1 步，共 3 步"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 1 步，共 3 步"
-          }
-        }
-      }
-    },
-    "Step 2 of 3" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schritt 2 von 3"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Paso 2 de 3"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Étape 2 sur 3"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Langkah 2 dari 3"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passaggio 2 di 3"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ステップ2/3"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2/3단계"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Krok 2 z 3"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etapa 2 de 3"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Шаг 2 из 3"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adım 2 / 3"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 2 步，共 3 步"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 2 步，共 3 步"
-          }
-        }
-      }
-    },
-    "Step 3 of 3" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schritt 3 von 3"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Paso 3 de 3"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Étape 3 sur 3"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Langkah 3 dari 3"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passaggio 3 di 3"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ステップ3/3"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3/3단계"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Krok 3 z 3"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etapa 3 de 3"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Шаг 3 из 3"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adım 3 / 3"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 3 步，共 3 步"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 3 步，共 3 步"
-          }
-        }
-      }
-    },
     "Still switching boards. Try again once the new board finishes loading." : {
       "localizations" : {
         "de" : {
@@ -153134,88 +152806,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這些設定還無法使用。請點一下「返回」編輯，然後再回到這裡。"
-          }
-        }
-      }
-    },
-    "These settings will fill the login form. You’ll tap Connect there when you’re ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Einstellungen füllen das Anmeldeformular aus. Dort tippst du auf „Verbinden“, wenn du bereit bist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estos ajustes rellenarán el formulario de inicio de sesión. Allí tocarás Conectar cuando quieras."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ces réglages rempliront le formulaire de connexion. Vous toucherez Se connecter quand vous serez prêt."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pengaturan ini akan mengisi formulir login. Anda akan mengetuk Hubungkan di sana saat siap."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Queste impostazioni compileranno il modulo di accesso. Lì toccherai Connetti quando sei pronto."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これらの設定がログインフォームに入力されます。準備ができたら、そこで「接続」をタップしてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 설정이 로그인 양식에 입력돼요. 준비되면 거기서 ‘연결’을 탭하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Te ustawienia wypełnią formularz logowania. Stuknij tam „Połącz”, kiedy zechcesz."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Estes ajustes vão preencher o formulário de login. Toque em Conectar lá quando estiver pronto."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Эти настройки будут подставлены в форму входа. Когда будете готовы, нажмите там «Подключиться»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu ayarlar giriş formunu dolduracak. Hazır olduğunuzda orada Bağlan'a dokunacaksınız."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些设置会填入登录表单。准备就绪后，请在那里轻点「连接」。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這些設定會填入登入表單。準備好後，請在那裡點一下「連線」。"
           }
         }
       }
@@ -164642,88 +164232,6 @@
         }
       }
     },
-    "You have dashboard login credentials." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du hast Anmeldedaten für das Dashboard."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tienes las credenciales de inicio de sesión del panel."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vous avez les identifiants de connexion du tableau de bord."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anda memiliki kredensial login dasbor."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hai le credenziali di accesso alla dashboard."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダッシュボードのログイン認証情報があります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "대시보드 로그인 자격 증명이 있어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Masz dane logowania do panelu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Você tem as credenciais de login do painel."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "У вас есть учётные данные для входа в дашборд."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Panel giriş bilgileriniz var."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你拥有仪表盘登录凭据。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你有儀表板的登入認證資訊。"
-          }
-        }
-      }
-    },
     "You know the Hermes machine’s local IP address." : {
       "localizations" : {
         "de" : {
@@ -165048,88 +164556,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的對話也會在聊天中繼續。「關閉」會結束此語音工作階段。"
-          }
-        }
-      }
-    },
-    "Your dashboard login credentials." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Anmeldedaten für das Dashboard."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las credenciales de inicio de sesión de tu panel."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les identifiants de connexion de votre tableau de bord."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kredensial login dasbor Anda."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le credenziali di accesso alla tua dashboard."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダッシュボードのログイン認証情報。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "대시보드 로그인 자격 증명."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dane logowania do panelu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Suas credenciais de login do painel."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ваши учётные данные для входа в дашборд."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Panel giriş bilgileriniz."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的仪表盘登录凭据。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的儀表板登入認證資訊。"
           }
         }
       }
@@ -216310,6 +215736,908 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple 較新的語音模型，在這部 iPhone 上處理。長句辨識更好，但可能不會使用你的自訂字詞。首次使用可能需要下載模型。"
+          }
+        }
+      }
+    },
+    "A way to sign in to the dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Möglichkeit, dich beim Dashboard anzumelden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una forma de iniciar sesión en el panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un moyen de vous connecter au tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cara untuk masuk ke dasbor."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modo per accedere alla dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダッシュボードにサインインする方法。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대시보드에 로그인할 방법."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sposób logowania do panelu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma forma de fazer login no painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Способ входа в дашборд."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panele giriş yapmanın bir yolu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录仪表盘的方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入儀表板的方式。"
+          }
+        }
+      }
+    },
+    "Choose how to sign in" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldemethode wählen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige cómo iniciar sesión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisir comment se connecter"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih cara masuk"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli come accedere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインイン方法を選択"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 방법 선택"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz sposób logowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como fazer login"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите способ входа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nasıl giriş yapacağınızı seçin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择登录方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇登入方式"
+          }
+        }
+      }
+    },
+    "Conduit will check the dashboard address and how it signs in, and try a username and password only if you entered them. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit prüft die Dashboard-Adresse und wie die Anmeldung funktioniert, und testet Benutzername und Passwort nur, wenn du sie eingegeben hast. Nichts wird gespeichert, und Conduit verbindet sich noch nicht – du bestätigst alles auf dem Bildschirm „Überprüfung“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit comprobará la dirección del panel y cómo se inicia sesión en él, y solo probará un usuario y una contraseña si los escribiste. No se guarda nada y Conduit aún no se conectará: lo confirmarás todo en la pantalla Revisión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit va vérifier l'adresse du tableau de bord et sa méthode de connexion, et n'essaiera un nom d'utilisateur et un mot de passe que si vous les avez saisis. Rien n'est enregistré et Conduit ne se connectera pas encore : vous confirmerez tout sur l'écran Vérification."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit akan memeriksa alamat dasbor dan cara masuknya, lalu mencoba nama pengguna dan kata sandi hanya jika Anda memasukkannya. Tidak ada yang disimpan, dan Conduit belum akan terhubung — Anda akan mengonfirmasi semuanya di layar Tinjauan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit controllerà l'indirizzo della dashboard e come vi si accede, e proverà nome utente e password solo se li hai inseriti. Non viene salvato nulla e Conduit non si connetterà ancora: confermerai tutto nella schermata Revisione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはダッシュボードのアドレスとサインイン方法を確認し、ユーザ名とパスワードは入力した場合に限り試します。何も保存されず、まだ接続もしません。すべての内容は「確認」画面で最終確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 대시보드 주소와 로그인 방법을 확인하고, 사용자 이름과 암호는 입력한 경우에만 시도해요. 아무것도 저장되지 않으며 아직 연결하지도 않아요. 모든 내용은 ‘검토’ 화면에서 확인해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sprawdzi adres panelu i sposób logowania, a nazwę użytkownika i hasło wypróbuje tylko wtedy, gdy je wpiszesz. Nic nie zostanie zapisane, a Conduit jeszcze się nie połączy — wszystko potwierdzisz na ekranie „Przegląd”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit vai verificar o endereço do painel e como fazer login nele, e só vai testar um nome de usuário e uma senha se você os tiver digitado. Nada é salvo, e o Conduit ainda não vai se conectar — você confirmará tudo na tela Revisão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit проверит адрес дашборда и способ входа, а имя пользователя и пароль попробует, только если вы их ввели. Ничего не сохраняется, и Conduit пока не подключится — всё это вы подтвердите на экране «Проверка»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit panel adresini ve panelin giriş yöntemini denetleyecek; kullanıcı adı ve parolayı yalnızca girdiyseniz deneyecek. Hiçbir şey kaydedilmez ve Conduit henüz bağlanmaz — her şeyi İnceleme ekranında onaylayacaksınız."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 会检查仪表盘地址及其登录方式，只有在你输入了用户名和密码时才会尝试它们。不会保存任何内容，Conduit 也尚未连接——你将在「审核」页确认所有信息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會檢查儀表板位址及其登入方式，只有在你輸入了使用者名稱和密碼時才會試用。不會儲存任何內容，Conduit 也還不會連線：你會在「檢閱」畫面上確認所有內容。"
+          }
+        }
+      }
+    },
+    "Not entered" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht eingegeben"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin escribir"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non saisi"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum dimasukkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non inserita"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未入力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "입력 안 함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wpisano"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não digitada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не введён"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Girilmedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未输入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未輸入"
+          }
+        }
+      }
+    },
+    "Step 1 of 2" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt 1 von 2"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paso 1 de 2"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étape 1 sur 2"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah 1 dari 2"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passaggio 1 di 2"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップ1/2"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1/2단계"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Krok 1 z 2"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etapa 1 de 2"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шаг 1 из 2"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adım 1 / 2"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 步，共 2 步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 步，共 2 步"
+          }
+        }
+      }
+    },
+    "Step 2 of 2" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt 2 von 2"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paso 2 de 2"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étape 2 sur 2"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah 2 dari 2"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passaggio 2 di 2"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップ2/2"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2/2단계"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Krok 2 z 2"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etapa 2 de 2"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шаг 2 из 2"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adım 2 / 2"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 2 步，共 2 步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 2 步，共 2 步"
+          }
+        }
+      }
+    },
+    "These settings will fill the login form. Tap Continue there when you’re ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Einstellungen füllen das Anmeldeformular aus. Tippe dort auf „Weiter“, wenn du bereit bist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estos ajustes rellenarán el formulario de inicio de sesión. Allí toca Continuar cuando quieras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces réglages rempliront le formulaire de connexion. Touchez Continuer quand vous serez prêt."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengaturan ini akan mengisi formulir login. Ketuk Lanjutkan di sana saat siap."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queste impostazioni compileranno il modulo di accesso. Lì tocca Continua quando sei pronto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらの設定がログインフォームに入力されます。準備ができたら、そこで「続ける」をタップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 설정이 로그인 양식에 입력돼요. 준비되면 거기서 ‘계속’을 탭하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te ustawienia wypełnią formularz logowania. Stuknij tam „Dalej”, kiedy zechcesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estes ajustes vão preencher o formulário de login. Toque em Continuar lá quando estiver pronto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти настройки будут подставлены в форму входа. Когда будете готовы, нажмите там «Продолжить»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ayarlar giriş formunu dolduracak. Hazır olduğunuzda orada Devam'a dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些设置会填入登录表单。准备就绪后，请在那里轻点「继续」。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些設定會填入登入表單。準備好後，請在那裡點一下「繼續」。"
+          }
+        }
+      }
+    },
+    "This dashboard offers more than one way to sign in. Choose one on the login screen, or enter your username and password to test them now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Dashboard bietet mehr als eine Anmeldemethode. Wähle eine auf dem Anmeldebildschirm oder gib Benutzername und Passwort ein, um sie jetzt zu testen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este panel ofrece más de una forma de iniciar sesión. Elige una en la pantalla de inicio de sesión, o escribe tu usuario y contraseña para probarlos ahora."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce tableau de bord propose plusieurs façons de se connecter. Choisissez-en une sur l'écran de connexion, ou saisissez votre nom d'utilisateur et votre mot de passe pour les tester maintenant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor ini menawarkan lebih dari satu cara masuk. Pilih salah satunya di layar login, atau masukkan nama pengguna dan kata sandi Anda untuk mengujinya sekarang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa dashboard offre più di un modo per accedere. Scegline uno nella schermata di accesso, oppure inserisci nome utente e password per provarli ora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードには複数のサインイン方法があります。ログイン画面でいずれかを選ぶか、ユーザ名とパスワードを入力して今すぐテストしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드는 여러 가지 로그인 방법을 제공해요. 로그인 화면에서 하나를 선택하거나, 사용자 이름과 암호를 입력해 지금 테스트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten panel oferuje więcej niż jeden sposób logowania. Wybierz jeden na ekranie logowania albo wpisz nazwę użytkownika i hasło, aby je teraz sprawdzić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este painel oferece mais de uma forma de fazer login. Escolha uma na tela de login ou digite seu nome de usuário e senha para testá-los agora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот дашборд предлагает несколько способов входа. Выберите один на экране входа или введите имя пользователя и пароль, чтобы проверить их сейчас."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panel birden fazla giriş yöntemi sunar. Giriş ekranında birini seçin ya da şimdi denemek için kullanıcı adınızı ve parolanızı girin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表盘提供多种登录方式。请在登录页面中选择一种，或输入用户名和密码立即测试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板提供多種登入方式。請在登入畫面選擇其中一種，或輸入使用者名稱和密碼立即測試。"
+          }
+        }
+      }
+    },
+    "This dashboard offers more than one way to sign in. Sign in now to reconnect, or enter your username and password to test them first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Dashboard bietet mehr als eine Anmeldemethode. Melde dich jetzt an, um dich wieder zu verbinden, oder gib Benutzername und Passwort ein, um sie zuerst zu testen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este panel ofrece más de una forma de iniciar sesión. Inicia sesión ahora para volver a conectarte, o escribe tu usuario y contraseña para probarlos primero."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce tableau de bord propose plusieurs façons de se connecter. Connectez-vous maintenant pour vous reconnecter, ou saisissez votre nom d'utilisateur et votre mot de passe pour les tester d'abord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor ini menawarkan lebih dari satu cara masuk. Masuk sekarang untuk menghubungkannya kembali, atau masukkan nama pengguna dan kata sandi Anda untuk mengujinya terlebih dahulu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa dashboard offre più di un modo per accedere. Accedi ora per riconnetterti, oppure inserisci nome utente e password per provarli prima."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードには複数のサインイン方法があります。今すぐサインインして再接続するか、ユーザ名とパスワードを入力して先にテストしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드는 여러 가지 로그인 방법을 제공해요. 지금 로그인해 다시 연결하거나, 사용자 이름과 암호를 입력해 먼저 테스트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten panel oferuje więcej niż jeden sposób logowania. Zaloguj się teraz, aby połączyć się ponownie, albo wpisz nazwę użytkownika i hasło, aby najpierw je sprawdzić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este painel oferece mais de uma forma de fazer login. Faça login agora para reconectar ou digite seu nome de usuário e senha para testá-los primeiro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот дашборд предлагает несколько способов входа. Войдите сейчас, чтобы снова подключиться, или введите имя пользователя и пароль, чтобы сначала проверить их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panel birden fazla giriş yöntemi sunar. Yeniden bağlanmak için şimdi giriş yapın ya da önce denemek için kullanıcı adınızı ve parolanızı girin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表盘提供多种登录方式。立即登录以重新连接，或先输入用户名和密码进行测试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板提供多種登入方式。立即登入以重新連線，或先輸入使用者名稱和密碼進行測試。"
+          }
+        }
+      }
+    },
+    "You can sign in to the Hermes dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst dich beim Hermes-Dashboard anmelden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puedes iniciar sesión en el panel de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous pouvez vous connecter au tableau de bord Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda dapat masuk ke dasbor Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puoi accedere alla dashboard di Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesダッシュボードにサインインできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 대시보드에 로그인할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Możesz zalogować się do panelu Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você consegue fazer login no painel do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы можете войти в дашборд Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes paneline giriş yapabiliyorsunuz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可以登录 Hermes 仪表盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可以登入 Hermes 儀表板。"
+          }
+        }
+      }
+    },
+    "choice of sign-in method" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wahl der Anmeldemethode"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "elección del método de inicio de sesión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "choix de la méthode de connexion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pilihan cara masuk"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "scelta del metodo di accesso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインイン方法の選択"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 방법 선택 필요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wybór sposobu logowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "escolha do método de login"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "выбор способа входа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "giriş yöntemi seçimi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要选择登录方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要選擇登入方式"
           }
         }
       }
