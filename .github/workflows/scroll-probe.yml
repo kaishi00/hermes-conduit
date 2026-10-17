@@ -25,7 +25,7 @@ jobs:
   probe:
     name: Scroll probe
     runs-on: macos-26
-    timeout-minutes: 50
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7
 
@@ -68,17 +68,33 @@ jobs:
             | sed -e "s|$PWD/||g" -e 's/%/%25/g' | sort -u | head -n 10 \
             | while IFS= read -r line; do echo "::error::$line"; done
 
+      # Each step has its own limit: a job that runs out of time loses
+      # every step's annotations.
       - name: Run the drawn-text tests
+        timeout-minutes: 8
         run: bash .github/scroll-probe/run.sh tests
 
       - name: Run the probe
         if: always()
+        timeout-minutes: 8
         run: bash .github/scroll-probe/run.sh frames
 
-      - name: Profile the probe
+      - name: Record the probe under the Time Profiler
         if: always()
-        run: bash .github/scroll-probe/run.sh profile
+        timeout-minutes: 13
+        run: bash .github/scroll-probe/run.sh record
+
+      - name: Export the profile
+        if: always()
+        timeout-minutes: 11
+        run: bash .github/scroll-probe/run.sh export
+
+      - name: Summarise the profile
+        if: always()
+        timeout-minutes: 9
+        run: bash .github/scroll-probe/run.sh summary
 
       - name: Profile call tree
         if: always()
+        timeout-minutes: 2
         run: bash .github/scroll-probe/run.sh tree

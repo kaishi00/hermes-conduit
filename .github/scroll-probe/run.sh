@@ -60,20 +60,32 @@ frames)
   cat probe-summary.txt
   python3 "$HERE/annotate.py" probe-summary.txt probe
   ;;
-profile)
-  xcrun xctrace version || true
+record)
+  # Runs the frame test under the Time Profiler. Every wait is bounded and
+  # what happened goes to profile-log.txt, printed as annotations at the end.
+  : > profile-log.txt
+  log() { echo "$*" | tee -a profile-log.txt; }
+  # Waits up to $2 seconds for pid $1 to exit.
+  wait_for() {
+    for _ in $(seq 1 "$2"); do
+      kill -0 "$1" 2>/dev/null || { wait "$1" 2>/dev/null; return 0; }
+      sleep 1
+    done
+    return 1
+  }
+  log "xctrace $(xcrun xctrace version 2>&1 | head -n 1)"
   # The test host runs from the simulator's own copy of the app; hosts
   # left from the runs before, and helpers naming the build's copy, are
   # not it.
   app="CoreSimulator/Devices/$SIMULATOR_UDID/data/Containers/Bundle/Application/.*/Conduit\.app/Conduit( |$)"
   any='Conduit\.app/Conduit( |$)'
   stale=" $(pgrep -f "$any" | tr '\n' ' ') "
-  echo "stale:$stale" | tee profile-log.txt
+  log "stale:$stale"
   # The test waits PROBE_WAIT seconds before scrolling, for the recorder.
-  ( run_probe profiled "$frames" TEST_RUNNER_PROBE_WAIT=60 ) &
+  ( run_probe profiled "$frames" TEST_RUNNER_PROBE_WAIT=90 ) &
   probe_pid=$!
   pid=""
-  for attempt in $(seq 1 240); do
+  for attempt in $(seq 1 150); do
     pattern=$app
     [ "$attempt" -gt 90 ] && pattern=$any
     for candidate in $(pgrep -f "$pattern"); do
@@ -83,66 +95,82 @@ profile)
     sleep 1
   done
   sleep 3
-  {
-    echo "test host pid=${pid:-none}"
-    ps -axo pid,etime,command | grep -E 'Conduit\.app/Conduit' | grep -v grep | cut -c1-260
-  } | tee -a profile-log.txt
+  log "test host pid=${pid:-none} after ${attempt}s"
+  ps -axo pid,etime,command | grep -E 'Conduit\.app/Conduit' | grep -v grep | cut -c1-240 | tee -a profile-log.txt
   recorder_pid=""
-  record() {
+  attach() {
     rm -rf probe.trace
     xcrun xctrace record --template 'Time Profiler' "$@" --output probe.trace \
-      --time-limit 300s --no-prompt > xctrace.log 2>&1 &
+      --time-limit 200s --no-prompt > xctrace.log 2>&1 &
     local recorder=$!
-    for _ in $(seq 1 30); do
-      if ! kill -0 "$recorder" 2>/dev/null; then
-        wait "$recorder"
-        echo "recorder ($*) exited $?: $(grep -v '^\s*$' xctrace.log | head -n 2 | tr '\n' ' ')" | tee -a profile-log.txt
-        return 1
-      fi
+    for _ in $(seq 1 20); do
+      kill -0 "$recorder" 2>/dev/null || break
       grep -qiE "starting recording|ctrl-c" xctrace.log && break
       sleep 1
     done
     sleep 2
-    kill -0 "$recorder" 2>/dev/null || { echo "recorder ($*) stopped: $(head -n 2 xctrace.log | tr '\n' ' ')" | tee -a profile-log.txt; return 1; }
-    echo "recording ($*): $(head -n 3 xctrace.log | tr '\n' ' ')" | tee -a profile-log.txt
+    if ! kill -0 "$recorder" 2>/dev/null; then
+      wait "$recorder"
+      log "attach ($*) exited $?: $(grep -v '^[[:space:]]*$' xctrace.log | head -n 3 | tr '\n' ' ' | cut -c1-300)"
+      return 1
+    fi
+    log "attach ($*) running: $(grep -v '^[[:space:]]*$' xctrace.log | head -n 3 | tr '\n' ' ' | cut -c1-300)"
     recorder_pid=$recorder
-    return 0
   }
   if [ -n "$pid" ]; then
-    record --device "$SIMULATOR_UDID" --attach "$pid" \
-      || record --device "$SIMULATOR_UDID" --attach Conduit \
-      || record --attach "$pid" \
-      || record --device "$SIMULATOR_UDID" --all-processes \
-      || echo "::warning::no recorder attached"
+    attach --device "$SIMULATOR_UDID" --attach "$pid" \
+      || attach --device "$SIMULATOR_UDID" --attach Conduit \
+      || attach --attach "$pid" \
+      || log "no recorder attached"
   fi
-  wait "$probe_pid"
+  if wait_for "$probe_pid" 300; then log "probe finished"; else log "probe still running after 300s, stopping it"; pkill -f "test-without-building" || true; fi
   if [ -n "$recorder_pid" ]; then
     # It stops when the test host exits; the limit is the backstop.
-    for _ in $(seq 1 120); do kill -0 "$recorder_pid" 2>/dev/null || break; sleep 1; done
-    kill -INT "$recorder_pid" 2>/dev/null || true
-    wait "$recorder_pid" || true
-    tail -n 20 xctrace.log
+    if wait_for "$recorder_pid" 30; then
+      log "recorder stopped by itself"
+    else
+      kill -INT "$recorder_pid" 2>/dev/null || true
+      if wait_for "$recorder_pid" 150; then log "recorder stopped on SIGINT"; else log "recorder hung, killed"; kill -9 "$recorder_pid" 2>/dev/null || true; fi
+    fi
+    log "recorder tail: $(tail -n 4 xctrace.log | tr '\n' ' ' | cut -c1-400)"
   fi
+  log "trace: $(du -sh probe.trace 2>/dev/null | cut -f1)"
   summarise profiled > probe-summary.txt
+  { cat profile-log.txt; grep -E "frames=|totals|sum=" probe-summary.txt; } > record-annotations.txt
+  python3 "$HERE/annotate.py" record-annotations.txt record
+  ;;
+export)
+  # Bounded with perl's alarm: macOS has no timeout(1).
+  bounded() { local limit=$1; shift; perl -e 'alarm shift; exec @ARGV' "$limit" "$@"; }
+  : > export-log.txt
   if [ -d probe.trace ]; then
     sudo chown -R "$(id -u)" probe.trace 2>/dev/null || true
-    xcrun xctrace export --input probe.trace --toc > probe-toc.xml 2> export.log || cat export.log
-    grep -oE 'schema="[^"]+"' probe-toc.xml | sort | uniq -c | head -n 40
-    xcrun xctrace export --input probe.trace \
+    bounded 240 xcrun xctrace export --input probe.trace --toc > probe-toc.xml 2> export.log
+    echo "toc exit $? size $(wc -c < probe-toc.xml)" >> export-log.txt
+    grep -oE 'schema="[^"]+"' probe-toc.xml | sort | uniq -c | head -n 30 >> export-log.txt
+    bounded 360 xcrun xctrace export --input probe.trace \
       --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' \
-      > probe-profile.xml 2>> export.log || cat export.log
-    ls -la probe-profile.xml || true
-    python3 "$HERE/profile_summary.py" probe-profile.xml Conduit > profile-summary.txt 2>&1 \
-      || { echo "summary failed"; tail -n 20 profile-summary.txt; }
+      > probe-profile.xml 2>> export.log
+    echo "time-profile exit $? size $(wc -c < probe-profile.xml)" >> export-log.txt
+    head -c 1500 export.log >> export-log.txt
   else
-    echo "PROFILE no trace recorded" > profile-summary.txt
-    cat xctrace.log >> profile-summary.txt 2>/dev/null || true
+    echo "no trace" >> export-log.txt
   fi
-  cat probe-summary.txt profile-summary.txt
+  cat export-log.txt
+  python3 "$HERE/annotate.py" export-log.txt export
+  ;;
+summary)
+  bounded() { local limit=$1; shift; perl -e 'alarm shift; exec @ARGV' "$limit" "$@"; }
+  if [ -s probe-profile.xml ]; then
+    bounded 420 python3 "$HERE/profile_summary.py" probe-profile.xml Conduit > profile-summary.txt 2>&1 \
+      || echo "summary exited $?" >> profile-summary.txt
+  else
+    echo "PROFILE no time-profile table" > profile-summary.txt
+  fi
   grep -v "^PROFILE \. \|^PROFILE [0-9]*ms [0-9]*% " profile-summary.txt > profile-tables.txt || true
   grep "^PROFILE \. \|^PROFILE [0-9]*ms [0-9]*% \|call tree" profile-summary.txt > profile-tree.txt || true
-  { cat profile-log.txt; cat probe-summary.txt | grep -E "frames=|totals|sum=" ; cat profile-tables.txt; } > profile-annotations.txt
-  python3 "$HERE/annotate.py" profile-annotations.txt profile
+  cat profile-tables.txt
+  python3 "$HERE/annotate.py" profile-tables.txt profile
   ;;
 tree)
   python3 "$HERE/annotate.py" profile-tree.txt tree
