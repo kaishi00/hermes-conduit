@@ -609,7 +609,7 @@ extension TranscriptPerformanceFixtureTests {
         /// way SelectableTextViewHostView does today, or framed by hand.
         func hosted(constraints: Bool) -> UIView {
             let child = textView(textKit1: false)
-            let hostView = constraints ? UIView() : ProbeFramingHostView()
+            let hostView: UIView = constraints ? UIView() : ProbeFramingHostView()
             hostView.addSubview(child)
             if constraints {
                 child.translatesAutoresizingMaskIntoConstraints = false

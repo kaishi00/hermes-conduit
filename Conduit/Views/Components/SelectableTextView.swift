@@ -920,18 +920,21 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
 /// block costs to mount, and a chat takes rows down and builds them again
 /// all the time it scrolls. A recycled view keeps nothing that `configure`
 /// doesn't set again: its delegate, selection and coordinator are cleared
-/// when it is taken down. Only used on the main thread, like the views.
+/// when it is taken down.
+@MainActor
 private enum SelectableTextViewPool {
     static let capacity = 64
-    nonisolated(unsafe) private static var plain: [UITextView] = []
-    nonisolated(unsafe) private static var coordinated: [UITextView] = []
+    private static var plain: [UITextView] = []
+    private static var coordinated: [UITextView] = []
     private static let memoryWarning = NotificationCenter.default.addObserver(
         forName: UIApplication.didReceiveMemoryWarningNotification,
         object: nil,
         queue: .main
     ) { _ in
-        plain.removeAll()
-        coordinated.removeAll()
+        MainActor.assumeIsolated {
+            plain.removeAll()
+            coordinated.removeAll()
+        }
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
