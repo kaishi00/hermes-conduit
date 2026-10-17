@@ -157,7 +157,11 @@ final class V2ShownUpdates: ObservableObject {
     /// PROBE ONLY (removed before merge): the old behaviour, for an A/B.
     static var probeAlwaysForwards = false
 
+    /// Read through here by the list's rows, which follow these updates.
+    unowned let appState: AppState
+
     init(_ appState: AppState) {
+        self.appState = appState
         subscription = appState.objectWillChange.sink { [weak self] _ in
             guard let self else { return }
             if self.isShown || Self.probeAlwaysForwards { self.objectWillChange.send() } else { self.missedUpdate = true }

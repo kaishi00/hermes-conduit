@@ -344,6 +344,7 @@ struct V2ChatsView: View, Equatable {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
+        .environmentObject(updates)
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
         .onChange(of: isShown, initial: true) { _, shown in updates.isShown = shown }
@@ -1249,7 +1250,10 @@ struct V2ChatsListItem: Identifiable {
 /// One Chats list row. It works out its own dot, status and preview, so
 /// only the rows on screen do.
 private struct V2ChatsRow: View {
-    @EnvironmentObject private var appState: AppState
+    /// The list's updates (`V2ShownUpdates`): a row under a pushed chat
+    /// waits with the list.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: V2ChatsListItem
     /// The project a search result sits in, named before its preview.
@@ -1270,6 +1274,7 @@ private struct V2ChatsRow: View {
             childRow(session, depth: depth, parentTitle: parentTitle)
                 .v2ListRow(divider: isLast, dividerInset: V2SessionRow.iconTextInset)
                 .sessionActions(
+                    appState: appState,
                     session: session,
                     nest: nil,
                     isSavedRow: appState.isSavedChatRow(session),
@@ -1311,6 +1316,7 @@ private struct V2ChatsRow: View {
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
         .sessionActions(
+            appState: appState,
             session: session,
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
             isSavedRow: appState.isSavedChatRow(session),
@@ -1409,6 +1415,7 @@ extension View {
     /// while Conduit connects) takes none: they would act on a list Hermes
     /// hasn't sent yet.
     func sessionActions(
+        appState: AppState,
         session: SessionSummary,
         nest: NestReadToggle?,
         excludingProjectID: String? = nil,
@@ -1418,6 +1425,7 @@ extension View {
         onChanged: @escaping () -> Void = {}
     ) -> some View {
         modifier(V2SessionActions(
+            appState: appState,
             session: session,
             nest: nest,
             excludingProjectID: excludingProjectID,
@@ -1430,7 +1438,9 @@ extension View {
 }
 
 private struct V2SessionActions: ViewModifier {
-    @EnvironmentObject private var appState: AppState
+    /// Not followed here: the row redraws its actions, so a Chats row
+    /// under a pushed chat waits with its list.
+    let appState: AppState
     let session: SessionSummary
     let nest: NestReadToggle?
     let excludingProjectID: String?
