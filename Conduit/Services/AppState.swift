@@ -696,6 +696,7 @@ final class AppState: ObservableObject {
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
         didSet {
+            cronSessionsRevision &+= 1
             refreshActiveChatScrollSessionIdentity()
             // Pinned runs carry read state too (#485).
             observeChatReadState()
@@ -1158,9 +1159,25 @@ final class AppState: ObservableObject {
     private var sessionsRevision = 0
     private var activeProfileSessionsCache: (key: ActiveProfileSessionsKey, rows: [SessionSummary])?
 
+    /// Kept like `activeProfileSessions`: the default profile holds nearly
+    /// every cron run, and the open chat's header and the Chats list under
+    /// it read this on every publish.
     var activeProfileCronSessions: [SessionSummary] {
-        cronSessions.filter { sessionBelongsToProfile($0, profile: activeProfile) }
+        let key = ActiveProfileCronSessionsKey(cronSessionsRevision: cronSessionsRevision, profile: activeProfile)
+        if let cached = activeProfileCronSessionsCache, cached.key == key { return cached.rows }
+        let rows = cronSessions.filter { sessionBelongsToProfile($0, profile: activeProfile) }
+        activeProfileCronSessionsCache = (key, rows)
+        return rows
     }
+
+    private struct ActiveProfileCronSessionsKey: Equatable {
+        let cronSessionsRevision: Int
+        let profile: String
+    }
+
+    /// Bumped on every write to `cronSessions`.
+    private var cronSessionsRevision = 0
+    private var activeProfileCronSessionsCache: (key: ActiveProfileCronSessionsKey, rows: [SessionSummary])?
 
     /// The Chats list's rows: the live ones once this scope's list has
     /// landed, until then the ones it showed last time. Views only; every
@@ -4694,8 +4711,26 @@ final class AppState: ObservableObject {
         // not show yet; the resume (or the create) recorded its durable id.
         let durable = confirmedDurableSessionID(forRuntime: sessionId)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
-        return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
+        // The chat's header, composer and call cards ask several times per
+        // publish; the answer only changes with the seeds or the catalog.
+        let key = ChatOwnSessionIDsKey(
+            seeds: seeds,
+            sessionsRevision: sessionsRevision,
+            cronSessionsRevision: cronSessionsRevision
+        )
+        if let cached = chatOwnSessionIDsCache, cached.key == key { return cached.ids }
+        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, cronSessions].joined())
+        chatOwnSessionIDsCache = (key, ids)
+        return ids
     }
+
+    private struct ChatOwnSessionIDsKey: Equatable {
+        let seeds: [String]
+        let sessionsRevision: Int
+        let cronSessionsRevision: Int
+    }
+
+    private var chatOwnSessionIDsCache: (key: ChatOwnSessionIDsKey, ids: Set<String>)?
 
     /// The open chat's row in the session list, for the chat title's
     /// touch-and-hold menu. A cron run is found among the Cron rows and gets
@@ -4711,8 +4746,39 @@ final class AppState: ObservableObject {
         guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
               let sessionId = activeSessionId, !sessionId.isEmpty,
               botConversationProfile(for: sessionId) == nil else { return nil }
-        let rows = activeProfileSessions + activeProfileCronSessions
         let ownIDs = chatOwnSessionIDs(for: sessionId)
+        let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        // The chat's header reads this several times per publish, and the
+        // match walks every row of the profile, its cron runs included.
+        let key = ActiveChatSessionSummaryKey(
+            rows: ActiveProfileSessionsKey(
+                sessionsRevision: sessionsRevision,
+                profile: activeProfile,
+                botOwnershipGeneration: botOwnershipGeneration
+            ),
+            cronSessionsRevision: cronSessionsRevision,
+            sessionId: sessionId,
+            ownIDs: ownIDs,
+            durable: durable
+        )
+        if let cached = activeChatSessionSummaryCache, cached.key == key { return cached.row }
+        let row = activeChatSessionSummary(sessionId: sessionId, ownIDs: ownIDs, durable: durable)
+        activeChatSessionSummaryCache = (key, row)
+        return row
+    }
+
+    private struct ActiveChatSessionSummaryKey: Equatable {
+        let rows: ActiveProfileSessionsKey
+        let cronSessionsRevision: Int
+        let sessionId: String
+        let ownIDs: Set<String>
+        let durable: String?
+    }
+
+    private var activeChatSessionSummaryCache: (key: ActiveChatSessionSummaryKey, row: SessionSummary?)?
+
+    private func activeChatSessionSummary(sessionId: String, ownIDs: Set<String>, durable: String?) -> SessionSummary? {
+        let rows = [activeProfileSessions, activeProfileCronSessions].joined()
         // This row drives rename, archive and delete, so it is never picked
         // by list order: two rows matching the chat's own ids are settled
         // by the stored id its resume recorded, else neither is used. An
@@ -4728,7 +4794,7 @@ final class AppState: ObservableObject {
         if ownMatches.count == 1 {
             match = ownMatches.first
         } else if ownMatches.count > 1 {
-            if let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile) {
+            if let durable {
                 let durableMatches = ownMatches.filter { $0.id == durable || $0.storedSessionId == durable }
                 match = durableMatches.count == 1 ? durableMatches.first : nil
             } else {
@@ -4762,7 +4828,7 @@ final class AppState: ObservableObject {
 
     /// The ids plus the id and stored id of each row they name, never a
     /// row's alternate ids, which another row can share.
-    static func ownSessionIDs(for seeds: [String], in rows: [SessionSummary]) -> Set<String> {
+    static func ownSessionIDs(for seeds: [String], in rows: some Sequence<SessionSummary>) -> Set<String> {
         var ids = Set(seeds)
         for row in rows where seeds.contains(row.id) || row.storedSessionId.map(seeds.contains) == true {
             ids.insert(row.id)
@@ -16573,7 +16639,7 @@ final class AppState: ObservableObject {
     }
 
     private func knownSessionIDs(for sessionID: String) -> Set<String> {
-        guard let session = (sessions + cronSessions).first(where: {
+        guard let session = [sessions, cronSessions].joined().first(where: {
             $0.id == sessionID || $0.alternateIds.contains(sessionID)
         }) else {
             return [sessionID]

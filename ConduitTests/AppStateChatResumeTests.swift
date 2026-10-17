@@ -1480,6 +1480,33 @@ final class AppStateChatResumeTests: XCTestCase {
         // Another profile's run is not this chat's row.
         harness.appState.activeSessionId = "cron-run-other"
         XCTAssertNil(harness.appState.activeChatSessionSummary)
+
+        // The row and the profile's runs are kept between reads, and still
+        // follow every change to the runs.
+        harness.appState.activeSessionId = "cron-run-a"
+        XCTAssertEqual(harness.appState.activeProfileCronSessions.map(\.id), ["cron-run-a"])
+        harness.appState.cronSessions[0].title = "Renamed run"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.title, "Renamed run")
+        XCTAssertEqual(harness.appState.activeProfileCronSessions.map(\.title), ["Renamed run"])
+        harness.appState.cronSessions.append(session("cron-run-b", source: .cron))
+        XCTAssertEqual(harness.appState.activeProfileCronSessions.map(\.id), ["cron-run-a", "cron-run-b"])
+        XCTAssertEqual(harness.appState.chatOwnSessionIDsForTesting("cron-run-b"), ["cron-run-b"])
+        harness.appState.cronSessions = []
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+        XCTAssertEqual(harness.appState.activeProfileCronSessions, [])
+
+        // A stored id recorded after the first read still counts: the chat
+        // then names both rows, and the recorded id picks one.
+        harness.appState.sessions = [session("runtime-late"), session("stored-late")]
+        harness.appState.activeSessionId = "runtime-late"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "runtime-late")
+        _ = index.recordAuthoritative(
+            runtimeID: "runtime-late",
+            durableID: "stored-late",
+            profile: "default",
+            source: .resume
+        )
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-late")
     }
 
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {

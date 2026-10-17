@@ -245,9 +245,12 @@ struct V2FilterSelection: Equatable {
     }
 }
 
-struct V2ChatsView: View {
+struct V2ChatsView: View, Equatable {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// Followed through `updates`, which holds AppState's changes back
+    /// while a chat or a page covers the list or another tab is up.
+    private let appState: AppState
+    @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchText = ""
@@ -276,6 +279,19 @@ struct V2ChatsView: View {
     @State private var collapsedSections = ChatListSection.collapsed(
         from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
     )
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    /// Redrawn by its own changes only; the shell redraws on every publish.
+    nonisolated static func == (lhs: V2ChatsView, rhs: V2ChatsView) -> Bool {
+        lhs.appState === rhs.appState
+    }
+
+    /// Nothing pushed over the list, on the selected tab.
+    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
@@ -330,6 +346,7 @@ struct V2ChatsView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .onChange(of: isShown, initial: true) { _, shown in updates.isShown = shown }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
         .onChange(of: appState.activeSessionId) { _, active in
@@ -357,8 +374,8 @@ struct V2ChatsView: View {
         // Running and Needs approval follow the gateway's live registry
         // while the list is on screen; a hidden tab or a conversation
         // pushed over the list stops polling.
-        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)|\(appState.showSidebar)") {
-            guard shell.isTabActive, appState.showSidebar else { return }
+        .task(id: "\(appState.activeProfile)|\(isShown)|\(appState.showSidebar)") {
+            guard isShown, appState.showSidebar else { return }
             while !Task.isCancelled {
                 await appState.refreshLiveSessionStatuses()
                 try? await Task.sleep(for: .seconds(4))

@@ -1,0 +1,79 @@
+name: Publish probe
+
+# Temporary diagnostic: what an AppState publish costs an open chat with
+# the V2 Chats list under it.
+# Removed before merge.
+
+on:
+  push:
+    branches: [claude/project-thread-uhf9m1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-probe-${{ github.sha }}
+  cancel-in-progress: true
+
+env:
+  SIMULATOR_NAME: "iPhone 17 Pro"
+  DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
+  BUILD_TIMEOUT_SECS: "1200"
+
+jobs:
+  probe:
+    name: Publish probe
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Pick the build cache
+        id: cache-key
+        run: |
+          set -euo pipefail
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          echo "prefix=dd-v1-slim-$xcode-${ImageVersion:-image}" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-slim-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Build and boot the simulator in parallel
+        run: bash scripts/ci-hosted-build.sh
+
+      # Cloud threads can read a job's annotations but not its log.
+      - name: Name the build errors
+        if: failure()
+        run: |
+          grep -hE '(^|: )error:' ci-lane/build/build.log 2>/dev/null \
+            | sed -e "s|$PWD/||g" -e 's/%/%25/g' | sort -u | head -n 10 \
+            | while IFS= read -r line; do echo "::error::$line"; done
+
+      # Each step has its own limit: a job that runs out of time loses
+      # every step's annotations.
+      - name: Run the touched tests
+        timeout-minutes: 15
+        run: bash .github/publish-probe/run.sh tests
+
+      - name: Run the probe
+        if: always()
+        timeout-minutes: 20
+        run: bash .github/publish-probe/run.sh probe

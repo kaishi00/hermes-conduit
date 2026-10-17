@@ -11,6 +11,7 @@
 //  the conversation, and everything that asks for the sessions list pops it.
 //
 
+import Combine
 import SwiftUI
 
 /// The shell's four destinations.
@@ -135,6 +136,32 @@ extension EnvironmentValues {
     var v2Shell: V2ShellContext {
         get { self[V2ShellContextKey.self] }
         set { self[V2ShellContextKey.self] = newValue }
+    }
+}
+
+/// AppState's changes, passed on to a tab's root list only while it shows.
+/// Every publish redraws whatever follows AppState, and the Chats list
+/// walks the whole catalog to draw (the default profile holds nearly every
+/// cron run), so a list kept under a pushed chat cost the chat frames on
+/// every update. Hidden, the list waits; shown again, it draws once with
+/// everything it missed.
+@MainActor
+final class V2ShownUpdates: ObservableObject {
+    let objectWillChange = ObservableObjectPublisher()
+    /// Set by the list from the shell's context.
+    var isShown = true {
+        didSet { if isShown, !oldValue, missedUpdate { missedUpdate = false; objectWillChange.send() } }
+    }
+    private var missedUpdate = false
+    private var subscription: AnyCancellable?
+    /// PROBE ONLY (removed before merge): the old behaviour, for an A/B.
+    static var probeAlwaysForwards = false
+
+    init(_ appState: AppState) {
+        subscription = appState.objectWillChange.sink { [weak self] _ in
+            guard let self else { return }
+            if self.isShown || Self.probeAlwaysForwards { self.objectWillChange.send() } else { self.missedUpdate = true }
+        }
     }
 }
 
@@ -417,7 +444,9 @@ struct V2Shell: View {
         switch tab {
         case .chats:
             NavigationStack(path: $chatsPath) {
-                tabBarClearance(V2ChatsView())
+                // Only the list's own changes redraw it, not the shell's
+                // (`V2ShownUpdates`).
+                tabBarClearance(V2ChatsView(appState: appState).equatable())
                     .navigationDestination(for: V2Route.self, destination: destination)
             }
         case .tasks:
