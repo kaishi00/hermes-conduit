@@ -4,8 +4,8 @@
 //
 //  Tasks: a glass segmented control over the Kanban board (its lanes as
 //  side-by-side columns) and the scheduled jobs (schedule, next run, and an
-//  on/off switch). Each scheduled run lands in Chats as its own
-//  conversation.
+//  on/off switch). Each scheduled run is its own conversation, listed in
+//  Chats under the Scheduled filter.
 //
 
 import SwiftUI
@@ -237,11 +237,25 @@ struct V2ScheduledList: View {
         }
     }
 
+    /// Runs are kept out of the All list in Chats, so a job running every
+    /// few minutes doesn't bury the conversations; the Scheduled filter
+    /// there lists them, one tap away.
     private var listFooter: some View {
-        Text(AppLocalization.string("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule."))
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.top, 6)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppLocalization.string("Each run is saved as its own conversation. Chats lists them under the Scheduled filter. Ask Hermes to add or change a schedule."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button {
+                Haptics.light()
+                shell.showScheduledRuns()
+            } label: {
+                Label(AppLocalization.string("Show runs in Chats"), systemImage: "bubble.left.and.bubble.right")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .tint(.conduitAccent)
+        }
+        .padding(.top, 6)
     }
 
     private func sectionHeader(_ title: String) -> some View {
