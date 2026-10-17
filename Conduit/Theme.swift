@@ -117,6 +117,9 @@ enum ConduitMotion {
     /// The quick fade-out before a profile switch.
     static let fadeOut = Animation.easeOut(duration: fadeOutDuration)
 
+    /// A tab's screen fading in as it opens (the one left hides at once).
+    static let tabFadeIn = Animation.easeOut(duration: 0.18)
+
     /// Under Reduce Motion every spring becomes the plain settle fade.
     static func ease(reduceMotion: Bool) -> Animation {
         reduceMotion ? settle : easeSpring

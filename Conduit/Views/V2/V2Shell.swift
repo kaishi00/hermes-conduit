@@ -302,11 +302,11 @@ struct V2Shell: View {
                         .opacity(isSelected ? 1 : 0)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
-                        // A tab switch swaps screens at once, like a system
-                        // tab bar; only the bar's highlight slides. Fading
-                        // two full screens of glass and backdrop into each
-                        // other dropped frames.
-                        .animation(nil, value: selectedTab)
+                        // Only the tab being opened fades in, quickly; the one
+                        // left goes at once. Fading two full screens of glass
+                        // and backdrop into each other dropped frames, and a
+                        // plain swap read as a blink.
+                        .animation(isSelected ? ConduitMotion.tabFadeIn : nil, value: selectedTab)
                 }
             }
         }
