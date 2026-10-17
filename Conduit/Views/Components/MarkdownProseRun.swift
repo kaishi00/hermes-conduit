@@ -71,9 +71,15 @@ enum MarkdownProseRun {
         var remainingRuns = runs[...]
         var index = 0
         while index < blockCount {
+            // Runs come sorted and apart from `ranges(in:)`; anything else
+            // is skipped rather than allowed to stall the loop.
+            while let run = remainingRuns.first, run.lowerBound < index || run.isEmpty {
+                remainingRuns = remainingRuns.dropFirst()
+            }
             if let run = remainingRuns.first, run.lowerBound == index {
-                pieces.append(Piece(blocks: run, isRun: true))
-                index = run.upperBound
+                let blocks = index..<min(run.upperBound, blockCount)
+                pieces.append(Piece(blocks: blocks, isRun: true))
+                index = blocks.upperBound
                 remainingRuns = remainingRuns.dropFirst()
             } else {
                 pieces.append(Piece(blocks: index..<(index + 1), isRun: false))
@@ -118,8 +124,8 @@ enum MarkdownProseRun {
 
     /// The run's text. Blocks are separated by an empty line sized to the
     /// gap their views had, and list items by a plain line break, so
-    /// copying a run gives the same text copying its blocks did, with
-    /// each list item's marker in front.
+    /// copying a run gives the text copying its blocks did, with each list
+    /// item's marker and a space in front, as a prose-only answer copies.
     @MainActor
     static func attributedText(
         for blocks: ArraySlice<MarkdownBlock>,
@@ -169,16 +175,20 @@ enum MarkdownProseRun {
                     .foregroundColor: markerColor
                 ]
                 let markerWidth = (marker as NSString).size(withAttributes: markerAttributes).width
+                let spaceWidth = (" " as NSString).size(withAttributes: markerAttributes).width
                 let style = lineStyle(Spacing.listItemLineSpacing)
                 // The marker sits right-aligned in its column, as the list
-                // view's trailing-aligned marker frame put it; the tab takes
-                // the text to where that view's text column began.
-                style.firstLineHeadIndent = max(0, markerColumn - markerWidth)
+                // view's trailing-aligned marker frame put it, and the space
+                // after it is kerned to reach where that view's text column
+                // began. Wrapped lines start there too.
+                let markerStart = max(0, markerColumn - markerWidth)
+                style.firstLineHeadIndent = markerStart
                 style.headIndent = textStart
-                style.tabStops = [NSTextTab(textAlignment: .natural, location: textStart, options: [:])]
-                style.defaultTabInterval = textStart
+                var spaceAttributes = markerAttributes
+                spaceAttributes[.kern] = textStart - markerStart - markerWidth - spaceWidth
 
-                let content = NSMutableAttributedString(string: marker + "\t", attributes: markerAttributes)
+                let content = NSMutableAttributedString(string: marker, attributes: markerAttributes)
+                content.append(NSAttributedString(string: " ", attributes: spaceAttributes))
                 content.append(inline(item, font: bodyFont))
                 let isLast = index == items.count - 1
                 return Paragraph(

@@ -63,7 +63,7 @@ extension ChatTypographyTests {
             chatTextSize: .default
         )
 
-        XCTAssertEqual(text.string, "Plan\n\nAlpha bold\n\n•\tOne\n•\tTwo\n\n1.\tThree")
+        XCTAssertEqual(text.string, "Plan\n\nAlpha bold\n\n• One\n• Two\n\n1. Three")
         let boldFont = text.attribute(.font, at: (text.string as NSString).range(of: "bold").location, effectiveRange: nil) as? UIFont
         XCTAssertTrue(boldFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true, "inline styles carry over")
     }

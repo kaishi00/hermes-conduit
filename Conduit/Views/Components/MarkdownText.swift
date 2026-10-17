@@ -44,6 +44,7 @@ struct MarkdownText: View {
     /// `.default` environment default keeps non-chat subtrees untouched.
     @Environment(\.chatTextSize) private var chatTextSize
     @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
@@ -78,8 +79,10 @@ struct MarkdownText: View {
         )
         // A settled answer in the chat draws its prose runs in one text
         // view each. A streaming reply keeps a view per block, so a new
-        // delta never re-lays out the paragraphs above it.
+        // delta never re-lays out the paragraphs above it, and so does
+        // every answer under VoiceOver, which stops at each block's view.
         let proseRuns = joinsProseRuns
+            && !voiceOverEnabled
             && !isStreaming
             && newestCharacterOpacities.isEmpty
             && rendering.selectableText == nil
@@ -426,7 +429,9 @@ enum MarkdownRenderCache {
             // Approximate byte cost: source bytes + attributed-string storage
             // (each char carries attribute runs), so a few large messages can't
             // crowd out many small ones within totalCostLimit.
-            let cost = source.utf8.count + (rendering.selectableText?.length ?? 0) * 4
+            // A rich answer's prose runs build their text later, about the
+            // size a flow message's text is.
+            let cost = source.utf8.count + (rendering.selectableText?.length ?? source.utf16.count) * 4
             cache.setObject(rendering, forKey: key, cost: cost)
         }
         return rendering
