@@ -22812,10 +22812,19 @@ final class AppState: ObservableObject {
     }
 
     private func isUnsupportedRedirect(_ error: RpcError) -> Bool {
-        let message = error.message.lowercased()
-        return error.code == 4010
+        Self.isUnsupportedRedirect(code: error.code, message: error.message)
+    }
+
+    /// A gateway without `session.redirect` (Hermes before the active-turn
+    /// redirect) answers JSON-RPC "method not found": code -32601 with
+    /// "unknown method: session.redirect" on the TUI gateway.
+    nonisolated static func isUnsupportedRedirect(code: Int?, message: String) -> Bool {
+        let message = message.lowercased()
+        return code == 4010
+            || code == -32601
             || message.contains("does not support active-turn redirect")
             || message.contains("method not found")
+            || message.contains("unknown method")
     }
 
     private func isSessionNotFound(_ error: RpcError) -> Bool {

@@ -67,6 +67,7 @@
     "NativeAuthClientTests": 0.087,
     "OfflineChatCacheTests": 3.6,
     "ProfileModelDefaultsTests": 0.05,
+    "RedirectCompatibilityTests": 1.0,
     "ResponseHapticPolicyTests": 0.006,
     "ResponseHapticStateTests": 0.009,
     "ScreenQuestionTests": 0.5,
