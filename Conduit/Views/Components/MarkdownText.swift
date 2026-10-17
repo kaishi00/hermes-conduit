@@ -338,6 +338,7 @@ final class MarkdownRendering {
         return runs
     }
 
+    /// A run's text, built with these styles the first time it's asked for.
     @MainActor
     func proseRunText(
         for run: Range<Int>,

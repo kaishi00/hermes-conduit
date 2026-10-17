@@ -121,13 +121,18 @@ enum MarkdownProseRun {
     static let copiesAs = NSAttributedString.Key("ConduitProseRunCopiesAs")
 
     /// The text copying `text` gives: each marked character becomes what it
-    /// copies as. Text without marks comes back as it is.
+    /// copies as. A mark at either end is the separator beyond what was
+    /// selected, which a block's own view ended at, so it copies as
+    /// nothing. Text without marks comes back as it is.
     static func copyableText(_ text: NSAttributedString) -> NSAttributedString {
         var marks: [(range: NSRange, copy: String)] = []
         text.enumerateAttribute(copiesAs, in: NSRange(location: 0, length: text.length), options: []) { value, range, _ in
             guard let copy = value as? String else { return }
             // Neighbouring marks with the same copy come as one range.
-            marks.append((range, String(repeating: copy, count: range.length)))
+            var count = range.length
+            if range.location == 0 { count -= 1 }
+            if NSMaxRange(range) == text.length, count > 0 { count -= 1 }
+            marks.append((range, String(repeating: copy, count: count)))
         }
         guard !marks.isEmpty else { return text }
         let result = NSMutableAttributedString(attributedString: text)

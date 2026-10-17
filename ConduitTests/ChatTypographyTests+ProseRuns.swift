@@ -72,6 +72,8 @@ extension ChatTypographyTests {
         XCTAssertEqual(MarkdownProseRun.copiedSelection(in: textView)?.string, "bold\n\n• One", "a selection inside the run copies the same way")
         textView.selectedRange = (text.string as NSString).range(of: "Alpha")
         XCTAssertNil(MarkdownProseRun.copiedSelection(in: textView), "plain text copies as the text view would")
+        textView.selectedRange = (text.string as NSString).range(of: "\nAlpha bold\n")
+        XCTAssertEqual(MarkdownProseRun.copiedSelection(in: textView)?.string, "Alpha bold", "breaks at the selection's ends copy as nothing, as a block's own view ended there")
 
         let boldFont = text.attribute(.font, at: (text.string as NSString).range(of: "bold").location, effectiveRange: nil) as? UIFont
         XCTAssertTrue(boldFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true, "inline styles carry over")
