@@ -208,6 +208,8 @@ final class MediaPreviewPresenter {
         // Artifacts page that re-layout of the Chats list never settled and
         // the watchdog killed the app.
         controller.modalPresentationStyle = .overFullScreen
+        // As `.fullScreen` did: Quick Look's chrome sets the status bar.
+        controller.modalPresentationCapturesStatusBarAppearance = true
         // The rows under it stay on screen, so their `onDisappear` no longer
         // stops an inline clip: Quick Look has its own player.
         ChatAudioClipPlayer.shared.stop()
