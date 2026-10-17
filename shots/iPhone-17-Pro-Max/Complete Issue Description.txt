@@ -1,0 +1,127 @@
+failed - Sign-in step missing. Tree:
+Optional(Attributes: Application, 0x113d85b80, pid: 23435, label: 'Conduit'
+Element subtree:
+ →Application, 0x113d85b80, pid: 23435, label: 'Conduit'
+    Window (Main), 0x113d85cc0, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x113d85e00, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113d85f40, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x113d86080, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x113d861c0, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x113d86300, {{0.0, 0.0}, {440.0, 956.0}}
+                Other, 0x113d86440, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113d86580, {{0.0, 0.0}, {440.0, 956.0}}
+                    Other, 0x113d866c0, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x113d86800, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x113d86940, {{-233.3, -218.8}, {900.7, 1440.5}}
+                        ScrollView, 0x113d86a80, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x113d86bc0, {{0.0, 52.7}, {440.0, 655.7}}
+                            StaticText, 0x113d86d00, {{88.3, 204.7}, {263.3, 62.7}}, label: 'Conduit, A focused home for your Hermes work'
+                              StaticText, 0x113d86e40, {{156.8, 204.7}, {126.3, 40.7}}, label: 'Conduit'
+                              StaticText, 0x113d86f80, {{88.3, 249.3}, {263.3, 18.0}}, label: 'A focused home for your Hermes work'
+                            StaticText, 0x113d870c0, {{20.0, 293.3}, {206.3, 15.7}}, label: 'Your Hermes dashboard address'
+                            TextField, 0x113d87200, {{61.7, 332.0}, {348.3, 22.0}}, identifier: 'login.server-url', placeholderValue: 'mac.tailnet.ts.net:9119', value: http://hermes.tail..., Keyboard Focused
+                            StaticText, 0x113d87340, {{20.0, 377.0}, {370.3, 33.7}}, label: 'No need to type https://. Conduit checks how this dashboard signs in next.'
+                            Button, 0x113d87480, {{16.0, 420.7}, {87.3, 34.3}}, identifier: 'login.paste', label: 'Paste'
+                            Button, 0x113d875c0, {{113.3, 420.7}, {135.3, 34.3}}, identifier: 'login.scan', label: 'Scan Code'
+                              Image, 0x113d87700, {{127.3, 429.7}, {16.3, 16.3}}, identifier: 'qrcode.viewfinder', label: 'Scan Qr Code'
+                              StaticText, 0x113d87840, {{113.3, 420.7}, {135.3, 34.3}}, label: 'Scan Code'
+                            Button, 0x113d87980, {{16.0, 477.0}, {408.0, 61.3}}, identifier: 'login.advanced', label: 'Advanced, Cloudflare Access token, extra headers'
+                              Image, 0x113d87ac0, {{36.3, 500.3}, {17.3, 14.7}}, identifier: 'slider.horizontal.3', label: 'Edit'
+                              StaticText, 0x113d87c00, {{72.0, 488.0}, {75.3, 19.3}}, label: 'Advanced'
+                              StaticText, 0x113d87d40, {{72.0, 509.3}, {268.0, 18.0}}, label: 'Cloudflare Access token, extra headers'
+                              Image, 0x113d87e80, {{394.7, 504.3}, {11.7, 6.7}}, identifier: 'chevron.down', label: 'Go Down'
+                            Button, 0x113e28000, {{16.0, 594.3}, {408.0, 52.0}}, identifier: 'login.connect', label: 'Continue'
+                              StaticText, 0x113e28140, {{16.0, 594.3}, {408.0, 52.0}}, label: 'Continue'
+                              Image, 0x113e28280, {{252.0, 613.7}, {16.0, 13.3}}, identifier: 'arrow.right', label: 'Right'
+                            Button, 0x113e283c0, {{119.7, 652.3}, {200.7, 44.0}}, identifier: 'login.connection-setup', label: 'Need help connecting?'
+                              Image, 0x113e28500, {{121.0, 666.3}, {16.3, 16.3}}, identifier: 'questionmark.circle', label: 'questionmark.circle'
+                              StaticText, 0x113e28640, {{119.7, 652.3}, {200.7, 44.0}}, label: 'Need help connecting?'
+                          Other, 0x113e28780, {{407.0, 62.0}, {30.0, 528.0}}, label: 'Vertical scroll bar, 2 pages', value: 7%
+                            Other, 0x113e288c0, {{434.0, 69.3}, {3.0, 460.7}}
+                          Other, 0x113e28a00, {{407.0, 62.0}, {30.0, 528.0}}, label: 'Vertical scroll bar, 2 pages', value: 7%
+                            Other, 0x113e28b40, {{434.0, 69.3}, {3.0, 460.7}}
+                Other, 0x113e28c80, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x113e28dc0, {{0.0, 0.0}, {440.0, 956.0}}
+    Window, 0x113e28f00, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x113e29040, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113e29180, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113e292c0, {{0.0, 590.0}, {440.0, 366.0}}
+          Other, 0x113e29400, {{0.0, 590.0}, {440.0, 48.0}}
+            Other, 0x113e29540, {{0.0, 590.0}, {440.0, 48.0}}
+              Other, 0x113e29680, {{0.0, 590.0}, {440.0, 48.0}}
+                Toolbar, 0x113e297c0, {{0.0, 590.0}, {440.0, 48.0}}, identifier: 'Toolbar', label: 'Toolbar'
+                  Other, 0x113e29900, {{0.0, 590.0}, {440.0, 48.0}}
+                    Other, 0x113e29a40, {{20.0, 590.0}, {400.0, 48.0}}
+                      Other, 0x113e29b80, {{20.0, 590.0}, {400.0, 48.0}}
+                        Other, 0x113e29cc0, {{20.0, 590.0}, {0.0, 0.0}}
+                          Other, 0x113e29e00, {{347.7, 590.0}, {72.3, 48.0}}
+                            Other, 0x113e29f40, {{347.7, 590.0}, {72.3, 48.0}}
+                              Other, 0x113e2a080, {{352.7, 596.0}, {62.3, 36.0}}
+                                Other, 0x113e2a1c0, {{352.7, 596.0}, {62.3, 36.0}}
+                                  Other, 0x113e2a300, {{352.7, 596.0}, {62.3, 36.0}}, label: 'Done'
+                                    Other, 0x113e2a440, {{352.7, 596.0}, {62.3, 36.0}}
+                                      Button, 0x113e2a580, {{352.7, 596.0}, {62.3, 36.0}}, label: 'Done'
+          Other, 0x113e2a6c0, {{0.0, 638.0}, {440.0, 318.0}}, identifier: 'inputView'
+    Window, 0x113e2a800, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x113e2a940, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x113e2aa80, {{0.0, 590.0}, {440.0, 366.0}}
+          Other, 0x113e2abc0, {{0.0, 590.0}, {440.0, 48.0}}
+          Other, 0x113e2ad00, {{0.0, 638.0}, {440.0, 318.0}}
+            Other, 0x113e2ae40, {{0.0, 638.0}, {440.0, 318.0}}
+              Other, 0x113e2af80, {{0.0, 638.0}, {440.0, 318.0}}
+          Other, 0x113e2b0c0, {{0.0, 655.0}, {440.0, 243.0}}
+            Keyboard, 0x113e2b200, {{0.0, 655.0}, {440.0, 243.0}}
+              Other, 0x113e2b340, {{0.0, 655.0}, {440.0, 243.0}}
+                Other, 0x113e2b480, {{0.0, 655.0}, {440.0, 243.0}}, identifier: 'UIKeyboardLayoutStar Preview'
+                  Key, 0x113e2b5c0, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x113e2b700, {{4.7, 662.0}, {43.0, 56.0}}, label: 'q'
+                  Key, 0x113e2b840, {{47.7, 662.0}, {43.3, 56.0}}, label: 'w'
+                  Key, 0x113e2b980, {{91.0, 662.0}, {43.3, 56.0}}, label: 'e'
+                  Key, 0x113e2bac0, {{134.3, 662.0}, {43.3, 56.0}}, label: 'r'
+                  Key, 0x113e2bc00, {{177.7, 662.0}, {43.3, 56.0}}, label: 't'
+                  Key, 0x113e2bd40, {{221.0, 662.0}, {43.3, 56.0}}, label: 'y'
+                  Key, 0x113e2be80, {{264.3, 662.0}, {43.3, 56.0}}, label: 'u'
+                  Key, 0x113e2c000, {{307.7, 662.0}, {43.3, 56.0}}, label: 'i'
+                  Key, 0x113e2c140, {{351.0, 662.0}, {43.3, 56.0}}, label: 'o'
+                  Key, 0x113e2c280, {{394.3, 662.0}, {43.3, 56.0}}, label: 'p'
+                  Key, 0x113e2c3c0, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Key, 0x113e2c500, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x113e2c640, {{26.0, 718.0}, {43.3, 56.0}}, label: 'a'
+                  Key, 0x113e2c780, {{69.3, 718.0}, {43.3, 56.0}}, label: 's'
+                  Key, 0x113e2c8c0, {{112.7, 718.0}, {43.3, 56.0}}, label: 'd'
+                  Key, 0x113e2ca00, {{156.0, 718.0}, {43.3, 56.0}}, label: 'f'
+                  Key, 0x113e2cb40, {{199.3, 718.0}, {43.3, 56.0}}, label: 'g'
+                  Key, 0x113e2cc80, {{242.7, 718.0}, {43.3, 56.0}}, label: 'h'
+                  Key, 0x113e2cdc0, {{286.0, 718.0}, {43.3, 56.0}}, label: 'j'
+                  Key, 0x113e2cf00, {{329.3, 718.0}, {43.3, 56.0}}, label: 'k'
+                  Key, 0x113e2d040, {{372.7, 718.0}, {43.3, 56.0}}, label: 'l'
+                  Key, 0x113e2d180, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Button, 0x113e2d2c0, {{4.7, 774.0}, {56.0, 56.0}}, identifier: 'shift', label: 'shift'
+                  Key, 0x113e2d400, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Left'
+                  Key, 0x113e2d540, {{69.3, 774.0}, {43.3, 56.0}}, label: 'z'
+                  Key, 0x113e2d680, {{112.7, 774.0}, {43.3, 56.0}}, label: 'x'
+                  Key, 0x113e2d7c0, {{156.0, 774.0}, {43.3, 56.0}}, label: 'c'
+                  Key, 0x113e2d900, {{199.3, 774.0}, {43.3, 56.0}}, label: 'v'
+                  Key, 0x113e2da40, {{242.7, 774.0}, {43.3, 56.0}}, label: 'b'
+                  Key, 0x113e2db80, {{286.0, 774.0}, {43.3, 56.0}}, label: 'n'
+                  Key, 0x113e2dcc0, {{329.3, 774.0}, {43.3, 56.0}}, label: 'm'
+                  Key, 0x113e2de00, {{0.0, 655.0}, {0.0, 0.0}}, label: 'Padding-Right'
+                  Key, 0x113e2df40, {{381.3, 774.0}, {56.3, 56.0}}, identifier: 'delete', label: 'delete'
+                  Key, 0x113e2e080, {{4.7, 830.0}, {108.0, 56.0}}, identifier: 'more', label: 'numbers'
+                  Key, 0x113e2e1c0, {{112.7, 830.0}, {72.3, 56.0}}, label: '.'
+                  Key, 0x113e2e300, {{185.0, 830.0}, {72.0, 56.0}}, label: '/'
+                  Key, 0x113e2e440, {{257.0, 830.0}, {72.3, 56.0}}, label: '.com'
+                  Button, 0x113e2e580, {{329.3, 830.0}, {108.3, 56.0}}, identifier: 'Go', label: 'go'
+          Other, 0x113e2e6c0, {{0.0, 655.0}, {440.0, 301.0}}
+            Button, 0x113e2e800, {{2.5, 887.7}, {80.1, 68.7}}, label: 'Emoji'
+              StaticText, 0x113e2e940, {{2.5, 887.7}, {0.0, 0.0}}
+            Button, 0x113e2ea80, {{357.4, 887.4}, {80.1, 68.7}}, identifier: 'dictation', label: 'Dictate', Disabled
+              StaticText, 0x113e2ebc0, {{357.4, 887.4}, {0.0, 0.0}}
+Path to element:
+ →Application, 0x113d85b80, pid: 23435, label: 'Conduit'
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x113e2ed00, pid: 23435, label: 'Conduit'
+  }
+)
