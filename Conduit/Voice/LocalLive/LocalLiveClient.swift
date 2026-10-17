@@ -74,10 +74,8 @@ final class LocalLiveClient: LocalLiveConnecting {
 
     func socketRequest() async throws -> URLRequest {
         let ticket = try await mintTicket()
-        return try await makeSocketRequest(LocalLiveProtocol.socketPath, [
-            URLQueryItem(name: "ticket", value: ticket),
-            URLQueryItem(name: "profile", value: profile()),
-        ])
+        return try await makeSocketRequest(LocalLiveProtocol.socketPath,
+                                           [URLQueryItem(name: "ticket", value: ticket)] + LocalLiveProtocol.profileQueryItems(profile()))
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {

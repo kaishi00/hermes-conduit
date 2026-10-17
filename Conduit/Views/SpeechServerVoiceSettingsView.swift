@@ -39,6 +39,9 @@ struct SpeechServerVoiceSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let setup = status.agentSetupText {
+                        agentSetupButton(setup)
+                    }
                     copyRow(title: AppLocalization.string("Model address"), value: address, identifier: "voice.speechServerVoice.address")
                     copyRow(title: AppLocalization.string("Key"), value: key, identifier: "voice.speechServerVoice.key")
                     if let flags = status.serverFlags {
@@ -80,6 +83,25 @@ struct SpeechServerVoiceSettingsView: View {
             }
         }
         .task(id: service.profile) { await load() }
+    }
+
+    /// Everything above as one block, for an agent or whoever sets up the
+    /// server, rather than commands a person runs one by one.
+    private func agentSetupButton(_ setup: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                UIPasteboard.general.string = setup
+                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
+            } label: {
+                Label(AppLocalization.string("Copy setup for your agent"), systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.settingsPrimary)
+            .accessibilityIdentifier("voice.speechServerVoice.copySetup")
+            Text(AppLocalization.string("One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func copyRow(title: String, value: String, identifier: String) -> some View {

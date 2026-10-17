@@ -405,11 +405,9 @@ extension HermesVoiceGateway {
         let url = try ConnectionURLPolicy.webSocketURL(
             baseURL: baseURL,
             path: SpeechServerSpeechStream.socketPath,
-            queryItems: [
-                URLQueryItem(name: "ticket", value: ticket),
-                URLQueryItem(name: "profile", value: profile),
-                URLQueryItem(name: "mode", value: "speak"),
-            ]
+            queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+                + LocalLiveProtocol.profileQueryItems(profile)
+                + [URLQueryItem(name: "mode", value: "speak")]
         )
         return URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
@@ -427,6 +425,8 @@ struct SpeechServerVoiceStatus: Equatable {
     var apiKey: String?
     /// When the server last asked the plugin for words: it is pointed at it.
     var lastRequestAt: Date?
+    /// The speech server's address the Hermes host dials (Speech to text's).
+    var speechServerURL: String?
     var pluginMissing: Bool
 
     static var pluginMissingReason: String {
@@ -446,6 +446,7 @@ struct SpeechServerVoiceStatus: Equatable {
         modelName = "conduit"
         apiKey = nil
         lastRequestAt = nil
+        speechServerURL = nil
         pluginMissing = false
     }
 
@@ -457,6 +458,7 @@ struct SpeechServerVoiceStatus: Equatable {
         modelAddress = apiKey == nil ? nil : path.flatMap { Self.modelAddress(baseURL: dashboardBaseURL, path: $0) }
         modelName = (response["model_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "conduit"
         lastRequestAt = (response["last_request_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+        speechServerURL = ((response["speech_server"] as? [String: Any])?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         pluginMissing = false
     }
 
@@ -472,6 +474,37 @@ struct SpeechServerVoiceStatus: Equatable {
     var serverFlags: String? {
         guard let modelAddress, let apiKey else { return nil }
         return "--llm_backend chat-completions --responses_api_base_url \(Self.shellQuoted(modelAddress)) --responses_api_api_key \(Self.shellQuoted(apiKey)) --model_name \(Self.shellQuoted(modelName)) --stream_batch_sentences 1 --num_pipelines 2"
+    }
+
+    /// The whole setup as one block to hand to whoever runs the server,
+    /// such as the user's Hermes agent: what to set and why, with every
+    /// value filled in. Written for an agent to act on, so it stays English.
+    var agentSetupText: String? {
+        guard let modelAddress, let apiKey, let serverFlags else { return nil }
+        var lines = [
+            "Please point my Hugging Face speech-to-speech server at Conduit, so Hermes writes every reply it speaks.",
+            "",
+        ]
+        if let speechServerURL {
+            lines += ["Speech server: \(speechServerURL) (the address my Hermes host connects to).", ""]
+        }
+        lines += [
+            "Set its language model to Conduit's model address (OpenAI-compatible chat completions, streamed):",
+            "- base URL: \(modelAddress)",
+            "- API key: \(apiKey)",
+            "- model name: \(modelName)",
+            "",
+            "As start flags (add them, or replace the same flags; keep its speech-to-text, text-to-speech and other settings):",
+            serverFlags,
+            "",
+            "Notes:",
+            "- --num_pipelines 2 lets Conduit listen and speak over two connections at once.",
+            "- --stream_batch_sentences 1 speaks each sentence as soon as Hermes writes it.",
+            "- The server's machine must reach the base URL. Check from there: curl -sS -H \(Self.shellQuoted("Authorization: Bearer " + apiKey)) \(Self.shellQuoted(modelAddress + "/models")) should list the model \"\(modelName)\".",
+            "- Restart the server after changing its flags (for example its systemd service), and check its log for the language model warming up without errors.",
+            "- Keep the key private. Conduit can make a new one in Settings > Voice.",
+        ]
+        return lines.joined(separator: "\n")
     }
 
     /// `value` as one shell word: as is when it's plain, else single-quoted.

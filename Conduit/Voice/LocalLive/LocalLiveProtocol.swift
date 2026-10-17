@@ -29,8 +29,30 @@ enum LocalLiveProtocol {
     /// Python counts code points, and takes up to 8,000 a frame).
     static let maximumDeltaCharacters = 4_000
 
+    /// How long a call waits for the server to ask Hermes for its first
+    /// reply (the readiness check). A speech server that just started can
+    /// take a while to warm up; the call shows connecting meanwhile.
+    static let readinessTimeout: Duration = .seconds(90)
+
     static var pluginMissingReason: String {
         AppLocalization.string("Update the Conduit plugin on your Hermes host to use Local Live.")
+    }
+
+    static var answeredWithoutHermesReason: String {
+        AppLocalization.string("Your speech server answered without asking Hermes. Check that its model address and key match Settings > Voice > Local Live, then restart it.")
+    }
+
+    static var readinessTimedOutReason: String {
+        AppLocalization.string("Your speech server didn't ask Hermes for a reply. Check that it's running and that its model address and key match Settings > Voice > Local Live.")
+    }
+
+    /// The relay socket's query: the dashboard's own profile goes without
+    /// one, as the status and key requests do, so the call is filed under
+    /// the same profile the server's key names.
+    static func profileQueryItems(_ profile: String) -> [URLQueryItem] {
+        let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != "default" else { return [] }
+        return [URLQueryItem(name: "profile", value: name)]
     }
 
     // MARK: Client → server
@@ -58,6 +80,23 @@ enum LocalLiveProtocol {
     /// The plugin keeps every `conduit.` frame for itself; this one only
     /// resets the relay's idle timer.
     static let keepalive: [String: Any] = ["type": "conduit.ping"]
+
+    /// Words no one says, sent as the readiness check's question: the
+    /// server asks its model address for the reply, the plugin hands that
+    /// ask to this call as a turn, and the call knows the whole path works.
+    static func readinessMarker() -> String {
+        "conduit-ready-" + UUID().uuidString.lowercased()
+    }
+
+    /// An out-of-band response (conversation "none") to `marker`: the server
+    /// answers it from a throwaway context, so the call's conversation never
+    /// holds it.
+    static func readinessCheck(_ marker: String) -> [String: Any] {
+        let content: [[String: Any]] = [["type": "input_text", "text": marker]]
+        let item: [String: Any] = ["type": "message", "role": "user", "content": content]
+        let response: [String: Any] = ["conversation": "none", "input": [item]]
+        return ["type": "response.create", "response": response]
+    }
 
     static func turnDelta(turnID: String, text: String) -> [String: Any] {
         ["type": "conduit.turn.delta", "turn_id": turnID, "text": text]

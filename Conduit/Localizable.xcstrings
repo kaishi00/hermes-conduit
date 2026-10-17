@@ -283617,6 +283617,334 @@
           }
         }
       }
+    },
+    "Your speech server answered without asking Hermes. Check that its model address and key match Settings > Voice > Local Live, then restart it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat geantwortet, ohne Hermes zu fragen. Prüfe, ob Modelladresse und Schlüssel mit „Einstellungen“ > „Sprachmodus“ > „Local Live“ übereinstimmen, und starte ihn dann neu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz respondió sin preguntar a Hermes. Comprueba que su dirección de modelo y su clave coincidan con Ajustes > Voz > Local Live y luego reinícialo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal a répondu sans demander à Hermes. Vérifiez que son adresse de modèle et sa clé correspondent à Réglages > Voix > Local Live, puis redémarrez-le."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara Anda menjawab tanpa bertanya ke Hermes. Pastikan alamat model dan kuncinya sama dengan Pengaturan > Suara > Local Live, lalu mulai ulang server."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale ha risposto senza chiedere a Hermes. Verifica che indirizzo del modello e chiave corrispondano a Impostazioni > Voce > Local Live, poi riavvialo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが Hermes に問い合わせずに応答しました。モデルアドレスとキーが「設定」>「音声」>「Local Live」と一致しているか確認してから、サーバーを再起動してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 Hermes에 묻지 않고 답했어요. 모델 주소와 키가 ‘설정’ > ‘음성’ > ‘Local Live’와 같은지 확인한 뒤 서버를 다시 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy odpowiedział bez pytania Hermesa. Sprawdź, czy adres modelu i klucz zgadzają się z sekcją Ustawienia > Głos > Local Live, a potem uruchom go ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz respondeu sem perguntar ao Hermes. Confira se o endereço do modelo e a chave correspondem a Ajustes > Voz > Local Live e reinicie-o."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш речевой сервер ответил, не спросив Hermes. Проверьте, что адрес модели и ключ совпадают с «Настройки › Голос › Local Live», затем перезапустите его."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuz Hermes'e sormadan yanıt verdi. Model adresi ile anahtarın Ayarlar > Ses > Local Live ile eşleştiğini denetleyin, sonra sunucuyu yeniden başlatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器没有询问 Hermes 就作答了。请确认它的模型地址和密钥与「设置」>「语音」>「Local Live」一致，然后重启它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器沒有詢問 Hermes 就作答了。請確認它的模型位址和密鑰與「設定」>「語音」>「Local Live」一致，然後重新啟動它。"
+          }
+        }
+      }
+    },
+    "Your speech server didn't ask Hermes for a reply. Check that it's running and that its model address and key match Settings > Voice > Local Live." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat Hermes nicht nach einer Antwort gefragt. Prüfe, ob er läuft und ob Modelladresse und Schlüssel mit „Einstellungen“ > „Sprachmodus“ > „Local Live“ übereinstimmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz no pidió una respuesta a Hermes. Comprueba que esté en marcha y que su dirección de modelo y su clave coincidan con Ajustes > Voz > Local Live."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal n'a pas demandé de réponse à Hermes. Vérifiez qu'il fonctionne et que son adresse de modèle et sa clé correspondent à Réglages > Voix > Local Live."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara Anda tidak meminta jawaban dari Hermes. Pastikan server berjalan dan alamat model serta kuncinya sama dengan Pengaturan > Suara > Local Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale non ha chiesto una risposta a Hermes. Verifica che sia in esecuzione e che indirizzo del modello e chiave corrispondano a Impostazioni > Voce > Local Live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが Hermes に返答を求めませんでした。サーバーが動作していること、モデルアドレスとキーが「設定」>「音声」>「Local Live」と一致していることを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 Hermes에 답변을 요청하지 않았어요. 서버가 실행 중인지, 모델 주소와 키가 ‘설정’ > ‘음성’ > ‘Local Live’와 같은지 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy nie poprosił Hermesa o odpowiedź. Sprawdź, czy działa oraz czy adres modelu i klucz zgadzają się z sekcją Ustawienia > Głos > Local Live."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz não pediu uma resposta ao Hermes. Confira se ele está em execução e se o endereço do modelo e a chave correspondem a Ajustes > Voz > Local Live."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш речевой сервер не запросил ответ у Hermes. Проверьте, что он запущен, а адрес модели и ключ совпадают с «Настройки › Голос › Local Live»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuz Hermes'ten yanıt istemedi. Çalıştığını ve model adresi ile anahtarın Ayarlar > Ses > Local Live ile eşleştiğini denetleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器没有向 Hermes 请求回复。请确认它正在运行，且模型地址和密钥与「设置」>「语音」>「Local Live」一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器沒有向 Hermes 請求回覆。請確認它正在執行，且模型位址和密鑰與「設定」>「語音」>「Local Live」一致。"
+          }
+        }
+      }
+    },
+    "Copy setup for your agent" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichtung für deinen Agenten kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar configuración para tu agente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier la configuration pour votre agent"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salin penyiapan untuk agen Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia la configurazione per il tuo agente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント用のセットアップをコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트용 설정 복사"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiuj konfigurację dla agenta"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar configuração para seu agente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скопировать настройку для агента"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurulumu aracınız için kopyala"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制给你的智能体的设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製給你的代理程式的設定"
+          }
+        }
+      }
+    },
+    "One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Block mit Adresse, Schlüssel und Flags, geschrieben für den, der den Server einrichtet, etwa deinen Hermes-Agenten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un solo bloque con la dirección, la clave y las opciones, escrito para quien configure el servidor, como tu agente de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un seul bloc avec l'adresse, la clé et les options, rédigé pour la personne qui configure le serveur, comme votre agent Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu blok berisi alamat, kunci, dan flag, ditulis untuk siapa pun yang menyiapkan server, seperti agen Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un unico blocco con indirizzo, chiave e opzioni, scritto per chi configura il server, come il tuo agente Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アドレス、キー、フラグをまとめた1つのブロックです。Hermes エージェントなど、サーバーを設定する人向けに書かれています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주소, 키, 플래그를 한 블록에 담았어요. Hermes 에이전트처럼 서버를 설정하는 쪽을 위해 쓰였어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeden blok z adresem, kluczem i flagami, napisany dla tego, kto konfiguruje serwer, na przykład twojego agenta Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um único bloco com o endereço, a chave e as opções, escrito para quem configura o servidor, como seu agente do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Один блок с адресом, ключом и флагами, написанный для того, кто настраивает сервер, например для вашего агента Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adres, anahtar ve bayrakları içeren tek bir blok; sunucuyu kuran kişi için, örneğin Hermes aracınız için yazıldı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一段包含地址、密钥和参数的完整说明，写给负责设置服务器的人，比如你的 Hermes 智能体。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一段包含位址、密鑰和參數的完整說明，寫給負責設定伺服器的人，例如你的 Hermes 代理程式。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -3,11 +3,15 @@
 //  Conduit
 //
 //  One Local Live call through the Hermes host's relay to the user's speech
-//  server. The first frame is the session.update; the call is ready once the
-//  server confirms it. The server listens, decides when the user finished,
-//  and speaks the answer; the answer itself comes from Hermes, as the
-//  `conduit.turn` frames the plugin sends on this socket (`onTurn`), which
-//  the call answers with `sendTurnDelta` and `sendTurnDone`.
+//  server. The first frame is the session.update. Once the server confirms
+//  it, a readiness check has the server ask for a reply the way every turn
+//  does; the call is ready when that ask reaches this socket as a turn, so
+//  it shows connecting until the whole path works (the server warmed up, its
+//  model address pointed at this profile). The server listens, decides when
+//  the user finished, and speaks the answer; the answer itself comes from
+//  Hermes, as the `conduit.turn` frames the plugin sends on this socket
+//  (`onTurn`), which the call answers with `sendTurnDelta` and
+//  `sendTurnDone`.
 //
 //  It speaks the same seam as Gemini Live's session, so the shared
 //  conversation controller (phases, transcript, the speaker echo guard,
@@ -49,6 +53,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private let client: LocalLiveConnecting
     private let openSocket: @MainActor (URLRequest) -> GeminiLiveSocket
     private let setupTimeout: Duration
+    private let readinessTimeout: Duration
     private let keepaliveInterval: Duration
     private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
@@ -64,6 +69,11 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// it is: a socket that closes before then is a failed attempt.
     private var awaitingSetup: (id: UUID, attempt: Int)?
     private var lastSetupClose: GeminiLiveServerClose?
+    /// The connection's readiness check still waiting for its turn, and the
+    /// words it asked with.
+    private var readinessCheck: (id: UUID, marker: String)?
+    /// The check's own response hasn't finished: its events aren't the call's.
+    private var readinessResponseOpen = false
     /// Turns the plugin opened on the current connection: only those can
     /// be answered there.
     private var openTurns: Set<String> = []
@@ -77,6 +87,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         client: LocalLiveConnecting,
         openSocket: @escaping @MainActor (URLRequest) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(request: $0) },
         setupTimeout: Duration = .seconds(15),
+        readinessTimeout: Duration = LocalLiveProtocol.readinessTimeout,
         keepaliveInterval: Duration = LocalLiveProtocol.keepaliveInterval,
         reconnectDelay: @escaping @MainActor @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
@@ -85,6 +96,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         self.client = client
         self.openSocket = openSocket
         self.setupTimeout = setupTimeout
+        self.readinessTimeout = readinessTimeout
         self.keepaliveInterval = keepaliveInterval
         self.reconnectDelay = reconnectDelay
     }
@@ -189,6 +201,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         connectTask?.cancel()
         connectTask = nil
         awaitingSetup = nil
+        readinessCheck = nil
+        readinessResponseOpen = false
         setupTimeoutTask?.cancel()
         setupTimeoutTask = nil
         keepaliveTask?.cancel()
@@ -243,6 +257,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         self.socket = socket
         connectionID = id
         awaitingSetup = (id, attempt)
+        readinessCheck = nil
+        readinessResponseOpen = false
         responseHadTranscript = false
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
@@ -284,7 +300,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             }
             guard id == connectionID else { return }
             if let turn = LocalLiveProtocol.turnFrame(data) {
-                handle(turn)
+                handle(turn, connection: id)
                 continue
             }
             for frame in GrokLiveProtocol.decode(data) {
@@ -295,10 +311,17 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         }
     }
 
-    private func handle(_ frame: LocalLiveProtocol.TurnFrame) {
+    private func handle(_ frame: LocalLiveProtocol.TurnFrame, connection id: UUID) {
         switch frame {
         case .turn(let turnID, let text):
             openTurns.insert(turnID)
+            if let check = readinessCheck, check.id == id {
+                // The check's ask (or, before it, nothing the call said):
+                // answered with nothing, so the server says nothing.
+                sendTurnDone(turnID)
+                if text.trimmingCharacters(in: .whitespacesAndNewlines) == check.marker { becomeReady() }
+                return
+            }
             onTurn?(turnID, text)
         case .cancel(let turnID):
             guard openTurns.remove(turnID) != nil else { return }
@@ -314,13 +337,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             setupTimeoutTask?.cancel()
             setupTimeoutTask = nil
             lastSetupClose = nil
-            let replaced = hasConnectedOnce
-            hasConnectedOnce = true
-            if replaced {
-                connectionGeneration += 1
-                onConnectionReplaced?()
-            }
-            state = .ready
+            startReadinessCheck(on: id)
         case .error(let message):
             // Before the session is set up, the server refused it: a retry
             // would send the same.
@@ -331,21 +348,90 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                     : AppLocalization.string("Your speech server refused the call: \(GrokLiveSession.clipped(message))"))
                 return
             }
+            // A server that can't take the readiness check can't say it's
+            // ready: the call goes ready as it did before the check.
+            if readinessCheck?.id == id {
+                localLiveLogger.notice("The speech server refused the readiness check")
+                readinessResponseOpen = false
+                becomeReady()
+                return
+            }
             // A refused response.create or similar: the call goes on.
             localLiveLogger.notice("Local Live error event: \(message, privacy: .private)")
         case .responseStarted:
+            if readinessResponseOpen { return }
             responseHadTranscript = false
-        case .responseDone, .acceptedFunctions:
+        case .responseDone:
+            guard readinessResponseOpen else { return }
+            readinessResponseOpen = false
+            // The check's response ended without its ask reaching this
+            // call: the server's model address isn't this profile's plugin.
+            if readinessCheck?.id == id {
+                localLiveLogger.error("The speech server answered the readiness check without asking Hermes")
+                fail(LocalLiveProtocol.answeredWithoutHermesReason)
+            }
+        case .acceptedFunctions:
             break
         case .outputTranscriptDone(let text):
+            if readinessResponseOpen { return }
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
         case .inputTranscriptSnapshot(_, let text):
             // The server sends each utterance's transcript once, when it is done.
             onEvent?(.inputTranscription(text))
         case .event(let event):
+            if readinessResponseOpen {
+                // The check's reply (said by no one) and its end aren't the call's.
+                switch event {
+                case .audio, .outputTranscription, .turnComplete: return
+                default: break
+                }
+            }
             if case .outputTranscription = event { responseHadTranscript = true }
             onEvent?(event)
         }
+    }
+
+    // MARK: Readiness
+
+    private func startReadinessCheck(on id: UUID) {
+        let marker = LocalLiveProtocol.readinessMarker()
+        guard let frame = try? LocalLiveProtocol.encode(LocalLiveProtocol.readinessCheck(marker)) else {
+            becomeReady()
+            return
+        }
+        readinessCheck = (id, marker)
+        readinessResponseOpen = true
+        enqueue([frame], onSent: nil, onFailure: nil)
+        let timeout = readinessTimeout
+        setupTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, self.readinessCheck?.id == id else { return }
+            localLiveLogger.error("Local Live readiness check timed out")
+            self.fail(LocalLiveProtocol.readinessTimedOutReason)
+        }
+    }
+
+    private func becomeReady() {
+        readinessCheck = nil
+        setupTimeoutTask?.cancel()
+        setupTimeoutTask = nil
+        if readinessResponseOpen {
+            // The check's response ends right after its empty answer; a
+            // server that never says so mustn't hide the call's own replies.
+            let id = connectionID
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, self.connectionID == id else { return }
+                self.readinessResponseOpen = false
+            }
+        }
+        let replaced = hasConnectedOnce
+        hasConnectedOnce = true
+        if replaced {
+            connectionGeneration += 1
+            onConnectionReplaced?()
+        }
+        state = .ready
     }
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
@@ -360,6 +446,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         receiveTask?.cancel()
         receiveTask = nil
         awaitingSetup = nil
+        readinessCheck = nil
+        readinessResponseOpen = false
         setupTimeoutTask?.cancel()
         setupTimeoutTask = nil
         keepaliveTask?.cancel()

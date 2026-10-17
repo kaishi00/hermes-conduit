@@ -75,7 +75,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(flagChunks.joined(), flags)
     }
 
-    private func makeLocalLiveSession() -> (LocalLiveSession, () -> [FakeGeminiLiveSocket]) {
+    private func makeLocalLiveSession(readinessTimeout: Duration = .seconds(3_600)) -> (LocalLiveSession, () -> [FakeGeminiLiveSocket]) {
         var sockets: [FakeGeminiLiveSocket] = []
         let session = LocalLiveSession(
             client: FakeLocalLiveConnection(),
@@ -84,10 +84,29 @@ extension HermesVoiceGatewayTimeoutTests {
                 sockets.append(socket)
                 return socket
             },
+            readinessTimeout: readinessTimeout,
             keepaliveInterval: .seconds(3_600),
             reconnectDelay: { _ in }
         )
         return (session, { sockets })
+    }
+
+    /// The words of the session's readiness check, once it went out.
+    private func localLiveReadinessMarker(_ socket: FakeGeminiLiveSocket) async throws -> String {
+        await localLiveSettle(until: { socket.sent.contains { $0["type"] as? String == "response.create" } })
+        let check = try XCTUnwrap(socket.sent.last { $0["type"] as? String == "response.create" })
+        let response = try XCTUnwrap(check["response"] as? [String: Any])
+        let item = try XCTUnwrap((response["input"] as? [[String: Any]])?.first)
+        let content = try XCTUnwrap((item["content"] as? [[String: Any]])?.first)
+        return try XCTUnwrap(content["text"] as? String)
+    }
+
+    /// The server's ask for the check's reply, as the plugin hands it to
+    /// the call: the session is ready once it arrives.
+    private func passLocalLiveReadiness(_ socket: FakeGeminiLiveSocket, session: LocalLiveSession) async throws {
+        let marker = try await localLiveReadinessMarker(socket)
+        socket.deliver(["type": "conduit.turn", "turn_id": "ready", "text": marker])
+        await localLiveSettle(until: { session.state == .ready })
     }
 
     func testLocalLiveSessionAnswersThePluginsTurnsOnTheSameSocket() async throws {
@@ -102,8 +121,9 @@ extension HermesVoiceGatewayTimeoutTests {
 
         socket.deliver(["type": "session.created"])
         socket.deliver(["type": "session.updated", "session": [String: Any]()])
-        await localLiveSettle(until: { session.state == .ready })
+        try await passLocalLiveReadiness(socket, session: session)
         XCTAssertEqual(session.state, .ready)
+        XCTAssertEqual(turns, [], "the readiness check's ask isn't a turn of the call")
 
         socket.deliver(["type": "conduit.turn", "turn_id": "t1", "text": "What's on today?"])
         await localLiveSettle(until: { !turns.isEmpty })
@@ -113,8 +133,8 @@ extension HermesVoiceGatewayTimeoutTests {
         session.sendTurnDelta("t1", text: "Two meetings.")
         session.sendTurnDone("t1")
         session.sendTurnDelta("t1", text: "too late")
-        await localLiveSettle(until: { socket.sent.count >= 3 })
-        let frames = socket.sent.dropFirst().map { "\($0["type"] as? String ?? ""):\($0["turn_id"] as? String ?? ""):\($0["text"] as? String ?? "")" }
+        await localLiveSettle(until: { socket.sent.count >= 5 })
+        let frames = socket.sent.dropFirst(3).map { "\($0["type"] as? String ?? ""):\($0["turn_id"] as? String ?? ""):\($0["text"] as? String ?? "")" }
         XCTAssertEqual(frames, ["conduit.turn.delta:t1:Two meetings.", "conduit.turn.done:t1:"])
         session.stop()
     }
@@ -125,14 +145,14 @@ extension HermesVoiceGatewayTimeoutTests {
         await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
         let socket = try XCTUnwrap(sockets().first)
         socket.deliver(["type": "session.updated"])
-        await localLiveSettle(until: { session.state == .ready })
+        try await passLocalLiveReadiness(socket, session: session)
 
         var notesSent = 0
         session.send(.contextNote("typed in the chat"), onSent: { notesSent += 1 }, onFailure: nil)
         XCTAssertEqual(notesSent, 1, "Hermes has the chat: the note is settled without going out")
         session.send(.textTurn("Remind me at five"))
-        await localLiveSettle(until: { socket.sent.count >= 3 })
-        XCTAssertEqual(socket.sent.dropFirst().map { $0["type"] as? String }, ["conversation.item.create", "response.create"])
+        await localLiveSettle(until: { socket.sent.count >= 5 })
+        XCTAssertEqual(socket.sent.dropFirst(3).map { $0["type"] as? String }, ["conversation.item.create", "response.create"])
         session.stop()
     }
 
@@ -146,21 +166,132 @@ extension HermesVoiceGatewayTimeoutTests {
         await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
         let first = try XCTUnwrap(sockets().first)
         first.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(first, session: session)
+        var turns = 0
+        session.onTurn = { _, _ in turns += 1 }
         first.deliver(["type": "conduit.turn", "turn_id": "t1", "text": "Hello"])
-        await localLiveSettle(until: { session.state == .ready })
+        await localLiveSettle(until: { turns == 1 })
 
         first.serverClose(nil)
         await localLiveSettle(until: { sockets().count == 2 && sockets()[1].sent.isEmpty == false })
         XCTAssertEqual(dropped, 1)
         let second = try XCTUnwrap(sockets().last)
         second.deliver(["type": "session.updated"])
+        XCTAssertEqual(replaced, 0, "not back until the new connection passes its readiness check")
+        try await passLocalLiveReadiness(second, session: session)
         await localLiveSettle(until: { replaced == 1 })
         XCTAssertEqual(replaced, 1)
+        await localLiveSettle(until: { second.sent.count >= 3 })
 
         session.sendTurnDelta("t1", text: "for the old connection")
         await Task.yield()
-        XCTAssertEqual(second.sent.count, 1, "a turn from the dropped connection can't be answered on the new one")
+        XCTAssertEqual(second.sent.count, 3, "a turn from the dropped connection can't be answered on the new one")
         session.stop()
+    }
+
+    func testLocalLiveSessionConnectsUntilTheServerAsksHermesForTheCheck() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var turns: [String] = []
+        var events: [GeminiLiveProtocol.ServerEvent] = []
+        session.onTurn = { id, _ in turns.append(id) }
+        session.onEvent = { events.append($0) }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        let marker = try await localLiveReadinessMarker(socket)
+        XCTAssertTrue(marker.hasPrefix("conduit-ready-"), marker)
+        let check = try XCTUnwrap(socket.sent.last)
+        XCTAssertEqual((check["response"] as? [String: Any])?["conversation"] as? String, "none",
+                       "out of band: the call's conversation never holds the check")
+        XCTAssertEqual(session.state, .connecting, "the server is set up but hasn't asked Hermes yet")
+        var audioFailed = false
+        session.send(.audio(Data(count: 320)), onSent: nil, onFailure: { audioFailed = true })
+        XCTAssertTrue(audioFailed, "nothing goes to the server before it's ready")
+
+        socket.deliver(["type": "response.created"])
+        socket.deliver(["type": "conduit.turn", "turn_id": "t1", "text": marker])
+        await localLiveSettle(until: { session.state == .ready })
+        XCTAssertEqual(session.state, .ready)
+        XCTAssertEqual(turns, [])
+        await localLiveSettle(until: { socket.sent.count >= 3 })
+        XCTAssertEqual(socket.sent.last?["type"] as? String, "conduit.turn.done", "the check is answered with nothing")
+        XCTAssertEqual(socket.sent.last?["turn_id"] as? String, "t1")
+
+        // The check's own response finishing isn't a turn of the call.
+        socket.deliver(["type": "response.output_audio_transcript.delta", "delta": "stray"])
+        socket.deliver(["type": "response.done"])
+        socket.deliver(["type": "response.output_audio_transcript.delta", "delta": "Hello"])
+        await localLiveSettle(until: { !events.isEmpty })
+        XCTAssertEqual(events, [.outputTranscription("Hello")])
+        session.stop()
+    }
+
+    func testLocalLiveSessionFailsWhenTheServerAnswersWithoutAskingHermes() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        _ = try await localLiveReadinessMarker(socket)
+        // A model address that isn't this profile's plugin answers by itself.
+        socket.deliver(["type": "response.created"])
+        socket.deliver(["type": "response.output_audio_transcript.done", "transcript": "Conduit isn't in a Local Live call right now."])
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { if case .failed = session.state { return true }; return false })
+        XCTAssertEqual(session.state, .failed(LocalLiveProtocol.answeredWithoutHermesReason))
+    }
+
+    func testLocalLiveSessionFailsWhenTheServerNeverAsksHermes() async throws {
+        let (session, sockets) = makeLocalLiveSession(readinessTimeout: .milliseconds(50))
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        _ = try await localLiveReadinessMarker(socket)
+        await localLiveSettle(until: { if case .failed = session.state { return true }; return false })
+        XCTAssertEqual(session.state, .failed(LocalLiveProtocol.readinessTimedOutReason))
+    }
+
+    func testLocalLiveSessionGoesReadyWhenTheServerCantTakeTheCheck() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        _ = try await localLiveReadinessMarker(socket)
+        socket.deliver(["type": "error", "error": ["message": "Unsupported conversation"]])
+        await localLiveSettle(until: { session.state == .ready })
+        XCTAssertEqual(session.state, .ready)
+        session.stop()
+    }
+
+    func testLocalLiveFilesTheDefaultProfileTheWayItsKeyNamesIt() throws {
+        XCTAssertEqual(LocalLiveProtocol.profileQueryItems("default"), [], "the key for the dashboard's own profile names no profile")
+        XCTAssertEqual(LocalLiveProtocol.profileQueryItems(""), [])
+        XCTAssertEqual(LocalLiveProtocol.profileQueryItems("work"), [URLQueryItem(name: "profile", value: "work")])
+        let request = try HermesVoiceGateway.speechServerSpeechRequest(
+            baseURL: "https://hermes.example", ticket: "t", profile: "default", cloudflareAccess: nil)
+        let items = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(items.first { $0.name == "profile" })
+        XCTAssertEqual(items.first { $0.name == "mode" }?.value, "speak")
+    }
+
+    func testLocalLiveSetupCopiesAsOneBlockForAnAgent() throws {
+        let status = SpeechServerVoiceStatus(response: [
+            "available": true,
+            "model_path": "/api/plugins/conduit_push/local-live/v1",
+            "model_name": "conduit",
+            "api_key": "cll1.-.secret",
+            "speech_server": ["url": "ws://10.0.0.5:8765/v1/realtime"],
+        ], dashboardBaseURL: "https://hermes.example")
+        let setup = try XCTUnwrap(status.agentSetupText)
+        XCTAssertTrue(setup.contains("ws://10.0.0.5:8765/v1/realtime"))
+        XCTAssertTrue(setup.contains("base URL: https://hermes.example/api/plugins/conduit_push/local-live/v1"))
+        XCTAssertTrue(setup.contains("API key: cll1.-.secret"))
+        XCTAssertTrue(setup.contains(try XCTUnwrap(status.serverFlags)))
+        XCTAssertTrue(setup.contains("--num_pipelines 2"))
+        XCTAssertNil(SpeechServerVoiceStatus(unavailable: "No key").agentSetupText)
     }
 
     func testLocalLiveSessionFailsWhenTheServerRefusesTheSetup() async throws {
