@@ -32,6 +32,7 @@
     "CustomHeadersTests": 0.05,
     "DashboardCookieClearingTests": 0.663,
     "DashboardCookieRestoreTests": 1.4,
+    "DashboardProxySignOutTests": 18.3,
     "DashboardRequestAuthorizerTests": 1.0,
     "DashboardSignInAgreementTests": 1.0,
     "DashboardSignInDecisionTests": 1.0,

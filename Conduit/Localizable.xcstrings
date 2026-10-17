@@ -253082,6 +253082,580 @@
         }
       }
     },
+    "Your dashboard sign-in expired" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Dashboard-Anmeldung ist abgelaufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu inicio de sesión en el panel caducó"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre connexion au tableau de bord a expiré"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Login dasbor Anda sudah kedaluwarsa"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso alla dashboard è scaduto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダッシュボードのサインインの有効期限が切れました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대시보드 로그인이 만료됐어요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logowanie do panelu wygasło"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu login no painel expirou"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Срок входа в дашборд истёк"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panel girişinizin süresi doldu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的仪表盘登录已过期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的儀表板登入已過期"
+          }
+        }
+      }
+    },
+    "Conduit was signed out of this dashboard, so it can’t reach Hermes. Sign in again to reconnect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit wurde von diesem Dashboard abgemeldet und erreicht Hermes deshalb nicht. Melde dich erneut an, um dich wieder zu verbinden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit cerró la sesión en este panel y no puede llegar a Hermes. Vuelve a iniciar sesión para reconectar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a été déconnecté de ce tableau de bord et ne peut donc plus joindre Hermes. Reconnectez-vous pour rétablir la connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit telah dikeluarkan dari dasbor ini, sehingga tidak dapat menjangkau Hermes. Masuk lagi untuk menghubungkan kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit è stato disconnesso da questa dashboard, quindi non riesce a raggiungere Hermes. Accedi di nuovo per riconnetterti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはこのダッシュボードからサインアウトされたため、Hermesに接続できません。再接続するには、もう一度サインインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 이 대시보드에서 로그아웃되어 Hermes에 연결할 수 없어요. 다시 연결하려면 다시 로그인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit został wylogowany z tego panelu, więc nie może połączyć się z Hermesem. Zaloguj się ponownie, aby połączyć ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit foi desconectado deste painel e não consegue acessar o Hermes. Faça login de novo para reconectar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit вышел из этого дашборда, поэтому не может связаться с Hermes. Войдите снова, чтобы переподключиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu panelden çıkış yaptırıldı, bu yüzden Hermes'e ulaşamıyor. Yeniden bağlanmak için tekrar giriş yapın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已从此仪表盘退出登录，因此无法连接到 Hermes。请重新登录以重新连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已從此儀表板登出，因此無法連線到 Hermes。請重新登入以重新連線。"
+          }
+        }
+      }
+    },
+    "Sign In Again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut anmelden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volver a iniciar sesión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se reconnecter"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masuk Lagi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi di nuovo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度サインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 로그인"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaloguj się ponownie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fazer Login de Novo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войти снова"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tekrar Giriş Yap"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新登入"
+          }
+        }
+      }
+    },
+    "This dashboard uses browser-based sign-in, and Conduit isn’t signed in to it right now. Sign in again to reconnect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Dashboard verwendet die Anmeldung im Browser, und Conduit ist gerade nicht bei ihm angemeldet. Melde dich erneut an, um dich wieder zu verbinden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este panel usa el inicio de sesión en el navegador y Conduit no tiene la sesión iniciada en él ahora mismo. Vuelve a iniciar sesión para reconectar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce tableau de bord utilise une connexion par navigateur, et Conduit n’y est pas connecté pour le moment. Reconnectez-vous pour rétablir la connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor ini menggunakan proses masuk lewat browser, dan Conduit sedang tidak masuk ke dasbor ini. Masuk lagi untuk menghubungkan kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa dashboard usa l'accesso dal browser e al momento Conduit non vi ha effettuato l'accesso. Accedi di nuovo per riconnetterti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードはブラウザでのサインインを使用しますが、現在Conduitはサインインしていません。再接続するには、もう一度サインインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드는 브라우저 로그인을 사용하는데, 지금은 Conduit가 로그인되어 있지 않아요. 다시 연결하려면 다시 로그인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten panel używa logowania w przeglądarce, a Conduit nie jest teraz do niego zalogowany. Zaloguj się ponownie, aby połączyć ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este painel usa login pelo navegador, e o Conduit não está conectado a ele agora. Faça login de novo para reconectar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот дашборд использует вход через браузер, а Conduit сейчас в нём не авторизован. Войдите снова, чтобы переподключиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panel tarayıcıda giriş kullanıyor ve Conduit şu anda panelde oturum açmış değil. Yeniden bağlanmak için tekrar giriş yapın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表盘使用浏览器登录，而 Conduit 目前未登录此仪表盘。请重新登录以重新连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板使用瀏覽器登入，而 Conduit 目前未登入此儀表板。請重新登入以重新連線。"
+          }
+        }
+      }
+    },
+    "This dashboard uses browser-based sign-in. Sign in again here if Conduit stops connecting to it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Dashboard verwendet die Anmeldung im Browser. Melde dich hier erneut an, falls Conduit keine Verbindung mehr dazu herstellt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este panel usa el inicio de sesión en el navegador. Vuelve a iniciar sesión aquí si Conduit deja de conectarse a él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce tableau de bord utilise une connexion par navigateur. Reconnectez-vous ici si Conduit n’arrive plus à s’y connecter."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor ini menggunakan proses masuk lewat browser. Masuk lagi di sini jika Conduit tidak lagi bisa terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa dashboard usa l'accesso dal browser. Accedi di nuovo da qui se Conduit smette di connettersi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードはブラウザでのサインインを使用します。Conduitが接続できなくなったら、ここでもう一度サインインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드는 브라우저 로그인을 사용해요. Conduit가 연결되지 않으면 여기서 다시 로그인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten panel używa logowania w przeglądarce. Zaloguj się tutaj ponownie, jeśli Conduit przestanie się z nim łączyć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este painel usa login pelo navegador. Faça login de novo aqui se o Conduit deixar de se conectar a ele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот дашборд использует вход через браузер. Войдите здесь снова, если Conduit перестанет к нему подключаться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panel tarayıcıda giriş kullanır. Conduit panele bağlanamazsa buradan tekrar giriş yapın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表盘使用浏览器登录。如果 Conduit 无法再连接到它，请在这里重新登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板使用瀏覽器登入。如果 Conduit 無法再連線到它，請在這裡重新登入。"
+          }
+        }
+      }
+    },
+    "Applying saves these settings for your next reconnect. Conduit isn’t connected to this dashboard right now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Anwenden werden diese Einstellungen für deine nächste Neuverbindung gesichert. Conduit ist gerade nicht mit diesem Dashboard verbunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al aplicar, estos ajustes se guardan para tu próxima reconexión. Conduit no está conectado a este panel ahora mismo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appliquer enregistre ces réglages pour votre prochaine reconnexion. Conduit n’est pas connecté à ce tableau de bord pour le moment."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menerapkan akan menyimpan pengaturan ini untuk koneksi ulang berikutnya. Conduit sedang tidak terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applicando, queste impostazioni vengono salvate per la prossima riconnessione. Al momento Conduit non è connesso a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用すると、これらの設定は次回の再接続時に使用されます。現在Conduitはこのダッシュボードに接続されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "적용하면 이 설정은 다음 재연결 때 사용돼요. 지금은 Conduit가 이 대시보드에 연결되어 있지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zastosowanie zapisuje te ustawienia na potrzeby następnego ponownego połączenia. Conduit nie jest teraz połączony z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicar salva estes ajustes para a próxima reconexão. O Conduit não está conectado a este painel agora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "При применении эти настройки сохраняются для следующего переподключения. Сейчас Conduit не подключён к этому дашборду."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uygulamak, bu ayarları sonraki yeniden bağlanmanız için kaydeder. Conduit şu anda bu panele bağlı değil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用后将保存这些设置，供下次重连使用。Conduit 目前未连接到此仪表盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套用後會儲存這些設定，供下次重新連線時使用。Conduit 目前未連線到此儀表板。"
+          }
+        }
+      }
+    },
+    "Saved for your next reconnect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für deine nächste Neuverbindung gespeichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado para tu próxima reconexión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistré pour votre prochaine reconnexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disimpan untuk koneksi ulang berikutnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvato per la prossima riconnessione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次回の再接続用に保存しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 재연결을 위해 저장됐어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisano na potrzeby następnego ponownego połączenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvo para a próxima reconexão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено для следующего переподключения."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonraki yeniden bağlanmanız için kaydedildi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存，供下次重连使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存，供下次重新連線時使用。"
+          }
+        }
+      }
+    },
     "Pinned on this iPhone only. %@" : {
       "localizations" : {
         "de" : {

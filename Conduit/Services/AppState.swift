@@ -10676,6 +10676,7 @@ final class AppState: ObservableObject {
                   ),
                   let activeClient = self.client, activeClient === client else { return }
             handedOffAutomaticIntent = continuation.handedOffAutomaticIntent
+            if stopRecoveryForRefusedSocket(error) { return }
             isConnecting = false
             isConnected = false
             turnState = .reconnecting
@@ -11799,6 +11800,12 @@ final class AppState: ObservableObject {
                 self.noteConnectionStep(event)
             }
             dashboardTicketBridge = bridge
+        } else if let bridge = dashboardTicketBridge, bridge.requiresSignIn {
+            // The same dashboard's page settled on sign-in, and a connection
+            // is starting again: a browser sign-in just put a fresh session
+            // in this dashboard's WebKit store. Load the page again so the
+            // next ticket is minted with it, not refused by the old verdict.
+            bridge.reload()
         }
     }
 
@@ -11831,7 +11838,10 @@ final class AppState: ObservableObject {
         performSignInRequired(pendingFailure: .notice(title: AppLocalization.string("Sign-in didn’t complete"), message: message))
     }
 
-    private func performSignInRequired(pendingFailure: ConnectionFailurePresentation) {
+    private func performSignInRequired(
+        pendingFailure: ConnectionFailurePresentation,
+        keepingNativeGrant: Bool = false
+    ) {
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
         invalidateGroupChatState()
@@ -11876,8 +11886,14 @@ final class AppState: ObservableObject {
         if !phoneScreenIsAway() {
             if let dashboardID = activeDashboardID {
                 // Forced sign-out is scoped like Disconnect: only the active
-                // dashboard's saved ticket (and cookie mirror) is retired.
-                KeychainHelper.clearConnection(dashboardID: dashboardID)
+                // dashboard's saved ticket (and cookie mirror) is retired. A
+                // refused socket keeps the native grant: a refusal is never
+                // a sign-out.
+                if keepingNativeGrant {
+                    KeychainHelper.clearSavedSession(dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearConnection(dashboardID: dashboardID)
+                }
             }
             wipeOfflineChatCache(dashboardID: activeDashboardID)
         }
@@ -14575,8 +14591,22 @@ final class AppState: ObservableObject {
     }
 
     func reconnect() async {
+        // The dashboard already said sign-in is required and automatic
+        // recovery stopped: another reconnect would only be refused again,
+        // which looks like Reconnect doing nothing. It opens sign-in.
+        if signInRequiredForReconnect {
+            requireSignIn(failure: .signInExpired)
+            return
+        }
         cancelChatResumeTransportRecovery()
         await executeReconnect(purpose: .preserveCurrent)
+    }
+
+    /// Whether the active dashboard is known to need sign-in before any
+    /// reconnect can work: the last failure was a sign-in the server asked
+    /// for, and nothing has connected since.
+    var signInRequiredForReconnect: Bool {
+        !isConnected && lastConnectionFailure == .loginRequired
     }
 
     private func executeReconnect(purpose: ChatResumeSyncPurpose) async {
@@ -14731,12 +14761,16 @@ final class AppState: ObservableObject {
                 guard refreshTransportContinuation() else { return }
                 // The dashboard's session is gone (sign-in required): the
                 // typed classification routes Repair toward browser sign-in.
+                // This connection worked before, so without a re-auth error
+                // that explains more, the card says the sign-in expired.
                 lastConnectionFailure = .loginRequired
                 requireSignIn(
-                    failure: Self.silentRenewalSignInFailure(
-                        reauthError: silentRenewalReauthError,
-                        bridgeError: bridgeError
-                    )
+                    failure: silentRenewalReauthError == nil
+                        ? .signInExpired
+                        : Self.silentRenewalSignInFailure(
+                            reauthError: silentRenewalReauthError,
+                            bridgeError: bridgeError
+                        )
                 )
             } else {
                 guard refreshTransportContinuation() else { return }
@@ -14810,11 +14844,27 @@ final class AppState: ObservableObject {
         } catch {
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
+            if stopRecoveryForRefusedSocket(error) { return }
             isConnected = false
             isConnecting = false
             turnState = .reconnecting
             scheduleReconnectAfterFailedSync()
         }
+    }
+
+    /// A dashboard socket the server refused in a way no reconnect changes:
+    /// a redirected upgrade is the sign-in service in front of the dashboard
+    /// sending Conduit to sign in, so its session expired. Reconnecting
+    /// would only repeat it, so automatic recovery stops and the sign-in
+    /// screen says why. A native grant is kept: a refusal is never a
+    /// sign-out. False for any other error, which the reconnect path
+    /// retries.
+    private func stopRecoveryForRefusedSocket(_ error: Error) -> Bool {
+        guard let refusal = error as? DashboardSocketHandshakeError else { return false }
+        noteConnectionStep("Socket refused", error: refusal)
+        lastConnectionFailure = ConnectionFailureClassifier.classify(refusal)
+        performSignInRequired(pendingFailure: .signInExpired, keepingNativeGrant: true)
+        return true
     }
 
     // MARK: - Connection timeline (#417)
@@ -29641,9 +29691,15 @@ enum KeychainHelper {
     /// Clears the scoped connection ticket AND the dashboard's durable cookie
     /// mirror, mirroring the legacy `clearConnection()` pairing.
     static func clearConnection(dashboardID: UUID) {
+        clearSavedSession(dashboardID: dashboardID)
+        delete(account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID))
+    }
+
+    /// Clears the scoped connection ticket and cookie mirror, keeping the
+    /// dashboard's native grant.
+    static func clearSavedSession(dashboardID: UUID) {
         delete(account: scopedAccount(key, dashboardID: dashboardID))
         delete(account: scopedAccount(dashboardCookieKey, dashboardID: dashboardID))
-        delete(account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID))
     }
 
     static func saveNativeOAuthTokens(_ tokens: NativeOAuthTokenSet, dashboardID: UUID) {

@@ -1102,26 +1102,34 @@ private struct SettingsHome: View {
                 // wizard re-verifies the origin itself before sending it and
                 // never displays, edits, or persists it.
                 initialCloudflareAccess: seed.cloudflareAccess,
-                initialCloudflareOriginURL: seed.url
-            ) { result in
-                // Reload the saved state at apply time: the plan must decide
-                // against what exists NOW, not what existed when the sheet
-                // was seeded.
-                let plan = ConnectionSetupApplication.plan(
-                    result: result,
-                    currentDashboardURL: seed.url,
-                    savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
-                    savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
-                )
-                plan.perform(appState: appState)
-                pendingAppliedNotice = !plan.isEmpty
-            }
+                initialCloudflareOriginURL: seed.url,
+                onComplete: { result in
+                    // Reload the saved state at apply time: the plan must
+                    // decide against what exists NOW, not what existed when
+                    // the sheet was seeded.
+                    let plan = ConnectionSetupApplication.plan(
+                        result: result,
+                        currentDashboardURL: seed.url,
+                        savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
+                        savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
+                    )
+                    plan.perform(appState: appState)
+                    pendingAppliedNotice = !plan.isEmpty
+                },
+                // Sign In Again (a test that found browser sign-in for this
+                // dashboard) signs in and reconnects through the same
+                // explicit activation as Repair.
+                onRepair: appState.connectionRepairActivationHandler()
+            )
             .environmentObject(appState)
         }
         .alert("Settings applied", isPresented: $appliedConnectionNotice) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Saved for your next reconnect. Your current session stays connected.")
+            // Only a connected session "stays connected".
+            Text(appState.isConnected
+                 ? AppLocalization.string("Saved for your next reconnect. Your current session stays connected.")
+                 : AppLocalization.string("Saved for your next reconnect."))
         }
         // Asked again on every visit and dashboard switch: the connect-time
         // check can miss (the dashboard was still loading), and the plugin

@@ -984,13 +984,16 @@ struct LoginFailureCard: View {
             }
             if failure.offersRecoveryActions {
                 AdaptiveStack(spacing: 8) {
-                    Button(AppLocalization.string("Try Again")) {
+                    // A dashboard whose sign-in ended (an auth proxy whose
+                    // session expired, Hermes' own sign-in) is retried by
+                    // signing in again: the retry opens that sign-in.
+                    Button(failure.asksToSignInAgain ? AppLocalization.string("Sign In Again") : AppLocalization.string("Try Again")) {
                         Haptics.selection()
                         Task { await flow.retry() }
                     }
                     .buttonStyle(LoginCapsuleButtonStyle(prominent: true))
                     .disabled(flow.isWorking)
-                    .accessibilityIdentifier("login.error.try-again")
+                    .accessibilityIdentifier(failure.asksToSignInAgain ? "login.error.sign-in-again" : "login.error.try-again")
 
                     if let destination = failure.helpDestination {
                         Button(AppLocalization.string("Troubleshoot Connection")) {

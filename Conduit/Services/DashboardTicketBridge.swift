@@ -483,7 +483,9 @@ final class DashboardTicketBridge: NSObject {
     }
 
 
-    private var isReady = false
+    /// Whether the dashboard page is loaded and can run requests.
+    /// Readable for tests; written only by the bridge.
+    private(set) var isReady = false
     /// Whether the current dashboard page load has terminally failed (as
     /// opposed to still being in flight on a slow link). Retry logic only
     /// reloads a failed load — restarting an in-progress one would abort a
@@ -494,6 +496,15 @@ final class DashboardTicketBridge: NSObject {
     /// session is genuinely absent, which callers must hear as
     /// `.signInRequired` rather than as unreadiness.
     private var didLandOnLogin = false
+    /// Whether the dashboard page settled on sign-in: Hermes' /login, an
+    /// auth proxy's sign-in page, or a redirect off the dashboard's origin
+    /// (the proxy's sign-in host, the identity provider). Requests answer
+    /// `.signInRequired` until a reload finds a session.
+    var requiresSignIn: Bool { didLandOnLogin && !isInvalidated }
+    /// Main-frame navigations the bridge stopped because they went to
+    /// sign-in. Diagnostic/test counter: each is one redirect the hidden
+    /// page did not follow.
+    private(set) var cancelledSignInNavigationCount = 0
     /// Test-only landing state, re-asserted by every page load so tests can
     /// model a dashboard that keeps producing the same landing regardless of
     /// when WKWebView's nondeterministic callbacks arrive.
@@ -816,9 +827,10 @@ final class DashboardTicketBridge: NSObject {
     /// jar that the sign-in flow owns. This intentionally avoids duplicating
     /// HttpOnly session handling in URLSession.
     ///
-    /// Error contract: unusable page states (foreign-origin landing, stalled
-    /// engine) surface as `.notReady` so callers flow into the reload
-    /// recovery; an origin-matching login landing surfaces as
+    /// Error contract: unusable page states (a failed or URL-less landing,
+    /// a stalled engine) surface as `.notReady` so callers flow into the
+    /// reload recovery; a sign-in landing or redirect (Hermes' /login, an
+    /// auth proxy's sign-in page, any other origin) surfaces as
     /// `.signInRequired`. Direct callers should not expect `.requestFailed`
     /// for these states.
     func requestJSON(
@@ -1103,16 +1115,41 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             )
             return
         }
-        guard ConnectionURLPolicy.isAllowedTransport(navigationAction.request.url) else {
-            decisionHandler(.cancel)
-            return
+        decisionHandler(mainFrameNavigationPolicy(for: navigationAction.request.url))
+    }
+
+    /// The hidden page's decision for a main-frame navigation (a load, or a
+    /// redirect the load received). The page only ever loads the dashboard,
+    /// so a navigation to sign-in (another origin, or a sign-in page on this
+    /// one) is the dashboard saying the session is gone: it is cancelled
+    /// rather than followed, so the page never walks the auth proxy's
+    /// redirect chain, and the bridge settles on sign-in required, as a
+    /// landing on /login does. Internal so tests can drive it: WKWebView's
+    /// navigation callbacks are not deterministic in the unit test host.
+    func mainFrameNavigationPolicy(for url: URL?) -> WKNavigationActionPolicy {
+        guard let expectedURL = URL(string: baseURL) else { return .cancel }
+        if DashboardSignInRedirect.isSignIn(url, forDashboard: expectedURL) {
+            cancelledSignInNavigationCount += 1
+            settleOnSignIn(event: "Dashboard page redirected to sign-in")
+            return .cancel
         }
-        guard let expectedURL = URL(string: baseURL),
-              ConnectionURLPolicy.originMatches(navigationAction.request.url, expected: expectedURL) else {
-            decisionHandler(.cancel)
-            return
+        guard ConnectionURLPolicy.isAllowedTransport(url),
+              ConnectionURLPolicy.originMatches(url, expected: expectedURL) else {
+            return .cancel
         }
-        decisionHandler(.allow)
+        return .allow
+    }
+
+    /// The page reached (or was sent to) sign-in: nothing it loads can mint
+    /// a ticket until a reload finds a session. An invalidated bridge keeps
+    /// reporting plain unreadiness.
+    private func settleOnSignIn(event: String) {
+        guard !isInvalidated else { return }
+        isReady = false
+        isLoadFailed = false
+        didLandOnLogin = true
+        onPageEvent?(event)
+        rejectPending(with: DashboardTicketBridgeError.signInRequired)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -1129,34 +1166,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // The tracked load has resolved; identity-based suppression ends
         // here (page-initiated navigations after a finish process normally).
         currentNavigation = nil
-        // A landing with no URL at all is unknown, not "signed out" — treat
-        // it as reloadable rather than guessing a login redirect.
-        guard let landedURL = webView.url,
-              let expectedURL = URL(string: baseURL),
-              ConnectionURLPolicy.originMatches(landedURL, expected: expectedURL) else {
-            isReady = false
-            // A settled foreign-origin or unknown-URL landing (e.g. an SSO
-            // redirect that slipped past the navigation policy, or an error
-            // document) is unusable, not still loading — mark it failed so
-            // mint retries reload back to the dashboard origin. Reject with
-            // .notReady (not .requestFailed) so in-flight mints flow into
-            // that same reload recovery. The login verdict is deliberately
-            // untouched: only an origin-matching landing can change it.
-            isLoadFailed = true
-            rejectPending(with: DashboardTicketBridgeError.notReady)
-            onPageEvent?("Dashboard page landed off the dashboard")
-            return
-        }
-        isLoadFailed = false
-        // A redirect back to /login means the HttpOnly dashboard session is
-        // no longer valid; never attempt to mint a misleading gateway ticket.
-        let landedOnLogin = landedURL.path.contains("/login")
-        isReady = !landedOnLogin
-        didLandOnLogin = landedOnLogin
-        onPageEvent?(landedOnLogin ? "Dashboard page landed on sign-in" : "Dashboard page ready")
-        if landedOnLogin {
-            rejectPending(with: DashboardTicketBridgeError.signInRequired)
-        } else if !isInvalidated {
+        guard let expectedURL = URL(string: baseURL),
+              processLanding(at: webView.url) else { return }
+        if !isInvalidated {
             // Late cookie capture after disconnect must not resurrect the
             // durable mirror AppState just cleared: the write guard runs at
             // the moment of the keychain save, after the cookie-store await.
@@ -1178,6 +1190,47 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         }
     }
 
+    /// Applies where the dashboard page settled. Returns whether the page is
+    /// ready (the dashboard itself, signed in). Internal so tests can drive
+    /// it.
+    ///  - No URL at all: unknown, not "signed out". Marked failed so the
+    ///    next mint reloads.
+    ///  - Another origin (the auth proxy's sign-in host, the identity
+    ///    provider) or a sign-in page on the dashboard's origin (Hermes'
+    ///    /login, a proxy's /oauth2/sign_in): the session is gone. Sign-in
+    ///    is required, never a misleading gateway ticket or a network
+    ///    failure the reconnect loop would retry forever.
+    ///  - Any other page on the dashboard's origin: ready.
+    @discardableResult
+    func processLanding(at landedURL: URL?) -> Bool {
+        guard let expectedURL = URL(string: baseURL), let landedURL else {
+            isReady = false
+            isLoadFailed = true
+            rejectPending(with: DashboardTicketBridgeError.notReady)
+            onPageEvent?("Dashboard page landed nowhere")
+            return false
+        }
+        if DashboardSignInRedirect.isSignIn(landedURL, forDashboard: expectedURL) {
+            settleOnSignIn(event: ConnectionURLPolicy.originMatches(landedURL, expected: expectedURL)
+                ? "Dashboard page landed on sign-in"
+                : "Dashboard page landed on another site's sign-in")
+            return false
+        }
+        guard ConnectionURLPolicy.originMatches(landedURL, expected: expectedURL) else {
+            // Another scheme (an error document): unusable, reloadable.
+            isReady = false
+            isLoadFailed = true
+            rejectPending(with: DashboardTicketBridgeError.notReady)
+            onPageEvent?("Dashboard page landed off the dashboard")
+            return false
+        }
+        isLoadFailed = false
+        didLandOnLogin = false
+        isReady = true
+        onPageEvent?("Dashboard page ready")
+        return true
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         // A failure for a navigation a reload has already replaced (or that
         // finished) must not fail the fresh load; remove-on-match keeps the
@@ -1186,6 +1239,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // context still carry real signal.
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
+        // The load the bridge stopped on its way to sign-in reports that
+        // cancellation as a failure: the verdict stays sign-in required.
+        if didLandOnLogin { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
@@ -1195,6 +1251,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
+        // The load the bridge stopped on its way to sign-in reports that
+        // cancellation as a failure: the verdict stays sign-in required.
+        if didLandOnLogin { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)

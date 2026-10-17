@@ -112,11 +112,18 @@ extension DashboardTicketBridge {
         }
         if (300...399).contains(http.statusCode) {
             // Same-origin redirects are followed, as the page's fetch does.
-            // One that comes back is to sign-in or another origin: a
-            // sign-in redirect means the session is gone, as the page
-            // landing on /login does.
-            let location = http.value(forHTTPHeaderField: "Location") ?? ""
-            if location.contains("/login") { throw DashboardTicketBridgeError.signInRequired }
+            // One that comes back is to sign-in or another origin. Either
+            // means the session is gone, as the page landing on sign-in
+            // does: an auth proxy sends a request without its session to
+            // its own sign-in host or the identity provider.
+            if let dashboardURL = URL(string: baseURL),
+               DashboardSignInRedirect.redirectIsSignIn(
+                location: http.value(forHTTPHeaderField: "Location"),
+                from: http.url ?? url,
+                forDashboard: dashboardURL
+               ) {
+                throw DashboardTicketBridgeError.signInRequired
+            }
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
                 detail: AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
@@ -297,7 +304,7 @@ enum DashboardBackgroundSession {
         guard let original, let source = original.url, let destination = proposed.url,
               ConnectionURLPolicy.isAllowedTransport(destination),
               ConnectionURLPolicy.originMatches(destination, expected: source),
-              !destination.path.contains("/login") else { return nil }
+              !DashboardSignInRedirect.isSignInPath(destination.path) else { return nil }
         var followed = proposed
         for (name, value) in original.allHTTPHeaderFields ?? [:]
             where followed.value(forHTTPHeaderField: name) == nil {
