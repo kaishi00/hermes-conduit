@@ -62,9 +62,44 @@ enum DashboardCookiePersistence {
     }
 
     static func restore(into cookieStore: WKHTTPCookieStore, dashboardID: UUID? = nil) async {
-        for cookie in mirroredCookies(dashboardID: dashboardID) {
+        await restore(mirroredCookies(dashboardID: dashboardID), into: cookieStore)
+    }
+
+    /// Puts `cookies` into WebKit's store only where it lacks them. WebKit's
+    /// identified store persists on its own, and a session it holds may be
+    /// newer than the copy saved here: an auth proxy (oauth2-proxy) refreshes
+    /// its cookie every few minutes and rotates the identity provider's
+    /// refresh token with it. Writing an older copy back on a cold launch
+    /// would replay a spent refresh token, which the provider answers with
+    /// invalid_grant and the proxy with a cleared session: signed out.
+    static func restore(_ cookies: [HTTPCookie], into cookieStore: WKHTTPCookieStore) async {
+        guard !cookies.isEmpty else { return }
+        var live: [String: HTTPCookie] = [:]
+        for cookie in await cookieStore.allCookies() {
+            live[cookieIdentity(cookie)] = cookie
+        }
+        let now = Date()
+        for cookie in cookies where shouldRestore(cookie, over: live[cookieIdentity(cookie)], now: now) {
             await cookieStore.setCookie(cookie)
         }
+    }
+
+    /// A saved cookie replaces WebKit's copy only when it lasts longer, and
+    /// fills a gap only while it is unexpired. A cookie without an expiry (a
+    /// session cookie) counts as lasting until the process ends.
+    nonisolated static func shouldRestore(_ saved: HTTPCookie, over live: HTTPCookie?, now: Date = Date()) -> Bool {
+        if let expires = saved.expiresDate, expires <= now { return false }
+        guard let live else { return true }
+        return (saved.expiresDate ?? .distantFuture) > (live.expiresDate ?? .distantFuture)
+    }
+
+    /// Name, canonical domain and path: what makes two cookies the same one.
+    nonisolated static func cookieIdentity(_ cookie: HTTPCookie) -> String {
+        [
+            cookie.name,
+            cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")),
+            cookie.path.isEmpty ? "/" : cookie.path,
+        ].joined(separator: "\u{0}")
     }
 
     /// The dashboard's cookies as last mirrored to the Keychain. Readable
@@ -159,9 +194,7 @@ enum DashboardCookiePersistence {
     ) async {
         guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
         let cookies = nativeCookieStorage(for: dashboardID).cookies ?? []
-        for cookie in cookies where cookieMatchesHost(cookie, host: host) {
-            await cookieStore.setCookie(cookie)
-        }
+        await restore(cookies.filter { cookieMatchesHost($0, host: host) }, into: cookieStore)
     }
 
     static func capture(
@@ -387,6 +420,36 @@ final class DashboardTicketBridgePendingRequests {
     }
 }
 
+/// Re-mirrors a dashboard's cookies whenever WebKit's store changes, so the
+/// Keychain copy a cold launch restores is the session's latest one. An auth
+/// proxy refreshes its cookie on ordinary requests long after the page load
+/// that used to be the only capture.
+@MainActor
+final class DashboardCookieMirrorObserver: NSObject, WKHTTPCookieStoreObserver {
+    private weak var bridge: DashboardTicketBridge?
+    private var pending: Task<Void, Never>?
+
+    init(bridge: DashboardTicketBridge) {
+        self.bridge = bridge
+    }
+
+    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        // A refresh can touch several cookies at once: mirror once, after
+        // the burst.
+        pending?.cancel()
+        pending = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(750))
+            guard !Task.isCancelled else { return }
+            await self?.bridge?.mirrorCookies()
+        }
+    }
+
+    func cancel() {
+        pending?.cancel()
+        pending = nil
+    }
+}
+
 @MainActor
 final class DashboardTicketBridge: NSObject {
     let baseURL: String
@@ -442,6 +505,7 @@ final class DashboardTicketBridge: NSObject {
         case loadFailure
     }
     private(set) var isInvalidated = false
+    private var cookieMirrorObserver: DashboardCookieMirrorObserver?
     private var requestID = 0
     /// Identity of the current dashboard navigation, used to ignore failure
     /// callbacks for loads a reload has already replaced. `staleNavigations`
@@ -542,6 +606,11 @@ final class DashboardTicketBridge: NSObject {
         self.requestAuthorizer.cookieUpgradeCookies = { [weak self] in
             await self?.cookiesForRequestsWithoutPage() ?? []
         }
+        if nativeOAuthSession == nil, dashboardID != nil {
+            let observer = DashboardCookieMirrorObserver(bridge: self)
+            webView.configuration.websiteDataStore.httpCookieStore.add(observer)
+            cookieMirrorObserver = observer
+        }
         if nativeOAuthSession != nil {
             isReady = true
             return
@@ -572,11 +641,32 @@ final class DashboardTicketBridge: NSObject {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "dashboard-response")
     }
 
+    /// Saves the dashboard's current WebKit cookies as its Keychain mirror.
+    /// Never after invalidation: a disconnect that cleared the mirror must
+    /// not see it written back.
+    func mirrorCookies() async {
+        guard !isInvalidated, let dashboardID, let url = URL(string: baseURL) else { return }
+        await DashboardCookiePersistence.capture(
+            from: webView.configuration.websiteDataStore.httpCookieStore,
+            for: url,
+            shouldPersist: { [weak self] in
+                guard let self else { return false }
+                return !self.isInvalidated
+            },
+            dashboardID: dashboardID
+        )
+    }
+
     func invalidate() {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
         requestAuthorizer.invalidate()
+        if let cookieMirrorObserver {
+            cookieMirrorObserver.cancel()
+            webView.configuration.websiteDataStore.httpCookieStore.remove(cookieMirrorObserver)
+            self.cookieMirrorObserver = nil
+        }
         // A torn-down bridge must report plain unreadiness: leaving a stale
         // login verdict would surface .signInRequired (with its session
         // recovery) from an invalidated instance.
