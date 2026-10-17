@@ -288,6 +288,7 @@ final class ChatTextSelectionTests: XCTestCase {
 
     @MainActor
     func testDismantleUnregistersMountedCoordinatedTextView() {
+        defer { SelectableTextViewPool.removeAll() }
         let selectionCoordinator = MarkdownSelectionCoordinator()
         let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
         selectionCoordinator.replaceSegments([descriptor], revision: "dismantle-v1")

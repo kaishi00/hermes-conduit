@@ -180,6 +180,8 @@ struct SelectableTextView: UIViewRepresentable {
         unregisterMountedTextViewIfNeeded(in: uiView, coordinator: coordinator)
 
         let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+        // Not recycled: the kind only changes when a block gains or loses
+        // its selection coordinator, never as rows scroll.
         if uiView.isUsingCoordinatedTextView != needsCoordinatedTextView {
             let replacementTextView = makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
             replacementTextView.attributedText = uiView.mountedTextView.attributedText
@@ -946,6 +948,8 @@ enum SelectableTextViewPool {
         return wantsCoordinated ? coordinated.popLast() : plain.popLast()
     }
 
+    /// Call after `tearDownMountedTextView`, which clears the delegate,
+    /// the coordinator and the selection registration.
     static func recycle(_ textView: UITextView) {
         _ = memoryWarning
         // Pooled twice, one view would be handed to two blocks.
