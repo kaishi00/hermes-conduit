@@ -149,7 +149,7 @@ struct RichPlace: Equatable, Hashable {
         note = json["note"] as? String
         if let rating = json["rating"] as? [String: Any], let value = (rating["value"] as? NSNumber)?.doubleValue,
            let source = rating["source"] as? String {
-            self.rating = Rating(value: value, count: rating["count"] as? Int, source: source, url: Self.webURL(rating["url"]))
+            self.rating = Rating(value: value, count: (rating["count"] as? NSNumber)?.intValue, source: source, url: Self.webURL(rating["url"]))
         } else {
             rating = nil
         }

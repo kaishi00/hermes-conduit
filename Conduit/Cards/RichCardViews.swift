@@ -169,6 +169,8 @@ struct RichMapPicture: View {
             coordinates: coordinates, route: route, size: CGSize(width: width, height: height),
             dark: colorScheme == .dark, accent: UIColor(Color.conduitAccent)
         )
+        // A newer size or scheme started its own snapshot.
+        guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.2)) { image = drawn }
     }
 }
@@ -294,7 +296,7 @@ struct RichPlaceCard: View {
     @ViewBuilder
     private var header: some View {
         if let photo = place.photo {
-            RichPhotoHeader(photo: photo, height: 160)
+            RichPhotoHeader(photo: photo, placeName: place.name, height: 160)
         } else if let match {
             Button {
                 showsMap = true
@@ -311,6 +313,7 @@ struct RichPlaceCard: View {
 /// A photo Hermes found, with where it's from.
 private struct RichPhotoHeader: View {
     let photo: RichPlace.Photo
+    let placeName: String
     let height: CGFloat
 
     @Environment(\.openURL) private var openURL
@@ -341,7 +344,7 @@ private struct RichPhotoHeader: View {
             .padding(8)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: photo.source))
+        .accessibilityLabel(Text(verbatim: "\(placeName), \(photo.source)"))
     }
 }
 
@@ -629,7 +632,7 @@ private struct RichPlaceTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let photo = place.photo {
-                RichPhotoHeader(photo: photo, height: 110)
+                RichPhotoHeader(photo: photo, placeName: place.name, height: 110)
             } else {
                 RichMapPicture(coordinates: match.map { [$0.coordinate] } ?? [], route: nil, height: 110, looked: looked)
             }
@@ -654,7 +657,9 @@ private struct RichPlaceTile: View {
             .padding(12)
             Spacer(minLength: 0)
         }
-        .frame(width: 250, height: 250, alignment: .top)
+        // Grows with larger text rather than clipping it.
+        .frame(width: 250, alignment: .top)
+        .frame(minHeight: 250, alignment: .top)
         .richCardSurface()
         .contentShape(Rectangle())
         .task(id: place) {
@@ -789,7 +794,10 @@ struct RichMapScreen: View {
         scene = nil
         guard let selected = selectedMatch, selected.match.isVerified else { return }
         let request = MKLookAroundSceneRequest(mapItem: selected.match.item)
-        scene = try? await request.scene
+        let found = try? await request.scene
+        // Another place was picked meanwhile; its own task fills the scene.
+        guard !Task.isCancelled else { return }
+        scene = found
     }
 }
 
