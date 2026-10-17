@@ -49,7 +49,11 @@ final class AppStoreScreenshotTests: XCTestCase {
         app.buttons["login.connect"].tap()
 
         let username = app.textFields["login.username"]
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Sign-in step missing. Tree:\n\(app.debugDescription)")
+        if !username.waitForExistence(timeout: 30) {
+            snap("debug-no-sign-in-step")
+            XCTFail("Sign-in step missing. Tree:\n\(app.debugDescription)")
+            return
+        }
         snap("debug-login-password-step")
         username.tap()
         if let current = username.value as? String, !current.isEmpty, current != "Username" {

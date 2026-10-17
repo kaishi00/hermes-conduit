@@ -18,6 +18,9 @@ on:
       - "scripts/app-store/**"
       - "ConduitScreenshots/**"
 
+permissions:
+  contents: write
+
 concurrency:
   group: app-store-screenshots-${{ github.ref }}
   cancel-in-progress: true
@@ -104,6 +107,7 @@ jobs:
                   src = os.path.join(root, a["exportedFileName"])
                   name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
                   base = name.split("_")[0] if name.count("_") >= 2 else os.path.splitext(name)[0]
+                  base = "".join(c if c.isalnum() or c in "-_. " else "_" for c in base)
                   if os.path.exists(src):
                       os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
           PY
@@ -112,6 +116,29 @@ jobs:
             if [ "$rc" -ne 0 ]; then echo "::warning::$name capture exited $rc"; fi
           done
           ls -R shots
+
+      - name: Publish to a git ref
+        # Cloud sessions can't download artifacts (blob storage is blocked
+        # there) but can fetch git refs: refs/app-store-shots/<run id> holds
+        # the screenshots and small logs. Not a branch, so nothing shows in
+        # the branch list; delete old refs with git push --delete.
+        if: always()
+        run: |
+          set -euo pipefail
+          out=$(mktemp -d)
+          cp -R shots "$out/" 2>/dev/null || true
+          find "$out" -name '*.mp4' -size +20M -delete
+          mkdir -p "$out/logs"
+          for f in demo-hermes/*.log results-*.log; do
+            [ -f "$f" ] && tail -c 400000 "$f" > "$out/logs/$(basename "$f")"
+          done
+          cd "$out"
+          git init -q
+          git -c user.name=ci -c user.email=ci@localhost add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "App Store screenshots, run ${{ github.run_id }}"
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
+            "HEAD:refs/app-store-shots/${{ github.run_id }}"
+          echo "::notice::git fetch origin refs/app-store-shots/${{ github.run_id }}"
 
       - name: Upload screenshots
         if: always()
