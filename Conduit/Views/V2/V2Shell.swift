@@ -459,7 +459,7 @@ struct V2Shell: View {
             contentShift = -distance
         }
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(170))
+            try? await Task.sleep(for: .seconds(ConduitMotion.fadeOutDuration))
             guard token == profileSwitchToken else { return }
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }

@@ -399,6 +399,7 @@ struct V2ChatsView: View {
                 sessionPresentationRaw = showingProjects ? "sessions" : "projects"
             } label: {
                 V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))

@@ -111,8 +111,11 @@ enum ConduitMotion {
     static let easeSpring = Animation.spring(response: 0.5, dampingFraction: 0.9)
     /// The prototype's overshoot curve: tab highlight, menus, toggles, presses.
     static let overshootSpring = Animation.spring(response: 0.45, dampingFraction: 0.72)
+    /// How long the fade-out before a profile switch takes; the switch
+    /// waits this long before moving content out of sight.
+    static let fadeOutDuration: TimeInterval = 0.17
     /// The quick fade-out before a profile switch.
-    static let fadeOut = Animation.easeOut(duration: 0.17)
+    static let fadeOut = Animation.easeOut(duration: fadeOutDuration)
 
     /// Under Reduce Motion every spring becomes the plain settle fade.
     static func ease(reduceMotion: Bool) -> Animation {

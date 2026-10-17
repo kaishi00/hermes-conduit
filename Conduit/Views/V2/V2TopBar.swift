@@ -305,13 +305,16 @@ struct V2SegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
 
-    private var selectedIndex: Int {
-        options.firstIndex { $0.value == selection } ?? 0
+    private let spacing: CGFloat = 2
+
+    private var selectedIndex: Int? {
+        options.firstIndex { $0.value == selection }
     }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: spacing) {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
                 let isSelected = index == selectedIndex
@@ -332,11 +335,16 @@ struct V2SegmentedControl<Value: Hashable>: View {
         .background(alignment: .leading) {
             GeometryReader { proxy in
                 let count = CGFloat(max(options.count, 1))
-                let width = (proxy.size.width - 2 * (count - 1)) / count
-                Capsule()
-                    .fill(Color.primary.opacity(0.10))
-                    .frame(width: width)
-                    .offset(x: CGFloat(selectedIndex) * (width + 2))
+                let width = (proxy.size.width - spacing * (count - 1)) / count
+                // An offset doesn't mirror on its own: right to left, the
+                // first segment is the rightmost.
+                let step = layoutDirection == .rightToLeft ? -(width + spacing) : width + spacing
+                if let selectedIndex {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: width)
+                        .offset(x: CGFloat(selectedIndex) * step)
+                }
             }
         }
         .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: selectedIndex)

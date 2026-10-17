@@ -14,6 +14,7 @@ struct V2TasksView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @AppStorage("conduit.v2.tasksSegment") private var segmentRaw = Segment.board.rawValue
     /// How far a page slides: the pages' own width.
     @State private var pageWidth: CGFloat = 0
@@ -89,8 +90,10 @@ struct V2TasksView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         let isShown = page == selected
-        // -1 left of the shown page, 1 right of it.
-        let side: CGFloat = isShown ? 0 : (page == .board ? -1 : 1)
+        // -1 before the shown page, 1 after it; an offset doesn't mirror on
+        // its own, so right to left the Board sits on the right.
+        let leading: CGFloat = layoutDirection == .rightToLeft ? 1 : -1
+        let side: CGFloat = isShown ? 0 : (page == .board ? leading : -leading)
         // Until the width is known the other page hides instead.
         let slides = !reduceMotion && pageWidth > 0
         return content()
