@@ -302,7 +302,8 @@ struct SessionList: View {
                     } label: {
                         Label(AppLocalization.string("Mark all as read"), systemImage: "envelope.open")
                     }
-                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
+                    // The saved rows aren't the live list it marks.
+                    .disabled(appState.isShowingSavedChatList || !sourceRows(nil).contains { appState.isSessionUnread($0) })
 
                     Button {
                         Haptics.selection()
@@ -311,7 +312,7 @@ struct SessionList: View {
                     } label: {
                         Label(AppLocalization.string("New project"), systemImage: "folder.badge.plus")
                     }
-                    .disabled(!appState.supportsProjects)
+                    .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 19, weight: .semibold))
@@ -332,7 +333,7 @@ struct SessionList: View {
                     }
                     .buttonStyle(.plain)
                     .conduitGlassControl(cornerRadius: 14)
-                    .disabled(!appState.supportsProjects)
+                    .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
                     .accessibilityLabel("New project")
                 }
 
@@ -825,51 +826,59 @@ struct SessionList: View {
     /// whether that root is the card alone or the card with its expander
     /// beside it. `nest` comes from the nested list, where a parent
     /// displays its children's activity and its "Mark as read" clears
-    /// the nest.
+    /// the nest. The saved list's rows (up while Conduit connects) take
+    /// no actions: they would act on a list Hermes hasn't sent yet.
     private func sessionRowChrome<V: View>(
         _ content: V,
         session: SessionSummary,
         nest: NestReadToggle?
     ) -> some View {
-        content
+        let isSavedRow = appState.isShowingSavedChatList
+        return content
             .contextMenu {
-                SessionActionMenuItems(
-                    session: session,
-                    nest: nest,
-                    onRename: { sessionPendingRename = session },
-                    onDelete: { sessionPendingDeletion = session }
-                )
+                if !isSavedRow {
+                    SessionActionMenuItems(
+                        session: session,
+                        nest: nest,
+                        onRename: { sessionPendingRename = session },
+                        onDelete: { sessionPendingDeletion = session }
+                    )
+                }
             }
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button {
-                    Haptics.light()
-                    appState.toggleSessionPinned(session)
-                } label: {
-                    Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
-                }
-                .tint(.conduitAccent)
+                if !isSavedRow {
+                    Button {
+                        Haptics.light()
+                        appState.toggleSessionPinned(session)
+                    } label: {
+                        Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
+                    }
+                    .tint(.conduitAccent)
 
-                ReadStateToggleButton(session: session, nest: nest)
-                    .tint(.blue)
+                    ReadStateToggleButton(session: session, nest: nest)
+                        .tint(.blue)
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
-                    Task {
-                        Haptics.mutationCompleted(await appState.archiveSession(session))
+                if !isSavedRow {
+                    Button {
+                        Task {
+                            Haptics.mutationCompleted(await appState.archiveSession(session))
+                        }
+                    } label: {
+                        Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                     }
-                } label: {
-                    Label(AppLocalization.string("Archive"), systemImage: "archivebox")
-                }
-                .tint(.orange)
-                .disabled(appState.isSessionMutationInFlight(session))
+                    .tint(.orange)
+                    .disabled(appState.isSessionMutationInFlight(session))
 
-                Button(role: .destructive) {
-                    Haptics.warning()
-                    sessionPendingDeletion = session
-                } label: {
-                    Label(AppLocalization.string("Delete"), systemImage: "trash")
+                    Button(role: .destructive) {
+                        Haptics.warning()
+                        sessionPendingDeletion = session
+                    } label: {
+                        Label(AppLocalization.string("Delete"), systemImage: "trash")
+                    }
+                    .disabled(appState.isSessionMutationInFlight(session))
                 }
-                .disabled(appState.isSessionMutationInFlight(session))
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)

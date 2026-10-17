@@ -461,7 +461,9 @@ struct V2ChatsView: View {
                 } label: {
                     Label("New project", systemImage: "folder.badge.plus")
                 }
-                .disabled(!appState.supportsProjects)
+                // Projects shown from the saved list say nothing yet about
+                // whether this Hermes takes new ones.
+                .disabled(!appState.supportsProjects || appState.isShowingSavedChatList)
             } else {
                 filterToggle(.all)
 
@@ -1209,6 +1211,7 @@ private struct V2ChatsRow: View {
                 .sessionActions(
                     session: session,
                     nest: nil,
+                    isSavedRow: appState.isShowingSavedChatList,
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) }
                 )
@@ -1248,6 +1251,7 @@ private struct V2ChatsRow: View {
         .sessionActions(
             session: session,
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
+            isSavedRow: appState.isShowingSavedChatList,
             onRename: { onRename(session) },
             onDelete: { onDelete(session) }
         )
@@ -1339,11 +1343,14 @@ private struct V2ChatsRow: View {
 extension View {
     /// The conversation actions every V2 session row carries: the context
     /// menu (Rename, Pin, Read, Move to Project, Archive, Delete) and the
-    /// drawer's swipes.
+    /// drawer's swipes. A saved row (the list as it showed last time, up
+    /// while Conduit connects) takes none: they would act on a list Hermes
+    /// hasn't sent yet.
     func sessionActions(
         session: SessionSummary,
         nest: NestReadToggle?,
         excludingProjectID: String? = nil,
+        isSavedRow: Bool = false,
         onRename: @escaping () -> Void,
         onDelete: @escaping () -> Void,
         onChanged: @escaping () -> Void = {}
@@ -1352,6 +1359,7 @@ extension View {
             session: session,
             nest: nest,
             excludingProjectID: excludingProjectID,
+            isSavedRow: isSavedRow,
             onRename: onRename,
             onDelete: onDelete,
             onChanged: onChanged
@@ -1364,6 +1372,7 @@ private struct V2SessionActions: ViewModifier {
     let session: SessionSummary
     let nest: NestReadToggle?
     let excludingProjectID: String?
+    let isSavedRow: Bool
     let onRename: () -> Void
     let onDelete: () -> Void
     let onChanged: () -> Void
@@ -1371,50 +1380,56 @@ private struct V2SessionActions: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                SessionActionMenuItems(
-                    session: session,
-                    excludingProjectID: excludingProjectID,
-                    nest: nest,
-                    onRename: onRename,
-                    onDelete: onDelete,
-                    onChanged: onChanged
-                )
-            }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button {
-                    Haptics.light()
-                    appState.toggleSessionPinned(session)
-                } label: {
-                    Label(
-                        appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                        systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin"
+                if !isSavedRow {
+                    SessionActionMenuItems(
+                        session: session,
+                        excludingProjectID: excludingProjectID,
+                        nest: nest,
+                        onRename: onRename,
+                        onDelete: onDelete,
+                        onChanged: onChanged
                     )
                 }
-                .tint(.conduitAccent)
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                if !isSavedRow {
+                    Button {
+                        Haptics.light()
+                        appState.toggleSessionPinned(session)
+                    } label: {
+                        Label(
+                            appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                            systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin"
+                        )
+                    }
+                    .tint(.conduitAccent)
 
-                ReadStateToggleButton(session: session, nest: nest)
-                    .tint(.blue)
+                    ReadStateToggleButton(session: session, nest: nest)
+                        .tint(.blue)
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
-                    Task {
-                        let archived = await appState.archiveSession(session)
-                        Haptics.mutationCompleted(archived)
-                        if archived { onChanged() }
+                if !isSavedRow {
+                    Button {
+                        Task {
+                            let archived = await appState.archiveSession(session)
+                            Haptics.mutationCompleted(archived)
+                            if archived { onChanged() }
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
                     }
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                }
-                .tint(.orange)
-                .disabled(appState.isSessionMutationInFlight(session))
+                    .tint(.orange)
+                    .disabled(appState.isSessionMutationInFlight(session))
 
-                Button(role: .destructive) {
-                    Haptics.warning()
-                    onDelete()
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                    Button(role: .destructive) {
+                        Haptics.warning()
+                        onDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(appState.isSessionMutationInFlight(session))
                 }
-                .disabled(appState.isSessionMutationInFlight(session))
             }
     }
 }

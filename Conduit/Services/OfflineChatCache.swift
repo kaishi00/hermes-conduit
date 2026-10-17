@@ -198,9 +198,14 @@ struct SavedChatList: Codable, Equatable {
     /// The rows as a launch shows them: each time worked out again from its
     /// instant, the way the live list formats it, so a row saved yesterday
     /// doesn't still show only a time.
-    func relabeled() -> SavedChatList {
+    func relabeled(now: Date = Date()) -> SavedChatList {
         func relabel(_ row: SessionSummary) -> SessionSummary {
-            guard let instant = row.lastActivityAt else { return row }
+            // Persisted input: anything outside 2000 ... now + 1 day is not
+            // a real activity instant, so the row keeps its saved label.
+            guard let instant = row.lastActivityAt,
+                  instant.isFinite,
+                  instant >= 946_684_800,
+                  instant <= now.timeIntervalSince1970 + 86_400 else { return row }
             var row = row
             row.updatedLabel = MessageNormalizer.formattedSessionTimestamp(instant)
             return row

@@ -344,27 +344,34 @@ final class OfflineChatCacheTests: XCTestCase {
 
     /// A saved row's time is worked out again at launch from its instant,
     /// the way the live list formats it, so yesterday's row doesn't still
-    /// show only a time. A row without an instant keeps its saved label.
+    /// show only a time. A row without a plausible instant keeps its saved
+    /// label.
     func testSavedRowTimesAreWorkedOutAgainFromTheirInstants() {
         var dated = session("dated")
         dated.updatedLabel = "9:41 AM"
         dated.lastActivityAt = 1_790_000_000
         var undated = session("undated")
         undated.updatedLabel = "saved label"
+        var zero = session("zero")
+        zero.updatedLabel = "zero label"
+        zero.lastActivityAt = 0
+        var future = session("future")
+        future.updatedLabel = "future label"
+        future.lastActivityAt = 1_790_000_000 + 7 * 86_400
         var run = session("run", source: .cron)
         run.lastActivityAt = 1_790_000_000
 
         let list = SavedChatList.capture(
-            sessions: [dated, undated],
+            sessions: [dated, undated, zero, future],
             cronSessions: [run],
             isPinned: { _ in false },
             voiceTags: [:],
             projects: [],
             supportsProjects: false
-        ).relabeled()
+        ).relabeled(now: Date(timeIntervalSince1970: 1_790_000_000))
 
         let expected = MessageNormalizer.formattedSessionTimestamp(1_790_000_000)
-        XCTAssertEqual(list.sessions.map(\.updatedLabel), [expected, "saved label"])
+        XCTAssertEqual(list.sessions.map(\.updatedLabel), [expected, "saved label", "zero label", "future label"])
         XCTAssertEqual(list.cronSessions.map(\.updatedLabel), [expected])
     }
 

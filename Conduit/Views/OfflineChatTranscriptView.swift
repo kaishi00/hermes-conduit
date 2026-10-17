@@ -25,7 +25,10 @@ struct OfflineChatTranscriptView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !isOpeningPickedChat {
-                OfflineChatBanner(savedAt: presentation.displayedTranscript?.savedAt)
+                OfflineChatBanner(
+                    savedAt: presentation.displayedTranscript?.savedAt,
+                    showsCopy: !presentation.displayedMessages.isEmpty
+                )
                     .padding(.horizontal, 18)
                     .padding(.top, 10)
             }
@@ -70,7 +73,17 @@ struct OfflineChatTranscriptView: View {
 
 private struct OfflineChatBanner: View {
     let savedAt: Date?
+    /// A saved conversation is on screen. Without one (a chat picked in the
+    /// saved list that has no copy) the banner says what it waits on.
+    let showsCopy: Bool
     @EnvironmentObject var appState: AppState
+
+    private var title: String {
+        if showsCopy { return AppLocalization.string("Showing a saved copy") }
+        return appState.isConnecting
+            ? AppLocalization.string("Connecting…")
+            : AppLocalization.string("Can't reach Hermes")
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -78,7 +91,7 @@ private struct OfflineChatBanner: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Showing a saved copy")
+                Text(title)
                     .font(.footnote.weight(.semibold))
                 if let savedAt {
                     Text("Saved \(savedAt.formatted(.relative(presentation: .named)))")
