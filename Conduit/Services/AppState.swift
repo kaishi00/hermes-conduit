@@ -27497,7 +27497,7 @@ final class AppState: ObservableObject {
         guard isVoiceEnabled else {
             return .failure(AppLocalization.string("Enable voice for this profile before running a speech playback test."))
         }
-        guard voiceSpeechOutput == .onDevice || voiceCapabilitySnapshot.supportsSpeech else {
+        guard voiceSpeechOutput != .hermes || voiceCapabilitySnapshot.supportsSpeech else {
             return .failure(voiceUnavailableReason ?? AppLocalization.string("The selected assistant speech provider is unavailable."))
         }
         guard let gateway = makeVoiceGateway(fallsBackToOnDeviceSpeech: false) else {

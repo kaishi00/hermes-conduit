@@ -145,15 +145,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
 
     private let requester: VoiceConfigurationRequesting
     let profile: String
+    /// The dashboard address this phone uses, which the speech server's
+    /// model address starts with. Nil when the service has no bridge.
+    let dashboardBaseURL: String?
 
-    init(requester: VoiceConfigurationRequesting, profile: String) {
+    init(requester: VoiceConfigurationRequesting, profile: String, dashboardBaseURL: String? = nil) {
         self.requester = requester
         self.profile = profile
+        self.dashboardBaseURL = dashboardBaseURL
         snapshot = .unavailable(profile: profile, reason: AppLocalization.string("Voice settings have not been loaded."))
     }
 
     convenience init(bridge: DashboardTicketBridge, profile: String) {
-        self.init(requester: bridge, profile: profile)
+        self.init(requester: bridge, profile: profile, dashboardBaseURL: bridge.baseURL)
     }
 
     func reload() async {
@@ -377,6 +381,32 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // newer profile's status.
         if !Task.isCancelled { speechServer = status }
         return status
+    }
+
+    /// What the speech server needs to speak Classic's replies: the model
+    /// address and key the notifier's Local Live route takes.
+    func speechServerVoiceStatus() async -> SpeechServerVoiceStatus {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerSpeechStream.statusPath), method: "GET", body: nil)
+            return SpeechServerVoiceStatus(response: response, dashboardBaseURL: dashboardBaseURL)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return .pluginMissing
+        } catch {
+            return SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
+        }
+    }
+
+    /// A new key for the speech server; the old one stops working at once.
+    func rotateSpeechServerVoiceKey() async -> Bool {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerSpeechStream.keyPath), method: "POST", body: [:])
+            return (response["api_key"] as? String)?.isEmpty == false
+        } catch {
+            errorMessage = AppLocalization.string("Could not make a new key: \(UserFacingError.message(for: error))")
+            return false
+        }
     }
 
     /// Asks the Hermes host to dial the speech server and report back.

@@ -1,0 +1,126 @@
+//
+//  SpeechServerVoiceSettingsView.swift
+//  Conduit
+//
+//  Replies spoken by the user's own speech server, the one Classic listens
+//  through. The server's LLM setting points at the notifier's model address
+//  so it reads Hermes' replies back word for word; this view shows that
+//  address, its key and the flags to start the server with.
+//
+
+import SwiftUI
+import UIKit
+
+struct SpeechServerVoiceSettingsView: View {
+    @ObservedObject var service: HermesVoiceConfigurationService
+
+    @State private var status: SpeechServerVoiceStatus?
+    @State private var isRotating = false
+    @State private var rotateError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text."), systemImage: "server.rack")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if let status {
+                if let address = status.modelAddress, let key = status.apiKey {
+                    Text(AppLocalization.string("On the speech server, set its language model to this address and key, with the model name \(status.modelName). It then reads Hermes' replies aloud instead of writing its own."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    copyRow(title: AppLocalization.string("Model address"), value: address, identifier: "voice.speechServerVoice.address")
+                    copyRow(title: AppLocalization.string("Key"), value: key, identifier: "voice.speechServerVoice.key")
+                    if let flags = status.serverFlags {
+                        copyRow(title: AppLocalization.string("Flags for speech-to-speech"), value: flags, identifier: "voice.speechServerVoice.flags")
+                    }
+                    Text(AppLocalization.string("Run it with two pipelines so it can listen and speak at once."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    lastAskedRow(status.lastRequestAt)
+                    HStack {
+                        Button(role: .destructive) { Task { await rotate() } } label: {
+                            if isRotating { ProgressView() } else { Text(AppLocalization.string("Make a new key")) }
+                        }
+                        .accessibilityLabel(Text(AppLocalization.string("Make a new key")))
+                        .disabled(isRotating)
+                        .accessibilityIdentifier("voice.speechServerVoice.rotate")
+                        Spacer()
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.footnote)
+                }
+                if let reason = status.reason, !status.available || status.modelAddress == nil {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("voice.speechServerVoice.reason")
+                }
+                if let rotateError {
+                    Label(rotateError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: service.profile) { await load() }
+    }
+
+    private func copyRow(title: String, value: String, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(verbatim: title).font(.subheadline.weight(.semibold))
+                Spacer()
+                Button(AppLocalization.string("Copy")) {
+                    UIPasteboard.general.string = value
+                    UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
+                }
+                .buttonStyle(.borderless)
+                .font(.footnote)
+                .accessibilityLabel(Text(AppLocalization.string("Copy \(title)")))
+                .accessibilityIdentifier(identifier)
+            }
+            Text(verbatim: value)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private func lastAskedRow(_ date: Date?) -> some View {
+        if let date {
+            Label(AppLocalization.string("Your speech server last asked for words \(date.formatted(.relative(presentation: .named))). It's pointed here."), systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        } else {
+            Label(AppLocalization.string("Your speech server hasn't asked for words yet. Set the address and key on it, then restart it."), systemImage: "clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// A profile switch starts from that profile's status.
+    private func load() async {
+        status = nil
+        rotateError = nil
+        let loaded = await service.speechServerVoiceStatus()
+        guard !Task.isCancelled else { return }
+        status = loaded
+    }
+
+    private func rotate() async {
+        isRotating = true
+        defer { isRotating = false }
+        rotateError = nil
+        if !(await service.rotateSpeechServerVoiceKey()) {
+            rotateError = service.errorMessage
+        }
+        status = await service.speechServerVoiceStatus()
+    }
+}

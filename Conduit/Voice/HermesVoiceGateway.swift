@@ -98,6 +98,26 @@ final class HermesVoiceGateway: VoiceGatewayService {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
+        if speechOutput() == .speechServer {
+            guard let makeOnDeviceSpeech, fallsBackToOnDeviceSpeech else {
+                return try await openSpeechServerSpeech(onStart: onStart, onPCM16: onPCM16)
+            }
+            // A server that can't speak this reply leaves it to this iPhone,
+            // reply by reply: the next one tries the server again.
+            return try await FallbackSpeechStream.open(
+                hermes: { [weak self] start, pcm, _ in
+                    guard let self else { throw CancellationError() }
+                    return try await self.openSpeechServerSpeech(onStart: start, onPCM16: pcm)
+                },
+                onDevice: makeOnDeviceSpeech,
+                onFallback: { error in
+                    hermesSpeechFallbackLog.notice("Speech server speech failed, speaking on this iPhone: \(String(describing: error), privacy: .private)")
+                },
+                onStart: onStart,
+                onPCM16: onPCM16,
+                onEncodedAudio: onEncodedAudio
+            )
+        }
         guard let makeOnDeviceSpeech else {
             return try await openHermesSpeechStream(onStart: onStart, onPCM16: onPCM16, onEncodedAudio: onEncodedAudio)
         }

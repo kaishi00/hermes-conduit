@@ -23,6 +23,9 @@ enum VoiceSpeechOutput: String, Codable, Equatable {
     case onDevice
     /// The profile's text-to-speech provider on Hermes.
     case hermes
+    /// The user's own speech server, the one Classic can listen through
+    /// (SpeechServerSpeechStream): one server listens and speaks.
+    case speechServer
 
     /// A saved choice wins. With none saved, a profile keeps a Hermes voice
     /// that is ready and isn't Edge TTS (someone set it up on purpose);

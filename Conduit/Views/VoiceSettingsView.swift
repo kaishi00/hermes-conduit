@@ -555,6 +555,9 @@ struct VoiceSettingsView: View {
         if resolvedSpeechOutput == .onDevice {
             return setupStep(title, detail: AppLocalization.string("On this iPhone"), state: .done)
         }
+        if resolvedSpeechOutput == .speechServer {
+            return setupStep(title, detail: AppLocalization.string("Your speech server"), state: .done)
+        }
         let name = providerName(service.snapshot.selectedTTSProvider, kind: .tts)
         if service.snapshot.capability.supportsSpeech {
             return setupStep(title, detail: AppLocalization.string("\(name) on Hermes"), state: .done)
@@ -831,6 +834,14 @@ struct VoiceSettingsView: View {
                     identifier: "voice.private.voiceServer"
                 ) { useVoiceServer() }
                 if voiceServerDraft != nil { voiceServerAddressField }
+                privateVoiceRow(
+                    title: AppLocalization.string("Your speech server speaks too"),
+                    detail: AppLocalization.string("Replies in your speech server's own voice, so one server listens and speaks. Needs plugin 0.42 or later."),
+                    inUse: resolvedSpeechOutput == .speechServer,
+                    chosen: resolvedSpeechOutput == .speechServer,
+                    available: true,
+                    identifier: "voice.private.speechServerVoice"
+                ) { usePrivateProvider(Self.speechServerVoiceProviderID, kind: .tts) }
             }
         }
     }
@@ -841,7 +852,8 @@ struct VoiceSettingsView: View {
     /// Hermes (not an unsaved draft). The managed Nous row shares the
     /// tts.openai section but is the gateway's own voice, so it never counts.
     private var usesOwnVoiceServer: Bool {
-        service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+        resolvedSpeechOutput == .hermes
+            && service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
             && Self.isOwnVoiceServer(service.snapshot.values["tts.openai.base_url"] ?? "")
     }
 
@@ -977,7 +989,8 @@ struct VoiceSettingsView: View {
         // One pick at a time; the buttons are also disabled while saving.
         guard savingField == nil else { return }
         let providers = kind == .stt ? service.snapshot.sttProviders : service.snapshot.ttsProviders
-        let selectable = provider == Self.speechServerProviderID || providers.contains { $0.descriptor.id == provider }
+        let selectable = provider == Self.speechServerProviderID || provider == Self.speechServerVoiceProviderID
+            || providers.contains { $0.descriptor.id == provider }
         if selectable, provider != selectedProviderChoice(kind) {
             savingField = "\(kind.rawValue).provider"
             Task { @MainActor in
@@ -1086,7 +1099,7 @@ struct VoiceSettingsView: View {
     }
 
     private var supportsSelectedSpeech: Bool {
-        resolvedSpeechOutput == .onDevice || service.snapshot.capability.supportsSpeech
+        resolvedSpeechOutput != .hermes || service.snapshot.capability.supportsSpeech
     }
 
     private func selectVoiceMode(_ id: String) {
@@ -1231,6 +1244,8 @@ struct VoiceSettingsView: View {
                     appleOnDeviceDetail
                 } else if kind == .tts, resolvedSpeechOutput == .onDevice {
                     iPhoneVoiceDetail
+                } else if kind == .tts, resolvedSpeechOutput == .speechServer {
+                    SpeechServerVoiceSettingsView(service: service)
                 } else if kind == .stt, transcriptionMode == .speechServer {
                     SpeechServerSettingsView(service: service)
                 } else if let selected = providers.first(where: { $0.descriptor.id == selectedProvider(kind) }) {
@@ -1494,7 +1509,11 @@ struct VoiceSettingsView: View {
 
     private func selectedProviderChoice(_ kind: VoiceProviderDescriptor.Kind) -> String {
         guard kind == .stt else {
-            return resolvedSpeechOutput == .onDevice ? Self.iPhoneVoiceProviderID : selectedProvider(kind)
+            switch resolvedSpeechOutput {
+            case .onDevice: return Self.iPhoneVoiceProviderID
+            case .speechServer: return Self.speechServerVoiceProviderID
+            case .hermes: return selectedProvider(kind)
+            }
         }
         switch transcriptionMode {
         case .appleOnDevice: return Self.appleProviderID
@@ -1510,6 +1529,7 @@ struct VoiceSettingsView: View {
         let hermes = providers.map { (id: $0.descriptor.id, title: $0.descriptor.displayName) }
         guard kind == .stt else {
             return [(id: Self.iPhoneVoiceProviderID, title: AppLocalization.string("On this iPhone"))] + hermes
+                + [(id: Self.speechServerVoiceProviderID, title: AppLocalization.string("Your speech server"))]
         }
         return [(id: Self.appleProviderID, title: AppLocalization.string("On this iPhone"))] + hermes
             + [(id: Self.speechServerProviderID, title: AppLocalization.string("Your speech server"))]
@@ -1556,6 +1576,13 @@ struct VoiceSettingsView: View {
         } else if kind == .tts, provider == Self.iPhoneVoiceProviderID {
             if await setSpeechOutput(.onDevice) {
                 speechOutputChoice = .onDevice
+                testStatus = nil
+            } else {
+                testStatus = AppLocalization.string("Connect to Hermes to configure voice for this profile.")
+            }
+        } else if kind == .tts, provider == Self.speechServerVoiceProviderID {
+            if await setSpeechOutput(.speechServer) {
+                speechOutputChoice = .speechServer
                 testStatus = nil
             } else {
                 testStatus = AppLocalization.string("Connect to Hermes to configure voice for this profile.")
@@ -1635,6 +1662,7 @@ struct VoiceSettingsView: View {
     private static let appleProviderID = "apple_on_device"
     private static let speechServerProviderID = "conduit_speech_server"
     private static let iPhoneVoiceProviderID = "conduit_iphone_voice"
+    private static let speechServerVoiceProviderID = "conduit_speech_server_voice"
 }
 
 /// Variables Hermes reads in order for one key, shown as one row.
