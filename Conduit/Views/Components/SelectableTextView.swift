@@ -692,10 +692,10 @@ struct SelectableTextView: UIViewRepresentable {
         /// to quote, so the selection then stays as it was, as on the pill.
         @MainActor
         static func quoteSelection(in textView: UITextView, range: NSRange, with quoteAction: ChatQuoteAction) {
-            let fullText = (textView.attributedText?.string ?? "") as NSString
+            let fullText = textView.attributedText ?? NSAttributedString()
             let clamped = NSIntersectionRange(range, NSRange(location: 0, length: fullText.length))
             let selected = (textView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()?.string
-                ?? fullText.substring(with: clamped)
+                ?? MarkdownProseRun.copyableText(fullText.attributedSubstring(from: clamped)).string
             guard selected.contains(where: { !$0.isWhitespace }) else { return }
             (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
             textView.selectedRange = NSRange(location: clamped.location, length: 0)
@@ -809,7 +809,7 @@ private final class MarkdownSelectionTextView: UITextView {
     }
 
     override func copy(_ sender: Any?) {
-        guard let copied = coordinatedCopiedAttributedText() else {
+        guard let copied = coordinatedCopiedAttributedText() ?? MarkdownProseRun.copiedSelection(in: self) else {
             super.copy(sender)
             return
         }

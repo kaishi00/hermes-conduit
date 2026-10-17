@@ -313,8 +313,10 @@ final class MarkdownRendering {
     /// Found and built on first use, by the main actor's view bodies only.
     @MainActor private var foundProseRuns: [Range<Int>]?
     /// Each run's text, built once per settled rendering so a row that
-    /// scrolls back in hands its text view the same string.
-    @MainActor private var proseRunTexts: [Int: NSAttributedString] = [:]
+    /// scrolls back in hands its text view the same string. The render
+    /// cache keys a rendering on its surface and text size, so the style a
+    /// run's text was built with never changes under it.
+    @MainActor private var proseRunTexts: [Range<Int>: NSAttributedString] = [:]
 
     init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
@@ -339,7 +341,7 @@ final class MarkdownRendering {
         usesAccentSurface: Bool,
         chatTextSize: ChatTextSize
     ) -> NSAttributedString {
-        if let text = proseRunTexts[run.lowerBound] { return text }
+        if let text = proseRunTexts[run] { return text }
         let text = MarkdownProseRun.attributedText(
             for: blocks[run],
             references: references,
@@ -347,7 +349,7 @@ final class MarkdownRendering {
             usesAccentSurface: usesAccentSurface,
             chatTextSize: chatTextSize
         )
-        proseRunTexts[run.lowerBound] = text
+        proseRunTexts[run] = text
         return text
     }
 }

@@ -455,7 +455,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             let attributed = textView.attributedText ?? NSAttributedString(string: textView.text ?? "")
             let safeRange = clampedRange(span.range, to: attributed.length)
             let selectedText = safeRange.length > 0
-                ? attributed.attributedSubstring(from: safeRange)
+                ? MarkdownProseRun.copyableText(attributed.attributedSubstring(from: safeRange))
                 : NSAttributedString(string: "")
 
             pieces.append(

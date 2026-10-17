@@ -115,17 +115,55 @@ enum MarkdownProseRun {
         max(1, spacing - lineSpacing)
     }
 
+    /// Marks a character of the run's text that copies as something else:
+    /// the line break between two blocks copies as a blank line, and the
+    /// tab after a list marker as a space, as copying the blocks did.
+    static let copiesAs = NSAttributedString.Key("ConduitProseRunCopiesAs")
+
+    /// The text copying `text` gives: each marked character becomes what it
+    /// copies as. Text without marks comes back as it is.
+    static func copyableText(_ text: NSAttributedString) -> NSAttributedString {
+        var marks: [(range: NSRange, copy: String)] = []
+        text.enumerateAttribute(copiesAs, in: NSRange(location: 0, length: text.length), options: []) { value, range, _ in
+            guard let copy = value as? String else { return }
+            // Neighbouring marks with the same copy come as one range.
+            marks.append((range, String(repeating: copy, count: range.length)))
+        }
+        guard !marks.isEmpty else { return text }
+        let result = NSMutableAttributedString(attributedString: text)
+        for mark in marks.reversed() {
+            result.replaceCharacters(in: mark.range, with: mark.copy)
+        }
+        result.removeAttribute(copiesAs, range: NSRange(location: 0, length: result.length))
+        return result
+    }
+
+    /// What copying a text view's own selection gives, when it holds a run.
+    @MainActor
+    static func copiedSelection(in textView: UITextView) -> NSAttributedString? {
+        guard let text = textView.attributedText else { return nil }
+        let range = NSIntersectionRange(textView.selectedRange, NSRange(location: 0, length: text.length))
+        guard range.length > 0 else { return nil }
+        let selected = text.attributedSubstring(from: range)
+        let copied = copyableText(selected)
+        return copied === selected ? nil : copied
+    }
+
     private struct Paragraph {
         let content: NSAttributedString
         let style: NSParagraphStyle
         /// Space under the paragraph's last line, before the next one.
         var spacingAfter: CGFloat = 0
+        /// The last paragraph of a block: its line break copies as the
+        /// blank line between blocks.
+        var endsBlock = false
     }
 
-    /// The run's text. Blocks are separated by an empty line sized to the
-    /// gap their views had, and list items by a plain line break, so
-    /// copying a run gives the text copying its blocks did, with each list
-    /// item's marker and a space in front, as a prose-only answer copies.
+    /// The run's text. Each paragraph keeps its block view's line spacing,
+    /// and the space under a block's or list item's last line makes up the
+    /// gap the stack put between their views. Copying it through
+    /// `copyableText` gives the text copying its blocks did: blocks a blank
+    /// line apart, each list item with its marker and a space in front.
     @MainActor
     static func attributedText(
         for blocks: ArraySlice<MarkdownBlock>,
@@ -158,13 +196,6 @@ enum MarkdownProseRun {
             return style
         }
 
-        func spacer(height: CGFloat) -> Paragraph {
-            let style = NSMutableParagraphStyle()
-            style.minimumLineHeight = height
-            style.maximumLineHeight = height
-            return Paragraph(content: NSAttributedString(), style: style)
-        }
-
         func listItems(_ items: [String], ordered: Bool) -> [Paragraph] {
             let markerColumn = ChatTypography.dimension(ordered ? 24 : 12, chatSize: chatTextSize)
             let textStart = markerColumn + Spacing.listMarkerToText
@@ -175,20 +206,20 @@ enum MarkdownProseRun {
                     .foregroundColor: markerColor
                 ]
                 let markerWidth = (marker as NSString).size(withAttributes: markerAttributes).width
-                let spaceWidth = (" " as NSString).size(withAttributes: markerAttributes).width
                 let style = lineStyle(Spacing.listItemLineSpacing)
                 // The marker sits right-aligned in its column, as the list
-                // view's trailing-aligned marker frame put it, and the space
-                // after it is kerned to reach where that view's text column
-                // began. Wrapped lines start there too.
-                let markerStart = max(0, markerColumn - markerWidth)
-                style.firstLineHeadIndent = markerStart
+                // view's trailing-aligned marker frame put it, and a tab
+                // takes the text to where that view's text column began.
+                // Wrapped lines start there too.
+                style.firstLineHeadIndent = max(0, markerColumn - markerWidth)
                 style.headIndent = textStart
-                var spaceAttributes = markerAttributes
-                spaceAttributes[.kern] = textStart - markerStart - markerWidth - spaceWidth
+                style.tabStops = [NSTextTab(textAlignment: .natural, location: textStart, options: [:])]
+                style.defaultTabInterval = textStart
 
                 let content = NSMutableAttributedString(string: marker, attributes: markerAttributes)
-                content.append(NSAttributedString(string: " ", attributes: spaceAttributes))
+                var tabAttributes = markerAttributes
+                tabAttributes[copiesAs] = " "
+                content.append(NSAttributedString(string: "\t", attributes: tabAttributes))
                 content.append(inline(item, font: bodyFont))
                 let isLast = index == items.count - 1
                 return Paragraph(
@@ -202,17 +233,16 @@ enum MarkdownProseRun {
         }
 
         var paragraphs: [Paragraph] = []
-        var lastLineSpacing: CGFloat = 0
         for block in blocks {
             let blockParagraphs: [Paragraph]
-            var blockGap = Spacing.betweenBlocks
+            var gapAbove = Spacing.betweenBlocks
             switch block {
             case .heading(let level, let text):
                 blockParagraphs = [Paragraph(
                     content: inline(text, font: MarkdownHeading.font(for: level, chatTextSize: chatTextSize)),
                     style: lineStyle(0)
                 )]
-                blockGap += Spacing.aboveHeading(level: level)
+                gapAbove += Spacing.aboveHeading(level: level)
             case .paragraph(let text):
                 blockParagraphs = [Paragraph(
                     content: inline(text, font: bodyFont),
@@ -227,11 +257,11 @@ enum MarkdownProseRun {
                 blockParagraphs = []
             }
             guard !blockParagraphs.isEmpty else { continue }
-            if !paragraphs.isEmpty {
-                paragraphs.append(spacer(height: gap(blockGap, below: lastLineSpacing)))
+            if let above = paragraphs.indices.last {
+                paragraphs[above].spacingAfter = gap(gapAbove, below: paragraphs[above].style.lineSpacing)
+                paragraphs[above].endsBlock = true
             }
             paragraphs.append(contentsOf: blockParagraphs)
-            lastLineSpacing = blockParagraphs.last?.style.lineSpacing ?? 0
         }
 
         let result = NSMutableAttributedString()
@@ -243,18 +273,21 @@ enum MarkdownProseRun {
                 let lastFont = paragraph.content.length > 0
                     ? paragraph.content.attribute(.font, at: paragraph.content.length - 1, effectiveRange: nil) as? UIFont
                     : nil
-                let font = lastFont ?? bodyFont
-                result.append(NSAttributedString(
-                    string: "\n",
-                    attributes: [.font: font, .foregroundColor: textColor]
-                ))
+                var breakAttributes: [NSAttributedString.Key: Any] = [
+                    .font: lastFont ?? bodyFont,
+                    .foregroundColor: textColor
+                ]
+                if paragraph.endsBlock {
+                    breakAttributes[copiesAs] = "\n\n"
+                }
+                result.append(NSAttributedString(string: "\n", attributes: breakAttributes))
             }
             let range = NSRange(location: start, length: result.length - start)
             guard range.length > 0 else { continue }
             result.addAttribute(.paragraphStyle, value: paragraph.style, range: range)
             if paragraph.spacingAfter > 0 {
-                // Only the item's last line gets the space under it: a line
-                // break inside the item stays as tight as in its own view.
+                // Only the paragraph's last line gets the space under it: a
+                // line break inside it stays as tight as in its own view.
                 let lastLine = (result.string as NSString).paragraphRange(
                     for: NSRange(location: NSMaxRange(range) - 1, length: 0)
                 )

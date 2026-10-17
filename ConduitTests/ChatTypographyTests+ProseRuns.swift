@@ -46,7 +46,7 @@ extension ChatTypographyTests {
     }
 
     /// Copying a run gives what copying its blocks did: blocks a blank line
-    /// apart, list items a line apart, each with its marker.
+    /// apart, list items a line apart, each with its marker and a space.
     @MainActor
     func testRunTextCopiesLikeItsBlocks() {
         let blocks: [MarkdownBlock] = [
@@ -63,7 +63,16 @@ extension ChatTypographyTests {
             chatTextSize: .default
         )
 
-        XCTAssertEqual(text.string, "Plan\n\nAlpha bold\n\n• One\n• Two\n\n1. Three")
+        XCTAssertEqual(text.string, "Plan\nAlpha bold\n•\tOne\n•\tTwo\n1.\tThree", "one line break between blocks, spaced by the paragraph style")
+        XCTAssertEqual(MarkdownProseRun.copyableText(text).string, "Plan\n\nAlpha bold\n\n• One\n• Two\n\n1. Three")
+
+        let textView = UITextView()
+        textView.attributedText = text
+        textView.selectedRange = (text.string as NSString).range(of: "bold\n•\tOne")
+        XCTAssertEqual(MarkdownProseRun.copiedSelection(in: textView)?.string, "bold\n\n• One", "a selection inside the run copies the same way")
+        textView.selectedRange = (text.string as NSString).range(of: "Alpha")
+        XCTAssertNil(MarkdownProseRun.copiedSelection(in: textView), "plain text copies as the text view would")
+
         let boldFont = text.attribute(.font, at: (text.string as NSString).range(of: "bold").location, effectiveRange: nil) as? UIFont
         XCTAssertTrue(boldFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true, "inline styles carry over")
     }
