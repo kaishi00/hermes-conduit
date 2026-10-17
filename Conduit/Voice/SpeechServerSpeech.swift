@@ -4,6 +4,9 @@
 //
 
 import Foundation
+import os
+
+private let speechServerSpeechLog = Logger(subsystem: "com.milim.conduit", category: "SpeechServerSpeech")
 
 /// Classic voice's replies spoken by the user's own speech server (Hugging
 /// Face speech-to-speech, the one Hermes Live Voice runs), so one server
@@ -50,8 +53,6 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     /// Whether the running response has sent audio: audio with no
     /// transcript can't be checked, so it fails like a wrong one.
     private var responseHadAudio = false
-    /// Whether any sentence was sent to be spoken.
-    private var askedToSpeak = false
     private var finishRequested = false
     private var started = false
     private var receivedPCM = false
@@ -213,27 +214,29 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         speaking = words
         spokenTranscript = ""
         responseHadAudio = false
-        askedToSpeak = true
         send(Self.userItem(words))
         send(["type": "response.create"])
     }
 
+    /// Each response must voice its whole sentence: a silent one fails the
+    /// stream (so a reply not yet started goes to this iPhone), and so does
+    /// one whose transcript isn't exactly the words sent.
     private func responseFinished() {
-        if let words = speaking, !Self.isReadingBack(spokenTranscript, words: words)
-            || (responseHadAudio && Self.comparable(spokenTranscript).isEmpty) {
-            failNotReadingBack()
-            return
+        if let words = speaking {
+            guard responseHadAudio else {
+                send(["type": "response.cancel"], afterEnd: true)
+                fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.")))
+                return
+            }
+            guard Self.comparable(spokenTranscript) == Self.comparable(words) else {
+                failNotReadingBack()
+                return
+            }
         }
         speaking = nil
         spokenTranscript = ""
         speakNext()
-        guard finishRequested, speaking == nil, queued.isEmpty else { return }
-        // Asked to speak and sent no audio: the reply goes to this iPhone.
-        if askedToSpeak, !receivedPCM {
-            fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.")))
-        } else {
-            complete(.success(receivedPCM))
-        }
+        if finishRequested, speaking == nil, queued.isEmpty { complete(.success(receivedPCM)) }
     }
 
     private func failNotReadingBack() {
@@ -375,6 +378,7 @@ extension HermesVoiceGateway {
                 cloudflareAccess: bridge.cloudflareAccess
             )
         } catch {
+            speechServerSpeechLog.notice("Speech server speak request failed: \(String(describing: error), privacy: .private)")
             throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
         }
         let task = URLSession.shared.webSocketTask(with: request)

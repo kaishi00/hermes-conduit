@@ -234,18 +234,20 @@ extension HermesVoiceGatewayTimeoutTests {
         let pcm = Data([1, 0, 2, 0]).base64EncodedString()
         socket.deliver(#"{"type":"response.output_audio_transcript.delta","delta":"Hello"}"#)
         socket.deliver(#"{"type":"response.output_audio.delta","delta":"\#(pcm)"}"#)
+        socket.deliver(#"{"type":"response.output_audio_transcript.delta","delta":" there."}"#)
         socket.deliver(#"{"type":"response.done"}"#)
         let sentSecond = await Self.speechServerEventually { socket.sentTypes.count >= 5 }
         XCTAssertTrue(sentSecond)
         let second = try XCTUnwrap(socket.sentObjects[3]["item"] as? [String: Any])
         XCTAssertEqual((second["content"] as? [[String: Any]])?.first?["text"] as? String, "How are you?")
+        socket.deliver(#"{"type":"response.output_audio.delta","delta":"\#(pcm)"}"#)
         socket.deliver(#"{"type":"response.output_audio_transcript.delta","delta":"how are you"}"#)
         socket.deliver(#"{"type":"response.done"}"#)
 
         let spoke = try await finishing.value
         XCTAssertTrue(spoke)
         XCTAssertEqual(started, [24_000])
-        XCTAssertEqual(audio, Data([1, 0, 2, 0]))
+        XCTAssertEqual(audio, Data([1, 0, 2, 0, 1, 0, 2, 0]))
     }
 
     func testSpeechServerSpeechFailsWhenTheServerAnswersInsteadOfReadingBack() async throws {
@@ -277,6 +279,38 @@ extension HermesVoiceGatewayTimeoutTests {
         do {
             _ = try await finishing.value
             XCTFail("A silent response must fail so the iPhone speaks the reply")
+        } catch VoiceAudioError.unavailable {}
+    }
+
+    func testSpeechServerSpeechThatEndsSilentlyBeforeFinishFails() async throws {
+        let socket = SpeechServerSocket()
+        let stream = SpeechServerSpeechStream(socket: socket, onStart: { _ in }, onPCM16: { _, _ in })
+        try await stream.append("Hello.")
+        let sent = await Self.speechServerEventually { socket.sentTypes.contains("response.create") }
+        XCTAssertTrue(sent)
+        socket.deliver(#"{"type":"response.done"}"#)
+        let ended = await Self.speechServerEventually { socket.sentTypes.last == "response.cancel" }
+        XCTAssertTrue(ended)
+        do {
+            _ = try await stream.finish()
+            XCTFail("A silent response must fail so the iPhone speaks the reply")
+        } catch VoiceAudioError.unavailable {}
+    }
+
+    func testSpeechServerSpeechThatReadsOnlyHalfASentenceFails() async throws {
+        let socket = SpeechServerSocket()
+        let stream = SpeechServerSpeechStream(socket: socket, onStart: { _ in }, onPCM16: { _, _ in })
+        try await stream.append("It's 5 o'clock.")
+        let finishing = Task { try await stream.finish() }
+        let sent = await Self.speechServerEventually { socket.sentTypes.contains("response.create") }
+        XCTAssertTrue(sent)
+        let pcm = Data([1, 0]).base64EncodedString()
+        socket.deliver(#"{"type":"response.output_audio.delta","delta":"\#(pcm)"}"#)
+        socket.deliver(#"{"type":"response.output_audio_transcript.delta","delta":"It's 5"}"#)
+        socket.deliver(#"{"type":"response.done"}"#)
+        do {
+            _ = try await finishing.value
+            XCTFail("A half-read sentence must fail the stream")
         } catch VoiceAudioError.unavailable {}
     }
 
