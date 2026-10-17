@@ -73,6 +73,8 @@ struct RichMapCard: View {
                 RichMapPicture(coordinates: found.map(\.coordinate), route: route?.polyline, height: 190, looked: looked)
             }
             .buttonStyle(.plain)
+            // The full map opens with the pins and route found.
+            .disabled(!looked)
             .accessibilityLabel(Text(verbatim: card.title ?? card.places.map(\.name).joined(separator: ", ")))
             .accessibilityHint(Text("Opens the map"))
 
@@ -159,7 +161,7 @@ struct RichMapPicture: View {
     }
 
     private func key(width: CGFloat) -> String {
-        "\(coordinates.map { "\($0.latitude),\($0.longitude)" })|\(route?.pointCount ?? 0)|\(Int(width))|\(colorScheme == .dark)"
+        "\(coordinates.map { "\($0.latitude),\($0.longitude)" })|\(RichMapSnapshot.routeKey(route))|\(Int(width))|\(colorScheme == .dark)"
     }
 
     private func draw(width: CGFloat) async {
@@ -414,7 +416,7 @@ private struct RichRatingLine: View {
             }
             .font(.caption)
             .foregroundStyle(.orange)
-            Text(verbatim: rating.value.formatted(.number.precision(.fractionLength(1))))
+            Text(verbatim: rating.value.formatted(.number.precision(.fractionLength(1)).locale(AppLocalization.formattingLocale)))
                 .font(.subheadline.weight(.semibold))
             if let count = rating.count {
                 Text(verbatim: "(\(count.formatted()))")
@@ -424,7 +426,7 @@ private struct RichRatingLine: View {
             RichSource(name: rating.source, url: rating.url)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Rated \(rating.value.formatted(.number.precision(.fractionLength(1)))) out of 5 on \(rating.source)"))
+        .accessibilityLabel(Text("Rated \(rating.value.formatted(.number.precision(.fractionLength(1)).locale(AppLocalization.formattingLocale))) out of 5 on \(rating.source)"))
     }
 
     static func symbol(star: Int, value: Double) -> String {

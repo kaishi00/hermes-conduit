@@ -248,11 +248,18 @@ enum RichMapSnapshot {
         return cache
     }()
 
+    /// Tells routes apart for the cache: their points and the area they cover.
+    static func routeKey(_ route: MKPolyline?) -> String {
+        guard let route else { return "-" }
+        let rect = route.boundingMapRect
+        return "\(route.pointCount)@\(Int(rect.origin.x)),\(Int(rect.origin.y)),\(Int(rect.size.width)),\(Int(rect.size.height))"
+    }
+
     static func image(coordinates: [CLLocationCoordinate2D], route: MKPolyline?, size: CGSize,
                       dark: Bool, accent: UIColor) async -> UIImage? {
         guard !coordinates.isEmpty, size.width > 1, size.height > 1 else { return nil }
         let points = coordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: ";")
-        let key = "\(points)|\(route?.pointCount ?? 0)|\(Int(size.width))x\(Int(size.height))|\(dark)" as NSString
+        let key = "\(points)|\(routeKey(route))|\(Int(size.width))x\(Int(size.height))|\(dark)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
         let options = MKMapSnapshotter.Options()
         options.region = region(fitting: coordinates, route: route)
