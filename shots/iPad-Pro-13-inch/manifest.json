@@ -1,0 +1,98 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "0B74A57D-7810-4B99-B9EC-B4F009DA4B39.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "04-chat-code_0_94A15A51-1644-4E49-8E73-A9E2E6ADD5CE.png",
+        "timestamp" : 1792280106.96
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "62A118ED-0F28-4720-99FC-7E287E0AD4AE.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-missing-Fix the flaky upload test_0_26B97D32-D7D5-4A15-9ED4-FC828BA6C739.png",
+        "timestamp" : 1792280106.608
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "3A591E49-D042-4EFC-95A6-FD982187A4D7.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "03-chat-trip_0_C20C48FE-9819-4CA7-8158-FA7CBAD275A6.png",
+        "timestamp" : 1792280084.506
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "F1B9F028-F74B-42F6-A049-17647FCC57C5.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-missing-Weekend trip to Big Sur_0_F975CC42-1BE4-4E3F-9B1E-D3AC88CC42A9.png",
+        "timestamp" : 1792280084.113
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "75FE6C58-77AE-42A5-B096-4AE5F7D70012.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02-chat-steps_0_DD8A59DA-F7B2-42DF-A024-8BF3CFCEF470.png",
+        "timestamp" : 1792280061.898
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "CA54D46D-6E47-4D6A-A8E1-1DF084947E31.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "01-chats_0_2050A4F1-CCAD-4FC6-8A07-31E5F1A989B2.png",
+        "timestamp" : 1792280051.312
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "8A7D90E8-BDA4-410A-B87D-213BB33BEC6C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-finish-setup_0_20A8192A-4A53-409D-8AE5-BF6E67EEA38F.png",
+        "timestamp" : 1792280041.978
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "A9BEE1B0-183D-4D7C-99F6-7B96E9BD972B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-after-sign-in_0_26DA82C7-0105-4D68-A661-8DF89D48D6C4.png",
+        "timestamp" : 1792280023.109
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "244EF7C1-2DAD-4C66-8F40-1371656AF54A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-password-step_0_075EBBF6-6304-465E-8B01-0A165DB68216.png",
+        "timestamp" : 1792280003.201
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "99DEE653-946C-406D-8E9E-238D1FCE93C9",
+        "deviceName" : "iPad Pro 13-inch (M5)",
+        "exportedFileName" : "4BEB1FFA-23BB-4350-B662-CD64CE26544E.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-address_0_821512C6-19C4-42C7-A4EA-9323328CFA4B.png",
+        "timestamp" : 1792279970.701
+      }
+    ],
+    "testIdentifier" : "AppStoreScreenshotTests/testCaptureAppStoreScreens()",
+    "testIdentifierURL" : "test://com.apple.xcode/Conduit/ConduitScreenshots/AppStoreScreenshotTests/testCaptureAppStoreScreens"
+  }
+]
