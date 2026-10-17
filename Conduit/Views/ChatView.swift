@@ -35,7 +35,8 @@ struct ChatView: View {
     /// place while browsing, restores saved positions. It reads and sets the
     /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
     /// scroll ticks never reach SwiftUI state; it publishes only when a value
-    /// the body renders from (`renderInputs`) changes.
+    /// the body renders from (`renderInputs`) changes. The jump buttons
+    /// observe `scrollEngine.chrome` on their own (ChatJumpControls).
     @StateObject private var scrollEngine = ChatScrollEngine()
     /// Not observable on purpose: one stable instance rows read when built
     /// and write when tapped (see ChatRowDisclosure).
@@ -54,9 +55,6 @@ struct ChatView: View {
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
-
-    /// Single source of follow-latest truth: the engine's mode.
-    private var followsLatest: Bool { viewportInputs.isFollowingLatest }
 
     private var activeScrollSessionKey: ChatScrollSessionKey? {
         Self.activeScrollSessionKey(in: appState)
@@ -428,59 +426,15 @@ struct ChatView: View {
             )
         }
         .overlay(alignment: .bottomTrailing) {
-            let pendingClarifyMessageID = appState.pendingClarifyMessageID
-            let hasPendingClarify = pendingClarifyMessageID != nil
-                && viewportInputs.visibilityTrackedMessageID == pendingClarifyMessageID
-                && viewportInputs.isVisibilityTrackedMessageOffscreen
-            // Both actions share this overlay slot; the offscreen pending
-            // question takes priority, and latest reappears when it is visible.
-            if viewportInputs.showsJumpToLatest || hasPendingClarify {
-                Button {
-                    ChatViewportTrace.shared.log(
-                        hasPendingClarify
-                            ? "event explicitPendingClarify (button)"
-                            : "event explicitLatest (button)"
-                    )
-                    if hasPendingClarify, let pendingClarifyMessageID {
-                        scrollEngine.explicitMessageRequested(id: pendingClarifyMessageID)
-                    } else {
-                        requestLatest(animated: true)
-                    }
-                } label: {
-                    if hasPendingClarify {
-                        HStack(spacing: 7) {
-                            Image(systemName: "questionmark.bubble")
-                            Text(AppLocalization.string("Go to your question"))
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .frame(minHeight: 44)
-                    } else {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 44, height: 44)
-                    }
+            ChatJumpControls(
+                chrome: scrollEngine.chrome,
+                pendingClarifyMessageID: appState.pendingClarifyMessageID,
+                jumpToQuestion: { id in scrollEngine.explicitMessageRequested(id: id) },
+                jumpToLatest: { requestLatest(animated: true) },
+                followingChanged: {
+                    scrollEventRouter.saveChatScrollPosition(for: renderedScrollSessionKey)
                 }
-                .conduitGlassControl(
-                    cornerRadius: 22,
-                    tint: (hasPendingClarify ? Color.orange : Color.conduitAccent).opacity(0.14)
-                )
-                .accessibilityLabel(
-                    hasPendingClarify
-                        ? AppLocalization.string("Go to the question that needs your answer")
-                        : AppLocalization.string("Scroll to latest message")
-                )
-                .modifier(OptionalAccessibilityHint(
-                    hint: hasPendingClarify
-                        ? AppLocalization.string("Scrolls to the pending question in the conversation")
-                        : nil
-                ))
-                .padding(.trailing, 18)
-                .padding(.bottom, 14)
-            }
+            )
         }
     }
 
@@ -566,9 +520,6 @@ struct ChatView: View {
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scrollEngine.restorationSystemCancelled()
-            }
-            .onChange(of: followsLatest) { _, _ in
-                scrollEventRouter.saveChatScrollPosition(for: renderedScrollSessionKey)
             }
     }
 
@@ -750,6 +701,78 @@ private final class ChatScrollEventRouter {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { body(proxy) }
+    }
+}
+
+/// The jump-to-latest and go-to-your-question button. It observes the
+/// engine's chrome on its own, so leaving the latest message, or the button
+/// appearing and going, re-renders this button and not the transcript.
+private struct ChatJumpControls: View {
+    @ObservedObject var chrome: ChatScrollChrome
+    let pendingClarifyMessageID: String?
+    let jumpToQuestion: @MainActor (String) -> Void
+    let jumpToLatest: @MainActor () -> Void
+    let followingChanged: @MainActor () -> Void
+
+    var body: some View {
+        let inputs = chrome.inputs
+        let hasPendingClarify = pendingClarifyMessageID != nil
+            && inputs.visibilityTrackedMessageID == pendingClarifyMessageID
+            && inputs.isVisibilityTrackedMessageOffscreen
+        ZStack(alignment: .bottomTrailing) {
+            // Keeps the onChange below in place while no button shows.
+            Color.clear.frame(width: 0, height: 0)
+            // Both actions share this overlay slot; the offscreen pending
+            // question takes priority, and latest reappears when it is visible.
+            if inputs.showsJumpToLatest || hasPendingClarify {
+                Button {
+                    ChatViewportTrace.shared.log(
+                        hasPendingClarify
+                            ? "event explicitPendingClarify (button)"
+                            : "event explicitLatest (button)"
+                    )
+                    if hasPendingClarify, let pendingClarifyMessageID {
+                        jumpToQuestion(pendingClarifyMessageID)
+                    } else {
+                        jumpToLatest()
+                    }
+                } label: {
+                    if hasPendingClarify {
+                        HStack(spacing: 7) {
+                            Image(systemName: "questionmark.bubble")
+                            Text(AppLocalization.string("Go to your question"))
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                    } else {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 44, height: 44)
+                    }
+                }
+                .conduitGlassControl(
+                    cornerRadius: 22,
+                    tint: (hasPendingClarify ? Color.orange : Color.conduitAccent).opacity(0.14)
+                )
+                .accessibilityLabel(
+                    hasPendingClarify
+                        ? AppLocalization.string("Go to the question that needs your answer")
+                        : AppLocalization.string("Scroll to latest message")
+                )
+                .modifier(OptionalAccessibilityHint(
+                    hint: hasPendingClarify
+                        ? AppLocalization.string("Scrolls to the pending question in the conversation")
+                        : nil
+                ))
+                .padding(.trailing, 18)
+                .padding(.bottom, 14)
+            }
+        }
+        .onChange(of: inputs.isFollowingLatest) { _, _ in followingChanged() }
     }
 }
 

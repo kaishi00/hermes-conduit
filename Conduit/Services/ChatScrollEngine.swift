@@ -63,15 +63,28 @@ enum ChatScrollEngineEvent: Equatable {
 /// them changes, so scrolling itself never re-evaluates the chat.
 struct ChatScrollRenderInputs: Equatable {
     var renderedSessionKey: ChatScrollSessionKey?
-    var isFollowingLatest = true
     var renderedScrollScope: ChatRenderedScrollScope?
-    var showsJumpToLatest = false
-    var visibilityTrackedMessageID: String? = nil
-    var isVisibilityTrackedMessageOffscreen = false
     /// The target cache's rendering revision. The scope above carries it
     /// too, but only while a session is rendered; rows without a session
     /// key must still re-run the body when they change.
     var targetsRevision: UInt64 = 0
+}
+
+/// The viewport values the chat's jump buttons render from. They change as
+/// the reader scrolls (a drag leaves the latest message, the jump button
+/// appears a screen up), so they publish on their own object: ChatView
+/// re-running for them re-ran every row in the transcript, a hitch at the
+/// start of each scroll.
+struct ChatScrollChromeInputs: Equatable {
+    var isFollowingLatest = true
+    var showsJumpToLatest = false
+    var visibilityTrackedMessageID: String? = nil
+    var isVisibilityTrackedMessageOffscreen = false
+}
+
+@MainActor
+final class ChatScrollChrome: ObservableObject {
+    @Published fileprivate(set) var inputs = ChatScrollChromeInputs()
 }
 
 /// Owns the chat viewport. Three rules replace the old follow-correction
@@ -157,6 +170,7 @@ final class ChatScrollEngine: ObservableObject {
 
     var onEvent: (@MainActor (ChatScrollEngineEvent) -> Void)?
     @Published private(set) var renderInputs = ChatScrollRenderInputs()
+    let chrome = ChatScrollChrome()
     private var renderInputsPublishScheduled = false
 
     private(set) var mode: Mode = .following
@@ -794,10 +808,10 @@ final class ChatScrollEngine: ObservableObject {
         onEvent?(event)
     }
 
-    /// Publishes `renderInputs` if any of them changed. A change made while
-    /// handling a UIKit callback can land in the middle of a SwiftUI update,
-    /// where publishing is not allowed, so it goes out on the next main-queue
-    /// turn instead (coalesced).
+    /// Publishes `renderInputs` and `chrome` if any of their values changed.
+    /// A change made while handling a UIKit callback can land in the middle
+    /// of a SwiftUI update, where publishing is not allowed, so it goes out
+    /// on the next main-queue turn instead (coalesced).
     private func renderInputsMayHaveChanged() {
         guard isHandlingSurfaceCallback else {
             publishRenderInputs()
@@ -815,15 +829,20 @@ final class ChatScrollEngine: ObservableObject {
     private func publishRenderInputs() {
         let inputs = ChatScrollRenderInputs(
             renderedSessionKey: renderedSessionKey,
-            isFollowingLatest: isFollowingLatest,
             renderedScrollScope: renderedScrollScope,
-            showsJumpToLatest: showsJumpToLatest,
-            visibilityTrackedMessageID: visibilityTrackedMessageID,
-            isVisibilityTrackedMessageOffscreen: isVisibilityTrackedMessageOffscreen,
             targetsRevision: targetCache.renderingRevision
         )
         if inputs != renderInputs {
             renderInputs = inputs
+        }
+        let chromeInputs = ChatScrollChromeInputs(
+            isFollowingLatest: isFollowingLatest,
+            showsJumpToLatest: showsJumpToLatest,
+            visibilityTrackedMessageID: visibilityTrackedMessageID,
+            isVisibilityTrackedMessageOffscreen: isVisibilityTrackedMessageOffscreen
+        )
+        if chromeInputs != chrome.inputs {
+            chrome.inputs = chromeInputs
         }
     }
 

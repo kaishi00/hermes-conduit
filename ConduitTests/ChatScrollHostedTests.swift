@@ -425,10 +425,25 @@ final class ChatScrollHostedTests: XCTestCase {
         }
         mounted.engine.userDragEnded()
         settle(mounted.host.view, seconds: 0.3)
+        XCTAssertTrue(mounted.engine.chrome.inputs.showsJumpToLatest)
 
-        // The jump-to-latest button appearing is the one expected re-run.
-        XCTAssertLessThanOrEqual(TranscriptPerf.chatViewBodyEvaluations - bodiesBefore, 2)
-        XCTAssertTrue(mounted.engine.showsJumpToLatest)
+        // Back down to the latest message, which follows again.
+        mounted.engine.userDragBegan()
+        for step in (0..<20).reversed() {
+            mounted.scrollView.contentOffset.y = step == 0
+                ? maxOffset(mounted.scrollView)
+                : start - CGFloat(step) * 90
+            settle(mounted.host.view, seconds: 0.03)
+        }
+        mounted.engine.userDragEnded()
+        settle(mounted.host.view, seconds: 0.3)
+        XCTAssertTrue(mounted.engine.chrome.inputs.isFollowingLatest)
+        XCTAssertFalse(mounted.engine.chrome.inputs.showsJumpToLatest)
+
+        // Leaving and returning to the latest message, and the jump button
+        // coming and going, re-render only the button: a chat re-render
+        // re-ran every row, a hitch at the start of each scroll.
+        XCTAssertEqual(TranscriptPerf.chatViewBodyEvaluations - bodiesBefore, 0)
     }
 
     func testJumpToLatestReturnsToTheBottomAndFollowsAgain() throws {

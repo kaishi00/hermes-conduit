@@ -947,7 +947,6 @@ enum SelectableTextViewPool {
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
-        guard !SelectableTextViewProbeSwitches.disablesPool else { return nil }
         _ = drainObservers
         return wantsCoordinated ? coordinated.popLast() : plain.popLast()
     }
@@ -978,18 +977,6 @@ enum SelectableTextViewPool {
     static func removeAll() {
         plain.removeAll()
         coordinated.removeAll()
-    }
-}
-
-/// Temporary, removed with the scroll probe: lets its workflow run the chat
-/// scroll tests without the pool.
-enum SelectableTextViewProbeSwitches {
-    static let disablesPool = flag("CONDUIT_PROBE_NO_POOL")
-
-    private static func flag(_ name: String) -> Bool {
-        let isSet = ProcessInfo.processInfo.environment[name] != nil
-        print("SCROLL_PROBE switch \(name)=\(isSet)")
-        return isSet
     }
 }
 

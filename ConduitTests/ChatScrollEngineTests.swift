@@ -1157,46 +1157,46 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 4200, "returning pins the new conversation")
     }
 
-    func testRenderInputsFromUIKitCallbacksPublishOnTheNextTurn() {
+    func testChromeInputsFromUIKitCallbacksPublishOnTheNextTurn() {
         let (engine, surface) = makeEngine()
-        XCTAssertFalse(engine.renderInputs.showsJumpToLatest)
+        XCTAssertFalse(engine.chrome.inputs.showsJumpToLatest)
 
         surface.userScroll(to: 1000)
         XCTAssertTrue(engine.showsJumpToLatest)
         XCTAssertFalse(
-            engine.renderInputs.showsJumpToLatest,
+            engine.chrome.inputs.showsJumpToLatest,
             "a change made inside a UIKit callback must not publish during the SwiftUI update"
         )
 
         drainMainQueue()
-        XCTAssertTrue(engine.renderInputs.showsJumpToLatest)
-        XCTAssertFalse(engine.renderInputs.isFollowingLatest)
+        XCTAssertTrue(engine.chrome.inputs.showsJumpToLatest)
+        XCTAssertFalse(engine.chrome.inputs.isFollowingLatest)
 
         engine.explicitLatestRequested(animated: false)
-        XCTAssertTrue(engine.renderInputs.isFollowingLatest, "a SwiftUI-driven command publishes directly")
+        XCTAssertTrue(engine.chrome.inputs.isFollowingLatest, "a SwiftUI-driven command publishes directly")
     }
 
     func testTrackedMessageVisibilityPublishesOnlyAtViewportTransitions() {
         let (engine, surface) = makeEngine()
         engine.trackMessageVisibility(of: "m5")
-        XCTAssertEqual(engine.renderInputs.visibilityTrackedMessageID, "m5")
-        XCTAssertTrue(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+        XCTAssertEqual(engine.chrome.inputs.visibilityTrackedMessageID, "m5")
+        XCTAssertTrue(engine.chrome.inputs.isVisibilityTrackedMessageOffscreen)
 
         engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 3200, maxY: 3300, order: 5)])
         drainMainQueue()
-        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+        XCTAssertFalse(engine.chrome.inputs.isVisibilityTrackedMessageOffscreen)
 
         surface.userScroll(to: 100)
         drainMainQueue()
-        XCTAssertTrue(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+        XCTAssertTrue(engine.chrome.inputs.isVisibilityTrackedMessageOffscreen)
 
         engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 200, maxY: 400, order: 5)])
         drainMainQueue()
-        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+        XCTAssertFalse(engine.chrome.inputs.isVisibilityTrackedMessageOffscreen)
 
         engine.trackMessageVisibility(of: nil)
-        XCTAssertNil(engine.renderInputs.visibilityTrackedMessageID)
-        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+        XCTAssertNil(engine.chrome.inputs.visibilityTrackedMessageID)
+        XCTAssertFalse(engine.chrome.inputs.isVisibilityTrackedMessageOffscreen)
     }
 
     func testReduceMotionSnapsTheJumpToLatest() {
