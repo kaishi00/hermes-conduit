@@ -113,14 +113,8 @@ struct SelectableTextView: UIViewRepresentable {
 
     /// Exposed for unit tests so the behavior that matters for the feature is
     /// tested directly instead of being inferred from a SwiftUI modifier.
-    ///
-    /// TextKit 1: on the CI simulator, 20 reused blocks set, measured and
-    /// drew in 10.6 ms against 38.4 ms with TextKit 2, which is most of what
-    /// a long answer costs as it scrolls in. Cross-block selection reads the
-    /// TextKit 1 layout manager, which turned a TextKit 2 view into a
-    /// TextKit 1 one anyway.
     static func makeTextView() -> UITextView {
-        let textView = UITextView(usingTextLayoutManager: SelectableTextViewProbeSwitches.usesTextKit2)
+        let textView = UITextView(frame: .zero)
         configureBaseTextView(textView)
         return textView
     }
@@ -359,9 +353,9 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     /// Shared measurement path for `sizeThatFits` and unit tests. Delegates
-    /// to `UITextView.sizeThatFits` at the target width, which drives
-    /// wrapping independent of the text container's stored size, so no
-    /// container mutation is needed.
+    /// to `UITextView.sizeThatFits` at the target width. On iOS 17+
+    /// (TextKit 2) the proposed width drives wrapping independent of the
+    /// text container's stored size, so no container mutation is needed.
     static func measuredWrappingHeight(of textView: UITextView, at width: CGFloat) -> CGFloat {
         TranscriptPerf.note(.textKitMeasurement)
         let measured = textView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
@@ -478,9 +472,7 @@ struct SelectableTextView: UIViewRepresentable {
             return reused
         }
         if needsCoordinatedTextView {
-            let textView = SelectableTextViewProbeSwitches.usesTextKit2
-                ? MarkdownSelectionTextView(frame: .zero)
-                : MarkdownSelectionTextView.makeTextKit1()
+            let textView = MarkdownSelectionTextView(frame: .zero)
             Self.configureBaseTextView(textView)
             return textView
         }
@@ -764,27 +756,9 @@ private final class MarkdownSelectionTextView: UITextView {
     weak var selectionCoordinator: MarkdownSelectionCoordinator?
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
 
-    /// The text view keeps its container, but the container only points at
-    /// its layout manager and the layout manager at the storage, so the
-    /// storage at the root of the stack is held here.
-    private var textKit1Storage: NSTextStorage?
-
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         addGestureRecognizer(MarkdownSelectionObserverGestureRecognizer(observedTextView: self))
-    }
-
-    /// A TextKit 1 view, as `SelectableTextView.makeTextView()` makes.
-    static func makeTextKit1() -> MarkdownSelectionTextView {
-        let storage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        storage.addLayoutManager(layoutManager)
-        let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = true
-        layoutManager.addTextContainer(container)
-        let textView = MarkdownSelectionTextView(frame: .zero, textContainer: container)
-        textView.textKit1Storage = storage
-        return textView
     }
 
     @available(*, unavailable)
@@ -1008,11 +982,9 @@ enum SelectableTextViewPool {
 }
 
 /// Temporary, removed with the scroll probe: lets its workflow run the chat
-/// scroll tests without the pool or with TextKit 2.
+/// scroll tests without the pool.
 enum SelectableTextViewProbeSwitches {
     static let disablesPool = flag("CONDUIT_PROBE_NO_POOL")
-    static let usesTextKit2 = flag("CONDUIT_PROBE_TK2")
-    static let framesTextView = flag("CONDUIT_PROBE_FRAME_HOST")
 
     private static func flag(_ name: String) -> Bool {
         let isSet = ProcessInfo.processInfo.environment[name] != nil
@@ -1059,24 +1031,8 @@ final class SelectableTextViewHostView: UIView {
         (mountedTextView as? MarkdownSelectionTextView)?.selectionObserverForTesting
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        if SelectableTextViewProbeSwitches.framesTextView { mountedTextView.frame = bounds }
-    }
-
-    override var intrinsicContentSize: CGSize {
-        SelectableTextViewProbeSwitches.framesTextView
-            ? mountedTextView.intrinsicContentSize
-            : super.intrinsicContentSize
-    }
-
     private func embedMountedTextView() {
         addSubview(mountedTextView)
-        if SelectableTextViewProbeSwitches.framesTextView {
-            mountedTextView.translatesAutoresizingMaskIntoConstraints = true
-            mountedTextView.frame = bounds
-            return
-        }
         mountedTextView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             mountedTextView.leadingAnchor.constraint(equalTo: leadingAnchor),

@@ -83,14 +83,14 @@ jobs:
               > "probe-$name.log" 2>&1 || echo "probe $name exited $?"
           }
           # Each run is its own process, so none warms another's caches.
-          run_probe frames TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame
-          run_probe frames-framehost TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame TEST_RUNNER_CONDUIT_PROBE_FRAME_HOST=1
-          run_probe frames-tk2 TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame TEST_RUNNER_CONDUIT_PROBE_TK2=1
+          # Alternated, so a slow stretch on the runner doesn't land on one side.
+          frames=TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame
+          run_probe pool-1 "$frames"
+          run_probe nopool-1 "$frames" TEST_RUNNER_CONDUIT_PROBE_NO_POOL=1
+          run_probe pool-2 "$frames"
+          run_probe nopool-2 "$frames" TEST_RUNNER_CONDUIT_PROBE_NO_POOL=1
           run_probe hosted ChatScrollHostedTests
-          run_probe hosted-nopool ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_NO_POOL=1
-          run_probe hosted-tk2 ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_TK2=1
-          run_probe hosted-framehost ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_FRAME_HOST=1
-          for name in frames frames-framehost frames-tk2 hosted hosted-nopool hosted-tk2 hosted-framehost; do
+          for name in pool-1 nopool-1 pool-2 nopool-2 hosted; do
             echo "===== $name"
             # Three slowest frames per phase; the stacks only when asked for.
             grep -E "SCROLL_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" \
