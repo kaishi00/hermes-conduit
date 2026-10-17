@@ -42,9 +42,10 @@ probe)
   run_probe nolist-1 TEST_RUNNER_PROBE_CONFIG=nolist
   run_probe gated-2 TEST_RUNNER_PROBE_CONFIG=gated
   run_probe nolist-2 TEST_RUNNER_PROBE_CONFIG=nolist
-  for name in gated-1 nolist-1 gated-2 nolist-2; do
+  run_probe stacks TEST_RUNNER_PROBE_CONFIG=gated TEST_RUNNER_PROBE_STACKS=1
+  for name in gated-1 nolist-1 gated-2 nolist-2 stacks; do
     echo "===== $name"
-    grep -E "PUBLISH_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 30 "probe-$name.log"
+    grep -E "PUBLISH_PROBE|SCROLL_PROBE stacks|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 30 "probe-$name.log"
     awk '/: error: /{p=1} p{print; n++} n>=30{exit}' "probe-$name.log"
   done > probe-summary.txt
   cat probe-summary.txt
