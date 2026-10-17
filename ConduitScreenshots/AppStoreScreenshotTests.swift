@@ -46,7 +46,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         serverField.tap()
         serverField.typeText(demoURL ?? "")
         snap("debug-login-address")
-        app.buttons["login.connect"].tap()
+        // Return submits the address. Tapping Continue under the keyboard
+        // can land on the keyboard toolbar's Done instead.
+        serverField.typeText("\n")
 
         let username = app.textFields["login.username"]
         if !username.waitForExistence(timeout: 30) {
@@ -62,8 +64,8 @@ final class AppStoreScreenshotTests: XCTestCase {
         username.typeText(demoUser)
         let password = app.secureTextFields["login.password"]
         password.tap()
-        password.typeText(demoPassword)
-        app.buttons["login.sign-in"].tap()
+        password.typeText(demoPassword + "\n")
+        snap("debug-after-sign-in")
         dismissSystemAlerts()
     }
 
