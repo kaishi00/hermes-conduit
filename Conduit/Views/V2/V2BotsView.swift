@@ -23,7 +23,7 @@ struct V2BotsView: View {
         ZStack {
             V2Backdrop(isTabRoot: true)
             BotRosterView(createRequest: $createRequest)
-                .opacity(shell.contentFaded ? 0 : 1)
+                .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
             HStack(spacing: 10) {

@@ -955,7 +955,7 @@ private struct SettingsHome: View {
             // back in with the new profile's settings, from the top, as the
             // other tabs do; the bar stays put.
             .id(snapshot.id)
-            .opacity(shell.contentFaded ? 0 : 1)
+            .v2ProfileSwitchContent()
         }
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()

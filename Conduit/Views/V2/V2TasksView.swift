@@ -15,6 +15,8 @@ struct V2TasksView: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("conduit.v2.tasksSegment") private var segmentRaw = Segment.board.rawValue
+    /// How far a page slides: the pages' own width.
+    @State private var pageWidth: CGFloat = 0
 
     enum Segment: String, Hashable {
         case board
@@ -28,29 +30,32 @@ struct V2TasksView: View {
         )
     }
 
-    /// Under Reduce Motion the pages only crossfade.
-    private func pageTransition(from edge: Edge) -> AnyTransition {
-        reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
-    }
-
     var body: some View {
+        let selected = segment.wrappedValue
         ZStack {
             V2Backdrop()
+            // Both pages stay laid out full size, Board left of Scheduled as
+            // in the control, and slide side by side: a switch moves two
+            // layers instead of building the other page again, and the Board
+            // keeps its scroll position. The page out of sight stops loading
+            // (`isTabActive`), takes no touches and is hidden from
+            // VoiceOver.
             ZStack {
-                // Board sits left of Scheduled, as in the control: each
-                // slides in from its own side.
-                switch segment.wrappedValue {
-                case .board:
+                page(.board, selected: selected) {
                     KanbanView(columnsLayout: true)
                         .padding(.horizontal, 14)
-                        .transition(pageTransition(from: .leading))
-                case .scheduled:
+                }
+                page(.scheduled, selected: selected) {
                     V2ScheduledList()
-                        .transition(pageTransition(from: .trailing))
                 }
             }
-            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: segmentRaw)
-            .opacity(shell.contentFaded ? 0 : 1)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selected)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                pageWidth = width
+            }
+            .v2ProfileSwitchContent()
         }
         // The control rides in the header, so the pages scroll under one
         // soft edge, as a chat does under its header, instead of stopping
@@ -75,6 +80,25 @@ struct V2TasksView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.tasks.title)
+    }
+
+    /// Under Reduce Motion the pages only crossfade.
+    private func page<Content: View>(
+        _ page: Segment,
+        selected: Segment,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let isShown = page == selected
+        // -1 left of the shown page, 1 right of it.
+        let side: CGFloat = isShown ? 0 : (page == .board ? -1 : 1)
+        // Until the width is known the other page hides instead.
+        let slides = !reduceMotion && pageWidth > 0
+        return content()
+            .transformEnvironment(\.v2Shell) { $0.isTabActive = $0.isTabActive && isShown }
+            .offset(x: slides ? side * pageWidth : 0)
+            .opacity(isShown || slides ? 1 : 0)
+            .allowsHitTesting(isShown)
+            .accessibilityHidden(!isShown)
     }
 }
 

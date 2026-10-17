@@ -75,8 +75,8 @@ enum V2Route: Hashable {
     }
 }
 
-/// What the shell hands its tabs: the profile switch (with its fade) and
-/// whether content is faded out for one.
+/// What the shell hands its tabs: the profile switch (with its slide) and
+/// where content stands in one.
 ///
 /// Equal when the values are: the shell rebuilds `pickProfile` on every
 /// render, and a closure never compares equal, so without this every
@@ -87,6 +87,10 @@ enum V2Route: Hashable {
 struct V2ShellContext: Equatable {
     struct Values: Equatable {
         var contentFaded = false
+        /// How far content sits off center during a profile switch: it
+        /// leaves toward one side and the new profile's arrives from the
+        /// other, following the strip (`V2ProfileSwitchContent`).
+        var contentShift: CGFloat = 0
         /// False while this tab sits hidden behind the selected one (the
         /// capsule bar keeps visited tabs alive), so its polling can stop.
         var isTabActive = true
@@ -101,6 +105,11 @@ struct V2ShellContext: Equatable {
     var contentFaded: Bool {
         get { values.contentFaded }
         set { values.contentFaded = newValue }
+    }
+
+    var contentShift: CGFloat {
+        get { values.contentShift }
+        set { values.contentShift = newValue }
     }
 
     var isTabActive: Bool {
@@ -142,6 +151,7 @@ struct V2Shell: View {
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
     @State private var contentFaded = false
+    @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
@@ -185,7 +195,7 @@ struct V2Shell: View {
 
     var body: some View {
         tabs
-            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, values: .init(contentFaded: contentFaded)))
+            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, values: .init(contentFaded: contentFaded, contentShift: contentShift)))
             .onChange(of: conversationVisible, initial: true) { _, visible in
                 // Covered means streaming rows needn't redraw and the chat
                 // doesn't count as seen (AppState.showSidebar).
@@ -433,26 +443,67 @@ struct V2Shell: View {
 
     // MARK: - Profile switching
 
-    /// Content fades out, the profile switches, and content fades back with
-    /// the new profile's sessions (and the backdrop glow in its color).
+    /// Content slides out toward the side the picked profile isn't on (a
+    /// profile to the right in the strip pushes content left, like turning a
+    /// page), the profile switches, and the new profile's sessions slide in
+    /// from the other side (with the backdrop glow in its color). Under
+    /// Reduce Motion it only fades.
     private func pickProfile(_ profile: String) {
         guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
         Haptics.medium()
         profileSwitchToken &+= 1
         let token = profileSwitchToken
-        withAnimation(ConduitMotion.fadeOut) { contentFaded = true }
+        let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)
+        withAnimation(ConduitMotion.fadeOut) {
+            contentFaded = true
+            contentShift = -distance
+        }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(170))
             guard token == profileSwitchToken else { return }
+            // Out of sight, content moves to the side it arrives from.
+            withTransaction(Transaction(animation: nil)) { contentShift = distance }
             await appState.switchProfile(to: profile)
             guard token == profileSwitchToken else { return }
             fadeContentBackIn()
         }
     }
 
+    private static let profileSwitchDistance: CGFloat = 44
+
+    /// 1 when the picked profile sits right of the current one in the strip,
+    /// -1 when left.
+    private func profileSwitchDirection(to profile: String) -> CGFloat {
+        let profiles = appState.profiles
+        guard let from = profiles.firstIndex(of: appState.activeProfile),
+              let to = profiles.firstIndex(of: profile) else { return 1 }
+        return to < from ? -1 : 1
+    }
+
     private func fadeContentBackIn() {
         guard contentFaded else { return }
-        withAnimation(ConduitMotion.settle) { contentFaded = false }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            contentFaded = false
+            contentShift = 0
+        }
+    }
+}
+
+/// A tab's content during a profile switch: faded and shifted as the shell
+/// says. Offset and opacity only, so the move costs no layout.
+struct V2ProfileSwitchContent: ViewModifier {
+    @Environment(\.v2Shell) private var shell
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shell.contentFaded ? 0 : 1)
+            .offset(x: shell.contentShift)
+    }
+}
+
+extension View {
+    func v2ProfileSwitchContent() -> some View {
+        modifier(V2ProfileSwitchContent())
     }
 }
 

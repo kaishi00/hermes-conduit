@@ -296,40 +296,50 @@ struct V2Backdrop: View {
 }
 
 /// A sliding two-way glass segmented control (Tasks: Board | Scheduled).
+///
+/// The highlight is one capsule that slides to the selected segment, keyed
+/// on the selection itself rather than on the tap's transaction, so it moves
+/// even when the selection is stored somewhere that drops the transaction
+/// (an `@AppStorage` write does).
 struct V2SegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var highlight
+
+    private var selectedIndex: Int {
+        options.firstIndex { $0.value == selection } ?? 0
+    }
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
-                let isSelected = option.value == selection
+                let isSelected = index == selectedIndex
                 Button {
-                    withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
-                        selection = option.value
-                    }
+                    selection = option.value
                 } label: {
                     Text(option.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, minHeight: 36)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.10))
-                                    .matchedGeometryEffect(id: "segment", in: highlight)
-                            }
-                        }
                         .contentShape(Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
             }
         }
+        .background(alignment: .leading) {
+            GeometryReader { proxy in
+                let count = CGFloat(max(options.count, 1))
+                let width = (proxy.size.width - 2 * (count - 1)) / count
+                Capsule()
+                    .fill(Color.primary.opacity(0.10))
+                    .frame(width: width)
+                    .offset(x: CGFloat(selectedIndex) * (width + 2))
+            }
+        }
+        .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: selectedIndex)
         .padding(3)
         .conduitGlassControl(cornerRadius: 21, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)

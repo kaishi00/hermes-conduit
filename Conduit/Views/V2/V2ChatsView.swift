@@ -283,17 +283,29 @@ struct V2ChatsView: View {
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filterRaw = newSelection.rawValue }
     }
 
+    /// Under Reduce Motion the lists only crossfade.
+    private func presentationTransition(from edge: Edge) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
+    }
+
     var body: some View {
         ZStack {
             V2Backdrop(isTabRoot: true)
-            Group {
+            // Projects sits behind the folder button on the right, so it
+            // slides in from the trailing side and Sessions comes back from
+            // the leading one. Keyed on the stored value: the tap's
+            // `withAnimation` never animated this `@AppStorage` change.
+            ZStack {
                 if showingProjects {
                     projectsList
+                        .transition(presentationTransition(from: .trailing))
                 } else {
                     sessionsList
+                        .transition(presentationTransition(from: .leading))
                 }
             }
-            .opacity(shell.contentFaded ? 0 : 1)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+            .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
             V2TopBar { trailingControls }
@@ -384,9 +396,7 @@ struct V2ChatsView: View {
         V2ControlCapsule {
             Button {
                 Haptics.selection()
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                    sessionPresentationRaw = showingProjects ? "sessions" : "projects"
-                }
+                sessionPresentationRaw = showingProjects ? "sessions" : "projects"
             } label: {
                 V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
             }
