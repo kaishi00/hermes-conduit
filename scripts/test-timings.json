@@ -28,6 +28,7 @@
     "ConnectionSetupTestConnectionUITests": 333.0,
     "ConnectionSetupUITests": 215.9,
     "ConnectionURLPolicyOriginTests": 0.072,
+    "CronScheduleTextTests": 1.0,
     "CrossProfilePresentationCacheTests": 1.563,
     "CustomHeadersTests": 0.05,
     "DashboardCookieClearingTests": 0.663,

@@ -313,7 +313,7 @@ struct V2ScheduledList: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
-                    Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
+                    Text(CronScheduleText.describe(job, zoneLabel: scheduleZoneLabel) ?? AppLocalization.string("No schedule"))
                         .font(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
@@ -401,37 +401,20 @@ struct V2ScheduledList: View {
         }
     }
 
-    /// "Next run in 3 hours", the job's state when it won't run again.
+    /// The profile zone Hermes runs schedules in, when it isn't this
+    /// iPhone's (a schedule's times are that zone's wall clock).
+    private var scheduleZoneLabel: String? {
+        ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)
+    }
+
+    /// "Next run in 3 hours" or "Next run Monday 8:00 AM", the job's state
+    /// when it won't run again.
     private func nextRunLine(_ job: CronJob) -> String {
         guard job.isActive else { return job.statusLabel }
         guard let raw = job.nextRunAt, !raw.isEmpty else { return job.statusLabel }
-        guard let date = Self.parseDate(raw) else {
+        guard let date = CronScheduleText.parseDate(raw) else {
             return AppLocalization.string("Next run \(raw)")
         }
-        let formatter = Self.relativeFormatter
-        formatter.locale = AppLocalization.formattingLocale
-        return AppLocalization.string("Next run \(formatter.localizedString(for: date, relativeTo: Date()))")
-    }
-
-    // Shared per list; rows read them on the main actor only.
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter
-    }()
-
-    private static let fractionalISOFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let plainISOFormatter = ISO8601DateFormatter()
-
-    private static func parseDate(_ raw: String) -> Date? {
-        if let date = fractionalISOFormatter.date(from: raw) { return date }
-        if let date = plainISOFormatter.date(from: raw) { return date }
-        if let seconds = Double(raw) { return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds) }
-        return nil
+        return AppLocalization.string("Next run \(CronScheduleText.runTimeText(date))")
     }
 }

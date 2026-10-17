@@ -1148,6 +1148,9 @@ final class AppState: ObservableObject {
     private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
+    /// The profile's `timezone` config value ("" = the server's local time)
+    /// and the profile it was read for. Hermes runs cron schedules in it.
+    @Published private(set) var profileTimeZoneSetting: (profile: String, value: String)?
     /// The running turn's live reply text and thinking card. They publish on
     /// their own object, never on AppState: while a turn streams they change
     /// 20 to 30 times a second, and an AppState publish re-renders every view
@@ -25431,6 +25434,7 @@ final class AppState: ObservableObject {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
+            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: display["show_reasoning"] as? Bool ?? true,
                 showToolProgress: display["tool_progress"] as? String != "off",
@@ -25439,7 +25443,14 @@ final class AppState: ObservableObject {
         } catch {
             guard profile == activeProfile else { return }
             displayPreferences = ProfileDisplayPreferences()
+            profileTimeZoneSetting = nil
         }
+    }
+
+    /// The active profile's `timezone` value, when Conduit has read it.
+    var activeProfileTimeZoneSetting: String? {
+        guard let setting = profileTimeZoneSetting, profilesMatch(setting.profile, activeProfile) else { return nil }
+        return setting.value
     }
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
@@ -25644,6 +25655,9 @@ final class AppState: ObservableObject {
             }
             try await updateProfileConfig(profile: profile) { [weak self] config in
                 self?.setProfileSettingValue(value, in: &config, key: key)
+            }
+            if key == ProfileTimeZone.configKey, let zone = value.textValue {
+                profileTimeZoneSetting = (profile, zone)
             }
             if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
                 // Mirror the saved profile mode immediately and re-resolve the
