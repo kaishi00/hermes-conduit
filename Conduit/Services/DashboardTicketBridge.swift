@@ -399,9 +399,14 @@ final class DashboardTicketBridge: NSObject {
     /// exists — decides which dashboard's scoped cookie mirror is restored
     /// into the WebKit store on load.
     let dashboardID: UUID?
-    /// Bearer-backed session for Hermes' native PKCE flow. The bridge keeps
-    /// one interface for callers while cookie/password mode stays intact.
-    private(set) var nativeOAuthSession: NativeOAuthSession?
+    /// What authorizes this dashboard's requests: in native mode it holds
+    /// the bearer-backed session for Hermes' native PKCE flow, and every
+    /// dashboard WebSocket upgrade is authorized through it. The bridge
+    /// keeps one interface for callers while cookie/password mode stays
+    /// intact.
+    let requestAuthorizer: DashboardRequestAuthorizer
+    /// Read-only outside the bridge (file downloads sign with it too).
+    var nativeOAuthSession: NativeOAuthSession? { requestAuthorizer.nativeSession }
     /// AppState includes the authentication transport in its bridge-reuse
     /// identity. A same-URL login that changes cookie ↔ bearer mode must
     /// replace this bridge rather than retaining its in-memory session.
@@ -475,6 +480,7 @@ final class DashboardTicketBridge: NSObject {
         baseURL: String,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
         dashboardID: UUID? = nil,
+        requestAuthorizer: DashboardRequestAuthorizer? = nil,
         pendingRequests: DashboardTicketBridgePendingRequests = DashboardTicketBridgePendingRequests(),
         readinessPollAttempts: Int = 30,
         readinessPollInterval: Duration = .milliseconds(100),
@@ -486,8 +492,21 @@ final class DashboardTicketBridge: NSObject {
         self.extraHeaders = CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: normalizedBaseURL))
         let resolvedDashboardID = dashboardID ?? SavedDashboardRegistryStore.load()?.dashboardID(atNormalizedURL: normalizedBaseURL)
         self.dashboardID = resolvedDashboardID
-        self.nativeOAuthSession = resolvedDashboardID.flatMap {
-            NativeOAuthSession(baseURL: normalizedBaseURL, dashboardID: $0, cloudflareAccess: cloudflareAccess)
+        // AppState builds the authorizer with the other saved dashboards in
+        // view; one built for another address, dashboard or token is never
+        // adopted.
+        if let requestAuthorizer,
+           !requestAuthorizer.isInvalidated,
+           requestAuthorizer.baseURL == normalizedBaseURL,
+           requestAuthorizer.dashboardID == resolvedDashboardID,
+           requestAuthorizer.cloudflareAccess == cloudflareAccess {
+            self.requestAuthorizer = requestAuthorizer
+        } else {
+            self.requestAuthorizer = .forDashboard(
+                baseURL: normalizedBaseURL,
+                dashboardID: resolvedDashboardID,
+                cloudflareAccess: cloudflareAccess
+            )
         }
         self.pendingRequests = pendingRequests
         // A negative count would build an invalid Range in the polling loops.
@@ -516,6 +535,13 @@ final class DashboardTicketBridge: NSObject {
         super.init()
         configuration.userContentController.add(WeakScriptMessageHandler(self), name: "dashboard-response")
         webView.navigationDelegate = self
+        self.requestAuthorizer.cookieTicketMinter = { [weak self] in
+            guard let self else { throw DashboardTicketBridgeError.notReady }
+            return try await self.mintCookieTicket()
+        }
+        self.requestAuthorizer.cookieUpgradeCookies = { [weak self] in
+            await self?.cookiesForRequestsWithoutPage() ?? []
+        }
         if nativeOAuthSession != nil {
             isReady = true
             return
@@ -550,8 +576,7 @@ final class DashboardTicketBridge: NSObject {
         guard !isInvalidated else { return }
         isInvalidated = true
         isReady = false
-        nativeOAuthSession?.invalidate()
-        nativeOAuthSession = nil
+        requestAuthorizer.invalidate()
         // A torn-down bridge must report plain unreadiness: leaving a stale
         // login verdict would surface .signInRequired (with its session
         // recovery) from an invalidated instance.
@@ -620,11 +645,17 @@ final class DashboardTicketBridge: NSObject {
         }
     }
 
+    /// A fresh single-use WebSocket ticket. In native mode the authorizer
+    /// mints it with the access token and remembers which bearer must go
+    /// with it on the upgrade.
     func mintTicket() async throws -> String {
-        if let nativeOAuthSession {
-            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
-            return try await nativeOAuthSession.mintTicket()
-        }
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        return try await requestAuthorizer.mintTicket()
+    }
+
+    /// Cookie mode's ticket: through the dashboard page, or natively with the
+    /// page's cookies while the page cannot run.
+    private func mintCookieTicket() async throws -> String {
         if !webViewCanRun() {
             let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
             guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {

@@ -1,0 +1,261 @@
+//
+//  DashboardRequestAuthorizerTests.swift
+//  ConduitTests
+//
+//  The selected dashboard's request authorization: its session cookies go
+//  only to its own origin and base path, never to another saved dashboard
+//  (even on the same origin), an identity provider or an external service;
+//  a cookie-mode upgrade carries the dashboard's own session cookies a
+//  browser would send to that address, and a native-mode upgrade carries
+//  none. Synthetic hosts only.
+//
+
+import Foundation
+import XCTest
+@testable import Conduit
+
+@MainActor
+final class DashboardRequestAuthorizerTests: XCTestCase {
+    private var backend: InMemoryKeychainBackend!
+
+    override func setUp() {
+        super.setUp()
+        backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+    }
+
+    override func tearDown() {
+        KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
+        backend = nil
+        super.tearDown()
+    }
+
+    private func cookieAuthorizer(
+        _ baseURL: String,
+        others: [String] = []
+    ) -> DashboardRequestAuthorizer {
+        DashboardRequestAuthorizer(
+            baseURL: baseURL,
+            dashboardID: UUID(),
+            cloudflareAccess: nil,
+            nativeSession: nil,
+            otherDashboardURLs: { others }
+        )
+    }
+
+    private func nativeAuthorizer(
+        _ baseURL: String,
+        access: String = "access-selected",
+        others: [String] = []
+    ) -> DashboardRequestAuthorizer {
+        let id = UUID()
+        let session = NativeOAuthSession(
+            tokens: DashboardSocketFixture.tokens(access: access),
+            dashboardID: id,
+            client: NativeOAuthAPIClient(baseURL: baseURL)
+        )
+        let authorizer = DashboardRequestAuthorizer(
+            baseURL: baseURL,
+            dashboardID: id,
+            cloudflareAccess: nil,
+            nativeSession: session,
+            otherDashboardURLs: { others }
+        )
+        addTeardownBlock { @MainActor in authorizer.invalidate() }
+        return authorizer
+    }
+
+    private func url(_ string: String) -> URL { URL(string: string)! }
+
+    // MARK: - Origin gate
+
+    func testSecureWebSocketMatchesItsHTTPSDashboardOnly() {
+        let authorizer = cookieAuthorizer("https://dashboard.example.test")
+        XCTAssertTrue(authorizer.covers(url("wss://dashboard.example.test/api/ws?ticket=t")))
+        XCTAssertTrue(authorizer.covers(url("wss://DASHBOARD.example.test:443/api/ws")), "Host case and the default port are the same origin")
+        XCTAssertFalse(authorizer.covers(url("ws://dashboard.example.test/api/ws")), "Cleartext is another origin")
+        XCTAssertFalse(authorizer.covers(url("wss://dashboard.example.test:8443/api/ws")), "Another port is another origin")
+        XCTAssertFalse(authorizer.covers(url("wss://sibling.example.test/api/ws")), "A sibling host under the same parent domain")
+        XCTAssertFalse(authorizer.covers(url("wss://example.test/api/ws")), "The parent domain")
+        XCTAssertFalse(authorizer.covers(url("https://sso.example.test/authorize")), "An identity provider")
+        XCTAssertFalse(authorizer.covers(url("wss://voice-provider.example.test/live")), "An external voice provider")
+        XCTAssertFalse(authorizer.covers(url("wss://user:pass@dashboard.example.test/api/ws")), "Userinfo is refused")
+        XCTAssertFalse(authorizer.covers(url("ftp://dashboard.example.test/api/ws")))
+    }
+
+    func testPlainLoopbackWebSocketMatchesItsHTTPDashboard() {
+        let authorizer = cookieAuthorizer("http://127.0.0.1:9119")
+        XCTAssertTrue(authorizer.covers(url("ws://127.0.0.1:9119/api/ws")))
+        XCTAssertFalse(authorizer.covers(url("wss://127.0.0.1:9119/api/ws")))
+        XCTAssertFalse(authorizer.covers(url("ws://localhost:9119/api/ws")), "localhost is another origin than 127.0.0.1")
+    }
+
+    func testBasePathIsRespectedOnSegmentBoundaries() {
+        let authorizer = cookieAuthorizer("https://dashboard.example.test/team/hermes/")
+        XCTAssertTrue(authorizer.covers(url("wss://dashboard.example.test/team/hermes/api/ws")))
+        XCTAssertTrue(authorizer.covers(url("wss://dashboard.example.test/team/hermes")))
+        XCTAssertFalse(authorizer.covers(url("wss://dashboard.example.test/api/ws")), "Outside the base path")
+        XCTAssertFalse(authorizer.covers(url("wss://dashboard.example.test/team/hermes-other/api/ws")), "A prefix that is not a segment")
+    }
+
+    func testAnotherSavedDashboardUnderTheSameOriginIsNeverCovered() {
+        let authorizer = cookieAuthorizer(
+            "https://dashboard.example.test",
+            others: ["https://dashboard.example.test/team", "https://elsewhere.example.test"]
+        )
+        XCTAssertTrue(authorizer.covers(url("wss://dashboard.example.test/api/ws")))
+        XCTAssertFalse(authorizer.covers(url("wss://dashboard.example.test/team/api/ws")),
+                       "The more specific saved dashboard owns its own base path")
+        XCTAssertTrue(authorizer.covers(url("wss://dashboard.example.test/teammate/api/ws")))
+
+        // The sibling's own authorizer covers its path, and not the root's.
+        let sibling = cookieAuthorizer("https://dashboard.example.test/team", others: ["https://dashboard.example.test"])
+        XCTAssertTrue(sibling.covers(url("wss://dashboard.example.test/team/api/ws")))
+        XCTAssertFalse(sibling.covers(url("wss://dashboard.example.test/api/ws")))
+    }
+
+    func testAppStateBuildsTheAuthorizerWithTheOtherSavedDashboards() throws {
+        let root = SavedDashboard(id: UUID(), label: "Root", normalizedURL: "https://dashboard.example.test")
+        let team = SavedDashboard(id: UUID(), label: "Team", normalizedURL: "https://dashboard.example.test/team")
+        let suite = "DashboardRequestAuthorizerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: root.id, dashboards: [root, team]),
+            clearSessionPresentationCache: {}
+        )
+        appState.prepareDashboardBridge(for: root.normalizedURL)
+        let bridge = try XCTUnwrap(appState.dashboardTicketBridge)
+        defer { bridge.invalidate() }
+        XCTAssertEqual(bridge.requestAuthorizer.dashboardID, root.id)
+        XCTAssertTrue(bridge.requestAuthorizer.covers(url("wss://dashboard.example.test/api/ws")))
+        XCTAssertFalse(bridge.requestAuthorizer.covers(url("wss://dashboard.example.test/team/api/ws")))
+    }
+
+    // MARK: - Native upgrades
+
+    func testNativeUpgradeKeepsItsTicketAndProxyHeadersAndCarriesNoCookie() async throws {
+        let fixture = try DashboardSocketFixture()
+        defer { fixture.stop() }
+        let authorizer = nativeAuthorizer(fixture.baseURL)
+        var asked = 0
+        authorizer.cookieUpgradeCookies = { asked += 1; return [] }
+
+        let ticket = try await authorizer.mintTicket()
+        var request = URLRequest(url: try ConnectionURLPolicy.webSocketURL(
+            baseURL: fixture.baseURL,
+            path: "/api/ws",
+            queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+        ))
+        request.setValue("ambient=1", forHTTPHeaderField: "Cookie")
+        request.setValue("kept", forHTTPHeaderField: "X-Proxy-Header")
+
+        let authorized = try await authorizer.authorizeUpgrade(request)
+
+        XCTAssertEqual(fixture.mintCount, 1, "The ticket is minted with the native grant")
+        XCTAssertEqual(authorized.url, request.url)
+        XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"))
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "X-Proxy-Header"), "kept")
+        XCTAssertEqual(asked, 0, "A native sign-in has no session cookies to send")
+    }
+
+    private func cookie(
+        _ name: String,
+        domain: String,
+        path: String = "/",
+        secure: Bool = true,
+        expires: Date? = nil
+    ) -> HTTPCookie {
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: name, .value: "\(name)-value", .domain: domain, .path: path,
+        ]
+        if secure { properties[.secure] = "TRUE" }
+        if let expires { properties[.expires] = expires }
+        return HTTPCookie(properties: properties)!
+    }
+
+    func testCookieModeKeepsTheTicketAndProxyHeadersAndAddsNoBearer() async throws {
+        let authorizer = cookieAuthorizer("https://dashboard.example.test")
+        var request = URLRequest(url: url("wss://dashboard.example.test/api/ws?ticket=cookie-ticket"))
+        request.setValue("value", forHTTPHeaderField: "CF-Access-Client-Id")
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(authorized.url, request.url)
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "CF-Access-Client-Id"), "value")
+        XCTAssertNil(authorized.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"))
+    }
+
+    /// An auth proxy in front of the dashboard (here a parent-domain,
+    /// Secure, oauth2-proxy-style session) admits the upgrade only with its
+    /// cookie: the socket carries what the dashboard's page would send.
+    func testCookieModeUpgradeCarriesTheDashboardsProxySessionCookie() async throws {
+        let authorizer = cookieAuthorizer("https://dashboard.example.test")
+        authorizer.cookieUpgradeCookies = { [self] in
+            [
+                cookie("_proxy_session", domain: ".example.test"),
+                cookie("dashboard_session", domain: "dashboard.example.test"),
+                cookie("sibling_only", domain: "other.example.test"),
+                cookie("expired", domain: "dashboard.example.test", expires: Date(timeIntervalSinceNow: -60)),
+                cookie("elsewhere", domain: "dashboard.example.test", path: "/other"),
+            ]
+        }
+        var request = URLRequest(url: url("wss://dashboard.example.test/api/ws?ticket=cookie-ticket"))
+        request.setValue("stale=1", forHTTPHeaderField: "Cookie")
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        let sent = Set((authorized.value(forHTTPHeaderField: "Cookie") ?? "").components(separatedBy: "; "))
+        XCTAssertEqual(sent, ["_proxy_session=_proxy_session-value", "dashboard_session=dashboard_session-value"])
+        XCTAssertEqual(authorized.url, request.url)
+    }
+
+    func testCookieModeSendsNoCookieToAnotherAddress() async throws {
+        let authorizer = cookieAuthorizer("https://dashboard.example.test/team", others: ["https://dashboard.example.test/team/ops"])
+        var asked = 0
+        authorizer.cookieUpgradeCookies = { [self] in
+            asked += 1
+            return [cookie("_proxy_session", domain: ".example.test")]
+        }
+        for address in [
+            "wss://other.example.test/api/ws?ticket=t",
+            "wss://dashboard.example.test/api/ws?ticket=t",
+            "wss://dashboard.example.test/team/ops/api/ws?ticket=t",
+        ] {
+            var request = URLRequest(url: url(address))
+            request.setValue("stale=1", forHTTPHeaderField: "Cookie")
+            let authorized = try await authorizer.authorizeUpgrade(request)
+            XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"), address)
+        }
+        XCTAssertEqual(asked, 0)
+    }
+
+    func testSecureCookieGoesOnlyOverASecureScheme() {
+        let secure = cookie("s", domain: "127.0.0.1")
+        let plain = cookie("p", domain: "127.0.0.1", secure: false)
+        XCTAssertEqual(DashboardRequestAuthorizer.cookieHeader(for: [secure, plain], url: url("ws://127.0.0.1:9119/api/ws")), "p=p-value")
+        XCTAssertNil(DashboardRequestAuthorizer.cookieHeader(for: [secure], url: url("http://127.0.0.1:9119/api/ws")))
+        XCTAssertNotNil(DashboardRequestAuthorizer.cookieHeader(for: [secure], url: url("wss://127.0.0.1/api/ws")))
+    }
+
+    func testHostOnlyCookieIsNotSentToASubdomain() {
+        let hostOnly = cookie("h", domain: "example.test")
+        XCTAssertNil(DashboardRequestAuthorizer.cookieHeader(for: [hostOnly], url: url("wss://dashboard.example.test/api/ws")))
+        XCTAssertNil(DashboardRequestAuthorizer.cookieHeader(
+            for: [cookie("d", domain: ".example.test")], url: url("wss://badexample.test/api/ws")))
+    }
+
+    func testInvalidatedAuthorizerAuthorizesNothing() async throws {
+        let fixture = try DashboardSocketFixture()
+        defer { fixture.stop() }
+        let authorizer = nativeAuthorizer(fixture.baseURL)
+        authorizer.invalidate()
+        XCTAssertNil(authorizer.nativeSession)
+        do {
+            _ = try await authorizer.authorizeUpgrade(URLRequest(url: url("\(fixture.baseURL)/api/ws")))
+            XCTFail("An invalidated authorizer must refuse")
+        } catch DashboardTicketBridgeError.notReady {
+            // Expected.
+        }
+        XCTAssertEqual(fixture.mintCount, 0)
+    }
+}

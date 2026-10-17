@@ -876,10 +876,18 @@ final class HermesClient: ObservableObject {
     private let keepaliveInterval: TimeInterval?
     private let keepalivePingTimeout: TimeInterval
     private let monitorsPath: Bool
+    /// Bumped by every connect(): a connect suspended while its upgrade is
+    /// authorized must not install a socket after a newer one began.
+    private var connectGeneration: UInt64 = 0
 
     let connection: HermesConnection
     let profile: String?
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// The selected dashboard's upgrade authorization: in cookie mode the
+    /// dashboard's own session cookies for this address. Nil keeps the
+    /// upgrade to the connection's ticket and proxy headers (tests, legacy
+    /// callers).
+    let requestAuthorizer: (any DashboardUpgradeAuthorizing)?
 
     // Callback for stream events (set by AppState)
     var onEvent: ((StreamEvent) -> Void)?
@@ -944,6 +952,7 @@ final class HermesClient: ObservableObject {
         connection: HermesConnection,
         profile: String? = nil,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
+        requestAuthorizer: (any DashboardUpgradeAuthorizing)? = nil,
         transportFactory: @escaping @MainActor () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() },
         keepaliveInterval: TimeInterval? = HermesClient.defaultKeepaliveInterval,
         keepalivePingTimeout: TimeInterval = HermesClient.keepalivePingTimeout,
@@ -955,6 +964,7 @@ final class HermesClient: ObservableObject {
         self.connection = connection
         self.profile = profile
         self.cloudflareAccess = cloudflareAccess
+        self.requestAuthorizer = requestAuthorizer
         self.transportFactory = transportFactory
     }
 
@@ -1002,32 +1012,11 @@ final class HermesClient: ObservableObject {
 
         closedIntentionally = false
         socketHasOpened = false
-        let url: URL
-        do {
-            url = try ConnectionURLPolicy.webSocketURL(
-                baseURL: connection.baseUrl,
-                path: "/api/ws",
-                queryItems: [URLQueryItem(name: "ticket", value: connection.ticket)]
-            )
-        } catch {
-            throw HermesError.invalidUrl
-        }
+        connectGeneration &+= 1
+        let generation = connectGeneration
 
-        let transport = transportFactory()
-        self.transport = transport
-
-        var request = URLRequest(url: url)
-        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
-        // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
-        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
-        let socket = transport.makeSocket(
-            request: request,
-            onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
-            onCloseBeforeOpen: { [weak self] socket in Task { @MainActor in self?.didClose(socket) } }
-        )
-        self.socket = socket
-        socket.resume()
-        try await waitForSocketOpen(socket)
+        let request = try await upgradeRequest(ticket: connection.ticket, generation: generation)
+        let socket = try await openSocket(with: request, generation: generation)
         isConnected = true
         logger.notice("WebSocket handshake completed")
 
@@ -1036,6 +1025,50 @@ final class HermesClient: ObservableObject {
             await self?.receiveLoop()
         }
         startKeepalive(for: socket)
+    }
+
+    /// The `/api/ws` upgrade for `ticket`: proxy headers first, then what
+    /// the selected dashboard's authorizer adds (its own session cookies).
+    private func upgradeRequest(ticket: String, generation: UInt64) async throws -> URLRequest {
+        let url: URL
+        do {
+            url = try ConnectionURLPolicy.webSocketURL(
+                baseURL: connection.baseUrl,
+                path: "/api/ws",
+                queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+            )
+        } catch {
+            throw HermesError.invalidUrl
+        }
+        var request = URLRequest(url: url)
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
+        // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
+        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
+        guard let requestAuthorizer else { return request }
+        let authorized = try await requestAuthorizer.authorizeUpgrade(request)
+        try ensureCurrentConnect(generation)
+        return authorized
+    }
+
+    private func ensureCurrentConnect(_ generation: UInt64) throws {
+        guard generation == connectGeneration, !closedIntentionally else {
+            throw HermesError.connectionClosed
+        }
+    }
+
+    private func openSocket(with request: URLRequest, generation: UInt64) async throws -> any HermesWebSocket {
+        try ensureCurrentConnect(generation)
+        let transport = transportFactory()
+        self.transport = transport
+        let socket = transport.makeSocket(
+            request: request,
+            onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
+            onCloseBeforeOpen: { [weak self] socket in Task { @MainActor in self?.didClose(socket) } }
+        )
+        self.socket = socket
+        socket.resume()
+        try await waitForSocketOpen(socket)
+        return socket
     }
 
     // MARK: - Keepalive

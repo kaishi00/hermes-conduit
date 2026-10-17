@@ -498,8 +498,8 @@ struct KanbanView: View {
                 initialCursor: watermark,
                 baseURL: bridge.baseURL
             ),
-            socketFactory: { [cloudflareAccess = bridge.cloudflareAccess] url in
-                URLSessionKanbanEventSocket.open(url: url, cloudflareAccess: cloudflareAccess)
+            socketFactory: { [authorizer = bridge.requestAuthorizer] url in
+                try await URLSessionKanbanEventSocket.open(url: url, authorizer: authorizer)
             },
             ticketMinter: { try await bridge.mintTicket() },
             sleeper: { nanoseconds in try await Task.sleep(nanoseconds: nanoseconds) },

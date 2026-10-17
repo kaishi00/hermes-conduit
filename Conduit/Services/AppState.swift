@@ -2905,9 +2905,10 @@ final class AppState: ObservableObject {
         }
         let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
         // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's.
-        let request = URLRequest(url: url)
-        return request.applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+        // headers, like the speech stream's. The authorizer then adds the
+        // dashboard's own session cookies (cookie mode).
+        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
     })
 
     /// Built on first use only, like Gemini Live's.
@@ -11442,6 +11443,9 @@ final class AppState: ObservableObject {
             connection: connection,
             profile: profile,
             cloudflareAccess: dashboardScopedCloudflareAccess(for: connection.baseUrl),
+            // The current bridge's authorizer: it attaches its session
+            // cookies only to its own dashboard's address.
+            requestAuthorizer: dashboardTicketBridge?.requestAuthorizer,
             transportFactory: transportFactory
         )
         let epoch = UUID()
@@ -11770,10 +11774,25 @@ final class AppState: ObservableObject {
                 notifierPlugin = freshNotifierPluginStatus
             }
             dashboardTicketBridge?.invalidate()
+            // The selected dashboard's request authority: its native grant
+            // (or cookie mode), its origin and base path, and the other saved
+            // dashboards it must never authorize for, read live so adding or
+            // removing one applies at once.
+            let requestAuthorizer = DashboardRequestAuthorizer.forDashboard(
+                baseURL: normalized,
+                dashboardID: dashboardID,
+                cloudflareAccess: access,
+                otherDashboardURLs: { [weak self] in
+                    self?.savedDashboardRegistry.dashboards
+                        .filter { $0.id != dashboardID }
+                        .map(\.normalizedURL) ?? []
+                }
+            )
             let bridge = DashboardTicketBridge(
                 baseURL: normalized,
                 cloudflareAccess: access,
-                dashboardID: dashboardID
+                dashboardID: dashboardID,
+                requestAuthorizer: requestAuthorizer
             )
             bridge.onPageEvent = { [weak self, weak bridge] event in
                 guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }

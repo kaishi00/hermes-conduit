@@ -11,7 +11,9 @@
 //  headers (proxy headers included) to wherever `Location` points, and a
 //  cookie jar would add whatever it holds for that host. The dashboard's
 //  authority travels only in what the request builder put there for the
-//  selected dashboard: its single-use ticket.
+//  selected dashboard: its single-use ticket and, in cookie mode, its own
+//  session cookies for that address (an auth proxy in front admits the
+//  upgrade only with them).
 //
 
 import Foundation
