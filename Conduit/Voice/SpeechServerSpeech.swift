@@ -190,7 +190,8 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     /// Letters and digits only, lowercased: how the server's transcript is
     /// compared with the words sent.
     static func comparable(_ text: String) -> String {
-        String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        return String(folded.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
     }
 
     /// Whether `transcript`, so far, is the server reading `words`: the

@@ -57,8 +57,8 @@ struct SpeechServerVoiceSettingsView: View {
                     .buttonStyle(.borderless)
                     .font(.footnote)
                 }
-                if let reason = status.reason, !status.available || status.modelAddress == nil {
-                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                if !status.available || status.modelAddress == nil {
+                    Label(status.reason ?? AppLocalization.string("Your Hermes host didn't send a key."), systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
@@ -132,10 +132,12 @@ struct SpeechServerVoiceSettingsView: View {
         defer { isRotating = false }
         rotateError = nil
         let rotated = await service.rotateSpeechServerVoiceKey()
+        // Read now: later work on the service can replace its message.
+        let failure = rotated ? nil : service.errorMessage
         let loaded = await service.speechServerVoiceStatus()
         // A profile switch meanwhile loads that profile's own status.
         guard generation == started else { return }
-        if !rotated { rotateError = service.errorMessage }
+        rotateError = failure
         status = loaded
     }
 }

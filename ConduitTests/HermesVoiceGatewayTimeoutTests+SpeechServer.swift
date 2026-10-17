@@ -285,7 +285,8 @@ extension HermesVoiceGatewayTimeoutTests {
     func testSpeechServerSpeechThatEndsSilentlyBeforeFinishFails() async throws {
         let socket = SpeechServerSocket()
         let stream = SpeechServerSpeechStream(socket: socket, onStart: { _ in }, onPCM16: { _, _ in })
-        try await stream.append("Hello.")
+        // The space ends the sentence, so it goes out before finish().
+        try await stream.append("Hello. ")
         let sent = await Self.speechServerEventually { socket.sentTypes.contains("response.create") }
         XCTAssertTrue(sent)
         socket.deliver(#"{"type":"response.done"}"#)
@@ -327,6 +328,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(SpeechServerSpeechStream.splitSentences(long).ready.isEmpty)
         XCTAssertTrue(SpeechServerSpeechStream.isReadingBack("it's 5", words: "It's 5 o'clock."))
         XCTAssertTrue(SpeechServerSpeechStream.isReadingBack("", words: "Anything"))
+        XCTAssertEqual(SpeechServerSpeechStream.comparable("Café"), SpeechServerSpeechStream.comparable("cafe"))
         XCTAssertFalse(SpeechServerSpeechStream.isReadingBack("Of course", words: "It's 5 o'clock."))
         XCTAssertFalse(SpeechServerSpeechStream.isReadingBack("It's 5 o'clock. Anything else?", words: "It's 5 o'clock."))
     }
