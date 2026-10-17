@@ -1,0 +1,21 @@
+{
+  "fallback": "Done.",
+  "stream_delay": 0.0,
+  "chats": [
+    {
+      "title": "Weekend trip to Big Sur",
+      "turns": [
+        {
+          "match": "plan a weekend in big sur",
+          "steps": [
+            {
+              "reasoning": "Two days, driving from San Francisco. Keep the drive under 3 hours each way and put the scenic stops on day one.",
+              "content": "Here's a relaxed two-day plan, leaving San Francisco Saturday morning.\n\n**Saturday**\n- 8:00 Leave SF, coffee in Carmel\n- 11:30 Bixby Creek Bridge and Garrapata State Park\n- 2:00 Lunch at Nepenthe\n- 4:30 McWay Falls at golden hour\n\n**Sunday**\n- Pfeiffer Beach in the morning\n- Point Lobos on the way home\n\nWant me to check campsites at Pfeiffer Big Sur?"
+            }
+          ],
+          "prompt": "Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning."
+        }
+      ]
+    }
+  ]
+}

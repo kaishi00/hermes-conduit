@@ -265,3 +265,15 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Conduit
+  # App Store screenshots against the demo dashboard; run only by
+  # .github/workflows/app-store-screenshots.yml (skips without CONDUIT_DEMO_URL).
+  ConduitScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ConduitScreenshots
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Conduit

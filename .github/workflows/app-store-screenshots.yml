@@ -1,0 +1,133 @@
+name: App Store screenshots
+
+# Manual: walks the app on simulators against a real Hermes demo dashboard
+# started on the same runner (scripts/app-store/start-demo-hermes.sh) and
+# uploads the named screenshots as one artifact. Never part of the merge gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      devices:
+        description: "Simulator names, comma-separated"
+        default: "iPhone 17 Pro Max"
+  push:
+    # Temporary while the pipeline is built on this branch.
+    branches: [claude/project-thread-3rugpr]
+    paths:
+      - ".github/workflows/app-store-screenshots.yml"
+      - "scripts/app-store/**"
+      - "ConduitScreenshots/**"
+
+concurrency:
+  group: app-store-screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max' }}
+      DEMO_HOST: hermes.tail-demo.ts.net
+      DEMO_PORT: "9119"
+      DEMO_USER: demo
+      # Not a secret: the demo dashboard lives only on this runner.
+      DEMO_PASSWORD: conduit-demo-2026
+      DEMO_WORK: ${{ github.workspace }}/demo-hermes
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Start the demo dashboard
+        timeout-minutes: 20
+        run: bash scripts/app-store/start-demo-hermes.sh
+
+      - name: Capture
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          IFS=',' read -r -a NAMES <<< "$DEVICES"
+          for name in "${NAMES[@]}"; do
+            name="$(echo "$name" | xargs)"
+            udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          runtimes = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in runtimes if "iOS" in r), reverse=True)
+          for r in ios:
+              for d in runtimes[r]:
+                  if d["name"] == name:
+                      print(d["udid"]); sys.exit()
+          ' "$name")
+            if [ -z "$udid" ]; then echo "::error::no simulator named $name"; exit 1; fi
+            echo "== $name ($udid)"
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+              --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+            slug=$(echo "$name" | tr ' ' '-' | tr -cd 'A-Za-z0-9-')
+            set +e
+            TEST_RUNNER_CONDUIT_DEMO_URL="http://$DEMO_HOST:$DEMO_PORT" \
+            TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
+            TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
+            xcodebuild test \
+              -project Conduit.xcodeproj -scheme Conduit \
+              -destination "id=$udid" \
+              -only-testing:ConduitScreenshots \
+              -resultBundlePath "results/$slug.xcresult" \
+              -enableCodeCoverage NO \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+              DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
+              > "results-$slug.log" 2>&1
+            rc=$?
+            set -e
+            grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true
+            mkdir -p "shots/$slug"
+            xcrun xcresulttool export attachments --path "results/$slug.xcresult" --output-path "shots/$slug" || true
+            # Name the files after their attachment names.
+            if [ -f "shots/$slug/manifest.json" ]; then
+              python3 - "shots/$slug" <<'PY'
+          import json, os, sys
+          root = sys.argv[1]
+          for test in json.load(open(os.path.join(root, "manifest.json"))):
+              for a in test.get("attachments", []):
+                  src = os.path.join(root, a["exportedFileName"])
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  base = name.split("_")[0] if name.count("_") >= 2 else os.path.splitext(name)[0]
+                  if os.path.exists(src):
+                      os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
+          PY
+            fi
+            xcrun simctl shutdown "$udid" || true
+            if [ "$rc" -ne 0 ]; then echo "::warning::$name capture exited $rc"; fi
+          done
+          ls -R shots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-screenshots
+          path: shots
+          if-no-files-found: warn
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-logs
+          path: |
+            demo-hermes/*.log
+            results-*.log
+            results/
+          if-no-files-found: ignore
