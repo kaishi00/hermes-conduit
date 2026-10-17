@@ -62,17 +62,21 @@ jobs:
       - name: Run the probe
         run: |
           set -uo pipefail
-          for pass in 1 2; do
+          run_probe() {
             xcodebuild test-without-building \
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
               -collect-test-diagnostics never \
-              -only-testing:ConduitTests/TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame \
-              -only-testing:ConduitTests/TranscriptPerformanceFixtureTests/testScrollProbeReportsMountCostByRow \
-              > "probe-$pass.log" 2>&1 || echo "pass $pass exited $?"
-          done
-          for pass in 1 2; do
-            echo "===== pass $pass"
-            grep -E "SCROLL_PROBE|error:|failed|passed" "probe-$pass.log" | grep -v "^Test Suite" || tail -n 80 "probe-$pass.log"
+              -only-testing:"ConduitTests/TranscriptPerformanceFixtureTests/$1" \
+              > "probe-$2.log" 2>&1 || echo "probe $2 exited $?"
+          }
+          # The frame probe runs on its own, first, so no other test warms
+          # its caches or leaves state behind.
+          run_probe testScrollProbeReportsWorkPerFrame frames-1
+          run_probe testScrollProbeReportsWorkPerFrame frames-2
+          run_probe testScrollProbeReportsMountCostByRow mount
+          for name in frames-1 frames-2 mount; do
+            echo "===== $name"
+            grep -E "SCROLL_PROBE|error:|failed|passed" "probe-$name.log" | grep -v "^Test Suite" || tail -n 80 "probe-$name.log"
           done

@@ -1043,7 +1043,9 @@ enum InlineMarkdownContent {
             usesAccentSurface: usesAccentSurface
         )
         if let cached = bridgedCache.object(forKey: key) { return cached }
-        let value = build()
+        // The bridge builds a mutable string; every row shares the cached
+        // one, so it's kept as an immutable copy.
+        let value = NSAttributedString(attributedString: build())
         bridgedCache.setObject(value, forKey: key, cost: value.length * 2)
         return value
     }

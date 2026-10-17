@@ -252,6 +252,7 @@ extension TranscriptPerformanceFixtureTests {
             format: "SCROLL_PROBE setup rows=%ld contentHeight=%.0f offset=%.0f viewport=%.0f",
             appState.messages.count, scrollView.contentSize.height, scrollView.contentOffset.y, scrollView.bounds.height
         ))
+        print("SCROLL_PROBE setup " + Self.mountedSpan(in: scrollView))
 
         // One display frame: the finger moves the content, then the frame's
         // layout and render commit run, then whatever the main queue holds.
@@ -289,6 +290,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("up-new-rows", upFrames)
+        print("SCROLL_PROBE up-new-rows end " + Self.mountedSpan(in: scrollView))
 
         // Back down over the same rows.
         engine.userDragBegan()
@@ -300,6 +302,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("down-seen-rows", downFrames)
+        print("SCROLL_PROBE down-seen-rows end " + Self.mountedSpan(in: scrollView))
 
         // Up again over rows that have been shown once.
         engine.userDragBegan()
@@ -311,6 +314,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         engine.userDragEnded()
         Self.report("up-seen-rows", againFrames)
+        print("SCROLL_PROBE up-seen-rows end " + Self.mountedSpan(in: scrollView))
 
         // Still: no finger, nothing streaming.
         var idleFrames: [ProbeFrame] = []
@@ -330,6 +334,7 @@ extension TranscriptPerformanceFixtureTests {
             ))
         }
         Self.report("idle", idleFrames)
+        print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
 
         XCTAssertGreaterThan(upFrames.count, 0, "the probe scrolled")
     }
@@ -527,6 +532,29 @@ extension TranscriptPerformanceFixtureTests {
             commit()
         }
         print(String(format: "SCROLL_PROBE swiftui20 Text mount first=%.2fms median=%.2fms", swiftUIMounts[0], Self.median(Array(swiftUIMounts.dropFirst()))))
+    }
+
+    /// Where the mounted text views sit in content coordinates, to tell a
+    /// scroll that mounted nothing from rows that were already there.
+    private static func mountedSpan(in scrollView: UIScrollView) -> String {
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        var count = 0
+        func walk(_ view: UIView) {
+            if view is UITextView, view.window != nil {
+                let frame = view.convert(view.bounds, to: scrollView)
+                minY = min(minY, frame.minY)
+                maxY = max(maxY, frame.maxY)
+                count += 1
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(scrollView)
+        return String(
+            format: "offset=%.0f visible=%.0f..%.0f textViews=%ld textViewSpan=%.0f..%.0f",
+            scrollView.contentOffset.y, scrollView.contentOffset.y, scrollView.contentOffset.y + scrollView.bounds.height,
+            count, count > 0 ? minY : 0, count > 0 ? maxY : 0
+        )
     }
 
     /// Text views on screen, a stand-in for how many rows LazyVStack keeps.
