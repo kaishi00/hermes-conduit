@@ -10885,7 +10885,7 @@ final class AppState: ObservableObject {
             // the drawer still fills in without holding up the chat.
             defer {
                 if catalogLoad.olderPagesDeferred {
-                    loadDeferredCatalogPages(after: client)
+                    loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
                 }
             }
             let loadedSessions = catalogLoad.sessions
@@ -21706,9 +21706,13 @@ final class AppState: ObservableObject {
     /// Reads the older pages a chat sync left out, after it. Quiet on
     /// failure: the drawer keeps the newest page, and the next list load
     /// tries the full read again.
-    private func loadDeferredCatalogPages(after client: HermesClient) {
-        Task { [weak self] in
-            guard let self, self.client === client else { return }
+    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) {
+        Task { @MainActor [weak self] in
+            // A sync abandoned for another profile or dashboard leaves the
+            // read to that workspace's own sync.
+            guard let self, self.client === client,
+                  self.activeProfile == profile,
+                  self.activeDashboardID == dashboardID else { return }
             await self.loadSessions(
                 forceRefresh: false,
                 requiredViewportTransitionGeneration: nil,
@@ -22645,7 +22649,7 @@ final class AppState: ObservableObject {
         using bridge: DashboardTicketBridge
     ) async throws -> [SessionSummary] {
         var sessions: [SessionSummary] = []
-        for page in 0..<25 {
+        for page in 0..<SessionCatalogCache.maximumHistoryPages {
             let offset = page * 200
             let response = try await bridge.requestJSON(path: archivedSessionsPath(profile, offset: offset))
             let batch = response["sessions"] as? [Any] ?? []

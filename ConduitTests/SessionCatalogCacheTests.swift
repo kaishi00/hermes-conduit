@@ -197,6 +197,10 @@ final class SessionCatalogCacheTests: XCTestCase {
             SessionCatalogCache.pageBudget(fullHistoryDue: false, deferringOlderPages: false),
             1
         )
+        XCTAssertEqual(
+            SessionCatalogCache.pageBudget(fullHistoryDue: false, deferringOlderPages: true),
+            1
+        )
     }
 
     func testNewestPageAloneLeavesTheFullReadDue() {
