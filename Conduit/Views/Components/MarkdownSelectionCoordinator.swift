@@ -19,9 +19,17 @@ struct MarkdownSelectionSpan: Equatable, Hashable {
 }
 
 enum MarkdownSelectionSegmentPlan {
-    static func descriptors(for blocks: [MarkdownBlock]) -> [MarkdownSelectionSegmentDescriptor] {
+    /// `joiningRuns` are prose runs drawn in one text view each
+    /// (MarkdownProseRun): a run is one segment, named for its first block.
+    static func descriptors(
+        for blocks: [MarkdownBlock],
+        joiningRuns runs: [Range<Int>] = []
+    ) -> [MarkdownSelectionSegmentDescriptor] {
         var descriptors: [MarkdownSelectionSegmentDescriptor] = []
         var order = 0
+        var runEnds: [Int: Int] = [:]
+        for run in runs { runEnds[run.lowerBound] = run.upperBound }
+        var skipsBefore = 0
 
         func append(_ id: String, separatorBefore: String) {
             descriptors.append(
@@ -35,7 +43,14 @@ enum MarkdownSelectionSegmentPlan {
         }
 
         for (blockIndex, block) in blocks.enumerated() {
+            guard blockIndex >= skipsBefore else { continue }
             let blockSeparator = blockIndex == 0 ? "" : "\n\n"
+
+            if let runEnd = runEnds[blockIndex] {
+                append("block-\(blockIndex)", separatorBefore: blockSeparator)
+                skipsBefore = runEnd
+                continue
+            }
 
             switch block {
             case .heading(_, let text), .paragraph(let text):

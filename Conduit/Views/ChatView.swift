@@ -293,6 +293,7 @@ struct ChatView: View {
         }
         .environment(\.chatTextSize, chatTextSize)
         .environment(\.markdownTablePlainCells, true)
+        .environment(\.markdownJoinsProseRuns, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         .background(Color.clear)

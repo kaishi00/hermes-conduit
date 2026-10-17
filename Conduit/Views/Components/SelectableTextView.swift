@@ -25,6 +25,11 @@ struct SelectableTextView: UIViewRepresentable {
     let selfSizingWidthRange: ClosedRange<CGFloat>?
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
+    /// Keeps the paragraph styles the text carries (a chat answer's run of
+    /// prose blocks, each paragraph spaced and indented as its own block
+    /// view would be); `lineSpacing` and `textAlignment` fill the rest.
+    /// Off, they replace every paragraph's style.
+    let keepsParagraphStyles: Bool
 
     init(
         attributedText: NSAttributedString,
@@ -37,7 +42,8 @@ struct SelectableTextView: UIViewRepresentable {
         textAlignment: NSTextAlignment = .natural,
         selfSizingWidthRange: ClosedRange<CGFloat>? = nil,
         selectionCoordinator: MarkdownSelectionCoordinator? = nil,
-        selectionSegment: MarkdownSelectionSegmentDescriptor? = nil
+        selectionSegment: MarkdownSelectionSegmentDescriptor? = nil,
+        keepsParagraphStyles: Bool = false
     ) {
         self.attributedText = attributedText
         self.font = font
@@ -50,6 +56,7 @@ struct SelectableTextView: UIViewRepresentable {
         self.selfSizingWidthRange = selfSizingWidthRange
         self.selectionCoordinator = selectionCoordinator
         self.selectionSegment = selectionSegment
+        self.keepsParagraphStyles = keepsParagraphStyles
     }
 
     init(
@@ -235,7 +242,7 @@ struct SelectableTextView: UIViewRepresentable {
         if fullRange.length > 0 {
             let paragraphStyle = NSMutableParagraphStyle()
             paragraphStyle.lineSpacing = lineSpacing
-            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+            applyParagraphStyle(paragraphStyle, to: styledText, in: fullRange)
 
             styledText.enumerateAttribute(.font, in: fullRange, options: []) { value, subrange, _ in
                 if value == nil {
@@ -362,6 +369,22 @@ struct SelectableTextView: UIViewRepresentable {
         return ceil(measured.height)
     }
 
+    private func applyParagraphStyle(
+        _ paragraphStyle: NSParagraphStyle,
+        to styledText: NSMutableAttributedString,
+        in fullRange: NSRange
+    ) {
+        guard keepsParagraphStyles else {
+            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+            return
+        }
+        styledText.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, subrange, _ in
+            if value == nil {
+                styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: subrange)
+            }
+        }
+    }
+
     private func configure(_ textView: UITextView) {
         textView.font = font
         textView.textColor = textColor
@@ -390,7 +413,7 @@ struct SelectableTextView: UIViewRepresentable {
         let fullRange = NSRange(location: 0, length: styledText.length)
 
         if fullRange.length > 0 {
-            styledText.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+            applyParagraphStyle(paragraphStyle, to: styledText, in: fullRange)
 
             styledText.enumerateAttribute(.font, in: fullRange, options: []) { value, subrange, _ in
                 if value == nil {
@@ -567,6 +590,7 @@ struct SelectableTextView: UIViewRepresentable {
             let linkColor: UIColor
             let textAlignment: NSTextAlignment
             let selfSizingWidthRange: ClosedRange<CGFloat>?
+            let keepsParagraphStyles: Bool
 
             init(view: SelectableTextView) {
                 self.attributedText = view.attributedText
@@ -578,6 +602,7 @@ struct SelectableTextView: UIViewRepresentable {
                 self.linkColor = view.linkColor
                 self.textAlignment = view.textAlignment
                 self.selfSizingWidthRange = view.selfSizingWidthRange
+                self.keepsParagraphStyles = view.keepsParagraphStyles
             }
         }
 

@@ -43,6 +43,7 @@ struct MarkdownText: View {
     /// the same value, so the whole stream stays at one size. The
     /// `.default` environment default keeps non-chat subtrees untouched.
     @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
 
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
@@ -75,8 +76,18 @@ struct MarkdownText: View {
             isStreaming: isStreaming,
             chatTextSize: chatTextSize
         )
+        // A settled answer in the chat draws its prose runs in one text
+        // view each. A streaming reply keeps a view per block, so a new
+        // delta never re-lays out the paragraphs above it.
+        let proseRuns = joinsProseRuns
+            && !isStreaming
+            && newestCharacterOpacities.isEmpty
+            && rendering.selectableText == nil
+            && !rendering.needsRichBounding
+            ? rendering.proseRuns
+            : []
         let selectionSegments = rendering.selectableText == nil
-            ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks)
+            ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks, joiningRuns: proseRuns)
             : []
 
         Group {
@@ -115,27 +126,49 @@ struct MarkdownText: View {
                     lastBlockMayBePartial: lastBlockMayBePartial
                 )
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(rendering.blocks.enumerated()), id: \.offset) { index, block in
-                        MarkdownBlockView(
-                            block: block,
-                            blockIndex: index,
-                            foregroundStyle: foregroundStyle,
-                            usesAccentSurface: usesAccentSurface,
-                            gatewayMediaDataURL: gatewayMediaDataURL,
-                            selectionCoordinator: selectionCoordinator,
-                            selectionSegments: selectionSegments,
-                            newestCharacterOpacities: index == rendering.blocks.count - 1
-                                ? newestCharacterOpacities
-                                : [],
-                            isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
-                        )
+                VStack(alignment: .leading, spacing: MarkdownProseRun.Spacing.betweenBlocks) {
+                    ForEach(MarkdownProseRun.pieces(blockCount: rendering.blocks.count, runs: proseRuns)) { piece in
+                        let index = piece.blocks.lowerBound
+                        if piece.isRun {
+                            MarkdownProseRunView(
+                                text: rendering.proseRunText(
+                                    for: piece.blocks,
+                                    foregroundStyle: foregroundStyle,
+                                    usesAccentSurface: usesAccentSurface,
+                                    chatTextSize: chatTextSize
+                                ),
+                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index]),
+                                foregroundStyle: foregroundStyle,
+                                usesAccentSurface: usesAccentSurface,
+                                selectionCoordinator: selectionCoordinator,
+                                selectionSegment: selectionSegments.first { $0.id == "block-\(index)" }
+                            )
+                        } else {
+                            MarkdownBlockView(
+                                block: rendering.blocks[index],
+                                blockIndex: index,
+                                foregroundStyle: foregroundStyle,
+                                usesAccentSurface: usesAccentSurface,
+                                gatewayMediaDataURL: gatewayMediaDataURL,
+                                selectionCoordinator: selectionCoordinator,
+                                selectionSegments: selectionSegments,
+                                newestCharacterOpacities: index == rendering.blocks.count - 1
+                                    ? newestCharacterOpacities
+                                    : [],
+                                isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
+                            )
+                        }
                     }
                 }
                 .onAppear {
                     selectionCoordinator.replaceSegments(selectionSegments, revision: source)
                 }
                 .onChange(of: source) { _, _ in
+                    selectionCoordinator.replaceSegments(selectionSegments, revision: source)
+                }
+                // A reply that settles joins its prose runs with the same
+                // source: the plan changes shape, the text doesn't.
+                .onChange(of: proseRuns) { _, _ in
                     selectionCoordinator.replaceSegments(selectionSegments, revision: source)
                 }
                 .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
@@ -279,6 +312,31 @@ final class MarkdownRendering {
         self.references = references
         self.selectableText = selectableText
         self.richUnitsByBlock = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+    }
+
+    /// The prose runs a chat draws in one text view each.
+    private(set) lazy var proseRuns: [Range<Int>] = MarkdownProseRun.ranges(in: blocks)
+    /// Each run's text, built once per settled rendering so a row that
+    /// scrolls back in hands its text view the same string.
+    private var proseRunTexts: [Int: NSAttributedString] = [:]
+
+    @MainActor
+    func proseRunText(
+        for run: Range<Int>,
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        chatTextSize: ChatTextSize
+    ) -> NSAttributedString {
+        if let text = proseRunTexts[run.lowerBound] { return text }
+        let text = MarkdownProseRun.attributedText(
+            for: blocks[run],
+            references: references,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            chatTextSize: chatTextSize
+        )
+        proseRunTexts[run.lowerBound] = text
+        return text
     }
 }
 
