@@ -962,7 +962,10 @@ enum InlineMarkdownContent {
         return attributed
     }
 
-    /// Everything a bridged fragment depends on, boxed for NSCache.
+    /// Everything a bridged fragment depends on, boxed for NSCache. It keys
+    /// on the text color itself, not only the accent surface the render
+    /// cache keys on: quotes pass a dimmed color. Two equal colors stored
+    /// differently can only cost a miss.
     private final class BridgedKey: NSObject {
         let source: String
         let definitions: String
