@@ -28,7 +28,8 @@ final class OfflineChatCacheTests: XCTestCase {
         )
 
         let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
-        let transcript = try XCTUnwrap(snapshot.transcript(for: "stored-a"))
+        XCTAssertNotNil(snapshot.transcript(for: "stored-a"))
+        let transcript = try XCTUnwrap(store.loadTranscript("stored-a", dashboardID: dashboard, profile: "default"))
         XCTAssertEqual(transcript.messages.count, OfflineChatCacheStore.maxMessagesPerTranscript)
         XCTAssertEqual(transcript.messages.first?.id, "m10")
         XCTAssertEqual(transcript.messages.last?.id, "m129")
@@ -133,7 +134,8 @@ final class OfflineChatCacheTests: XCTestCase {
     func testRecentTranscriptsAreBoundedMostRecentFirst() throws {
         let store = makeStore()
         let dashboard = UUID()
-        for index in 0..<(OfflineChatCacheStore.maxTranscripts + 2) {
+        let count = OfflineChatCacheStore.maxTranscripts + 2
+        for index in 0..<count {
             store.record(
                 dashboardID: dashboard,
                 profile: "default",
@@ -153,7 +155,12 @@ final class OfflineChatCacheTests: XCTestCase {
             sessions: []
         )
         let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
-        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s3", "s6", "s5", "s4", "s2"])
+        let newest = (2..<count).reversed().filter { $0 != 3 }.map { "s\($0)" }
+        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s3"] + newest)
+        XCTAssertEqual(store.loadTranscript("s3", dashboardID: dashboard, profile: "default")?.messages.map(\.content), ["again"])
+        // The two oldest went, rows and all.
+        XCTAssertNil(store.loadTranscript("s0", dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.loadTranscript("s1", dashboardID: dashboard, profile: "default"))
     }
 
     func testScopesAreIsolatedAndDashboardRemovalOnlyWipesThatDashboard() {
@@ -171,6 +178,8 @@ final class OfflineChatCacheTests: XCTestCase {
         store.removeDashboard(first)
         XCTAssertNil(store.load(dashboardID: first, profile: "default"))
         XCTAssertNil(store.load(dashboardID: first, profile: "work"))
+        XCTAssertNil(store.loadTranscript("a", dashboardID: first, profile: "default"), "Its chats' rows go with it")
+        XCTAssertNotNil(store.loadTranscript("b", dashboardID: second, profile: "default"))
         XCTAssertEqual(store.load(dashboardID: second, profile: "default")?.lastSessionID, "b")
 
         store.removeAll()
@@ -190,17 +199,119 @@ final class OfflineChatCacheTests: XCTestCase {
         )
         XCTAssertTrue(OfflineChatCacheStore.writeOptions.contains(.completeFileProtectionUntilFirstUserAuthentication))
         let file = store.fileURL(dashboardID: dashboard, profile: "default")
-        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
-        // The Simulator does not implement Data Protection and reports no
-        // class; on a device the written class must be at least as strong.
-        if let protection = attributes[.protectionKey] as? FileProtectionType {
-            XCTAssertTrue(
-                [.complete, .completeUntilFirstUserAuthentication].contains(protection),
-                "Offline chat files must be at least complete-until-first-auth protected, got \(protection)"
-            )
+        // The index and the chat's own rows alike.
+        for written in [file, store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: written.path)
+            // The Simulator does not implement Data Protection and reports no
+            // class; on a device the written class must be at least as strong.
+            if let protection = attributes[.protectionKey] as? FileProtectionType {
+                XCTAssertTrue(
+                    [.complete, .completeUntilFirstUserAuthentication].contains(protection),
+                    "Offline chat files must be at least complete-until-first-auth protected, got \(protection)"
+                )
+            }
         }
         let values = try file.deletingLastPathComponent().resourceValues(forKeys: [.isExcludedFromBackupKey])
         XCTAssertEqual(values.isExcludedFromBackup, true)
+    }
+
+    /// The index lists the saved chats without their rows, so a launch
+    /// reads only the chat it shows, and recording one chat leaves the
+    /// others' files alone.
+    func testEachSavedChatsRowsAreInAFileOfTheirOwn() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A",
+                     messages: [ChatMessage(id: "m", role: .user, content: "First chat's row", timestamp: "1")], sessions: [])
+        let first = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        let firstData = try Data(contentsOf: first)
+
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B",
+                     messages: [ChatMessage(id: "m", role: .user, content: "Second chat's row", timestamp: "2")], sessions: [])
+
+        let index = try String(contentsOf: store.fileURL(dashboardID: dashboard, profile: "default"), encoding: .utf8)
+        XCTAssertFalse(index.contains("chat's row"), "No rows in the index")
+        XCTAssertEqual(try Data(contentsOf: first), firstData, "Recording B leaves A's file as it was")
+        XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default")?.transcripts.map(\.title), ["B", "A"])
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.content), ["First chat's row"])
+        XCTAssertEqual(store.loadTranscript("b", dashboardID: dashboard, profile: "default")?.messages.map(\.content), ["Second chat's row"])
+        XCTAssertNil(store.loadTranscript("c", dashboardID: dashboard, profile: "default"))
+    }
+
+    /// Copies saved by an earlier build, every chat inside the one file,
+    /// still show after the update: the first read moves them to a file each.
+    func testCopiesSavedInTheFirstFormatMoveToAFileEach() throws {
+        struct FirstFormat: Encodable {
+            let version = 1
+            let lastSessionID: String?
+            let sessions: [OfflineCachedSession]
+            let transcripts: [OfflineCachedTranscript]
+        }
+        let store = makeStore()
+        let dashboard = UUID()
+        let rows = try XCTUnwrap(OfflineCachedMessage(ChatMessage(id: "u1", role: .user, content: "Saved before", timestamp: "1")))
+        let saved = Date(timeIntervalSince1970: 1_790_000_000)
+        let old = FirstFormat(
+            lastSessionID: "a",
+            sessions: [OfflineCachedSession(id: "a", title: "A", updatedLabel: "now", lastActivityAt: nil, source: .chat)],
+            transcripts: [
+                OfflineCachedTranscript(sessionID: "a", title: "A", savedAt: saved, messages: [rows]),
+                OfflineCachedTranscript(sessionID: "b", title: "B", savedAt: saved, messages: [rows]),
+            ]
+        )
+        let file = store.fileURL(dashboardID: dashboard, profile: "default")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(old).write(to: file)
+
+        let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
+
+        XCTAssertEqual(snapshot.version, OfflineChatSnapshot.formatVersion)
+        XCTAssertEqual(snapshot.lastSessionID, "a")
+        XCTAssertEqual(snapshot.sessions.map(\.id), ["a"])
+        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["a", "b"])
+        XCTAssertEqual(snapshot.transcripts.first?.savedAt, saved)
+        XCTAssertEqual(store.loadTranscript("b", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["u1"])
+        // Moved once: the index is in the new format now.
+        let index = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(index.contains("Saved before"))
+        XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default"), snapshot)
+    }
+
+    /// The copy draws as the live transcript does: a turn's steps as one
+    /// card with their times, pictures, reactions.
+    func testSavedRowsKeepWhatTheLiveTranscriptDraws() throws {
+        let (appState, store, dashboard) = makeAppState()
+        let picture = Attachment(id: "u1-gateway-image-0", name: "photo.jpg", uri: "/files/photo.jpg", mimeType: "image/jpeg", kind: .image)
+        let reaction = MessageReaction(emoji: "👍", author: MessageReaction.agentAuthor, at: 1_790_000_000)
+        var thinking = ChatMessage(id: "r1", role: .reasoning, content: "Looking it up", timestamp: "2")
+        thinking.stepDuration = 4
+        store.record(
+            dashboardID: dashboard,
+            profile: "default",
+            sessionID: "stored-a",
+            title: "A",
+            messages: [
+                ChatMessage(id: "u1", role: .user, content: "Find it", timestamp: "1", attachments: [picture], reactions: [reaction]),
+                thinking,
+                ChatMessage(id: "t1", role: .tool, content: "", timestamp: "3", tool: ToolActivity(name: "web_search", status: .complete, duration: 3)),
+                ChatMessage(id: "a1", role: .assistant, content: "Here it is", timestamp: "4"),
+            ],
+            sessions: [session("stored-a")]
+        )
+
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        let rows = try XCTUnwrap(appState.offlineChatPresentation?.displayedRows)
+        XCTAssertEqual(rows.map(\.id), ["u1", "r1", "t1", "a1"])
+        XCTAssertEqual(rows[0].message.attachments, [picture])
+        XCTAssertEqual(rows[0].message.reactions, [reaction])
+        XCTAssertNil(rows[0].step)
+        // The thinking and the search are one run of steps, with their times.
+        let run = try XCTUnwrap(rows[1].step?.group)
+        XCTAssertEqual(run.members.map(\.messageID), ["r1", "t1"])
+        XCTAssertEqual(run.members.map(\.duration), [4, 3])
+        XCTAssertEqual(rows[2].step, ChatStepPlacement(group: run, index: 1))
+        XCTAssertNil(rows[3].step)
     }
 
     // MARK: - Presentation
@@ -232,6 +343,25 @@ final class OfflineChatCacheTests: XCTestCase {
         // Read-only.
         XCTAssertFalse(appState.composerIsEnabled)
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
+    }
+
+    /// While Hermes is on its way the copy reads as the chat, and the
+    /// composer says Conduit is connecting. Only a real offline state calls
+    /// it a copy.
+    func testTheCopyReadsAsTheChatWhileHermesIsOnItsWay() {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        appState.isConnecting = true
+        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Connecting…"))
+        appState.isConnecting = false
+        appState.isConnected = true
+        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Checking agent activity…"))
+        XCTAssertFalse(appState.composerIsEnabled, "Still read-only until the chat itself lands")
+
+        appState.isConnected = false
+        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Read-only saved copy"))
     }
 
     /// A chat tapped in the saved list shows at once (its saved copy, or its
@@ -540,8 +670,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         appState.isConnected = true
         appState.recordOfflineChatCopy()
-        let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
-        XCTAssertEqual(snapshot.transcript(for: "stored-a")?.messages.map(\.id), ["live"])
+        XCTAssertEqual(store.loadTranscript("stored-a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["live"])
     }
 
     /// Servers that report a runtime `session_id` distinct from the durable
@@ -606,8 +735,9 @@ final class OfflineChatCacheTests: XCTestCase {
 
         let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
         XCTAssertEqual(snapshot.sessions.map(\.id), ["stored-1"], "An empty catalog never erases the saved list")
-        XCTAssertEqual(snapshot.transcript(for: "stored-1")?.messages.map(\.id), ["new"])
+        XCTAssertEqual(store.loadTranscript("stored-1", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["new"])
         XCTAssertNil(snapshot.transcript(for: "runtime-1"), "The differently keyed transcript is dropped")
+        XCTAssertNil(store.loadTranscript("runtime-1", dashboardID: dashboard, profile: "default"), "and its rows with it")
         XCTAssertEqual(snapshot.lastSessionID, "stored-1")
         XCTAssertTrue(snapshot.sessions.contains { snapshot.transcript(for: $0.id) != nil })
     }

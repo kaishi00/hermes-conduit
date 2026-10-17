@@ -1669,7 +1669,10 @@ final class AppState: ObservableObject {
     }
 
     var composerPlaceholder: String {
-        if showsPendingNewChat {
+        // A saved copy reads as the chat while Hermes is on its way, as a
+        // New Chat does; only a real offline state says it is a copy.
+        let savedCopyWaits = offlineChatPresentation != nil && (isConnected || isRecoveringConnection)
+        if showsPendingNewChat || savedCopyWaits {
             return isConnected
                 ? AppLocalization.string("Checking agent activity…")
                 : AppLocalization.string("Connecting…")
@@ -4231,7 +4234,9 @@ final class AppState: ObservableObject {
             dashboardID: dashboardID,
             profile: activeProfile,
             snapshot: snapshot,
-            displayedSessionID: displayed
+            displayedTranscript: displayed.flatMap {
+                offlineChatCache.loadTranscript($0, dashboardID: dashboardID, profile: activeProfile)
+            }
         )
     }
 
@@ -4356,11 +4361,14 @@ final class AppState: ObservableObject {
             ?? offlineChatCache.load(dashboardID: dashboardID, profile: profile)
             ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: [])
         let ids = Set(session.nestingIDs)
+        let saved = snapshot.transcripts.first { ids.contains($0.sessionID) }
         offlineChatPresentation = OfflineChatPresentation(
             dashboardID: dashboardID,
             profile: profile,
             snapshot: snapshot,
-            displayedSessionID: snapshot.transcripts.first { ids.contains($0.sessionID) }?.sessionID,
+            displayedTranscript: saved.flatMap {
+                offlineChatCache.loadTranscript($0.sessionID, dashboardID: dashboardID, profile: profile)
+            },
             picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids)
         )
     }
@@ -4464,7 +4472,7 @@ final class AppState: ObservableObject {
                 dashboardID: copy.dashboardID,
                 profile: copy.profile,
                 snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
-                displayedSessionID: nil
+                displayedTranscript: nil
             )
         } else {
             dismissOfflineChatPresentation()

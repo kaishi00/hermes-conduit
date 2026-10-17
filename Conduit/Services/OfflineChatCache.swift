@@ -14,6 +14,7 @@
 //  the server replaces it wholesale.
 //
 
+import CryptoKit
 import Foundation
 
 /// One persisted transcript row. Only the fields the read-only transcript
@@ -28,6 +29,15 @@ struct OfflineCachedMessage: Codable, Equatable {
     let reasoning: String?
     let tool: ToolActivity?
     let displayKind: String?
+    // What else the live transcript draws: pictures (kept on the phone),
+    // reactions, a thinking step's time, notice and review cards. Rows
+    // saved before these were kept have none.
+    let rawContent: String?
+    let review: ReviewActivity?
+    let attachments: [Attachment]?
+    let code: String?
+    let reactions: [MessageReaction]?
+    let stepDuration: TimeInterval?
 
     static let storableRoles: Set<MessageRole> = [.user, .assistant, .reasoning, .system, .tool]
 
@@ -41,19 +51,32 @@ struct OfflineCachedMessage: Codable, Equatable {
         reasoning = message.reasoning
         tool = message.tool
         displayKind = message.displayKind
+        rawContent = message.rawContent
+        review = message.review
+        attachments = message.attachments
+        code = message.code
+        reactions = message.reactions.isEmpty ? nil : message.reactions
+        stepDuration = message.stepDuration
     }
 
     var chatMessage: ChatMessage {
-        ChatMessage(
+        var message = ChatMessage(
             id: id,
             role: role,
             content: content,
+            rawContent: rawContent,
             timestamp: timestamp,
             author: author,
             reasoning: reasoning,
             tool: tool,
-            displayKind: displayKind
+            review: review,
+            attachments: attachments,
+            code: code,
+            displayKind: displayKind,
+            reactions: reactions ?? []
         )
+        message.stepDuration = stepDuration
+        return message
     }
 }
 
@@ -114,6 +137,8 @@ struct OfflineCachedSession: Codable, Equatable, Identifiable {
     }
 }
 
+/// One saved conversation with its rows: a file of its own beside its
+/// scope's index.
 struct OfflineCachedTranscript: Codable, Equatable {
     let sessionID: String
     let title: String
@@ -121,19 +146,45 @@ struct OfflineCachedTranscript: Codable, Equatable {
     let messages: [OfflineCachedMessage]
 }
 
-/// Everything cached for one (dashboard, profile) scope.
+/// A saved conversation as its scope's index lists it, without its rows.
+struct OfflineCachedTranscriptEntry: Codable, Equatable {
+    let sessionID: String
+    let title: String
+    let savedAt: Date
+
+    init(_ transcript: OfflineCachedTranscript) {
+        sessionID = transcript.sessionID
+        title = transcript.title
+        savedAt = transcript.savedAt
+    }
+}
+
+/// The index of what is cached for one (dashboard, profile) scope. Each
+/// conversation's rows are in a file of their own
+/// (`OfflineChatCacheStore.loadTranscript`), so a launch reads only the one
+/// it shows and recording a chat rewrites only that chat.
 struct OfflineChatSnapshot: Codable, Equatable {
-    static let formatVersion = 1
+    /// 2: a file per conversation. 1 kept every conversation in this file.
+    static let formatVersion = 2
 
     var version: Int = Self.formatVersion
     var lastSessionID: String?
     var sessions: [OfflineCachedSession]
     /// Most recently opened first.
-    var transcripts: [OfflineCachedTranscript]
+    var transcripts: [OfflineCachedTranscriptEntry]
 
-    func transcript(for sessionID: String) -> OfflineCachedTranscript? {
+    func transcript(for sessionID: String) -> OfflineCachedTranscriptEntry? {
         transcripts.first { $0.sessionID == sessionID }
     }
+}
+
+/// A scope saved in the first format, with every conversation's rows in its
+/// one file.
+private struct FirstFormatOfflineChatSnapshot: Decodable {
+    let version: Int
+    let lastSessionID: String?
+    let sessions: [OfflineCachedSession]
+    let transcripts: [OfflineCachedTranscript]
 }
 
 /// The Chats list as it was last shown for one (dashboard, profile) scope:
@@ -272,12 +323,14 @@ struct SavedChatListPresentation: Equatable {
 struct OfflineChatPresentation: Equatable {
     let dashboardID: UUID
     let profile: String
+    /// The scope's index: its saved conversations, without their rows.
     let snapshot: OfflineChatSnapshot
-    var displayedSessionID: String? {
-        didSet { displayedMessages = Self.messages(in: snapshot, for: displayedSessionID) }
-    }
-    /// Mapped once per displayed conversation, not on every render.
-    private(set) var displayedMessages: [ChatMessage]
+    /// The saved conversation on screen, with its rows.
+    let displayedTranscript: OfflineCachedTranscript?
+    /// Its rows as the live transcript has them, each turn's run of steps
+    /// placed so it draws as one card. Worked out once per displayed
+    /// conversation, not on every render.
+    let displayedRows: [ChatMessageScrollTarget]
     /// A chat tapped in the saved list before the live one landed. Its
     /// saved copy (or the wait for one) shows over any transcript still on
     /// screen until that chat's own open lands.
@@ -296,32 +349,33 @@ struct OfflineChatPresentation: Equatable {
         dashboardID: UUID,
         profile: String,
         snapshot: OfflineChatSnapshot,
-        displayedSessionID: String?,
+        displayedTranscript: OfflineCachedTranscript?,
         picked: PickedChat? = nil
     ) {
         self.dashboardID = dashboardID
         self.profile = profile
         self.snapshot = snapshot
-        self.displayedSessionID = displayedSessionID
-        self.displayedMessages = Self.messages(in: snapshot, for: displayedSessionID)
+        self.displayedTranscript = displayedTranscript
+        var rows = ChatMessageScrollTargetCache()
+        rows.update(for: displayedTranscript?.messages.map(\.chatMessage) ?? [])
+        self.displayedRows = rows.targets
         self.picked = picked
     }
 
-    var displayedTranscript: OfflineCachedTranscript? {
-        displayedSessionID.flatMap(snapshot.transcript(for:))
-    }
+    var displayedSessionID: String? { displayedTranscript?.sessionID }
 
-    private static func messages(in snapshot: OfflineChatSnapshot, for sessionID: String?) -> [ChatMessage] {
-        sessionID.flatMap(snapshot.transcript(for:))?.messages.map(\.chatMessage) ?? []
-    }
+    var displayedMessages: [ChatMessage] { displayedRows.map(\.message) }
 }
 
-/// File-backed store. One JSON file per (dashboard, profile), written
+/// File-backed store. Per (dashboard, profile): an index, a file for each
+/// saved conversation's rows and one for the Chats list, all JSON written
 /// atomically with complete-until-first-user-authentication protection and
 /// excluded from backups.
 final class OfflineChatCacheStore {
     static let maxMessagesPerTranscript = 120
-    static let maxTranscripts = 5
+    /// The last chats opened keep a copy, so most chats picked from the
+    /// saved list open to their own rows.
+    static let maxTranscripts = 20
     static let maxSessions = 60
 
     /// Complete-until-first-user-authentication: unreadable from a device
@@ -343,13 +397,41 @@ final class OfflineChatCacheStore {
         return base.appendingPathComponent("OfflineChatCache", isDirectory: true)
     }
 
+    /// The scope's index, or nil when nothing is saved for it (or it was
+    /// saved in a format this build doesn't read).
     func load(dashboardID: UUID, profile: String) -> OfflineChatSnapshot? {
         let url = fileURL(dashboardID: dashboardID, profile: profile)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if let snapshot = try? JSONDecoder().decode(OfflineChatSnapshot.self, from: data),
+           snapshot.version == OfflineChatSnapshot.formatVersion {
+            return snapshot
+        }
+        return moveFirstFormat(data, dashboardID: dashboardID, profile: profile)
+    }
+
+    /// One saved conversation with its rows, or nil when it has none.
+    func loadTranscript(_ sessionID: String, dashboardID: UUID, profile: String) -> OfflineCachedTranscript? {
+        let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
         guard let data = try? Data(contentsOf: url),
-              let snapshot = try? JSONDecoder().decode(OfflineChatSnapshot.self, from: data),
-              snapshot.version == OfflineChatSnapshot.formatVersion else {
+              let transcript = try? JSONDecoder().decode(OfflineCachedTranscript.self, from: data),
+              transcript.sessionID == sessionID else {
             return nil
         }
+        return transcript
+    }
+
+    /// A scope saved in the first format moves to a file per conversation
+    /// the first time it is read, so an update doesn't lose the copies.
+    private func moveFirstFormat(_ data: Data, dashboardID: UUID, profile: String) -> OfflineChatSnapshot? {
+        guard let old = try? JSONDecoder().decode(FirstFormatOfflineChatSnapshot.self, from: data),
+              old.version == 1 else { return nil }
+        let moved = old.transcripts.filter { write($0, dashboardID: dashboardID, profile: profile) }
+        let snapshot = OfflineChatSnapshot(
+            lastSessionID: old.lastSessionID,
+            sessions: old.sessions,
+            transcripts: moved.map(OfflineCachedTranscriptEntry.init)
+        )
+        write(snapshot, dashboardID: dashboardID, profile: profile)
         return snapshot
     }
 
@@ -391,11 +473,12 @@ final class OfflineChatCacheStore {
         if let row = snapshot.sessions.first(where: { $0.id == sessionID }) {
             allIdentities.formUnion(row.aliases)
         }
+        let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows))
+        // Its rows land first, so the index never lists a copy that isn't there.
+        guard write(transcript, dashboardID: dashboardID, profile: profile) else { return }
+        let previous = snapshot.transcripts
         snapshot.transcripts.removeAll { $0.sessionID == sessionID || allIdentities.contains($0.sessionID) }
-        snapshot.transcripts.insert(
-            OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows)),
-            at: 0
-        )
+        snapshot.transcripts.insert(OfflineCachedTranscriptEntry(transcript), at: 0)
         snapshot.transcripts = Array(snapshot.transcripts.prefix(Self.maxTranscripts))
         if !catalogRows.isEmpty {
             // Every retained transcript (current conversation first) keeps a
@@ -407,7 +490,12 @@ final class OfflineChatCacheStore {
             )
         }
         snapshot.lastSessionID = sessionID
-        write(snapshot, dashboardID: dashboardID, profile: profile)
+        guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
+        // The rows of the copies the index no longer lists.
+        let kept = Set(snapshot.transcripts.map(\.sessionID))
+        for entry in previous where !kept.contains(entry.sessionID) {
+            try? fileManager.removeItem(at: transcriptFileURL(entry.sessionID, dashboardID: dashboardID, profile: profile))
+        }
     }
 
     /// At most `maxSessions` rows. Slots are reserved first for the rows of
@@ -470,12 +558,19 @@ final class OfflineChatCacheStore {
         write(data, to: chatListFileURL(dashboardID: dashboardID, profile: profile))
     }
 
-    private func write(_ snapshot: OfflineChatSnapshot, dashboardID: UUID, profile: String) {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        write(data, to: fileURL(dashboardID: dashboardID, profile: profile))
+    @discardableResult
+    private func write(_ snapshot: OfflineChatSnapshot, dashboardID: UUID, profile: String) -> Bool {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return false }
+        return write(data, to: fileURL(dashboardID: dashboardID, profile: profile))
     }
 
-    private func write(_ data: Data, to url: URL) {
+    private func write(_ transcript: OfflineCachedTranscript, dashboardID: UUID, profile: String) -> Bool {
+        guard let data = try? JSONEncoder().encode(transcript) else { return false }
+        return write(data, to: transcriptFileURL(transcript.sessionID, dashboardID: dashboardID, profile: profile))
+    }
+
+    @discardableResult
+    private func write(_ data: Data, to url: URL) -> Bool {
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             var directoryURL = directory
@@ -483,14 +578,24 @@ final class OfflineChatCacheStore {
             values.isExcludedFromBackup = true
             try? directoryURL.setResourceValues(values)
             try data.write(to: url, options: Self.writeOptions)
+            return true
         } catch {
             // Best effort: the cache is a convenience copy, never a source of
             // truth, so a failed write only means a colder next launch.
+            return false
         }
     }
 
+    /// The scope's index.
     func fileURL(dashboardID: UUID, profile: String) -> URL {
         directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).json")
+    }
+
+    /// One saved conversation's rows, named by a hash of its id, which can
+    /// be any text.
+    func transcriptFileURL(_ sessionID: String, dashboardID: UUID, profile: String) -> URL {
+        let name = SHA256.hash(data: Data(sessionID.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).chat-\(name).json")
     }
 
     func chatListFileURL(dashboardID: UUID, profile: String) -> URL {
@@ -499,7 +604,7 @@ final class OfflineChatCacheStore {
 
     /// "<dashboard>--<profile>": the dashboard prefix is what
     /// `removeDashboard` matches. A profile's "." is percent-encoded, so no
-    /// profile's transcript file can be named like another's list file.
+    /// profile's index can be named like another's list or chat file.
     private static func scopeFileStem(dashboardID: UUID, profile: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let safeProfile = profile.addingPercentEncoding(withAllowedCharacters: allowed) ?? "default"

@@ -642,7 +642,7 @@ struct ChatMessage: Identifiable, Equatable {
 /// One emoji reaction on a message (Hermes `MessageReaction`, persisted in
 /// the row's `display_metadata.reactions`). Tapback rules: one reaction per
 /// author, the same emoji again retracts it, a different one replaces it.
-struct MessageReaction: Equatable, Hashable {
+struct MessageReaction: Codable, Equatable, Hashable {
     static let userAuthor = "user"
     static let agentAuthor = "agent"
 
