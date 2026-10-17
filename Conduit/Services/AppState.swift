@@ -10486,7 +10486,7 @@ final class AppState: ObservableObject {
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = nil
-            notifierPlugin = NotifierPluginStatus()
+            notifierPlugin = freshNotifierPluginStatus
             let failure = ConnectionFailureClassifier.classify(error)
             if keepOfflineChatInsteadOfSignIn(failure) { return }
             wipeOfflineChatCacheForSignIn(after: failure, dashboardID: dashboardID)
@@ -10883,7 +10883,7 @@ final class AppState: ObservableObject {
         }
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         prepareDashboardBridge(for: baseURL)
     }
 
@@ -11032,7 +11032,7 @@ final class AppState: ObservableObject {
         client = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
@@ -11352,7 +11352,7 @@ final class AppState: ObservableObject {
         connectedAt = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         // A flush scheduled under the outgoing server must not write through
         // after the switch; the boundary already cleared the cache it would
         // resurrect content into.
@@ -11773,7 +11773,7 @@ final class AppState: ObservableObject {
             // Header or sign-in changes keep the host, so its plugin status
             // still holds; a new host is asked again on connect.
             if dashboardTicketBridge?.baseURL != normalized {
-                notifierPlugin = NotifierPluginStatus()
+                notifierPlugin = freshNotifierPluginStatus
             }
             dashboardTicketBridge?.invalidate()
             let bridge = DashboardTicketBridge(
@@ -11832,7 +11832,7 @@ final class AppState: ObservableObject {
         connection = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         // A forced sign-out kills the bridge mid-playback; stop the read
         // aloud and drop its gateway the same way Disconnect does.
         messageReadAloudController.stop()
@@ -20140,6 +20140,12 @@ final class AppState: ObservableObject {
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
+    /// The plugin on its repository's main branch, once read. A reset for
+    /// another host keeps it (`freshNotifierPluginStatus`).
+    private var latestNotifierPluginVersion: String?
+    private var freshNotifierPluginStatus: NotifierPluginStatus {
+        NotifierPluginStatus(latestVersion: latestNotifierPluginVersion)
+    }
     /// Apple Health sharing with one Hermes profile.
     /// Off until the user turns it on in Settings > Health.
     @Published var healthSyncPreferences = HealthSyncPreferences.load()
@@ -20199,6 +20205,7 @@ final class AppState: ObservableObject {
         notifierPluginStatusAcceptedGeneration = generation
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
@@ -20217,6 +20224,24 @@ final class AppState: ObservableObject {
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
         Task { await runPhoneSync(reason: .connected) }
+    }
+
+    /// Reads the latest plugin version (saved, then from GitHub at most
+    /// hourly), so a plugin release is offered without a new Conduit build.
+    private func refreshLatestNotifierPluginVersion() async {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        if latestNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cached(in: defaults) {
+            applyLatestNotifierPluginVersion(saved)
+        }
+        guard let fetched = await NotifierPluginLatestVersion.refresh(defaults: defaults) else { return }
+        applyLatestNotifierPluginVersion(fetched)
+    }
+
+    private func applyLatestNotifierPluginVersion(_ version: String) {
+        latestNotifierPluginVersion = version
+        guard notifierPlugin.latestVersion != version else { return }
+        notifierPlugin.latestVersion = version
+        clearSettledNotifierPluginUpdateOutcome()
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end

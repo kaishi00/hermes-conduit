@@ -55,6 +55,68 @@ extension GatewayRestartTests {
         XCTAssertEqual(status.runningVersion, "0.24.0")
     }
 
+    func testTheLatestPluginOnGitHubIsOfferedAboveTheBuildsOwn() {
+        let floor = NotifierPluginStatus.recommendedVersion
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: floor, capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: floor, restartNeeded: false, bootID: nil)
+        XCTAssertEqual(status.offeredVersion, floor)
+        XCTAssertFalse(status.updateAvailable)
+
+        status.latestVersion = "99.0.0"
+        XCTAssertEqual(status.offeredVersion, "99.0.0")
+        XCTAssertTrue(status.updateAvailable)
+
+        // An older or unreadable latest never lowers the build's own.
+        status.latestVersion = "0.1.0"
+        XCTAssertEqual(status.offeredVersion, floor)
+        XCTAssertFalse(status.updateAvailable)
+        status.latestVersion = "junk"
+        XCTAssertEqual(status.offeredVersion, floor)
+    }
+
+    func testTheLatestPluginVersionIsReadFromPluginYAML() {
+        let read = NotifierPluginLatestVersion.version(fromPluginYAML:)
+        XCTAssertEqual(read("name: conduit_push\nmanifest_version: 1\nversion: 0.44.0\n"), "0.44.0")
+        XCTAssertEqual(read("version: \"0.44.1\"  # next\n"), "0.44.1")
+        XCTAssertEqual(read("  version: 0.44.2\n"), "0.44.2")
+        XCTAssertNil(read("manifest_version: 1\n"))
+        XCTAssertNil(read("version: main\n"))
+    }
+
+    func testTheLatestPluginVersionIsAskedAtMostHourly() async throws {
+        let suite = "plugin-latest-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var asked = 0
+        let fetch: (URL) async throws -> (Data, URLResponse) = { url in
+            asked += 1
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (Data("version: 0.50.0\n".utf8), response)
+        }
+        let start = Date()
+        let first = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start, fetch: fetch)
+        XCTAssertEqual(first, "0.50.0")
+        XCTAssertEqual(NotifierPluginLatestVersion.cached(in: defaults), "0.50.0")
+        let soon = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(60), fetch: fetch)
+        XCTAssertNil(soon)
+        XCTAssertEqual(asked, 1)
+        let later = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(3_700), fetch: fetch)
+        XCTAssertEqual(later, "0.50.0")
+        XCTAssertEqual(asked, 2)
+
+        let missing: (URL) async throws -> (Data, URLResponse) = { url in
+            asked += 1
+            return (Data(), try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)))
+        }
+        let failed = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(9_000), fetch: missing)
+        XCTAssertNil(failed)
+        XCTAssertEqual(NotifierPluginLatestVersion.cached(in: defaults), "0.50.0")
+        // A failed ask waits the interval too.
+        _ = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(9_060), fetch: missing)
+        XCTAssertEqual(asked, 3)
+    }
+
     func testAnOlderPluginReportsNoRuntime() {
         XCTAssertNil(NotifierPluginStatus.runtime(from: ["ok": true, "version": "0.23.0", "capabilities": []]))
     }
