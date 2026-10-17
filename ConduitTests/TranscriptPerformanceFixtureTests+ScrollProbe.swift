@@ -286,6 +286,7 @@ extension TranscriptPerformanceFixtureTests {
             appState.messages.count, scrollView.contentSize.height, scrollView.contentOffset.y, scrollView.bounds.height
         ))
         print("SCROLL_PROBE setup " + Self.mountedSpan(in: scrollView))
+        print("SCROLL_PROBE setup view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Who resized the content or moved the offset inside a frame.
         final class ProbeLayoutLog {
@@ -393,6 +394,7 @@ extension TranscriptPerformanceFixtureTests {
         Self.report("up-new-rows", upFrames)
         reportLayout("up-new-rows", upFrames)
         print("SCROLL_PROBE up-new-rows end " + Self.mountedSpan(in: scrollView))
+        print("SCROLL_PROBE up-new-rows view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Back down over the same rows.
         engine.userDragBegan()
@@ -406,6 +408,7 @@ extension TranscriptPerformanceFixtureTests {
         Self.report("down-seen-rows", downFrames)
         reportLayout("down-seen-rows", downFrames)
         print("SCROLL_PROBE down-seen-rows end " + Self.mountedSpan(in: scrollView))
+        print("SCROLL_PROBE down-seen-rows view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Up again over rows that have been shown once.
         engine.userDragBegan()
@@ -419,6 +422,7 @@ extension TranscriptPerformanceFixtureTests {
         Self.report("up-seen-rows", againFrames)
         reportLayout("up-seen-rows", againFrames)
         print("SCROLL_PROBE up-seen-rows end " + Self.mountedSpan(in: scrollView))
+        print("SCROLL_PROBE up-seen-rows view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Still: no finger, nothing streaming.
         var idleFrames: [ProbeFrame] = []
@@ -439,6 +443,7 @@ extension TranscriptPerformanceFixtureTests {
         }
         Self.report("idle", idleFrames)
         print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
+        print("SCROLL_PROBE idle view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Hold while the sampler writes its report.
         if let marker = environment["PROBE_MARKER"] {
@@ -809,6 +814,67 @@ extension TranscriptPerformanceFixtureTests {
 
     /// Where the mounted text views sit in content coordinates, to tell a
     /// scroll that mounted nothing from rows that were already there.
+    /// What the viewport shows: the rows the stack reports laid out (their
+    /// frames, in transcript order), the text hosts inside the viewport, and
+    /// the share of its pixels that differ from the background, near zero
+    /// when the rows scrolled into view draw nothing.
+    private static func viewReport(scrollView: UIScrollView, engine: ChatScrollEngine, messages: [ChatMessage]) -> String {
+        let top = scrollView.contentOffset.y
+        let bottom = top + scrollView.bounds.height
+        let laidOut = messages.compactMap { message in engine.rowFrame(for: message.id).map { (message.id, $0) } }
+        let orders = laidOut.map { $0.1.order }
+        let inView = laidOut.filter { $0.1.maxY > top && $0.1.minY < bottom }
+        var hostsInView = 0
+        func walk(_ view: UIView) {
+            if view is SelectableTextViewHostView, view.window != nil {
+                let frame = view.convert(view.bounds, to: scrollView)
+                if frame.maxY > top, frame.minY < bottom { hostsInView += 1 }
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(scrollView)
+        return String(
+            format: "laidOut=%ld orders=%ld..%ld rowsInView=%ld [%@] top=%@ hostsInView=%ld ink=%.3f",
+            laidOut.count, orders.min() ?? -1, orders.max() ?? -1, inView.count,
+            inView.prefix(6).map { String(format: "%@@%.0f", String($0.0.suffix(14)), $0.1.minY) }.joined(separator: " "),
+            engine.topVisibleMessageID ?? "nil", hostsInView, viewportInk(of: scrollView)
+        )
+    }
+
+    private static func viewportInk(of scrollView: UIScrollView) -> Double {
+        guard let window = scrollView.window else { return -1 }
+        let rect = scrollView.convert(scrollView.bounds, to: window).intersection(window.bounds)
+        guard rect.width >= 1, rect.height >= 1 else { return -1 }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { _ in
+            window.drawHierarchy(
+                in: CGRect(origin: CGPoint(x: -rect.minX, y: -rect.minY), size: window.bounds.size),
+                afterScreenUpdates: true
+            )
+        }
+        guard let cgImage = image.cgImage,
+              cgImage.bitsPerPixel == 32,
+              let data = cgImage.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data)
+        else { return -1 }
+        let rowBytes = cgImage.bytesPerRow
+        let reference = (bytes[0], bytes[1], bytes[2])
+        var differing = 0
+        for y in 0..<cgImage.height {
+            for x in 0..<cgImage.width {
+                let pixel = bytes + y * rowBytes + x * 4
+                if abs(Int(pixel[0]) - Int(reference.0)) > 40
+                    || abs(Int(pixel[1]) - Int(reference.1)) > 40
+                    || abs(Int(pixel[2]) - Int(reference.2)) > 40 {
+                    differing += 1
+                }
+            }
+        }
+        return Double(differing) / Double(cgImage.width * cgImage.height)
+    }
+
     private static func mountedSpan(in scrollView: UIScrollView) -> String {
         var minY = CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude

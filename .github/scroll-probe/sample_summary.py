@@ -28,6 +28,7 @@ end = next(
 )
 
 NODE = re.compile(r"^([ +!:|]*?)(\d+) (.*)$")
+THREAD = re.compile(r"^\s*\d+ Thread_")
 
 
 class Node:
@@ -47,37 +48,37 @@ def parse_frame(text):
     return text.strip(), "?"
 
 
-main_thread = None
+# Every thread's tree: a thread's line has no tree marks, its frames sit two
+# columns deeper per level.
+threads = []
 stack = []
+base = 0
 for line in lines[start + 1:end]:
+    if THREAD.match(line):
+        match = NODE.match(line)
+        root = Node(match.group(3), "", int(match.group(2)))
+        threads.append(root)
+        base = len(match.group(1))
+        stack = [root]
+        continue
     match = NODE.match(line)
-    if not match:
+    if not match or not stack:
         continue
     prefix, count, rest = match.groups()
-    depth = (len(prefix) - 4) // 2
-    count = int(count)
-    if depth <= 0:
-        # A thread: only the main one is kept.
-        stack = []
-        if "com.apple.main-thread" in rest and main_thread is None:
-            main_thread = Node("main thread", "", count)
-            stack = [main_thread]
-        continue
-    if not stack:
-        continue
+    depth = max(1, (len(prefix) - base) // 2)
     name, binary = parse_frame(rest)
-    node = Node(name, binary, count)
+    node = Node(name, binary, int(count))
     while len(stack) > depth:
         stack.pop()
-    if len(stack) < depth:
-        # A gap in the indentation; attach to the deepest node.
-        pass
     stack[-1].children.append(node)
     stack.append(node)
 
-if main_thread is None:
-    print("PROFILE no main thread in the sample report")
+print(f"PROFILE threads={len(threads)}: " + "; ".join(f"{t.count} {t.name[:60]}" for t in threads[:6]))
+if not threads:
+    for line in lines[start:start + 25]:
+        print("PROFILE  | " + line[:160])
     sys.exit(0)
+main_thread = threads[0]
 
 # Every probeFrameWork node's subtree, merged by call path.
 merged = {}
@@ -105,9 +106,12 @@ def find(node):
         find(child)
 
 
-find(main_thread)
-print(f"PROFILE mainThreadSamples={main_thread.count} probeSamples={total} (1 sample = 1 ms)")
+for thread in threads:
+    find(thread)
+print(f"PROFILE firstThreadSamples={main_thread.count} probeSamples={total} (1 sample = 1 ms)")
 if total == 0:
+    for line in lines[start:start + 25]:
+        print("PROFILE  | " + line[:160])
     sys.exit(0)
 
 
