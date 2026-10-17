@@ -1849,6 +1849,11 @@ final class AppState: ObservableObject {
         didSet {
             // Closing the drawer uncovers the open chat (#454).
             if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
+            // Covering it (Back to the list, the drawer opening) leaves it:
+            // what it showed until now was seen. The list it returns to
+            // reads the catalog again (refreshCatalogAfterLeavingChat, from
+            // RootView, where the user's own navigation covers the chat).
+            if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating: the live text and
             // reasoning publishes (to `liveTurn`, which only those rows
@@ -4093,6 +4098,10 @@ final class AppState: ObservableObject {
     /// Counts catalog reads as they start, so the slow read a chat sync left
     /// for later can tell that a newer read began while it was paging.
     private var catalogReadSequence: UInt64 = 0
+    /// The catalog read that returning to the list starts, and whether
+    /// another return asked for one while it ran.
+    private(set) var leaveCatalogRefreshTask: Task<Void, Never>?
+    private var leaveCatalogRefreshPending = false
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -7630,8 +7639,24 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         // The same rows every read-state query sees.
         let listed = readStateSessions
-        updateChatReadState { $0.observe(listed, profile: profile) }
+        var seenThrough = Set<String>()
+        updateChatReadState { seenThrough = $0.observe(listed, profile: profile) }
+        clearHermesFlagsSeenHere(listed.filter { seenThrough.contains(ChatReadState.durableID(for: $0)) }, profile: profile)
         noteActiveChatSeen(respectingMarks: true)
+    }
+
+    /// Rows whose latest activity the user saw in the chat before leaving
+    /// it: Hermes flags them unread (the activity postdates the watermark
+    /// written when the chat opened), so the flag is cleared, as reading the
+    /// chat to the end would have. A mark (Mark as Unread, here or on
+    /// Desktop) stays.
+    private func clearHermesFlagsSeenHere(_ rows: [SessionSummary], profile: String) {
+        for session in rows where !session.isArchived
+            && chatReadState.serverUnread(session, profile: profile)
+            && !chatReadState.isExplicitlyUnread(session, profile: profile)
+            && chatReadState.mayRewritePassively(session, profile: profile) {
+            writeSessionUnreadFlag(session, unread: false, profile: profile)
+        }
     }
 
     /// The open chat counts as seen while it is actually on screen: the app is
@@ -7670,7 +7695,7 @@ final class AppState: ObservableObject {
               let session = readStateSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
               !chatReadState.isExplicitlyUnread(session, profile: activeProfile) else { return }
         let profile = activeProfile
-        updateChatReadState { $0.markSeen(session, profile: profile) }
+        updateChatReadState { $0.markSeen(session, profile: profile, restamp: true) }
     }
 
     /// Writes Hermes' shared read flag, which Desktop shows and clears too.
@@ -16630,6 +16655,27 @@ final class AppState: ObservableObject {
             guard reportsFailure else { return false }
             errorMessage = AppLocalization.string("Failed to load sessions: \(UserFacingError.message(for: error))")
             return false
+        }
+    }
+
+    /// Hermes pushes no catalog changes, so returning to the list from a
+    /// chat reads it again: a conversation started there is listed once its
+    /// first turn is stored, and an older one shows its latest turn. One
+    /// read at a time; a return during a read asks for one more after it.
+    func refreshCatalogAfterLeavingChat() {
+        guard isConnected, client != nil || sessionCatalogLoaderOverride != nil else { return }
+        guard leaveCatalogRefreshTask == nil else {
+            leaveCatalogRefreshPending = true
+            return
+        }
+        leaveCatalogRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            repeat {
+                // A return asked for before this read starts is covered by it.
+                self.leaveCatalogRefreshPending = false
+                await self.loadSessions()
+            } while self.leaveCatalogRefreshPending && !Task.isCancelled
+            self.leaveCatalogRefreshTask = nil
         }
     }
 

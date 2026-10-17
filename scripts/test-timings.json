@@ -7,6 +7,7 @@
     "AppStateReasoningStreamTests": 4.221,
     "AppStateScreenQuestionTests": 2.0,
     "BufferedEventDeduplicationTests": 0.069,
+    "ChatListReturnTests": 3.0,
     "ChatMessageScrollTargetCacheIncrementalTests": 0.117,
     "ChatReadStateTests": 0.05,
     "ChatResumeCoordinatorTests": 0.105,

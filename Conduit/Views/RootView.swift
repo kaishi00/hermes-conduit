@@ -287,6 +287,12 @@ struct MainView: View {
             // activate the persistent layout while the drawer is presented.
             if persistentActive { appState.dismissSidebarDrawer() }
         }
+        // Back to the list (V2) or the drawer opening covers the chat: the
+        // list reads the catalog again, so a conversation started in that
+        // chat, or a turn that ran there, shows without a pull to refresh.
+        .onChange(of: appState.showSidebar) { _, covered in
+            if covered { appState.refreshCatalogAfterLeavingChat() }
+        }
         .task(id: voiceCapabilityRefreshKey) {
             await appState.refreshVoiceCapabilities()
         }
