@@ -25,7 +25,7 @@ jobs:
   probe:
     name: Scroll probe
     runs-on: macos-26
-    timeout-minutes: 85
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
@@ -76,7 +76,7 @@ jobs:
 
       - name: Run the probe
         if: always()
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: bash .github/scroll-probe/run.sh frames
 
       - name: Sample the probe

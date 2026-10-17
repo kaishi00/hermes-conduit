@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Temporary scroll-probe runner. `run.sh frames` runs the frame test without
-# a profiler; `run.sh profile` runs it again under the Time Profiler and
-# summarises the samples taken inside each probe frame.
+# Temporary scroll-probe runner. `run.sh tests` runs the suites the drawn
+# text touches; `run.sh frames` runs the frame test, drawn text against text
+# views; `run.sh sample` runs it again under macOS `sample`, and `summary` /
+# `tree` print where the frames' main-thread time went.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 frames=TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame

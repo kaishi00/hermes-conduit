@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Temporary scroll-probe helper: summarises a macOS `sample` report,
-keeping only main-thread samples taken inside the probe's `probeFrameWork`
-(one display frame's work), and prints where that time went. One sample is
-one millisecond at the default interval.
+"""Temporary scroll-probe helper: summarises a macOS `sample` report of the
+frame probe. It keeps the main thread's samples taken inside the probe's
+frame loop (ProbeFrameClock.run) that were not waiting for the next event:
+the work the scrolled frames did. One sample is one millisecond at the
+default interval.
 
 Usage: sample_summary.py sample.txt
 """
@@ -11,7 +12,9 @@ import re
 import sys
 
 PATH = sys.argv[1]
-PROBE = "probeFrameWork"
+LOOP = re.compile(r"ProbeFrameClock.*\brun\(")
+# Where an idle run loop sleeps until its next event.
+WAITS = ("__CFRunLoopServiceMachPort",)
 
 lines = open(PATH, errors="replace").read().splitlines()
 try:
@@ -78,37 +81,55 @@ if not threads:
     for line in lines[start:start + 25]:
         print("PROFILE  | " + line[:160])
     sys.exit(0)
-main_thread = threads[0]
+main_threads = [t for t in threads if "com.apple.main-thread" in t.name] or threads[:1]
 
-# Every probeFrameWork node's subtree, merged by call path.
-merged = {}
-total = 0
-
-
-def merge(node, into):
-    key = (node.name, node.binary)
-    entry = into.get(key)
-    if entry is None:
-        entry = into[key] = [0, {}]
-    entry[0] += node.count
-    for child in node.children:
-        merge(child, entry[1])
+# The frame loop's nodes on the main thread; the whole main thread when the
+# loop isn't found.
+roots = []
 
 
 def find(node):
-    global total
-    if PROBE in node.name:
-        total += node.count
-        for child in node.children:
-            merge(child, merged)
+    if LOOP.search(node.name):
+        roots.append(node)
         return
     for child in node.children:
         find(child)
 
 
-for thread in threads:
+for thread in main_threads:
     find(thread)
-print(f"PROFILE firstThreadSamples={main_thread.count} probeSamples={total} (1 sample = 1 ms)")
+loop_samples = sum(root.count for root in roots)
+if not roots:
+    print("PROFILE no frame loop found: the whole main thread, waits left out")
+    roots = main_threads
+
+# The loop's subtrees merged by call path, each node's count without the
+# samples spent waiting under it.
+merged = {}
+
+
+def merge(node, into):
+    if any(wait in node.name for wait in WAITS):
+        return 0
+    key = (node.name, node.binary)
+    entry = into.get(key)
+    if entry is None:
+        entry = into[key] = [0, {}]
+    kept = max(0, node.count - sum(child.count for child in node.children))
+    for child in node.children:
+        kept += merge(child, entry[1])
+    entry[0] += kept
+    return kept
+
+
+total = 0
+for root in roots:
+    for child in root.children:
+        total += merge(child, merged)
+print(
+    f"PROFILE mainThreadSamples={sum(t.count for t in main_threads)} frameLoopSamples={loop_samples} "
+    f"busy={total} (1 sample = 1 ms)"
+)
 if total == 0:
     for line in lines[start:start + 25]:
         print("PROFILE  | " + line[:160])
@@ -120,15 +141,17 @@ def short(name, limit=118):
     return name if len(name) <= limit else name[: limit - 1] + "…"
 
 
-step = collections.Counter()
+callouts = collections.Counter()
 self_binary = collections.Counter()
 self_symbol = collections.Counter()
 inclusive = collections.Counter()
 inclusive_ours = collections.Counter()
 
 
-def walk(tree, ancestors):
+def walk(tree, ancestors, parent):
     for (name, binary), (count, children) in tree.items():
+        if count == 0:
+            continue
         key = short(name) + "  [" + binary + "]"
         child_total = sum(c[0] for c in children.values())
         own = count - child_total
@@ -139,12 +162,15 @@ def walk(tree, ancestors):
             inclusive[key] += count
             if binary.startswith("Conduit"):
                 inclusive_ours[key] += count
-        walk(children, ancestors | {key})
+        # What each run-loop callout ran: an observer (SwiftUI's update,
+        # the Core Animation commit), a source (the display link, touches),
+        # a timer or the main queue.
+        if parent.startswith("__CFRUNLOOP_IS_CALLING_OUT_TO_"):
+            callouts[short(parent.replace("__CFRUNLOOP_IS_CALLING_OUT_TO_", ""), 40) + " > " + key] += count
+        walk(children, ancestors | {key}, name)
 
 
-for (name, binary), (count, _) in merged.items():
-    step[short(name)] += count
-walk(merged, frozenset())
+walk(merged, frozenset(), "")
 
 
 def table(title, counter, limit):
@@ -153,15 +179,15 @@ def table(title, counter, limit):
         print(f"PROFILE {value:7d}ms {100 * value / total:5.1f}%  {key}")
 
 
-table("frame step (callee of probeFrameWork)", step, 8)
+table("run-loop callouts", callouts, 16)
 table("self time by library", self_binary, 14)
 table("self time by function", self_symbol, 40)
 table("inclusive, our code", inclusive_ours, 30)
 table("inclusive, all", inclusive, 90)
 
-# The call tree from the frame's work down: nodes under 1.5% are cut, and a
-# child carrying nearly all of its parent's time continues on the same line.
-print("PROFILE == call tree (ms, % of probe time)")
+# The call tree of the frames' work: nodes under 1.5% are cut, and a child
+# carrying nearly all of its parent's time continues on the same line.
+print("PROFILE == call tree (ms, % of busy time)")
 cutoff = total * 0.015
 printed = 0
 

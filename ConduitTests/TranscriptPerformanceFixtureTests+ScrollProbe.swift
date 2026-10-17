@@ -337,30 +337,57 @@ extension TranscriptPerformanceFixtureTests {
             layoutLog.moves = []
         }
 
-        // One display frame: the finger moves the content, then the frame's
-        // layout and render commit run, then whatever the main queue holds.
-        // Named apart so a profile can take the samples inside it alone.
-        func probeFrameWork(to offsetY: CGFloat) {
-            scrollView.contentOffset.y = offsetY
-            host.view.layoutIfNeeded()
-            CATransaction.flush()
-            RunLoop.current.run(until: Date())
+        // Frames run the way the app runs them: a display link moves the
+        // content one step, and everything the main run loop then does until
+        // the next tick (SwiftUI's update, new rows' views going in, layout,
+        // drawing, the commit) is that frame's work, read as the time the run
+        // loop spends awake. Driving layout by hand left SwiftUI's own pass
+        // out: new rows were laid out but their views never went in.
+        let clock = ProbeFrameClock()
+        let observer = CFRunLoopObserverCreateWithHandler(
+            kCFAllocatorDefault,
+            CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue,
+            true,
+            CFIndex.max
+        ) { _, activity in
+            MainActor.assumeIsolated { clock.observe(activity) }
         }
-        func frame(_ index: Int, to offsetY: CGFloat) -> ProbeFrame {
-            layoutLog.frame = index
-            let before = ProbeCounters.read()
-            let heightBefore = scrollView.contentSize.height
-            let start = CACurrentMediaTime()
-            probeFrameWork(to: offsetY)
-            let elapsed = (CACurrentMediaTime() - start) * 1000
-            return ProbeFrame(
-                index: index,
-                milliseconds: elapsed,
-                counters: ProbeCounters.read() - before,
-                offsetError: scrollView.contentOffset.y - offsetY,
-                contentHeightChange: scrollView.contentSize.height - heightBefore,
-                mountedRows: Self.mountedRowEstimate(in: scrollView)
-            )
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        defer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+
+        /// Moves the content `delta` points on each of `steps` display
+        /// frames and returns each frame's work.
+        func scrollFrames(steps: Int, delta: CGFloat) -> [ProbeFrame] {
+            var frames: [ProbeFrame] = []
+            var index = 0
+            var markBefore = clock.mark
+            var countersBefore = ProbeCounters.read()
+            var heightBefore = scrollView.contentSize.height
+            var target = scrollView.contentOffset.y
+            clock.tick = {
+                let mark = clock.mark
+                if index > 0 {
+                    frames.append(ProbeFrame(
+                        index: index - 1,
+                        milliseconds: (mark - markBefore) * 1000,
+                        counters: ProbeCounters.read() - countersBefore,
+                        offsetError: scrollView.contentOffset.y - target,
+                        contentHeightChange: scrollView.contentSize.height - heightBefore,
+                        mountedRows: 0
+                    ))
+                }
+                guard index < steps else { return false }
+                markBefore = mark
+                countersBefore = ProbeCounters.read()
+                heightBefore = scrollView.contentSize.height
+                target = scrollView.contentOffset.y + delta
+                layoutLog.frame = index
+                if delta != 0 { scrollView.contentOffset.y = target }
+                index += 1
+                return true
+            }
+            clock.run()
+            return frames
         }
 
         // A profiler attaches to this process while it waits.
@@ -383,13 +410,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Up from the latest message into rows never shown before.
         engine.userDragBegan()
-        var upFrames: [ProbeFrame] = []
-        var offset = scrollView.contentOffset.y
-        for index in 0..<steps {
-            offset -= step
-            upFrames.append(frame(index, to: offset))
-            offset = scrollView.contentOffset.y
-        }
+        let upFrames = scrollFrames(steps: steps, delta: -step)
         engine.userDragEnded()
         Self.report("up-new-rows", upFrames)
         reportLayout("up-new-rows", upFrames)
@@ -398,12 +419,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Back down over the same rows.
         engine.userDragBegan()
-        var downFrames: [ProbeFrame] = []
-        for index in 0..<steps {
-            offset += step
-            downFrames.append(frame(index, to: offset))
-            offset = scrollView.contentOffset.y
-        }
+        let downFrames = scrollFrames(steps: steps, delta: step)
         engine.userDragEnded()
         Self.report("down-seen-rows", downFrames)
         reportLayout("down-seen-rows", downFrames)
@@ -412,12 +428,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Up again over rows that have been shown once.
         engine.userDragBegan()
-        var againFrames: [ProbeFrame] = []
-        for index in 0..<steps {
-            offset -= step
-            againFrames.append(frame(index, to: offset))
-            offset = scrollView.contentOffset.y
-        }
+        let againFrames = scrollFrames(steps: steps, delta: -step)
         engine.userDragEnded()
         Self.report("up-seen-rows", againFrames)
         reportLayout("up-seen-rows", againFrames)
@@ -425,22 +436,7 @@ extension TranscriptPerformanceFixtureTests {
         print("SCROLL_PROBE up-seen-rows view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Still: no finger, nothing streaming.
-        var idleFrames: [ProbeFrame] = []
-        for index in 0..<120 {
-            let before = ProbeCounters.read()
-            let start = CACurrentMediaTime()
-            host.view.layoutIfNeeded()
-            CATransaction.flush()
-            RunLoop.current.run(until: Date().addingTimeInterval(1.0 / 120))
-            idleFrames.append(ProbeFrame(
-                index: index,
-                milliseconds: (CACurrentMediaTime() - start) * 1000,
-                counters: ProbeCounters.read() - before,
-                offsetError: 0,
-                contentHeightChange: 0,
-                mountedRows: Self.mountedRowEstimate(in: scrollView)
-            ))
-        }
+        let idleFrames = scrollFrames(steps: 120, delta: 0)
         Self.report("idle", idleFrames)
         print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
         print("SCROLL_PROBE idle view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
@@ -812,8 +808,6 @@ extension TranscriptPerformanceFixtureTests {
         String(format: "%.2fms", value)
     }
 
-    /// Where the mounted text views sit in content coordinates, to tell a
-    /// scroll that mounted nothing from rows that were already there.
     /// What the viewport shows: the rows the stack reports laid out (their
     /// frames, in transcript order), the text hosts inside the viewport, and
     /// the share of its pixels that differ from the background, near zero
@@ -841,40 +835,62 @@ extension TranscriptPerformanceFixtureTests {
         )
     }
 
+    /// The share of the viewport's middle (clear of the bars and the
+    /// composer) that differs from its commonest colour, the background.
+    /// Negative when it can't be read.
     private static func viewportInk(of scrollView: UIScrollView) -> Double {
         guard let window = scrollView.window else { return -1 }
-        let rect = scrollView.convert(scrollView.bounds, to: window).intersection(window.bounds)
-        guard rect.width >= 1, rect.height >= 1 else { return -1 }
+        let frame = scrollView.convert(scrollView.bounds, to: window).intersection(window.bounds)
+        let rect = frame.insetBy(dx: 0, dy: frame.height * 0.2)
+        guard rect.width >= 1, rect.height >= 1 else { return -2 }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
+        format.preferredRange = .standard
         let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { _ in
             window.drawHierarchy(
                 in: CGRect(origin: CGPoint(x: -rect.minX, y: -rect.minY), size: window.bounds.size),
                 afterScreenUpdates: true
             )
         }
-        guard let cgImage = image.cgImage,
-              cgImage.bitsPerPixel == 32,
-              let data = cgImage.dataProvider?.data,
-              let bytes = CFDataGetBytePtr(data)
-        else { return -1 }
-        let rowBytes = cgImage.bytesPerRow
-        let reference = (bytes[0], bytes[1], bytes[2])
+        // Read back as 8-bit RGB, whatever format the renderer picked.
+        guard let cgImage = image.cgImage else { return -3 }
+        let width = cgImage.width
+        let height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn, width * height > 0 else { return -4 }
+        func key(_ index: Int) -> Int {
+            Int(pixels[index] >> 3) << 10 | Int(pixels[index + 1] >> 3) << 5 | Int(pixels[index + 2] >> 3)
+        }
+        var counts: [Int: Int] = [:]
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            counts[key(index), default: 0] += 1
+        }
+        guard let background = counts.max(by: { $0.value < $1.value })?.key else { return -5 }
+        let channels = [background >> 10, (background >> 5) & 31, background & 31]
         var differing = 0
-        for y in 0..<cgImage.height {
-            for x in 0..<cgImage.width {
-                let pixel = bytes + y * rowBytes + x * 4
-                if abs(Int(pixel[0]) - Int(reference.0)) > 40
-                    || abs(Int(pixel[1]) - Int(reference.1)) > 40
-                    || abs(Int(pixel[2]) - Int(reference.2)) > 40 {
-                    differing += 1
-                }
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let pixel = key(index)
+            if abs((pixel >> 10) - channels[0]) > 5
+                || abs(((pixel >> 5) & 31) - channels[1]) > 5
+                || abs((pixel & 31) - channels[2]) > 5 {
+                differing += 1
             }
         }
-        return Double(differing) / Double(cgImage.width * cgImage.height)
+        return Double(differing) / Double(width * height)
     }
 
+    /// Where the mounted text views sit in content coordinates, to tell a
+    /// scroll that mounted nothing from rows that were already there.
     private static func mountedSpan(in scrollView: UIScrollView) -> String {
         var minY = CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude
@@ -911,6 +927,55 @@ extension TranscriptPerformanceFixtureTests {
         }
         walk(scrollView)
         return count
+    }
+}
+
+/// Measures display frames by the time the main run loop spends awake: an
+/// observer that runs after every other one stamps each wake and sleep, and
+/// a display link ticks the probe once per frame.
+@MainActor
+private final class ProbeFrameClock: NSObject {
+    private var busy: CFTimeInterval = 0
+    private var wokeAt = CACurrentMediaTime()
+    private var awake = true
+    private var finished = false
+    /// Called once per display frame; returns false to stop.
+    var tick: (() -> Bool)?
+
+    /// Awake time so far, counting the stretch the loop is awake in now.
+    var mark: CFTimeInterval {
+        busy + (awake ? CACurrentMediaTime() - wokeAt : 0)
+    }
+
+    func observe(_ activity: CFRunLoopActivity) {
+        let now = CACurrentMediaTime()
+        if activity == .afterWaiting {
+            wokeAt = now
+            awake = true
+        } else if awake {
+            busy += now - wokeAt
+            awake = false
+        }
+    }
+
+    /// Ticks until `tick` returns false (or two minutes pass).
+    func run() {
+        finished = false
+        let link = CADisplayLink(target: self, selector: #selector(fire(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        let deadline = Date().addingTimeInterval(120)
+        while !finished, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        link.invalidate()
+    }
+
+    @objc private func fire(_ link: CADisplayLink) {
+        if tick?() != true {
+            finished = true
+            link.invalidate()
+        }
     }
 }
 
