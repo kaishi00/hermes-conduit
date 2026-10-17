@@ -958,17 +958,20 @@ enum SelectableTextViewPool {
     static let capacity = 32
     private static var plain: [UITextView] = []
     private static var coordinated: [UITextView] = []
-    private static let memoryWarning = NotificationCenter.default.addObserver(
-        forName: UIApplication.didReceiveMemoryWarningNotification,
-        object: nil,
-        queue: .main
-    ) { _ in
-        // Delivered on the main queue.
-        MainActor.assumeIsolated { SelectableTextViewPool.removeAll() }
+    /// Emptied on a memory warning, and in the background, where no chat
+    /// scrolls.
+    private static let drainObservers = [
+        UIApplication.didReceiveMemoryWarningNotification,
+        UIApplication.didEnterBackgroundNotification,
+    ].map { name in
+        NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { SelectableTextViewPool.removeAll() }
+        }
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
-        _ = memoryWarning
+        _ = drainObservers
         return wantsCoordinated ? coordinated.popLast() : plain.popLast()
     }
 
@@ -979,7 +982,7 @@ enum SelectableTextViewPool {
             textView.delegate == nil && (textView as? MarkdownSelectionTextView)?.onTouchBegan == nil,
             "recycle after tearDownMountedTextView"
         )
-        _ = memoryWarning
+        _ = drainObservers
         // Pooled twice, one view would be handed to two blocks.
         guard !plain.contains(where: { $0 === textView }),
               !coordinated.contains(where: { $0 === textView })
