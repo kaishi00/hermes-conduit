@@ -65,6 +65,7 @@ struct SpeechServerVoiceSettingsView: View {
                 }
             } else {
                 ProgressView()
+                    .accessibilityLabel(Text(AppLocalization.string("Loading profile voice settings…")))
             }
         }
         .task(id: service.profile) { await load() }
@@ -115,12 +116,15 @@ struct SpeechServerVoiceSettingsView: View {
     }
 
     private func rotate() async {
+        let current = service
         isRotating = true
         defer { isRotating = false }
         rotateError = nil
-        if !(await service.rotateSpeechServerVoiceKey()) {
-            rotateError = service.errorMessage
-        }
-        status = await service.speechServerVoiceStatus()
+        let rotated = await service.rotateSpeechServerVoiceKey()
+        let loaded = await service.speechServerVoiceStatus()
+        // A profile switch meanwhile loads that profile's own status.
+        guard service === current else { return }
+        if !rotated { rotateError = service.errorMessage }
+        status = loaded
     }
 }

@@ -123,9 +123,18 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             complete(.success(receivedPCM))
             return receivedPCM
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            completed = continuation
-            armIdleTimeout()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // Cancelled (or failed) before this ran: nothing will resume it.
+                if self.terminal {
+                    continuation.resume(with: self.terminalError.map { .failure($0) } ?? .success(self.receivedPCM))
+                    return
+                }
+                self.completed = continuation
+                self.armIdleTimeout()
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor [weak self] in self?.cancel() }
         }
     }
 
@@ -170,12 +179,10 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
     }
 
-    /// Whether `transcript`, so far, is the server reading `words`.
+    /// Whether `transcript`, so far, is the server reading `words`: the
+    /// start of them, with nothing of its own added.
     static func isReadingBack(_ transcript: String, words: String) -> Bool {
-        let said = comparable(transcript)
-        let sent = comparable(words)
-        guard !said.isEmpty else { return true }
-        return sent.hasPrefix(said) || said.hasPrefix(sent)
+        comparable(words).hasPrefix(comparable(transcript))
     }
 
     // MARK: Responses
