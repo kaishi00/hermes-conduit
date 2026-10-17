@@ -150,6 +150,7 @@ struct SelectableTextView: UIViewRepresentable {
         updateUIViewForTests(uiView, coordinator: context.coordinator)
     }
 
+    @MainActor
     static func dismantleUIView(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
         tearDownMountedTextView(in: uiView)
         SelectableTextViewPool.recycle(uiView.mountedTextView)
@@ -462,6 +463,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
     }
 
+    @MainActor
     private func makeMountedTextView(needsCoordinatedTextView: Bool) -> UITextView {
         if let reused = SelectableTextViewPool.take(coordinated: needsCoordinatedTextView) {
             return reused
@@ -918,12 +920,14 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
 /// Text views whose rows scrolled out of view, kept for the rows that
 /// scroll in next. Making a UITextView is the larger part of what a Markdown
 /// block costs to mount, and a chat takes rows down and builds them again
-/// all the time it scrolls. A recycled view keeps nothing that `configure`
-/// doesn't set again: its delegate, selection and coordinator are cleared
-/// when it is taken down.
+/// all the time it scrolls. Only the empty view is kept: teardown clears its
+/// delegate and coordinator, and recycling drops its text, selection and
+/// frame, so a reused view starts out like a new one.
 @MainActor
-private enum SelectableTextViewPool {
-    static let capacity = 64
+enum SelectableTextViewPool {
+    /// Rows leave at one end as they enter at the other, so the pool only
+    /// has to cover a burst, such as a jump to the latest message.
+    static let capacity = 32
     private static var plain: [UITextView] = []
     private static var coordinated: [UITextView] = []
     private static let memoryWarning = NotificationCenter.default.addObserver(
@@ -931,10 +935,8 @@ private enum SelectableTextViewPool {
         object: nil,
         queue: .main
     ) { _ in
-        MainActor.assumeIsolated {
-            plain.removeAll()
-            coordinated.removeAll()
-        }
+        // Delivered on the main queue.
+        MainActor.assumeIsolated { SelectableTextViewPool.removeAll() }
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
@@ -944,13 +946,20 @@ private enum SelectableTextViewPool {
     static func recycle(_ textView: UITextView) {
         _ = memoryWarning
         textView.removeFromSuperview()
+        textView.attributedText = NSAttributedString()
         textView.selectedRange = NSRange(location: 0, length: 0)
+        textView.frame = .zero
         if let coordinatedTextView = textView as? MarkdownSelectionTextView {
             coordinatedTextView.prepareForReuse()
             if coordinated.count < capacity { coordinated.append(textView) }
         } else if plain.count < capacity {
             plain.append(textView)
         }
+    }
+
+    static func removeAll() {
+        plain.removeAll()
+        coordinated.removeAll()
     }
 }
 

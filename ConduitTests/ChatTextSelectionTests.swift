@@ -309,6 +309,8 @@ final class ChatTextSelectionTests: XCTestCase {
 
     @MainActor
     func testDismantledTextViewIsReusedCleanByTheNextMount() {
+        SelectableTextViewPool.removeAll()
+        defer { SelectableTextViewPool.removeAll() }
         let selectionCoordinator = MarkdownSelectionCoordinator()
         let first = MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: "")
         let second = MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
@@ -340,6 +342,10 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertTrue(textView.delegate === secondCoordinator)
         XCTAssertNil(selectionCoordinator.text(for: first.id))
         XCTAssertEqual(selectionCoordinator.text(for: second.id), "Second")
+
+        SelectableTextView.dismantleUIView(secondHost, coordinator: secondCoordinator)
+        XCTAssertEqual(textView.attributedText.length, 0, "a pooled view keeps no text")
+        XCTAssertNil(textView.superview)
     }
 
     @MainActor
