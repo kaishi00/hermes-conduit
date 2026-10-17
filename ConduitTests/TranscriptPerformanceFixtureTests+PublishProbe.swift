@@ -138,7 +138,7 @@ extension TranscriptPerformanceFixtureTests {
         sampling = false
         if let sampler {
             sampler.stop()
-            sampler.printReport(phases: [(name: "still-publish", frames: sampledPublishFrames, slowest: 3)])
+            sampler.printReport(phases: [(name: "still-publish", frames: sampledPublishFrames, slowest: 0)])
         }
         engine.userDragBegan()
         report("scroll-up", frames(240, delta: -12, every: 12))
@@ -426,7 +426,26 @@ private final class PublishProbeStackSampler: @unchecked Sendable {
         for (number, phase) in phases.enumerated() {
             let base = number * Self.phaseStride
             let all = phase.frames.flatMap { stacks[base + $0.index] ?? [] }
-            printTree(all, title: "\(phase.name) all frames", cutoff: 0.03, maxLines: 26)
+            printTree(all, title: "\(phase.name) all frames", cutoff: 0.04, maxLines: 30)
+            // Flat: share of samples with each app frame on the stack,
+            // and which library each sample's leaf runs in.
+            var inclusive: [String: Int] = [:]
+            var leaves: [String: Int] = [:]
+            for frames in all {
+                for frame in Set(frames) where frame.contains("[Conduit") && !frame.contains("PublishProbe") {
+                    inclusive[frame, default: 0] += 1
+                }
+                if let leaf = frames.last, let open = leaf.lastIndex(of: "[") {
+                    leaves[String(leaf[open...]), default: 0] += 1
+                }
+            }
+            let total = Double(max(all.count, 1))
+            for (frame, count) in inclusive.sorted(by: { $0.value > $1.value }).prefix(45) {
+                print("SCROLL_PROBE stacks flat " + String(format: "%.0f%% ", 100 * Double(count) / total) + String(frame.prefix(220)))
+            }
+            for (image, count) in leaves.sorted(by: { $0.value > $1.value }).prefix(12) {
+                print("SCROLL_PROBE stacks leaf " + String(format: "%.0f%% ", 100 * Double(count) / total) + image)
+            }
             for frame in phase.frames.sorted(by: { $0.milliseconds > $1.milliseconds }).prefix(phase.slowest) {
                 printTree(
                     stacks[base + frame.index] ?? [],
