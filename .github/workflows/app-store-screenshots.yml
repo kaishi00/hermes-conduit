@@ -10,6 +10,9 @@ on:
       devices:
         description: "Simulator names, comma-separated"
         default: "iPhone 17 Pro Max,iPad Pro 13-inch"
+      watch:
+        description: "Watch simulator name"
+        default: "Apple Watch Ultra 3"
   push:
     # Temporary while the pipeline is built on this branch.
     branches: [claude/project-thread-3rugpr]
@@ -17,6 +20,7 @@ on:
       - ".github/workflows/app-store-screenshots.yml"
       - "scripts/app-store/**"
       - "ConduitScreenshots/**"
+      - "ConduitWatch/**"
 
 permissions:
   contents: write
@@ -162,3 +166,78 @@ jobs:
             results-*.log
             results/
           if-no-files-found: ignore
+
+  watch:
+    # The Watch app needs no dashboard: its screens come from the
+    # -conduitScreenshotCall fixture (ConduitWatch/WatchVoiceCall.swift).
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      WATCH_DEVICE: ${{ inputs.watch || 'Apple Watch Ultra 3' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build, install and capture
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          runtimes = json.load(sys.stdin)["devices"]
+          watch = sorted((r for r in runtimes if "watchOS" in r), reverse=True)
+          for exact in (True, False):
+              for r in watch:
+                  for d in runtimes[r]:
+                      if d["name"] == name if exact else d["name"].startswith(name):
+                          print(d["udid"]); sys.exit()
+          print("available:", sorted({d["name"] for r in watch for d in runtimes[r]}), file=sys.stderr)
+          ' "$WATCH_DEVICE")
+          if [ -z "$udid" ]; then echo "::error::no Watch simulator named $WATCH_DEVICE"; exit 1; fi
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcodebuild build \
+            -project Conduit.xcodeproj -scheme ConduitWatch \
+            -destination "id=$udid" -configuration Debug \
+            -derivedDataPath watch-dd \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
+            > watch-build.log 2>&1 || { grep -E "error:" watch-build.log | head -20; exit 1; }
+          app=$(find watch-dd/Build/Products -name 'ConduitWatch.app' -path '*watchsimulator*' | head -1)
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl status_bar "$udid" override --time 9:41 || true
+          mkdir -p shots/watch
+          n=1
+          for state in home speaking ended; do
+            xcrun simctl terminate "$udid" com.milim.relay.watchkitapp 2>/dev/null || true
+            xcrun simctl launch "$udid" com.milim.relay.watchkitapp -conduitScreenshotCall "$state"
+            sleep 6
+            xcrun simctl io "$udid" screenshot "shots/watch/0$n-$state.png"
+            n=$((n + 1))
+          done
+          ls -l shots/watch
+
+      - name: Publish to a git ref
+        if: always()
+        run: |
+          set -euo pipefail
+          out=$(mktemp -d)
+          cp -R shots "$out/" 2>/dev/null || true
+          mkdir -p "$out/logs"
+          [ -f watch-build.log ] && tail -c 400000 watch-build.log > "$out/logs/watch-build.log"
+          cd "$out"
+          git init -q
+          git -c user.name=ci -c user.email=ci@localhost add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "App Store Watch screenshots, run ${{ github.run_id }}" --allow-empty
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
+            "HEAD:refs/app-store-shots/${{ github.run_id }}-watch"

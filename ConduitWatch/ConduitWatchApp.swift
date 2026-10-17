@@ -25,6 +25,7 @@ struct ConduitWatchApp: App {
         HermesWatchCalls.shared.activate()
         // The Action button, a control or a shortcut (TalkToHermesIntent).
         WatchCallRequests.handler = { WatchVoiceCall.shared.requestCall(source: $0) }
+        WatchVoiceCall.shared.applyScreenshotFixture()
     }
 
     var body: some Scene {

@@ -304,7 +304,7 @@ final class WatchVoiceCall: ObservableObject {
 
     private func startOnOpenIfWanted() {
         // A call from Hermes ringing or answered is the call.
-        guard startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
+        guard !isScreenshotFixture, startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
         // Back from the background is an open, however soon after a call
         // ended: reading the summary with the wrist down and up again
         // never leaves inactive. Return to Clock running out on the summary
@@ -323,6 +323,40 @@ final class WatchVoiceCall: ObservableObject {
         start()
     }
 
+    // MARK: Screenshot fixture
+
+    /// Set by `-conduitScreenshotCall home|speaking|ended` (debug builds only):
+    /// the App Store screenshot run (scripts/app-store) shows a call in that
+    /// state with no audio or connection behind it.
+    private(set) var isScreenshotFixture = false
+
+    func applyScreenshotFixture(arguments: [String] = ProcessInfo.processInfo.arguments) {
+        #if DEBUG
+        guard let index = arguments.firstIndex(of: "-conduitScreenshotCall"), index + 1 < arguments.count else { return }
+        isScreenshotFixture = true
+        if arguments[index + 1] == "home" { return }
+        // Demo content, English only like the rest of the demo world.
+        let now = Date()
+        callEngine = engine
+        transcript = [
+            .init(role: .user, text: "What's on my calendar this afternoon?", at: now.addingTimeInterval(-70)),
+            .init(role: .assistant, text: "Two things: a dentist appointment at 3, and Maya's soccer practice at 5:30. Want me to set a reminder to leave by 2:40?", at: now.addingTimeInterval(-62)),
+            .init(role: .user, text: "Yes, and text Maya's coach that we might be ten minutes late.", at: now.addingTimeInterval(-40)),
+            .init(role: .assistant, text: "Reminder set for 2:40. I've drafted the text to Coach Rivera and started a job to send it.", at: now.addingTimeInterval(-30)),
+        ]
+        liveSince = now.addingTimeInterval(-83)
+        jobsRunning = 1
+        switch arguments[index + 1] {
+        case "ended":
+            endedAt = now
+            phase = .ended(nil)
+        default:
+            caption = transcript.last?.text
+            phase = .speaking
+        }
+        #endif
+    }
+
     // MARK: State
 
     private func queueRefresh() {
@@ -336,7 +370,7 @@ final class WatchVoiceCall: ObservableObject {
     }
 
     private func refresh() {
-        guard !summaryDismissed else { return }
+        guard !summaryDismissed, !isScreenshotFixture else { return }
         let next: Phase
         switch callEngine {
         case .geminiLive, .grokLive: next = Self.phase(direct.phase)
