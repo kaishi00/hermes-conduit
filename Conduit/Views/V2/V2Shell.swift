@@ -79,10 +79,11 @@ enum V2Route: Hashable {
 /// What the shell hands its tabs: the profile switch (with its slide) and
 /// where content stands in one.
 ///
-/// Equal when the values are: the shell rebuilds `pickProfile` on every
-/// render, and a closure never compares equal, so without this every
-/// AppState publish would redraw every view that reads the context, the
-/// hidden tabs included. Every copy of the closure does the same thing.
+/// Equal when the values are: the shell rebuilds `pickProfile` and
+/// `showScheduledRuns` on every render, and a closure never compares equal,
+/// so without this every AppState publish would redraw every view that
+/// reads the context, the hidden tabs included. Every copy of a closure
+/// does the same thing.
 /// Values go in `Values`, whose equality is synthesized, so a new one is
 /// compared without anyone remembering to.
 struct V2ShellContext: Equatable {
@@ -101,6 +102,8 @@ struct V2ShellContext: Equatable {
     }
 
     var pickProfile: (String) -> Void = { _ in }
+    /// Opens Chats filtered to Scheduled, where cron runs are listed.
+    var showScheduledRuns: () -> Void = {}
     var values = Values()
 
     var contentFaded: Bool {
@@ -202,6 +205,8 @@ struct V2Shell: View {
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    /// The Chats filter (V2ChatsView), set from Tasks to list cron runs.
+    @AppStorage("conduit.v2.sessionFilter") private var chatsFilterRaw = "all"
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -237,7 +242,7 @@ struct V2Shell: View {
 
     var body: some View {
         tabs
-            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, values: .init(contentFaded: contentFaded, contentShift: contentShift)))
+            .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift)))
             .onChange(of: conversationVisible, initial: true) { _, visible in
                 // Covered means streaming rows needn't redraw and the chat
                 // doesn't count as seen (AppState.showSidebar).
@@ -518,6 +523,15 @@ struct V2Shell: View {
         }
         visitedTabs.insert(target)
         selectTab(target)
+    }
+
+    /// Cron runs stay out of the All list (SidebarSourceRows): Scheduled
+    /// lists them, at the top of Chats rather than behind an open chat.
+    private func showScheduledRuns() {
+        chatsFilterRaw = V2SessionFilter.scheduled.rawValue
+        chatsPath.removeAll { $0 == .conversation }
+        visitedTabs.insert(.chats)
+        selectTab(.chats)
     }
 
     private func selectTab(_ tab: V2Tab) {
