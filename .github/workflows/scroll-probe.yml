@@ -79,17 +79,7 @@ jobs:
         timeout-minutes: 12
         run: bash .github/scroll-probe/run.sh frames
 
-      - name: Sample the probe
+      - name: Sample the probe's stacks
         if: always()
-        timeout-minutes: 15
-        run: bash .github/scroll-probe/run.sh sample
-
-      - name: Summarise the samples
-        if: always()
-        timeout-minutes: 6
-        run: bash .github/scroll-probe/run.sh summary
-
-      - name: Profile call tree
-        if: always()
-        timeout-minutes: 2
-        run: bash .github/scroll-probe/run.sh tree
+        timeout-minutes: 8
+        run: bash .github/scroll-probe/run.sh stacks

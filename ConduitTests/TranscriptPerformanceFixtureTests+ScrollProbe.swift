@@ -221,6 +221,9 @@ extension TranscriptPerformanceFixtureTests {
             textFrames.prefix(10).map { String(format: "%.0f", $0) }.joined(separator: ",")
         ))
         print("SCROLL_PROBE \(phase) chatBodyFrames=\(chatBodyFrames) offsetJumps=\(jumps.count) contentResizes=\(resized.count) mountedRows(last)=\(frames.last?.mountedRows ?? 0)")
+        print("SCROLL_PROBE \(phase) over16 at " + frames.filter { $0.milliseconds > 16.7 }.prefix(60).map {
+            String(format: "%ld:%.0f%@", $0.index, $0.milliseconds, $0.counters.textRebuild > 0 ? "t\($0.counters.textRebuild)" : "")
+        }.joined(separator: " "))
         for jump in jumps.prefix(5) {
             print(String(format: "SCROLL_PROBE %@ jump frame=%ld error=%.1fpt heightChange=%.1fpt", phase, jump.index, jump.offsetError, jump.contentHeightChange))
         }
@@ -375,9 +378,14 @@ extension TranscriptPerformanceFixtureTests {
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         defer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
 
+        // Where the slowest frames' time went: the main thread's stack,
+        // sampled from another thread and tagged with the frame.
+        let sampler = environment["PROBE_STACKS"] == "1" ? ProbeStackSampler() : nil
+        sampler?.start()
+
         /// Moves the content `delta` points on each of `steps` display
         /// frames and returns each frame's work.
-        func scrollFrames(steps: Int, delta: CGFloat) -> [ProbeFrame] {
+        func scrollFrames(phase: Int, steps: Int, delta: CGFloat) -> [ProbeFrame] {
             var frames: [ProbeFrame] = []
             var index = 0
             var markBefore = awakeTime.mark
@@ -386,6 +394,7 @@ extension TranscriptPerformanceFixtureTests {
             var target = scrollView.contentOffset.y
             clock.tick = {
                 let mark = awakeTime.mark
+                sampler?.tag = -1
                 if index > 0 {
                     frames.append(ProbeFrame(
                         index: index - 1,
@@ -396,17 +405,24 @@ extension TranscriptPerformanceFixtureTests {
                         mountedRows: Self.mountedRowEstimate(in: scrollView)
                     ))
                 }
-                guard index < steps else { return false }
+                guard index < steps else {
+                    sampler?.tag = -1
+                    return false
+                }
                 countersBefore = ProbeCounters.read()
                 heightBefore = scrollView.contentSize.height
                 target = scrollView.contentOffset.y + delta
                 layoutLog.frame = index
                 // The bookkeeping above stays out of the next frame.
                 markBefore = awakeTime.mark
+                sampler?.tag = phase < 2 ? phase * ProbeStackSampler.phaseStride + index : -1
                 if delta != 0 { scrollView.contentOffset.y = target }
                 index += 1
                 return true
             }
+            // Samples walk the stack up to this frame.
+            var anchor = 0
+            withUnsafeMutablePointer(to: &anchor) { sampler?.stackLimit = UInt(bitPattern: $0) }
             clock.run()
             return frames
         }
@@ -427,7 +443,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Up from the latest message into rows never shown before.
         engine.userDragBegan()
-        let upFrames = scrollFrames(steps: steps, delta: -step)
+        let upFrames = scrollFrames(phase: 0, steps: steps, delta: -step)
         engine.userDragEnded()
         Self.report("up-new-rows", upFrames)
         reportLayout("up-new-rows", upFrames)
@@ -436,7 +452,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Back down over the same rows.
         engine.userDragBegan()
-        let downFrames = scrollFrames(steps: steps, delta: step)
+        let downFrames = scrollFrames(phase: 1, steps: steps, delta: step)
         engine.userDragEnded()
         Self.report("down-seen-rows", downFrames)
         reportLayout("down-seen-rows", downFrames)
@@ -445,7 +461,7 @@ extension TranscriptPerformanceFixtureTests {
 
         // Up again over rows that have been shown once.
         engine.userDragBegan()
-        let againFrames = scrollFrames(steps: steps, delta: -step)
+        let againFrames = scrollFrames(phase: 2, steps: steps, delta: -step)
         engine.userDragEnded()
         Self.report("up-seen-rows", againFrames)
         reportLayout("up-seen-rows", againFrames)
@@ -453,10 +469,18 @@ extension TranscriptPerformanceFixtureTests {
         print("SCROLL_PROBE up-seen-rows view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
 
         // Still: no finger, nothing streaming.
-        let idleFrames = scrollFrames(steps: 120, delta: 0)
+        let idleFrames = scrollFrames(phase: 3, steps: 120, delta: 0)
         Self.report("idle", idleFrames)
         print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
         print("SCROLL_PROBE idle view " + Self.viewReport(scrollView: scrollView, engine: engine, messages: appState.messages))
+
+        if let sampler {
+            sampler.stop()
+            sampler.printReport(phases: [
+                (name: "up-new-rows", frames: upFrames.map { (index: $0.index, milliseconds: $0.milliseconds) }, slowest: 6),
+                (name: "down-seen-rows", frames: downFrames.map { (index: $0.index, milliseconds: $0.milliseconds) }, slowest: 3),
+            ])
+        }
 
         // Hold while the sampler writes its report.
         if let marker = environment["PROBE_MARKER"] {
@@ -995,6 +1019,240 @@ private final class ProbeFrameClock: NSObject {
         }
     }
 }
+
+/// Samples the main thread's stack from a thread of its own about once a
+/// millisecond, each sample tagged with the frame the probe is in, so the
+/// slowest frames can say where their time went (macOS `sample` at that
+/// rate slowed frames to seconds). Memory is allocated up front: the main
+/// thread is suspended while its stack is read, and an allocation then
+/// could wait on a lock it holds.
+private final class ProbeStackSampler: @unchecked Sendable {
+    /// A tag is `phase * phaseStride + frame`.
+    static let phaseStride = 100_000
+    private static let maxDepth = 192
+    private static let capacity = 30_000
+    /// ARM_THREAD_STATE64_COUNT: x0-x28, fp, lr, sp, pc, cpsr and pad.
+    private static let stateWords = 68
+
+    private let target: thread_act_t
+    private let stackLow: UInt
+    private let stackHigh: UInt
+    private let state = UnsafeMutablePointer<natural_t>.allocate(capacity: ProbeStackSampler.stateWords)
+    private let addresses = UnsafeMutablePointer<UInt>.allocate(capacity: ProbeStackSampler.capacity * ProbeStackSampler.maxDepth)
+    private let depths = UnsafeMutablePointer<Int>.allocate(capacity: ProbeStackSampler.capacity)
+    private let tags = UnsafeMutablePointer<Int>.allocate(capacity: ProbeStackSampler.capacity)
+    /// 0: the current tag, 1: running, 2: samples taken, 3: the stack
+    /// address a walk stops at.
+    private let shared = UnsafeMutablePointer<Int>.allocate(capacity: 4)
+    private let done = DispatchSemaphore(value: 0)
+
+    /// Made on the main thread.
+    init() {
+        let main = pthread_main_thread_np()
+        target = pthread_mach_thread_np(main)
+        stackHigh = UInt(bitPattern: pthread_get_stackaddr_np(main))
+        stackLow = stackHigh - UInt(pthread_get_stacksize_np(main))
+        shared[0] = -1
+        shared[1] = 0
+        shared[2] = 0
+        shared[3] = 0
+    }
+
+    deinit {
+        state.deallocate()
+        addresses.deallocate()
+        depths.deallocate()
+        tags.deallocate()
+        shared.deallocate()
+    }
+
+    /// The frame samples count toward; negative leaves them out.
+    var tag: Int {
+        get { shared[0] }
+        set { shared[0] = newValue }
+    }
+
+    /// An address in the frame the probe's frame loop is called from: a
+    /// walk stops there, so a sample holds only the loop's own frames.
+    var stackLimit: UInt {
+        get { UInt(bitPattern: shared[3]) }
+        set { shared[3] = Int(bitPattern: newValue) }
+    }
+
+    func start() {
+        shared[1] = 1
+        let thread = Thread { [self] in
+            while shared[1] != 0 {
+                usleep(1000)
+                let tag = shared[0]
+                if tag >= 0, shared[2] < Self.capacity {
+                    sample(tag: tag)
+                }
+            }
+            done.signal()
+        }
+        thread.qualityOfService = .userInteractive
+        thread.start()
+    }
+
+    func stop() {
+        shared[1] = 0
+        done.wait()
+    }
+
+    private func sample(tag: Int) {
+        #if arch(arm64)
+        guard thread_suspend(target) == KERN_SUCCESS else { return }
+        var count = mach_msg_type_number_t(Self.stateWords)
+        if thread_get_state(target, thread_state_flavor_t(ARM_THREAD_STATE64), state, &count) == KERN_SUCCESS {
+            let words = UnsafeRawPointer(state)
+            let index = shared[2]
+            let base = addresses + index * Self.maxDepth
+            let linkRegister = UInt(words.loadUnaligned(fromByteOffset: 30 * 8, as: UInt64.self))
+            base[0] = UInt(words.loadUnaligned(fromByteOffset: 32 * 8, as: UInt64.self))
+            base[1] = linkRegister
+            var depth = 2
+            var framePointer = UInt(words.loadUnaligned(fromByteOffset: 29 * 8, as: UInt64.self))
+            let limit = shared[3] == 0 ? stackHigh : min(stackHigh, UInt(bitPattern: shared[3]))
+            while depth < Self.maxDepth, framePointer >= stackLow, framePointer + 16 <= limit,
+                  framePointer & 7 == 0,
+                  let record = UnsafePointer<UInt>(bitPattern: framePointer) {
+                let returnAddress = record[1]
+                if returnAddress == 0 { break }
+                // A function that set up its frame saved the link register
+                // there too: don't count its caller twice.
+                if !(depth == 2 && returnAddress == linkRegister) {
+                    base[depth] = returnAddress
+                    depth += 1
+                }
+                let next = record[0]
+                if next <= framePointer { break }
+                framePointer = next
+            }
+            depths[index] = depth
+            tags[index] = tag
+            shared[2] = index + 1
+        }
+        thread_resume(target)
+        #endif
+    }
+
+    private final class Node {
+        var count = 0
+        var children: [String: Node] = [:]
+    }
+
+    /// For each phase: what its frames' time went to, then its slowest
+    /// frames one by one, as call trees.
+    func printReport(phases: [(name: String, frames: [(index: Int, milliseconds: Double)], slowest: Int)]) {
+        var names: [UInt: String] = [:]
+        func name(_ address: UInt) -> String {
+            if let known = names[address] { return known }
+            var info = Dl_info()
+            var result = String(format: "0x%lx", address)
+            if dladdr(UnsafeRawPointer(bitPattern: address), &info) != 0 {
+                let image = info.dli_fname.map { String(cString: $0).split(separator: "/").last.map(String.init) ?? "" } ?? ""
+                let symbol = info.dli_sname.map { Self.demangled(String(cString: $0)) } ?? "?"
+                result = symbol + " [" + image.replacingOccurrences(of: ".dylib", with: "") + "]"
+            }
+            names[address] = result
+            return result
+        }
+        // Each sample's frames outermost first, from the frame loop down;
+        // samples where the run loop sleeps until its next event are idle.
+        var stacks: [Int: [[String]]] = [:]
+        var idle = 0
+        for sample in 0..<shared[2] {
+            let base = addresses + sample * Self.maxDepth
+            var frames: [String] = []
+            for depth in (0..<depths[sample]).reversed() {
+                // Return addresses point past their call: look up the call.
+                frames.append(name(depth == 0 ? base[depth] : base[depth] &- 1))
+            }
+            if frames.contains(where: { $0.hasPrefix("__CFRunLoopServiceMachPort") }) {
+                idle += 1
+                continue
+            }
+            if let loop = frames.lastIndex(where: { $0.contains("ProbeFrameClock.run") }) {
+                frames.removeFirst(loop + 1)
+            }
+            stacks[tags[sample], default: []].append(frames)
+        }
+        print("SCROLL_PROBE stacks samples=\(shared[2]) idle=\(idle) names=\(names.count)")
+
+        func printTree(_ samples: [[String]], title: String, cutoff: Double, maxLines: Int) {
+            let root = Node()
+            for frames in samples {
+                root.count += 1
+                var node = root
+                for frame in frames {
+                    let child = node.children[frame] ?? Node()
+                    node.children[frame] = child
+                    child.count += 1
+                    node = child
+                }
+            }
+            print("SCROLL_PROBE stacks " + title + " busySamples=\(root.count)")
+            guard root.count > 0 else { return }
+            var lines = 0
+            func walk(_ node: Node, depth: Int) {
+                for (frame, child) in node.children.sorted(by: { $0.value.count > $1.value.count }) {
+                    guard Double(child.count) >= cutoff * Double(root.count), lines < maxLines else { continue }
+                    var chain = [Self.short(frame)]
+                    var current = child
+                    while chain.count < 4,
+                          let next = current.children.max(by: { $0.value.count < $1.value.count }),
+                          Double(next.value.count) >= 0.9 * Double(current.count) {
+                        chain.append(Self.short(next.key))
+                        current = next.value
+                    }
+                    lines += 1
+                    print("SCROLL_PROBE stacks " + String(repeating: ". ", count: depth)
+                        + String(format: "%.0f%% ", 100 * Double(child.count) / Double(root.count))
+                        + chain.joined(separator: " > "))
+                    walk(current, depth: depth + 1)
+                }
+            }
+            walk(root, depth: 0)
+        }
+
+        for (number, phase) in phases.enumerated() {
+            let base = number * Self.phaseStride
+            let all = phase.frames.flatMap { stacks[base + $0.index] ?? [] }
+            printTree(all, title: "\(phase.name) all frames", cutoff: 0.03, maxLines: 26)
+            for frame in phase.frames.sorted(by: { $0.milliseconds > $1.milliseconds }).prefix(phase.slowest) {
+                printTree(
+                    stacks[base + frame.index] ?? [],
+                    title: String(format: "%@ frame=%ld %.1fms", phase.name, frame.index, frame.milliseconds),
+                    cutoff: 0.07,
+                    maxLines: 16
+                )
+            }
+        }
+    }
+
+    private static func short(_ name: String) -> String {
+        name.count <= 90 ? name : String(name.prefix(89)) + "…"
+    }
+
+    private static func demangled(_ symbol: String) -> String {
+        guard symbol.hasPrefix("$s") || symbol.hasPrefix("_$s") || symbol.hasPrefix("$S") else { return symbol }
+        return symbol.withCString { pointer in
+            guard let result = probeSwiftDemangle(pointer, UInt(strlen(pointer)), nil, nil, 0) else { return symbol }
+            defer { free(result) }
+            return String(cString: result)
+        }
+    }
+}
+
+@_silgen_name("swift_demangle")
+private func probeSwiftDemangle(
+    _ mangledName: UnsafePointer<CChar>?,
+    _ mangledNameLength: UInt,
+    _ outputBuffer: UnsafeMutablePointer<CChar>?,
+    _ outputBufferSize: UnsafeMutablePointer<UInt>?,
+    _ flags: UInt32
+) -> UnsafeMutablePointer<CChar>?
 
 @MainActor
 private enum ProbePublishTrace {
