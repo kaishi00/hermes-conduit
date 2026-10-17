@@ -2853,7 +2853,7 @@ final class WatchDirectCallModel: ObservableObject {
         let text = transcript[line].text
         if !finished {
             guard !modelTurnActive, let heard = lastUserSpeechAt, now - heard >= Self.quietGoodbyeDelay,
-                  engine == .grok || Self.endsAnUtterance(text) else { return }
+                  session?.transcribesWholeUtterances == true || Self.endsAnUtterance(text) else { return }
         }
         guard VoiceSpokenCommands.asksToEndCall(text, endPhrases: endPhrases) else { return }
         exchangeUserLine = nil

@@ -693,7 +693,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private var activeEndPhrases: [String] = []
 
     /// A finished user utterance that is one of the profile's end phrases,
-    /// or asks to hang up ("end call"), ends the conversation, even if the
+    /// or asks to hang up ("end call", "hang up"…), ends the conversation, even if the
     /// model doesn't call end_conversation.
     private func endIfUserSaidGoodbye(_ entryID: UUID) {
         guard endRequestedAt == nil, let entry = transcript.first(where: { $0.id == entryID }) else { return }
