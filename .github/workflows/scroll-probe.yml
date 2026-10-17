@@ -84,14 +84,21 @@ jobs:
           }
           # Each run is its own process, so none warms another's caches.
           run_probe frames TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame
+          run_probe frames-framehost TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame TEST_RUNNER_CONDUIT_PROBE_FRAME_HOST=1
+          run_probe frames-tk2 TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame TEST_RUNNER_CONDUIT_PROBE_TK2=1
           run_probe hosted ChatScrollHostedTests
           run_probe hosted-nopool ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_NO_POOL=1
           run_probe hosted-tk2 ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_TK2=1
-          for name in frames hosted hosted-nopool hosted-tk2; do
+          run_probe hosted-framehost ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_FRAME_HOST=1
+          for name in frames frames-framehost frames-tk2 hosted hosted-nopool hosted-tk2 hosted-framehost; do
             echo "===== $name"
-            grep -E "SCROLL_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 40 "probe-$name.log"
+            # Three slowest frames per phase; the stacks only when asked for.
+            grep -E "SCROLL_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" \
+              | grep -v "SCROLL_PROBE stack" \
+              | awk '/ slow frame=/{if (++seen[$2] > 3) next} {print}' \
+              || tail -n 40 "probe-$name.log"
             # The first failure's whole message, which carries the test's trace.
-            awk '/: error: /{p=1} p{print; n++} /^Test Case .* failed/{if (p) exit} n>=90{exit}' "probe-$name.log"
+            awk '/: error: /{p=1} p{print; n++} /^Test Case .* failed/{if (p) exit} n>=60{exit}' "probe-$name.log"
           done > probe-summary.txt
           cat probe-summary.txt
           # Cloud threads read annotations, not the log: the summary goes

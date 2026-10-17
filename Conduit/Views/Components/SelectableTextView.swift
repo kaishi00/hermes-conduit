@@ -1012,6 +1012,7 @@ enum SelectableTextViewPool {
 enum SelectableTextViewProbeSwitches {
     static let disablesPool = flag("CONDUIT_PROBE_NO_POOL")
     static let usesTextKit2 = flag("CONDUIT_PROBE_TK2")
+    static let framesTextView = flag("CONDUIT_PROBE_FRAME_HOST")
 
     private static func flag(_ name: String) -> Bool {
         let isSet = ProcessInfo.processInfo.environment[name] != nil
@@ -1058,8 +1059,24 @@ final class SelectableTextViewHostView: UIView {
         (mountedTextView as? MarkdownSelectionTextView)?.selectionObserverForTesting
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if SelectableTextViewProbeSwitches.framesTextView { mountedTextView.frame = bounds }
+    }
+
+    override var intrinsicContentSize: CGSize {
+        SelectableTextViewProbeSwitches.framesTextView
+            ? mountedTextView.intrinsicContentSize
+            : super.intrinsicContentSize
+    }
+
     private func embedMountedTextView() {
         addSubview(mountedTextView)
+        if SelectableTextViewProbeSwitches.framesTextView {
+            mountedTextView.translatesAutoresizingMaskIntoConstraints = true
+            mountedTextView.frame = bounds
+            return
+        }
         mountedTextView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             mountedTextView.leadingAnchor.constraint(equalTo: leadingAnchor),
