@@ -491,6 +491,10 @@ final class MarkdownTableLayoutTests: XCTestCase {
         )
         let linkRun = try XCTUnwrap(text.runs.first { $0.link != nil })
         XCTAssertEqual(linkRun.link, URL(string: "https://example.com/a"))
+        XCTAssertEqual(
+            linkRun[AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self], .single,
+            "underlined like a text view's link"
+        )
         XCTAssertEqual(String(text[linkRun.range].characters), "a link")
     }
 
@@ -503,6 +507,16 @@ final class MarkdownTableLayoutTests: XCTestCase {
             references: .empty
         )
         XCTAssertEqual(text, "Step\tTime\nFetch\t0.8 s\nImport\t4.2 s")
+    }
+
+    /// A tab or line break inside a cell can't split the pasted grid.
+    func testCopiedTableKeepsEachCellInItsColumn() {
+        let text = MarkdownTableLayout.plainText(
+            headers: ["Step\tname", "Time"],
+            rows: [["Fetch\nfiles", "0.8 s"]],
+            references: .empty
+        )
+        XCTAssertEqual(text, "Step name\tTime\nFetch files\t0.8 s")
     }
 
     // MARK: - Helpers

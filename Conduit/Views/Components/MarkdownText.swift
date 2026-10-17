@@ -1106,6 +1106,10 @@ enum InlineMarkdownContent {
             } else if let string = attributes[.link] as? String, let url = URL(string: string) {
                 run.link = url
             }
+            // Underlined, as a text view's link attributes draw a link.
+            if run.link != nil || attributes[.underlineStyle] != nil {
+                run[SwiftUIKeys.UnderlineStyleAttribute.self] = .single
+            }
             if attributes[.strikethroughStyle] != nil {
                 run[SwiftUIKeys.StrikethroughStyleAttribute.self] = .single
             }
@@ -1482,12 +1486,18 @@ enum MarkdownTableLayout {
     }
 
     /// The table as tab-separated lines, each cell's Markdown resolved to
-    /// its text, so it pastes into a spreadsheet as a grid.
+    /// its text, so it pastes into a spreadsheet as a grid. A tab or line
+    /// break inside a cell becomes a space, so it can't split the grid.
+    /// Safe off the main thread, where Copy Table runs it.
     static func plainText(headers: [String], rows: [[String]], references: MarkdownReferenceContext) -> String {
         ([headers] + rows)
             .map { row in
-                row.map { String(InlineMarkdownContent.attributed(source: $0, references: references).characters) }
-                    .joined(separator: "\t")
+                row.map { cell in
+                    String(InlineMarkdownContent.attributed(source: cell, references: references).characters)
+                        .split(omittingEmptySubsequences: false) { $0 == "\t" || $0.isNewline }
+                        .joined(separator: " ")
+                }
+                .joined(separator: "\t")
             }
             .joined(separator: "\n")
     }
@@ -1618,7 +1628,9 @@ struct MarkdownTable: View {
             }
             .modifier(MarkdownTableMenu(
                 isOn: !selectsText,
-                copyText: { MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references) },
+                copyText: { [headers, rows, references] in
+                    MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
+                },
                 selectText: { selectionTurnedOn = true }
             ))
         }
@@ -1636,10 +1648,6 @@ struct MarkdownTable: View {
             selectionCoordinator: selectionCoordinator,
             segmentFor: { selectionSegment(row: rowIndex, column: $0) }
         )
-    }
-
-    private func alignment(at index: Int) -> MarkdownTableAlignment {
-        alignments.indices.contains(index) ? alignments[index] : .leading
     }
 
     private func selectionSegment(row: Int, column: Int) -> MarkdownSelectionSegmentDescriptor? {
@@ -1744,26 +1752,37 @@ private struct MarkdownPlainCell: View {
 
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
-/// until its row is taken down.
+/// until its row is taken down. VoiceOver offers both as actions.
 private struct MarkdownTableMenu: ViewModifier {
     let isOn: Bool
-    let copyText: () -> String
+    let copyText: @Sendable () -> String
     let selectText: () -> Void
 
     func body(content: Content) -> some View {
         if isOn {
-            content.contextMenu {
-                Button {
-                    UIPasteboard.general.string = copyText()
-                } label: {
-                    Label("Copy Table", systemImage: "doc.on.doc")
+            content
+                .contextMenu {
+                    Button(action: copyTable) {
+                        Label("Copy Table", systemImage: "doc.on.doc")
+                    }
+                    Button(action: selectText) {
+                        Label("Select Text", systemImage: "character.cursor.ibeam")
+                    }
                 }
-                Button(action: selectText) {
-                    Label("Select Text", systemImage: "character.cursor.ibeam")
-                }
-            }
+                .accessibilityAction(named: Text("Copy Table"), copyTable)
+                .accessibilityAction(named: Text("Select Text"), selectText)
         } else {
             content
+        }
+    }
+
+    /// Resolving every cell's Markdown is the user's wait on a big table,
+    /// so it runs off the main thread.
+    private func copyTable() {
+        let copyText = copyText
+        Task.detached(priority: .userInitiated) {
+            let text = copyText()
+            await MainActor.run { UIPasteboard.general.string = text }
         }
     }
 }
@@ -1771,7 +1790,7 @@ private struct MarkdownTableMenu: ViewModifier {
 /// Tables draw their cells as plain text, with selection a long press
 /// away. Set by the chat, where tables mount and unmount as the transcript
 /// scrolls; elsewhere cells stay selectable text views.
-struct MarkdownTablePlainCellsKey: EnvironmentKey {
+private struct MarkdownTablePlainCellsKey: EnvironmentKey {
     static let defaultValue = false
 }
 
@@ -1918,7 +1937,9 @@ struct LargeMarkdownTable: View {
             }
             .modifier(MarkdownTableMenu(
                 isOn: !selectsText,
-                copyText: { MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references) },
+                copyText: { [headers, rows, references] in
+                    MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
+                },
                 selectText: { selectionTurnedOn = true }
             ))
             if renderedRowCount < rows.count {
