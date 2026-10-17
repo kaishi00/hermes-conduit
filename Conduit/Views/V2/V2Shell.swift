@@ -151,9 +151,13 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
-    /// The last selected tab. Set after the switch, so the transition of a
-    /// first visit reads the tab it left and slides in from that side.
-    @State private var lastTab: V2Tab = .chats
+    /// The tab being slid off screen by the switch, shown until the slide
+    /// settles. Set in the same update as the selection, so the opened tab
+    /// knows which side to come from.
+    @State private var leavingTab: V2Tab?
+    @State private var tabSwitchToken = 0
+    /// The tabs' width as last laid out: how far a switch slides.
+    @State private var tabsWidth: CGFloat = 0
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -257,7 +261,6 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
-                lastTab = tab
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
@@ -294,19 +297,18 @@ struct V2Shell: View {
         }
     }
 
-    private static let tabSlideDistance: CGFloat = 28
-
-    /// Where `tab` waits while `shown` is on screen: a little toward its
-    /// side of the bar (right of `shown` waits right), so opening it slides
-    /// it in from there. Zero for the shown tab and under Reduce Motion.
-    private func tabSlideOffset(_ tab: V2Tab, from shown: V2Tab) -> CGFloat {
-        guard !reduceMotion,
+    /// Where `tab` sits while `shown` is on screen: a full width toward its
+    /// side of the bar (right of `shown` waits right), so a switch moves
+    /// both screens like a pager. Zero for the shown tab and under Reduce
+    /// Motion, which only fades.
+    private func tabOffset(_ tab: V2Tab, from shown: V2Tab) -> CGFloat {
+        guard !reduceMotion, tabsWidth > 0,
               let index = V2Tab.destinations.firstIndex(of: tab),
               let shownIndex = V2Tab.destinations.firstIndex(of: shown),
               index != shownIndex else { return 0 }
         // The bar mirrors right to left; the offset doesn't.
         let later: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
-        return (index > shownIndex ? later : -later) * Self.tabSlideDistance
+        return (index > shownIndex ? later : -later) * tabsWidth
     }
 
     /// The four tabs over a custom glass capsule, the gold voice button
@@ -320,6 +322,8 @@ struct V2Shell: View {
                 // the visited ones right after.
                 if visitedTabs.contains(tab) || selectedTab == tab {
                     let isSelected = selectedTab == tab
+                    let isLeaving = leavingTab == tab && !isSelected && !reduceMotion
+                    let moves = isSelected || isLeaving
                     let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
                         .transformEnvironment(\.v2Shell) {
@@ -328,32 +332,32 @@ struct V2Shell: View {
                         }
                         // Nothing inside a tab animates with the switch.
                         .animation(nil, value: selectedTab)
-                        // Only the tab being opened moves: it slides the last
-                        // few points in from its side of the bar as it fades
-                        // in; the one left goes at once. Fading two full
-                        // screens of glass and backdrop into each other
-                        // dropped frames, and a plain swap read as a blink.
-                        // A hidden tab waits off center on its own side, so
-                        // the slide needs no start state. Scoped to offset
-                        // and opacity.
-                        .animation(isSelected ? ConduitMotion.tabSlideIn : nil) {
-                            $0.offset(x: tabSlideOffset(tab, from: selectedTab))
+                        // The opened tab pushes the one left off its side of
+                        // the bar, like a pager. Only offsets move: fading
+                        // two full screens of glass and backdrop into each
+                        // other dropped frames, and a 28 pt nudge under a
+                        // fade still read as a fade. A hidden tab waits a
+                        // width away on its own side, so the slide needs no
+                        // start state; the others jump while hidden.
+                        .animation(moves ? ConduitMotion.tabSlide : nil) {
+                            $0.offset(x: tabOffset(tab, from: selectedTab))
                         }
-                        .animation(isSelected ? ConduitMotion.tabFadeIn : nil) {
-                            $0.opacity(isSelected ? 1 : 0)
+                        // Reduce Motion: the opened tab fades in instead.
+                        .animation(isSelected && reduceMotion ? ConduitMotion.tabFadeIn : nil) {
+                            $0.opacity(moves ? 1 : 0)
                         }
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
                         // A tab's first visit inserts it already selected:
-                        // the same slide and fade from the tab it left, each
-                        // on its own timing (no slide under Reduce Motion).
-                        .transition(
-                            AnyTransition.offset(x: tabSlideOffset(tab, from: lastTab))
-                                .animation(ConduitMotion.tabSlideIn)
-                                .combined(with: AnyTransition.opacity.animation(ConduitMotion.tabFadeIn))
-                        )
+                        // the same slide in from the side of the tab it left.
+                        .transition(firstVisitTransition(tab))
                 }
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            if abs(width - tabsWidth) > 0.5 { tabsWidth = width }
         }
         // The bar floats over the screens instead of insetting them: hiding
         // it for a pushed chat then moves only the bar, not the layout of the
@@ -363,7 +367,10 @@ struct V2Shell: View {
             ZStack(alignment: .bottom) {
                 if !conversationVisible {
                     HStack(spacing: 10) {
-                        V2CapsuleTabBar(selection: $selectedTab)
+                        V2CapsuleTabBar(selection: Binding(
+                            get: { selectedTab },
+                            set: { switchTab(to: $0) }
+                        ))
                         voiceButton
                     }
                     .padding(.horizontal, 16)
@@ -473,7 +480,32 @@ struct V2Shell: View {
     private func selectTab(_ tab: V2Tab) {
         guard selectedTab != tab else { return }
         programmaticTab = tab
+        switchTab(to: tab)
+    }
+
+    /// Every tab change goes through here: the tab left stays on screen,
+    /// sliding off, until the slide settles.
+    private func switchTab(to tab: V2Tab) {
+        guard selectedTab != tab else { return }
+        leavingTab = selectedTab
         selectedTab = tab
+        tabSwitchToken += 1
+        let token = tabSwitchToken
+        Task { @MainActor in
+            // A little past the spring's duration, so it has settled off screen.
+            try? await Task.sleep(for: .seconds(ConduitMotion.tabSlideDuration + 0.15))
+            if tabSwitchToken == token { leavingTab = nil }
+        }
+    }
+
+    /// A first visit slides in from the side of the tab it left (a width
+    /// away, as `tabOffset` places it); under Reduce Motion it fades in.
+    private func firstVisitTransition(_ tab: V2Tab) -> AnyTransition {
+        guard let leavingTab, !reduceMotion else {
+            return AnyTransition.opacity.animation(ConduitMotion.tabFadeIn)
+        }
+        return AnyTransition.offset(x: tabOffset(tab, from: leavingTab))
+            .animation(ConduitMotion.tabSlide)
     }
 
     private func closeConversation() {
