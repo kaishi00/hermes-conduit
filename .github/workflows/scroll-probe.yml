@@ -70,22 +70,28 @@ jobs:
       - name: Run the probe
         run: |
           set -uo pipefail
+          # Name, test filter, then any TEST_RUNNER_ variables for the run.
           run_probe() {
-            xcodebuild test-without-building \
+            local name=$1 filter=$2
+            shift 2
+            env "$@" xcodebuild test-without-building \
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
               -collect-test-diagnostics never \
-              -only-testing:"ConduitTests/TranscriptPerformanceFixtureTests/$1" \
-              > "probe-$2.log" 2>&1 || echo "probe $2 exited $?"
+              -only-testing:"ConduitTests/$filter" \
+              > "probe-$name.log" 2>&1 || echo "probe $name exited $?"
           }
-          # Each test runs in its own process, so none warms another's caches.
-          run_probe testScrollProbeComparesTextViewKinds kinds
-          run_probe testScrollProbeReportsWorkPerFrame frames
-          run_probe testScrollProbeReportsMountCostByRow mount
-          for name in kinds frames mount; do
+          # Each run is its own process, so none warms another's caches.
+          run_probe frames TranscriptPerformanceFixtureTests/testScrollProbeReportsWorkPerFrame
+          run_probe hosted ChatScrollHostedTests
+          run_probe hosted-nopool ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_NO_POOL=1
+          run_probe hosted-tk2 ChatScrollHostedTests TEST_RUNNER_CONDUIT_PROBE_TK2=1
+          for name in frames hosted hosted-nopool hosted-tk2; do
             echo "===== $name"
-            grep -E "SCROLL_PROBE|error:|^Test Case" "probe-$name.log" || tail -n 80 "probe-$name.log"
+            grep -E "SCROLL_PROBE|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 40 "probe-$name.log"
+            # The first failure's whole message, which carries the test's trace.
+            awk '/: error: /{p=1} p{print; n++} /^Test Case .* failed/{if (p) exit} n>=90{exit}' "probe-$name.log"
           done > probe-summary.txt
           cat probe-summary.txt
           # Cloud threads read annotations, not the log: the summary goes

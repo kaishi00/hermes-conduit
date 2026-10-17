@@ -120,7 +120,7 @@ struct SelectableTextView: UIViewRepresentable {
     /// TextKit 1 layout manager, which turned a TextKit 2 view into a
     /// TextKit 1 one anyway.
     static func makeTextView() -> UITextView {
-        let textView = UITextView(usingTextLayoutManager: false)
+        let textView = UITextView(usingTextLayoutManager: SelectableTextViewProbeSwitches.usesTextKit2)
         configureBaseTextView(textView)
         return textView
     }
@@ -478,7 +478,9 @@ struct SelectableTextView: UIViewRepresentable {
             return reused
         }
         if needsCoordinatedTextView {
-            let textView = MarkdownSelectionTextView.makeTextKit1()
+            let textView = SelectableTextViewProbeSwitches.usesTextKit2
+                ? MarkdownSelectionTextView(frame: .zero)
+                : MarkdownSelectionTextView.makeTextKit1()
             Self.configureBaseTextView(textView)
             return textView
         }
@@ -971,6 +973,7 @@ enum SelectableTextViewPool {
     }
 
     static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
+        guard !SelectableTextViewProbeSwitches.disablesPool else { return nil }
         _ = drainObservers
         return wantsCoordinated ? coordinated.popLast() : plain.popLast()
     }
@@ -1001,6 +1004,19 @@ enum SelectableTextViewPool {
     static func removeAll() {
         plain.removeAll()
         coordinated.removeAll()
+    }
+}
+
+/// Temporary, removed with the scroll probe: lets its workflow run the chat
+/// scroll tests without the pool or with TextKit 2.
+enum SelectableTextViewProbeSwitches {
+    static let disablesPool = flag("CONDUIT_PROBE_NO_POOL")
+    static let usesTextKit2 = flag("CONDUIT_PROBE_TK2")
+
+    private static func flag(_ name: String) -> Bool {
+        let isSet = ProcessInfo.processInfo.environment[name] != nil
+        print("SCROLL_PROBE switch \(name)=\(isSet)")
+        return isSet
     }
 }
 
