@@ -440,6 +440,71 @@ final class MarkdownTableLayoutTests: XCTestCase {
         try assertLines(try cell(containing: "wrap-right-alignment"), aligned: .right, marker: "wrap-right")
     }
 
+    // MARK: - Plain cells in the chat
+
+    /// In the chat a table's cells are plain text: no text view per cell,
+    /// which made tables most of what a long answer cost to build.
+    @MainActor
+    func testChatTablesDrawCellsAsPlainText() throws {
+        let source = """
+        | Step | Before | After |
+        |---|---|---|
+        | Fetch | 0.8 s | **0.9 s** |
+        | Import | [log](https://example.com/log) | 4.2 s |
+        """
+        TranscriptPerf.reset()
+        let host = UIHostingController(rootView: MarkdownText(source: source)
+            .environment(\.markdownTablePlainCells, true))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        XCTAssertTrue(allTextViews(in: host.view).isEmpty, "plain cells mount no text views")
+        XCTAssertGreaterThanOrEqual(
+            TranscriptPerf.plainTableCellBodyEvaluations, 9,
+            "every cell, the header's included, draws as plain text"
+        )
+    }
+
+    /// A plain cell keeps what the bridge styled: its font, bold runs and
+    /// tappable links.
+    @MainActor
+    func testPlainCellTextKeepsFontsAndLinks() throws {
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        let bridged = InlineMarkdownContent.bridged(
+            source: "**Bold** and [a link](https://example.com/a)",
+            references: .empty,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            font: font,
+            trailingCharacterOpacities: []
+        )
+        let text = InlineMarkdownContent.plainText(bridged)
+
+        XCTAssertEqual(String(text.characters), "Bold and a link")
+        XCTAssertTrue(
+            text.runs.allSatisfy { $0[AttributeScopes.SwiftUIAttributes.FontAttribute.self] != nil },
+            "every run carries its font"
+        )
+        let linkRun = try XCTUnwrap(text.runs.first { $0.link != nil })
+        XCTAssertEqual(linkRun.link, URL(string: "https://example.com/a"))
+        XCTAssertEqual(String(text[linkRun.range].characters), "a link")
+    }
+
+    /// Copy Table puts the table on the pasteboard as tab-separated lines,
+    /// each cell's Markdown resolved to its text.
+    func testCopiedTableIsTabSeparatedText() {
+        let text = MarkdownTableLayout.plainText(
+            headers: ["Step", "**Time**"],
+            rows: [["Fetch", "0.8 s"], ["[Import](https://example.com)", "`4.2 s`"]],
+            references: .empty
+        )
+        XCTAssertEqual(text, "Step\tTime\nFetch\t0.8 s\nImport\t4.2 s")
+    }
+
     // MARK: - Helpers
 
     /// Hosts the markdown and lets the width probe settle: the probe's state

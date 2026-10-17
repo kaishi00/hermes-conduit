@@ -659,6 +659,24 @@ enum MarkdownTableAlignment {
         case .trailing: .right
         }
     }
+
+    /// The same alignment for a cell drawn as plain text: its wrapped
+    /// lines, and its place in the column.
+    var text: TextAlignment {
+        switch self {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    var frame: Alignment {
+        switch self {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
 }
 
 /// Shared heading font logic used by both MarkdownSelectionFormatter
@@ -1052,6 +1070,50 @@ enum InlineMarkdownContent {
         bridgedCache.setObject(value, forKey: key, cost: value.length * 2)
         return value
     }
+
+    private final class PlainTextBox {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    private static let plainTextCache: NSCache<NSAttributedString, PlainTextBox> = {
+        let cache = NSCache<NSAttributedString, PlainTextBox>()
+        cache.countLimit = 2048
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
+
+    /// A bridged fragment as SwiftUI text, for a table cell drawn as plain
+    /// text. SwiftUI's Text reads its own attributes, not UIKit's, so the
+    /// fonts, colors, links and strikethrough the bridge set carry over run
+    /// by run. Keyed on the bridged string, which `bridged` returns from
+    /// its cache.
+    @MainActor
+    static func plainText(_ bridged: NSAttributedString) -> AttributedString {
+        if let cached = plainTextCache.object(forKey: bridged) { return cached.value }
+        var result = AttributedString()
+        bridged.enumerateAttributes(in: NSRange(location: 0, length: bridged.length)) { attributes, range, _ in
+            typealias SwiftUIKeys = AttributeScopes.SwiftUIAttributes
+            var run = AttributedString(bridged.attributedSubstring(from: range).string)
+            if let font = attributes[.font] as? UIFont {
+                run[SwiftUIKeys.FontAttribute.self] = Font(font as CTFont)
+            }
+            if let color = attributes[.foregroundColor] as? UIColor {
+                run[SwiftUIKeys.ForegroundColorAttribute.self] = Color(uiColor: color)
+            }
+            if let url = attributes[.link] as? URL {
+                run.link = url
+            } else if let string = attributes[.link] as? String, let url = URL(string: string) {
+                run.link = url
+            }
+            if attributes[.strikethroughStyle] != nil {
+                run[SwiftUIKeys.StrikethroughStyleAttribute.self] = .single
+            }
+            result.append(run)
+        }
+        plainTextCache.setObject(PlainTextBox(result), forKey: bridged, cost: bridged.length * 2)
+        return result
+    }
 }
 
 private struct InlineMarkdown: View {
@@ -1419,6 +1481,17 @@ enum MarkdownTableLayout {
         return halfPointRounded(capped.map { $0 - max($0 - shrinkFloorContentWidth, 0) * factor })
     }
 
+    /// The table as tab-separated lines, each cell's Markdown resolved to
+    /// its text, so it pastes into a spreadsheet as a grid.
+    static func plainText(headers: [String], rows: [[String]], references: MarkdownReferenceContext) -> String {
+        ([headers] + rows)
+            .map { row in
+                row.map { String(InlineMarkdownContent.attributed(source: $0, references: references).characters) }
+                    .joined(separator: "\t")
+            }
+            .joined(separator: "\n")
+    }
+
     private static func halfPointRounded(_ widths: [CGFloat]) -> [CGFloat] {
         widths.map { ($0 * 2).rounded() / 2 }
     }
@@ -1503,8 +1576,13 @@ struct MarkdownTable: View {
     /// falls back to cap-and-scroll and re-resolves a frame later, once the
     /// width is known.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
+    /// Turned on from the long-press menu; kept until the row is taken down.
+    @State private var selectionTurnedOn = false
+    @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
+
+    private var selectsText: Bool { !drawsPlainCells || selectionTurnedOn }
 
     private var columnWidths: [CGFloat] {
         MarkdownTableLayout.columnWidths(
@@ -1538,6 +1616,11 @@ struct MarkdownTable: View {
                         .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
                 }
             }
+            .modifier(MarkdownTableMenu(
+                isOn: !selectsText,
+                copyText: { MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references) },
+                selectText: { selectionTurnedOn = true }
+            ))
         }
     }
 
@@ -1549,6 +1632,7 @@ struct MarkdownTable: View {
             alignments: alignments,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
+            selectsText: selectsText,
             selectionCoordinator: selectionCoordinator,
             segmentFor: { selectionSegment(row: rowIndex, column: $0) }
         )
@@ -1574,6 +1658,9 @@ struct MarkdownTableRowView: View {
     let alignments: [MarkdownTableAlignment]
     let foregroundStyle: Color
     let usesAccentSurface: Bool
+    /// Each cell a selectable text view, or plain text: the chat's tables,
+    /// until the reader turns on selection from the long-press menu.
+    let selectsText: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
     @Environment(\.chatTextSize) private var chatTextSize
@@ -1584,24 +1671,38 @@ struct MarkdownTableRowView: View {
                 let width = widths.indices.contains(index)
                     ? widths[index]
                     : MarkdownTableLayout.shrinkFloorContentWidth
-                InlineMarkdown(
-                    source: cell,
-                    foregroundStyle: foregroundStyle,
-                    usesAccentSurface: usesAccentSurface,
-                    font: ChatTypography.font(
-                        for: isHeader ? .tableHeader : .tableBody,
-                        chatSize: chatTextSize
-                    ),
-                    textAlignment: alignments.indices.contains(index) ? alignments[index].nsText : .natural,
-                    // The exact shared column width — a single-value range keeps
-                    // the cell's measured/committed height deterministic from the
-                    // first layout pass, and .frame(width:) below pins the
-                    // displayed width so every row's dividers align.
-                    selfSizingWidthRange: width...width,
-                    selectionCoordinator: selectionCoordinator,
-                    selectionSegment: segmentFor(index)
+                let alignment = alignments.indices.contains(index) ? alignments[index] : .leading
+                let font = ChatTypography.font(
+                    for: isHeader ? .tableHeader : .tableBody,
+                    chatSize: chatTextSize
                 )
-                    .frame(width: width)
+                Group {
+                    if selectsText {
+                        InlineMarkdown(
+                            source: cell,
+                            foregroundStyle: foregroundStyle,
+                            usesAccentSurface: usesAccentSurface,
+                            font: font,
+                            textAlignment: alignment.nsText,
+                            // The exact shared column width — a single-value range keeps
+                            // the cell's measured/committed height deterministic from the
+                            // first layout pass, and .frame(width:) below pins the
+                            // displayed width so every row's dividers align.
+                            selfSizingWidthRange: width...width,
+                            selectionCoordinator: selectionCoordinator,
+                            selectionSegment: segmentFor(index)
+                        )
+                    } else {
+                        MarkdownPlainCell(
+                            source: cell,
+                            foregroundStyle: foregroundStyle,
+                            usesAccentSurface: usesAccentSurface,
+                            font: font,
+                            alignment: alignment
+                        )
+                    }
+                }
+                    .frame(width: width, alignment: alignment.frame)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
                 if index < cells.count - 1 {
@@ -1609,6 +1710,75 @@ struct MarkdownTableRowView: View {
                 }
             }
         }
+    }
+}
+
+/// A table cell drawn as plain text, from the attributed content the
+/// selectable cell shows. A selectable text view per cell made a table
+/// most of what a long answer cost to build as it scrolled in; plain text
+/// costs a fraction of that. Links stay tappable: SwiftUI opens them
+/// through the environment's openURL, as the text views do.
+private struct MarkdownPlainCell: View {
+    let source: String
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let font: UIFont
+    let alignment: MarkdownTableAlignment
+    @Environment(\.markdownReferences) private var references
+
+    var body: some View {
+        let _ = TranscriptPerf.note(.plainTableCellBody)
+        Text(InlineMarkdownContent.plainText(InlineMarkdownContent.bridged(
+            source: source,
+            references: references,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            font: font,
+            trailingCharacterOpacities: []
+        )))
+            .multilineTextAlignment(alignment.text)
+            .tint(usesAccentSurface ? .white : Color(uiColor: .link))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A long press on a table whose cells are plain text copies the table or
+/// turns on text selection, which draws its cells as selectable text views
+/// until its row is taken down.
+private struct MarkdownTableMenu: ViewModifier {
+    let isOn: Bool
+    let copyText: () -> String
+    let selectText: () -> Void
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content.contextMenu {
+                Button {
+                    UIPasteboard.general.string = copyText()
+                } label: {
+                    Label("Copy Table", systemImage: "doc.on.doc")
+                }
+                Button(action: selectText) {
+                    Label("Select Text", systemImage: "character.cursor.ibeam")
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// Tables draw their cells as plain text, with selection a long press
+/// away. Set by the chat, where tables mount and unmount as the transcript
+/// scrolls; elsewhere cells stay selectable text views.
+struct MarkdownTablePlainCellsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var markdownTablePlainCells: Bool {
+        get { self[MarkdownTablePlainCellsKey.self] }
+        set { self[MarkdownTablePlainCellsKey.self] = newValue }
     }
 }
 
@@ -1638,8 +1808,13 @@ struct LargeMarkdownTable: View {
     /// zero means "unknown yet" (first pass), and the cap-and-scroll
     /// fallback re-resolves a frame later.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
+    /// Turned on from the long-press menu; kept until the row is taken down.
+    @State private var selectionTurnedOn = false
+    @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
+
+    private var selectsText: Bool { !drawsPlainCells || selectionTurnedOn }
 
     init(
         headers: [String],
@@ -1713,6 +1888,7 @@ struct LargeMarkdownTable: View {
                         alignments: alignments,
                         foregroundStyle: foregroundStyle,
                         usesAccentSurface: usesAccentSurface,
+                        selectsText: selectsText,
                         selectionCoordinator: selectionCoordinator,
                         segmentFor: { segmentDescriptor(row: 0, column: $0) }
                     )
@@ -1725,6 +1901,7 @@ struct LargeMarkdownTable: View {
                             alignments: alignments,
                             foregroundStyle: foregroundStyle,
                             usesAccentSurface: usesAccentSurface,
+                            selectsText: selectsText,
                             selectionCoordinator: selectionCoordinator,
                             segmentFor: { segmentDescriptor(row: rowOffset + 1, column: $0) }
                         )
@@ -1739,6 +1916,11 @@ struct LargeMarkdownTable: View {
                         .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
                 }
             }
+            .modifier(MarkdownTableMenu(
+                isOn: !selectsText,
+                copyText: { MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references) },
+                selectText: { selectionTurnedOn = true }
+            ))
             if renderedRowCount < rows.count {
                 Button {
                     renderedRowCount = min(renderedRowCount + Self.rowBatch, rows.count)
