@@ -366,11 +366,11 @@ struct LoginCredentialsPage: View {
                 }
                 .disabled(!flow.canSignIn)
                 .accessibilityIdentifier("login.sign-in")
-                if flow.target?.nativeOAuth != nil {
+                if flow.target?.browserOffer != nil {
                     Button {
                         Haptics.selection()
                         focusedField = nil
-                        flow.signInWithBrowserInstead()
+                        Task { await flow.signInWithBrowserInstead() }
                     } label: {
                         Label(AppLocalization.string("Sign in with browser instead"), systemImage: "safari")
                             .font(.callout.weight(.semibold))
