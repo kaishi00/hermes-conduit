@@ -25,7 +25,7 @@ jobs:
   probe:
     name: Scroll probe
     runs-on: macos-26
-    timeout-minutes: 80
+    timeout-minutes: 85
     steps:
       - uses: actions/checkout@v7
 
@@ -81,7 +81,7 @@ jobs:
 
       - name: Record the probe under the Time Profiler
         if: always()
-        timeout-minutes: 13
+        timeout-minutes: 18
         run: bash .github/scroll-probe/run.sh record
 
       - name: Export the profile

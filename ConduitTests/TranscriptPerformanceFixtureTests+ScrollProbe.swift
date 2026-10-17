@@ -431,6 +431,17 @@ extension TranscriptPerformanceFixtureTests {
         Self.report("idle", idleFrames)
         print("SCROLL_PROBE idle end " + Self.mountedSpan(in: scrollView))
 
+        // The recorder hangs if the process it records exits first: hold
+        // until it has saved its trace.
+        if let marker = environment["PROBE_MARKER"] {
+            FileManager.default.createFile(atPath: marker, contents: Data())
+            let release = marker + ".release"
+            let deadline = Date().addingTimeInterval(600)
+            while !FileManager.default.fileExists(atPath: release), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+        }
+
         XCTAssertGreaterThan(upFrames.count, 0, "the probe scrolled")
     }
 

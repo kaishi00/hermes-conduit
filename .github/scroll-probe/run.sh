@@ -81,8 +81,11 @@ record)
   any='Conduit\.app/Conduit( |$)'
   stale=" $(pgrep -f "$any" | tr '\n' ' ') "
   log "stale:$stale"
-  # The test waits PROBE_WAIT seconds before scrolling, for the recorder.
-  ( run_probe profiled "$frames" TEST_RUNNER_PROBE_WAIT=90 ) &
+  # The test waits PROBE_WAIT seconds before scrolling, for the recorder,
+  # and once it has scrolled writes the marker and holds until released.
+  marker="$PWD/probe-marker"
+  rm -f "$marker" "$marker.release"
+  ( run_probe profiled "$frames" TEST_RUNNER_PROBE_WAIT=90 TEST_RUNNER_PROBE_MARKER="$marker" ) &
   probe_pid=$!
   pid=""
   for attempt in $(seq 1 150); do
@@ -101,7 +104,7 @@ record)
   attach() {
     rm -rf probe.trace
     xcrun xctrace record --template 'Time Profiler' "$@" --output probe.trace \
-      --time-limit 200s --no-prompt > xctrace.log 2>&1 &
+      --time-limit 420s --no-prompt > xctrace.log 2>&1 &
     local recorder=$!
     for _ in $(seq 1 20); do
       kill -0 "$recorder" 2>/dev/null || break
@@ -117,23 +120,33 @@ record)
     log "attach ($*) running: $(grep -v '^[[:space:]]*$' xctrace.log | head -n 3 | tr '\n' ' ' | cut -c1-300)"
     recorder_pid=$recorder
   }
+  # By pid it can't find a simulator's process; by name it can.
   if [ -n "$pid" ]; then
-    attach --device "$SIMULATOR_UDID" --attach "$pid" \
-      || attach --device "$SIMULATOR_UDID" --attach Conduit \
-      || attach --attach "$pid" \
+    attach --device "$SIMULATOR_UDID" --attach Conduit \
+      || attach --device "$SIMULATOR_UDID" --attach "$pid" \
       || log "no recorder attached"
   fi
-  if wait_for "$probe_pid" 300; then log "probe finished"; else log "probe still running after 300s, stopping it"; pkill -f "test-without-building" || true; fi
   if [ -n "$recorder_pid" ]; then
-    # It stops when the test host exits; the limit is the backstop.
-    if wait_for "$recorder_pid" 30; then
-      log "recorder stopped by itself"
+    # Stopped while the test host still runs: once it has exited, the
+    # recorder never finishes.
+    for waited in $(seq 1 360); do
+      [ -e "$marker" ] && break
+      kill -0 "$probe_pid" 2>/dev/null || break
+      sleep 1
+    done
+    log "marker after ${waited}s: $([ -e "$marker" ] && echo yes || echo no)"
+    started=$(date +%s)
+    kill -INT "$recorder_pid" 2>/dev/null || true
+    if wait_for "$recorder_pid" 300; then
+      log "recorder saved in $(( $(date +%s) - started ))s"
     else
-      kill -INT "$recorder_pid" 2>/dev/null || true
-      if wait_for "$recorder_pid" 150; then log "recorder stopped on SIGINT"; else log "recorder hung, killed"; kill -9 "$recorder_pid" 2>/dev/null || true; fi
+      log "recorder hung after SIGINT, killed"
+      kill -9 "$recorder_pid" 2>/dev/null || true
     fi
     log "recorder tail: $(tail -n 4 xctrace.log | tr '\n' ' ' | cut -c1-400)"
   fi
+  touch "$marker.release"
+  if wait_for "$probe_pid" 300; then log "probe finished"; else log "probe still running after 300s, stopping it"; pkill -f "test-without-building" || true; fi
   log "trace: $(du -sh probe.trace 2>/dev/null | cut -f1)"
   summarise profiled > probe-summary.txt
   { cat profile-log.txt; grep -E "frames=|totals|sum=" probe-summary.txt; } > record-annotations.txt
