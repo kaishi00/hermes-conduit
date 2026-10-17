@@ -186,6 +186,7 @@ private struct RichRouteSummary: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: RichTravel.symbol(mode))
+                .accessibilityHidden(true)
             Text(verbatim: RichTravel.duration(route.expectedTravelTime))
                 .fontWeight(.semibold)
             Text(verbatim: "·")
@@ -286,6 +287,8 @@ struct RichPlaceCard: View {
         }
         .richCardSurface()
         .task(id: place) {
+            // A reused card shows nothing of the place it showed before.
+            travelTime = nil
             match = await RichPlaceLookup.match(place)
             looked = true
             if let match { travelTime = await RichPlaceLookup.travelTime(to: match, mode: mode) }
@@ -444,6 +447,7 @@ private struct RichSourcedLine: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: symbol)
+                .accessibilityHidden(true)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
