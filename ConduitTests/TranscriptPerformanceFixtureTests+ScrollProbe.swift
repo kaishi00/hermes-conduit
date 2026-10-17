@@ -652,7 +652,7 @@ extension TranscriptPerformanceFixtureTests {
 
                 start = CACurrentMediaTime()
                 let heights = views.map { view in
-                    let measured = view.subviews.first as? UITextView ?? view
+                    let measured: UIView = (view.subviews.first as? UITextView) ?? view
                     return ceil(measured.sizeThatFits(CGSize(width: 366, height: .greatestFiniteMagnitude)).height)
                 }
                 phases["measure", default: []].append((CACurrentMediaTime() - start) * 1000)
