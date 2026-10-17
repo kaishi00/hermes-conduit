@@ -25163,17 +25163,21 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         cronJobActionID = job.id
         defer { cronJobActionID = nil }
-        guard let dashboardTicketBridge else { return false }
 
         do {
+            guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
             _ = try await dashboardTicketBridge.requestJSON(
                 path: cronDashboardPath("/api/cron/jobs/\(encodedID)", profile: profile),
                 method: "DELETE"
             )
-            guard profile == activeProfile else { return false }
+            // Gone on Hermes either way; only the list on screen needs the
+            // same profile.
             cronJobsGeneration += 1
-            cronJobs.removeAll { $0.id == job.id }
+            if profile == activeProfile {
+                cronJobs.removeAll { $0.id == job.id }
+                cronMutedJobIDs.remove(job.id)
+            }
             return true
         } catch {
             errorMessage = AppLocalization.string("Could not delete scheduled job: \(UserFacingError.message(for: error))")

@@ -222,7 +222,14 @@ struct V2ScheduledList: View {
             Button("Delete", role: .destructive) {
                 guard let job = jobPendingDeletion else { return }
                 jobPendingDeletion = nil
-                Task { Haptics.mutationCompleted(await appState.deleteCronJob(job)) }
+                let key = pinKey(job)
+                Task {
+                    let deleted = await appState.deleteCronJob(job)
+                    Haptics.mutationCompleted(deleted)
+                    if deleted {
+                        pinnedRaw = pinKeys.filter { $0 != key }.joined(separator: "\n")
+                    }
+                }
             }
             Button("Cancel", role: .cancel) { jobPendingDeletion = nil }
         } message: {
