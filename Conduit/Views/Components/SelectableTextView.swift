@@ -149,13 +149,16 @@ struct SelectableTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
-        return makeUIViewForTests(coordinator: context.coordinator)
+        let hostView = makeUIViewForTests(coordinator: context.coordinator)
+        hostView.selectionTint = context.environment.textSelectionTint
+        return hostView
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
         updateUIViewForTests(uiView, coordinator: context.coordinator)
+        uiView.selectionTint = context.environment.textSelectionTint
     }
 
     @MainActor
@@ -1010,9 +1013,21 @@ final class SelectableTextViewHostView: UIView {
     weak var mountedSelectionCoordinator: MarkdownSelectionCoordinator?
     var mountedSelectionSegment: MarkdownSelectionSegmentDescriptor?
 
+    /// The tint the text view draws its selection in; nil inherits the
+    /// accent. A pooled text view may arrive tinted by its last mount, so
+    /// every mounted view gets this value.
+    var selectionTint: UIColor? {
+        didSet {
+            // The tint is a shared static colour, so equality is identity.
+            guard selectionTint != oldValue else { return }
+            mountedTextView.tintColor = selectionTint
+        }
+    }
+
     init(textView: UITextView) {
         self.mountedTextView = textView
         super.init(frame: .zero)
+        textView.tintColor = nil
         embedMountedTextView()
     }
 
@@ -1028,6 +1043,7 @@ final class SelectableTextViewHostView: UIView {
         guard mountedTextView !== textView else { return }
         mountedTextView.removeFromSuperview()
         mountedTextView = textView
+        textView.tintColor = selectionTint
         embedMountedTextView()
     }
 
@@ -1052,6 +1068,19 @@ final class SelectableTextViewHostView: UIView {
             mountedTextView.topAnchor.constraint(equalTo: topAnchor),
             mountedTextView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+    }
+}
+
+private struct TextSelectionTintKey: EnvironmentKey {
+    static let defaultValue: UIColor? = nil
+}
+
+extension EnvironmentValues {
+    /// The selection tint for chat text drawn on a coloured surface (#697):
+    /// a sent bubble is the accent, the colour selections take by default.
+    var textSelectionTint: UIColor? {
+        get { self[TextSelectionTintKey.self] }
+        set { self[TextSelectionTintKey.self] = newValue }
     }
 }
 

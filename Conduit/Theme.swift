@@ -37,11 +37,9 @@ extension Color {
     static let conduitBackgroundColor = Color(.systemBackground)
     static let conduitSurfaceColor = Color(.secondarySystemBackground)
 
-    static let conduitAdaptiveAccent = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.88, green: 0.67, blue: 0.28, alpha: 1)
-            : UIColor(red: 0.55, green: 0.37, blue: 0.13, alpha: 1)
-    })
+    /// The accent picked in Settings (#697), read from the trait the root
+    /// view sets, so a new pick redraws every view without rebuilding any.
+    static let conduitAdaptiveAccent = Color(uiColor: .conduitAccent)
 
     static let conduitAdaptiveAttention = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
@@ -68,10 +66,128 @@ extension Color {
     })
 
     static let conduitAdaptiveAccentSoft = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.98, green: 0.83, blue: 0.48, alpha: 1)
-            : UIColor(red: 0.67, green: 0.49, blue: 0.28, alpha: 1)
+        traits.conduitAccent.softColor(dark: traits.userInterfaceStyle == .dark)
     })
+}
+
+// MARK: - Accent choice
+
+/// The accent colour the user picks in Settings > Appearance (#697): their
+/// own message bubbles and Conduit's highlights. Amber is the original look.
+enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
+    case amber, blue, green, teal, purple, pink
+
+    static let storageKey = "conduit.accentChoice"
+    /// The pick before the user makes one: the original look.
+    static let defaultChoice = ConduitAccentChoice.amber
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .amber: return AppLocalization.string("Amber")
+        case .blue: return AppLocalization.string("Blue")
+        case .green: return AppLocalization.string("Green")
+        case .teal: return AppLocalization.string("Teal")
+        case .purple: return AppLocalization.string("Purple")
+        case .pink: return AppLocalization.string("Pink")
+        }
+    }
+
+    /// The accent itself. The light-mode shade is darker so white text on a
+    /// sent bubble stays readable. Presets are sRGB literals: the selection
+    /// contrast pick reads their components.
+    func color(dark: Bool) -> UIColor {
+        switch self {
+        case .amber: return dark ? UIColor(red: 0.88, green: 0.67, blue: 0.28, alpha: 1) : UIColor(red: 0.55, green: 0.37, blue: 0.13, alpha: 1)
+        case .blue: return dark ? UIColor(red: 0.33, green: 0.58, blue: 0.98, alpha: 1) : UIColor(red: 0.12, green: 0.36, blue: 0.80, alpha: 1)
+        case .green: return dark ? UIColor(red: 0.30, green: 0.72, blue: 0.47, alpha: 1) : UIColor(red: 0.09, green: 0.47, blue: 0.27, alpha: 1)
+        case .teal: return dark ? UIColor(red: 0.22, green: 0.70, blue: 0.75, alpha: 1) : UIColor(red: 0.04, green: 0.45, blue: 0.51, alpha: 1)
+        case .purple: return dark ? UIColor(red: 0.62, green: 0.48, blue: 0.96, alpha: 1) : UIColor(red: 0.43, green: 0.28, blue: 0.80, alpha: 1)
+        case .pink: return dark ? UIColor(red: 0.93, green: 0.42, blue: 0.64, alpha: 1) : UIColor(red: 0.76, green: 0.19, blue: 0.44, alpha: 1)
+        }
+    }
+
+    /// The lighter companion shade (`conduitAccentSoft`).
+    func softColor(dark: Bool) -> UIColor {
+        switch self {
+        case .amber: return dark ? UIColor(red: 0.98, green: 0.83, blue: 0.48, alpha: 1) : UIColor(red: 0.67, green: 0.49, blue: 0.28, alpha: 1)
+        case .blue: return dark ? UIColor(red: 0.58, green: 0.76, blue: 1.00, alpha: 1) : UIColor(red: 0.27, green: 0.48, blue: 0.85, alpha: 1)
+        case .green: return dark ? UIColor(red: 0.54, green: 0.86, blue: 0.64, alpha: 1) : UIColor(red: 0.21, green: 0.56, blue: 0.37, alpha: 1)
+        case .teal: return dark ? UIColor(red: 0.50, green: 0.86, blue: 0.89, alpha: 1) : UIColor(red: 0.16, green: 0.55, blue: 0.60, alpha: 1)
+        case .purple: return dark ? UIColor(red: 0.79, green: 0.70, blue: 1.00, alpha: 1) : UIColor(red: 0.54, green: 0.41, blue: 0.85, alpha: 1)
+        case .pink: return dark ? UIColor(red: 1.00, green: 0.65, blue: 0.79, alpha: 1) : UIColor(red: 0.83, green: 0.35, blue: 0.56, alpha: 1)
+        }
+    }
+
+    /// The tint a text selection takes on a sent bubble: the system draws
+    /// selections in the accent, which disappears on an accent bubble. Dark
+    /// on a light bubble, white on a dark one.
+    func selectionColorOnBubble(dark: Bool) -> UIColor {
+        color(dark: dark).conduitRelativeLuminance > 0.3 ? .black : .white
+    }
+}
+
+/// Carries the accent choice through UIKit traits, so the dynamic accent
+/// colours resolve it wherever they draw, SwiftUI and UIKit alike.
+struct ConduitAccentTrait: UITraitDefinition {
+    static let defaultValue = ConduitAccentChoice.defaultChoice
+    static let affectsColorAppearance = true
+    static let name = "ConduitAccent"
+}
+
+extension UITraitCollection {
+    var conduitAccent: ConduitAccentChoice { self[ConduitAccentTrait.self] }
+}
+
+extension UIMutableTraits {
+    var conduitAccent: ConduitAccentChoice {
+        get { self[ConduitAccentTrait.self] }
+        set { self[ConduitAccentTrait.self] = newValue }
+    }
+}
+
+private struct ConduitAccentEnvironmentKey: EnvironmentKey {
+    static let defaultValue = ConduitAccentChoice.defaultChoice
+}
+
+extension ConduitAccentEnvironmentKey: UITraitBridgedEnvironmentKey {
+    static func read(from traitCollection: UITraitCollection) -> ConduitAccentChoice {
+        traitCollection.conduitAccent
+    }
+
+    static func write(to mutableTraits: inout UIMutableTraits, value: ConduitAccentChoice) {
+        mutableTraits.conduitAccent = value
+    }
+}
+
+extension EnvironmentValues {
+    /// Set once at the root from the saved choice.
+    var conduitAccent: ConduitAccentChoice {
+        get { self[ConduitAccentEnvironmentKey.self] }
+        set { self[ConduitAccentEnvironmentKey.self] = newValue }
+    }
+}
+
+extension UIColor {
+    static let conduitAccent = UIColor { traits in
+        traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
+    }
+
+    /// See ConduitAccentChoice.selectionColorOnBubble.
+    static let conduitSelectionOnAccent = UIColor { traits in
+        traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
+    }
+
+    /// WCAG relative luminance of an sRGB colour.
+    var conduitRelativeLuminance: CGFloat {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return 0 }
+        func linear(_ value: CGFloat) -> CGFloat {
+            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
 }
 
 // MARK: - App identity

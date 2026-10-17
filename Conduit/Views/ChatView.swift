@@ -976,9 +976,33 @@ struct UserBubble: View {
                     )
                 }
 
-                MessageTimestampLabel(timestamp: message.timestamp)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(spacing: 2) {
+                    Spacer(minLength: 0)
+                    MessageTimestampLabel(timestamp: message.timestamp)
+                    UserMessageCopyButton(message: message)
+                }
             }
+        }
+    }
+}
+
+/// Copies a sent message's text (#697), as replies have a copy button. A
+/// quoted reply copies only what the user wrote.
+struct UserMessageCopyButton: View {
+    /// Worked out once, not on each re-render of the row.
+    private let text: String
+
+    init(message: ChatMessage) {
+        text = Self.copyText(for: message)
+    }
+
+    static func copyText(for message: ChatMessage) -> String {
+        ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+    }
+
+    var body: some View {
+        if text.contains(where: { !$0.isWhitespace }) {
+            GroupMessageCopyButton(text: text, label: .message)
         }
     }
 }
