@@ -151,10 +151,12 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
-    /// The tab being slid off screen by the switch, shown until the slide
-    /// settles. Set in the same update as the selection, so the opened tab
-    /// knows which side to come from.
+    /// The last tab a switch left. Set in the same update as the
+    /// selection, so the opened tab knows which side to come from.
     @State private var leavingTab: V2Tab?
+    /// Tabs slid off screen by recent switches, kept shown and animating
+    /// until the last slide settles, so quick switches don't snap.
+    @State private var settlingTabs: Set<V2Tab> = []
     @State private var tabSwitchToken = 0
     /// The tabs' width as last laid out: how far a switch slides.
     @State private var tabsWidth: CGFloat = 0
@@ -322,7 +324,7 @@ struct V2Shell: View {
                 // the visited ones right after.
                 if visitedTabs.contains(tab) || selectedTab == tab {
                     let isSelected = selectedTab == tab
-                    let isLeaving = leavingTab == tab && !isSelected && !reduceMotion
+                    let isLeaving = settlingTabs.contains(tab) && !isSelected
                     let moves = isSelected || isLeaving
                     let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
@@ -358,6 +360,13 @@ struct V2Shell: View {
             proxy.size.width
         } action: { width in
             if abs(width - tabsWidth) > 0.5 { tabsWidth = width }
+        }
+        // Each switch restarts the wait; it ends with the view.
+        .task(id: tabSwitchToken) {
+            guard !settlingTabs.isEmpty else { return }
+            // A little past the spring's duration, so it has settled off screen.
+            guard (try? await Task.sleep(for: .seconds(ConduitMotion.tabSlideDuration + 0.15))) != nil else { return }
+            settlingTabs = []
         }
         // The bar floats over the screens instead of insetting them: hiding
         // it for a pushed chat then moves only the bar, not the layout of the
@@ -484,18 +493,16 @@ struct V2Shell: View {
     }
 
     /// Every tab change goes through here: the tab left stays on screen,
-    /// sliding off, until the slide settles.
+    /// sliding off, until the slide settles. Under Reduce Motion it hides
+    /// at once.
     private func switchTab(to tab: V2Tab) {
         guard selectedTab != tab else { return }
         leavingTab = selectedTab
-        selectedTab = tab
-        tabSwitchToken += 1
-        let token = tabSwitchToken
-        Task { @MainActor in
-            // A little past the spring's duration, so it has settled off screen.
-            try? await Task.sleep(for: .seconds(ConduitMotion.tabSlideDuration + 0.15))
-            if tabSwitchToken == token { leavingTab = nil }
+        if !reduceMotion {
+            settlingTabs.insert(selectedTab)
+            tabSwitchToken &+= 1
         }
+        selectedTab = tab
     }
 
     /// A first visit slides in from the side of the tab it left (a width
