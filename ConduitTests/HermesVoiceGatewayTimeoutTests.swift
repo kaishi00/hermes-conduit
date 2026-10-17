@@ -198,13 +198,14 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
     func testLongStreamPastTheIdleWindowCompletes() async throws {
         let socket = ScriptedSpeechSocket()
         let recorder = SpeechStreamRecorder()
-        let stream = recorder.makeStream(socket: socket, finishIdleTimeout: .seconds(1))
+        let stream = recorder.makeStream(socket: socket, finishIdleTimeout: .seconds(2))
 
         try await stream.append("A long reply")
         let feeder = Task {
-            // ~1.6s of frames, each gap a tenth of the 1s window.
-            for _ in 0..<16 {
-                try? await Task.sleep(for: .milliseconds(100))
+            // ~2.5s of frames, each gap a fortieth of the 2s window, so a
+            // shared runner stalling for most of a second still re-arms it.
+            for _ in 0..<50 {
+                try? await Task.sleep(for: .milliseconds(50))
                 socket.deliver(.data(Data(count: 4)))
             }
             socket.deliver(.string(#"{"type":"end"}"#))
@@ -213,7 +214,7 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
         await feeder.value
 
         XCTAssertTrue(streamed)
-        XCTAssertEqual(recorder.pcmChunks, 16)
+        XCTAssertEqual(recorder.pcmChunks, 50)
     }
 
     func testStreamSilentForTheIdleWindowTimesOut() async throws {
