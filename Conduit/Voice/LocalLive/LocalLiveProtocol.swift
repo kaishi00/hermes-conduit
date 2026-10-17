@@ -50,9 +50,8 @@ enum LocalLiveProtocol {
     /// one, as the status and key requests do, so the call is filed under
     /// the same profile the server's key names.
     static func profileQueryItems(_ profile: String) -> [URLQueryItem] {
-        let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != "default" else { return [] }
-        return [URLQueryItem(name: "profile", value: name)]
+        guard !profile.isEmpty, profile != "default" else { return [] }
+        return [URLQueryItem(name: "profile", value: profile)]
     }
 
     // MARK: Client → server

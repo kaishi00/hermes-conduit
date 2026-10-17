@@ -45,8 +45,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// The connection the open turns came on ended: none of them can be
     /// answered any more.
     var onTurnsDropped: (@MainActor () -> Void)?
-    /// What the server says once the call is ready, from the user's greeting
-    /// setting; nil or empty for nothing. Spoken as the readiness check's
+    /// What the server says once the call is ready, already resolved from
+    /// the user's greeting setting; nil or blank says nothing. Spoken as the readiness check's
     /// answer, so it doubles as the cue to start talking. Once per call.
     var greeting: (@MainActor () -> String?)?
     private var hasGreeted = false
@@ -79,8 +79,9 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var readinessCheck: (id: UUID, marker: String)?
     /// The check's own response hasn't finished: its events aren't the call's.
     private var readinessResponseOpen = false
-    /// Words of checks already answered: a server retrying one after the
-    /// call went ready gets nothing again, never a Hermes turn.
+    /// Words of this call's checks: an ask for one that comes after the call
+    /// went ready (a retry, or late after an error) gets nothing, never a
+    /// Hermes turn.
     private var answeredMarkers: Set<String> = []
     /// Turns the plugin opened on the current connection: only those can
     /// be answered there.
@@ -336,10 +337,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                     sendTurnDelta(turnID, text: greeting)
                 }
                 sendTurnDone(turnID)
-                if isCheck {
-                    answeredMarkers.insert(check.marker)
-                    becomeReady()
-                }
+                if isCheck { becomeReady() }
                 return
             }
             if answeredMarkers.contains(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -427,6 +425,9 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             return
         }
         readinessCheck = (id, marker)
+        // However late its ask comes, even after an error let the call go
+        // ready, it never reaches Hermes.
+        answeredMarkers.insert(marker)
         readinessResponseOpen = true
         enqueue([frame], onSent: nil, onFailure: nil)
         let timeout = readinessTimeout
