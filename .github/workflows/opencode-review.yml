@@ -1,7 +1,7 @@
 name: opencode-review
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -9,16 +9,23 @@ on:
         required: true
         type: string
 concurrency:
-  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  # Any other label added to a PR gets a group of its own, so it can't
+  # cancel a review that is running.
+  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && github.event.label.name != 'run-review' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   review:
     name: review (${{ matrix.reviewer }})
     # The reviewer is an agent holding the review secrets, and a PR's title,
-    # body and diff all reach its prompt. Only PRs from this repository's own
-    # branches (people with push access) get it; a fork's PR is never run.
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
+    # body and diff all reach its prompt. PRs from this repository's own
+    # branches (people with push access) get it on every push. A fork's PR
+    # gets it only when a maintainer adds the run-review label after reading
+    # it, once per labeling: later pushes need the label removed and re-added.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.action != 'labeled' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'run-review')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
