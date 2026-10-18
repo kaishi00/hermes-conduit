@@ -76,14 +76,25 @@ enum LiveTurnProgress {
         return Array(events[start...])
     }
 
-    /// Whether a running turn's activity is over by the gateway's live
-    /// registry (`session.active_list`): none of the chat's ids is among the
-    /// sessions still working, waiting on the user or starting. Only for the
-    /// snapshot's own dashboard and profile (an activity that names neither
-    /// is from an older build, and goes by its chat ids), and never within
-    /// `grace` of the turn's start, which a snapshot read just before the
-    /// prompt landed could miss.
-    static func isOver(
+    /// What one live-registry snapshot says about a running turn.
+    enum RegistryVerdict: Equatable {
+        /// One of the chat's ids is still working, waiting or starting.
+        case running
+        /// None of them is: the turn may be over.
+        case absent
+        /// The snapshot says nothing about it: another dashboard or
+        /// profile, a turn already ended, or one too new to be in it.
+        case unknown
+    }
+
+    /// What the gateway's live registry (`session.active_list`) says about
+    /// a running turn: whether any of the chat's ids is among the sessions
+    /// still working, waiting on the user or starting. Only the snapshot's
+    /// own dashboard and profile count (an activity that names neither is
+    /// from an older build, and goes by its chat ids), and an absence within
+    /// `grace` of the turn's start counts for nothing: a snapshot read just
+    /// before the prompt landed can miss it.
+    static func registryVerdict(
         attributes: HermesTurnAttributes,
         state: HermesTurnAttributes.ContentState,
         liveSessionIDs: Set<String>,
@@ -91,12 +102,48 @@ enum LiveTurnProgress {
         dashboardID: String?,
         now: Date,
         grace: TimeInterval
-    ) -> Bool {
-        guard !state.turnPhase.isFinished,
-              now.timeIntervalSince(attributes.startedAt) >= grace else { return false }
-        if let own = attributes.dashboardID, own != dashboardID { return false }
-        if case .session(_, let own?)? = ConduitAppLink(url: attributes.link), own != profile { return false }
-        return Set(attributes.sessionIDs).isDisjoint(with: liveSessionIDs)
+    ) -> RegistryVerdict {
+        guard !state.turnPhase.isFinished else { return .unknown }
+        if let own = attributes.dashboardID, own != dashboardID { return .unknown }
+        if case .session(_, let own?)? = ConduitAppLink(url: attributes.link), own != profile { return .unknown }
+        guard Set(attributes.sessionIDs).isDisjoint(with: liveSessionIDs) else { return .running }
+        return now.timeIntervalSince(attributes.startedAt) >= grace ? .absent : .unknown
+    }
+
+    /// Absences of running turns' chats from the live registry. One is not
+    /// enough to end a turn: a gateway restarting or reloading can serve an
+    /// empty or partial registry for a moment. A turn is over once its chat
+    /// stays absent from one snapshot to another at least `span` later,
+    /// with no snapshot in between that runs it (a burst of reads at the
+    /// same moment counts once). An absence older than `staleSpans` spans
+    /// (Conduit was away, or on another profile) starts over: the turn
+    /// could have run unseen since.
+    struct RegistryAbsences {
+        /// When each activity's chat was first seen absent, by activity id.
+        private var since: [String: Date] = [:]
+        static let staleSpans: Double = 4
+
+        /// Records `verdict` for activity `id`; true once the turn is over.
+        mutating func record(_ verdict: RegistryVerdict, for id: String, at now: Date, span: TimeInterval) -> Bool {
+            switch verdict {
+            case .unknown:
+                return false
+            case .running:
+                since[id] = nil
+                return false
+            case .absent:
+                guard let first = since[id], now.timeIntervalSince(first) <= span * Self.staleSpans else {
+                    since[id] = now
+                    return false
+                }
+                return now.timeIntervalSince(first) >= span
+            }
+        }
+
+        /// The activity ended: its absence goes with it.
+        mutating func forget(_ id: String) {
+            since[id] = nil
+        }
     }
 
     static func finished(
@@ -133,6 +180,9 @@ final class LiveTurnActivities {
         let sessionIDs: Set<String>
         var state: HermesTurnAttributes.ContentState
         var pushToken: String?
+        /// Whether the relay took `pushToken`, so the Conduit plugin can
+        /// update and end the activity by push.
+        var tokenOnRelay = false
         var tokenTask: Task<Void, Never>?
         var stateTask: Task<Void, Never>?
         /// The last update handed to ActivityKit; each waits for the one
@@ -145,9 +195,14 @@ final class LiveTurnActivities {
     static let idleSignalGrace: TimeInterval = 5
     /// How long after a turn starts the live registry's word that its chat
     /// isn't running is not taken as its end.
-    static let registryGrace: TimeInterval = 30
+    nonisolated static let registryGrace: TimeInterval = 30
+    /// How long a chat must stay out of the live registry before its turn
+    /// is taken as over: two of the chat list's 4-second poll intervals, so
+    /// the third absent snapshot in a row ends it.
+    nonisolated static let registryAbsenceSpan: TimeInterval = 8
 
     private var running: [String: Running] = [:]
+    private var registryAbsences = LiveTurnProgress.RegistryAbsences()
     private var adopted = false
     /// Stream events of chats whose prompt is still being submitted: the
     /// gateway can stream before prompt.submit answers, and those events
@@ -253,19 +308,29 @@ final class LiveTurnActivities {
     /// a turn whose chat is no longer running there ended without Conduit
     /// seeing it (it finished while Conduit was closed, or in a chat not on
     /// screen, with no relay to end it), so its activity ends as done
-    /// instead of counting up for hours. `liveSessionIDs` are the ids of
-    /// the rows still working, waiting or starting.
+    /// instead of counting up for hours, once its chat has stayed out of
+    /// the registry for `registryAbsenceSpan` (`RegistryAbsences`).
+    /// `liveSessionIDs` are the ids of the rows still working, waiting or
+    /// starting.
     func reconcile(liveSessionIDs: Set<String>, profile: String, dashboardID: String?, now: Date = Date()) {
         guard !running.isEmpty else { return }
-        for (id, entry) in running where LiveTurnProgress.isOver(
-            attributes: entry.activity.attributes,
-            state: entry.state,
-            liveSessionIDs: liveSessionIDs,
-            profile: profile,
-            dashboardID: dashboardID,
-            now: now,
-            grace: Self.registryGrace
-        ) {
+        var over: [String] = []
+        for (id, entry) in running {
+            let verdict = LiveTurnProgress.registryVerdict(
+                attributes: entry.activity.attributes,
+                state: entry.state,
+                liveSessionIDs: liveSessionIDs,
+                profile: profile,
+                dashboardID: dashboardID,
+                now: now,
+                grace: Self.registryGrace
+            )
+            if registryAbsences.record(verdict, for: id, at: now, span: Self.registryAbsenceSpan) {
+                over.append(id)
+            }
+        }
+        // Ended only after the walk: finish removes from `running`.
+        for id in over {
             // When it ended is unknown: no time shows rather than a wrong one.
             finish(id, phase: .done, dismissal: .after(now.addingTimeInterval(Self.dismissAfterEnd)), endKnown: false)
         }
@@ -274,11 +339,19 @@ final class LiveTurnActivities {
     /// Conduit stops following `dashboardID`'s turns (its sign-in expired
     /// with no push route to end them, or the user disconnected or signed
     /// out): their activities go now rather than counting up on a turn
-    /// nothing will end. Another dashboard's stay.
-    func endTurns(ofDashboard dashboardID: String?) {
+    /// nothing will end. `keepingThoseOnRelay` keeps the ones whose push
+    /// token the relay took, which the Conduit plugin still ends by push.
+    /// Another dashboard's activities stay, except one started by a build
+    /// before `dashboardID`: naming no dashboard, it ends whichever
+    /// dashboard this is. That only holds through the upgrade, until the
+    /// system has ended those older activities.
+    func endTurns(ofDashboard dashboardID: String?, keepingThoseOnRelay: Bool = false) {
         adoptExisting()
-        for (id, entry) in running {
-            if let own = entry.activity.attributes.dashboardID, own != dashboardID { continue }
+        let ending = running.filter { _, entry in
+            guard !(keepingThoseOnRelay && entry.tokenOnRelay) else { return false }
+            return entry.activity.attributes.dashboardID.map { $0 == dashboardID } ?? true
+        }.map(\.key)
+        for id in ending {
             finish(id, phase: .stopped, dismissal: .immediate)
         }
     }
@@ -359,6 +432,7 @@ final class LiveTurnActivities {
     }
 
     private func forget(_ id: String) async {
+        registryAbsences.forget(id)
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()
@@ -372,13 +446,17 @@ final class LiveTurnActivities {
         guard running[id] != nil else { return }
         let previous = running[id]?.pushToken
         running[id]?.pushToken = token
+        if previous != token { running[id]?.tokenOnRelay = false }
         if let previous, previous != token {
             await PushNotificationService.shared.unregisterLiveActivity(token: previous)
         }
-        await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
+        let onRelay = await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
+        // Unless a newer token replaced it meanwhile.
+        if running[id]?.pushToken == token { running[id]?.tokenOnRelay = onRelay }
     }
 
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {
+        registryAbsences.forget(id)
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()

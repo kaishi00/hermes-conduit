@@ -942,26 +942,32 @@ final class PushNotificationService: ObservableObject {
     /// route; pairing with another relay tries again.
     private var liveActivitiesUnsupportedInstallation: String?
 
-    /// Whether the relay takes this iPhone's Live Activity tokens, so the
-    /// Conduit plugin can update and end them by push.
-    var liveActivitiesReachRelay: Bool {
-        guard let registration else { return false }
-        return liveActivitiesUnsupportedInstallation != registration.installationID
+    /// What a Live Activity token registration's HTTP status says about the
+    /// relay's route: a success confirms it, a 404 means the relay has
+    /// none, anything else says nothing.
+    nonisolated static func liveActivityRouteExists(registrationStatus status: Int) -> Bool? {
+        switch status {
+        case 200..<300: true
+        case 404: false
+        default: nil
+        }
     }
 
     /// Registers the push token of the Live Activity Conduit started for a
     /// chat, under the ids the chat is known by (at most 6, the relay's
     /// limit), so the host's progress reports reach it. Best effort: without
     /// notifications, or on a relay without the route, the activity is only
-    /// updated while Conduit runs.
-    func registerLiveActivity(token: String, sessionIDs: [String]) async {
+    /// updated while Conduit runs. True only when the relay took the token,
+    /// the one case the Conduit plugin can update and end it by push.
+    @discardableResult
+    func registerLiveActivity(token: String, sessionIDs: [String]) async -> Bool {
         guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
-              !sessionIDs.isEmpty else { return }
-        await sendLiveActivity(
+              !sessionIDs.isEmpty else { return false }
+        return await sendLiveActivity(
             LiveActivityRegistration(pushToken: token, sessionIDs: Array(sessionIDs.prefix(6))),
             method: "PUT",
             registration: registration
-        )
+        ) == true
     }
 
     /// The activity ended on the phone: the relay forgets its token.
@@ -970,7 +976,10 @@ final class PushNotificationService: ObservableObject {
         await sendLiveActivity(LiveActivityRemoval(pushToken: token), method: "DELETE", registration: registration)
     }
 
-    private func sendLiveActivity<Body: Encodable>(_ body: Body, method: String, registration: StoredRegistration) async {
+    /// Sends a token's registration or removal; for a registration, what
+    /// its answer says about the relay's route (nil when it says nothing).
+    @discardableResult
+    private func sendLiveActivity<Body: Encodable>(_ body: Body, method: String, registration: StoredRegistration) async -> Bool? {
         do {
             let request = try jsonRequest(
                 path: "/v1/installations/\(registration.installationID)/live-activities",
@@ -979,12 +988,17 @@ final class PushNotificationService: ObservableObject {
                 credential: registration.credential
             )
             let (_, response) = try await URLSession.shared.data(for: request)
-            // Only a registration's 404 means the relay has no route.
-            if method == "PUT", (response as? HTTPURLResponse)?.statusCode == 404 {
+            // Only a registration's answer says whether the relay has the
+            // route.
+            guard method == "PUT", let status = (response as? HTTPURLResponse)?.statusCode,
+                  let routeExists = Self.liveActivityRouteExists(registrationStatus: status) else { return nil }
+            if !routeExists {
                 liveActivitiesUnsupportedInstallation = registration.installationID
             }
+            return routeExists
         } catch {
             // The activity still updates while Conduit runs.
+            return nil
         }
     }
 

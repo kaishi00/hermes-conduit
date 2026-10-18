@@ -835,23 +835,12 @@ final class AppState: ObservableObject {
     var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Void = { ids, profile, dashboardID in
         LiveTurnActivities.shared.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID)
     }
-    var liveTurnActivitiesEndDashboard: @MainActor (String?) -> Void = { dashboardID in
-        LiveTurnActivities.shared.endTurns(ofDashboard: dashboardID)
+    /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
+    /// sign-in), or with `true` only those the relay can't end by push.
+    var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
+        LiveTurnActivities.shared.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
     }
 
-    /// Whether a required sign-in ends the dashboard's Lock Screen turns.
-    /// Off the phone screen the refusal is weak evidence and is retried
-    /// once Conduit is on screen. With the Conduit plugin and a relay route,
-    /// the plugin still ends them by push whatever Conduit's own sign-in.
-    nonisolated static func signInEndsLockScreenTurns(
-        screenAway: Bool,
-        relayReachable: Bool,
-        plugin: NotifierPluginStatus.State
-    ) -> Bool {
-        guard !screenAway else { return false }
-        if case .reported = plugin, relayReachable { return false }
-        return true
-    }
     private var liveSessionStatusProfile: String?
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
@@ -11176,7 +11165,7 @@ final class AppState: ObservableObject {
 
     func disconnect() {
         // Its turns' Lock Screen progress has nothing left to follow.
-        liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString)
+        liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
         widgetLaunchCoordinator.supersede()
         cancelExplicitSessionOpen()
         dismissChatTakeover()
@@ -11611,7 +11600,7 @@ final class AppState: ObservableObject {
             return
         }
         removeWidgetSnapshot(dashboardID: id)
-        liveTurnActivitiesEndDashboard(id.uuidString)
+        liveTurnActivitiesEndDashboard(id.uuidString, false)
         KeychainHelper.clearConnection(dashboardID: id)
         keepUsernameForNextSignIn(dashboardID: id)
         KeychainHelper.clearCredentials(dashboardID: id)
@@ -12061,6 +12050,31 @@ final class AppState: ObservableObject {
         performSignInRequired(pendingFailure: .notice(title: AppLocalization.string("Sign-in didn’t complete"), message: message))
     }
 
+    /// Which of the dashboard's Lock Screen turns a required sign-in ends.
+    enum SignInLockScreenTurnsEnd: Equatable {
+        /// None: off the phone screen the refusal is weak evidence, retried
+        /// once Conduit is on screen.
+        case keepAll
+        /// Those whose push token the relay didn't take: the Conduit plugin
+        /// still ends the others by push, whatever Conduit's own sign-in.
+        case endNotOnRelay
+        /// All of them: without the plugin nothing else will.
+        case endAll
+    }
+
+    /// What a required sign-in does to the dashboard's Lock Screen turns.
+    /// What stays open: a plugin too old to push Live Activity updates,
+    /// which no capability reports yet; a turn the relay took a token for
+    /// then keeps counting until the system's own limit.
+    nonisolated static func signInEndsLockScreenTurns(
+        screenAway: Bool,
+        plugin: NotifierPluginStatus.State
+    ) -> SignInLockScreenTurnsEnd {
+        guard !screenAway else { return .keepAll }
+        if case .reported = plugin { return .endNotOnRelay }
+        return .endAll
+    }
+
     private func performSignInRequired(
         pendingFailure: ConnectionFailurePresentation,
         keepingNativeGrant: Bool = false
@@ -12132,12 +12146,10 @@ final class AppState: ObservableObject {
         pendingLoginFailure = pendingFailure
         // A turn of this dashboard nothing can end now stops counting up on
         // the Lock Screen.
-        if Self.signInEndsLockScreenTurns(
-            screenAway: phoneScreenIsAway(),
-            relayReachable: PushNotificationService.shared.liveActivitiesReachRelay,
-            plugin: pluginStateBeforeSignIn
-        ) {
-            liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString)
+        switch Self.signInEndsLockScreenTurns(screenAway: phoneScreenIsAway(), plugin: pluginStateBeforeSignIn) {
+        case .keepAll: break
+        case .endNotOnRelay: liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, true)
+        case .endAll: liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
         }
     }
 
@@ -16019,13 +16031,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// `session.active_list` rows are the gateway's live registry: every row
-    /// naming both a runtime and a stored id is fresh authoritative routing
-    /// evidence (the same authority class as a catalog snapshot), recorded
-    /// through the explicit authoritative rebind. The write is strictly
-    /// OBSERVATIONAL — recording rows never mutates the selected
-    /// conversation, and the healthy-foreground rule (observe the registry,
-    /// never resume without cause) is untouched.
     /// The ids of every `session.active_list` row still running or about to
     /// (working, waiting, starting): what a turn's Live Activity is settled
     /// against. Idle rows are sessions with no turn.
@@ -16037,6 +16042,13 @@ final class AppState: ObservableObject {
         return ids
     }
 
+    /// `session.active_list` rows are the gateway's live registry: every row
+    /// naming both a runtime and a stored id is fresh authoritative routing
+    /// evidence (the same authority class as a catalog snapshot), recorded
+    /// through the explicit authoritative rebind. The write is strictly
+    /// OBSERVATIONAL — recording rows never mutates the selected
+    /// conversation, and the healthy-foreground rule (observe the registry,
+    /// never resume without cause) is untouched.
     func recordActiveListEvidence(_ rows: [LiveSessionStatus], profile: String) {
         // Every active_list read is a full snapshot of the profile's live
         // registry, so it also drives the chat list's Working / Needs input

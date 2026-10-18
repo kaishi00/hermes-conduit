@@ -122,28 +122,29 @@ extension WidgetLaunchLinkTests {
     }
 
     /// A turn that ended while Conduit was closed (or in a chat not on
-    /// screen, with no relay to end it) ends once the live registry shows
-    /// its chat isn't running, but only on its own dashboard and profile,
-    /// and not in the first moments of the turn.
+    /// screen, with no relay to end it) may be over once the live registry
+    /// shows its chat isn't running, but only on its own dashboard and
+    /// profile, and not in the first moments of the turn.
     func testLiveTurnEndsWhenTheRegistryNoLongerRunsItsChat() throws {
         let start = now
         let link = try XCTUnwrap(URL(string: "conduit://session/rt?profile=default"))
         let attributes = HermesTurnAttributes(chatTitle: "Chat", startedAt: start, language: "system", link: link, sessionIDs: ["rt", "stored"], dashboardID: "D1")
         let running = HermesTurnAttributes.ContentState(phase: .thinking)
-        func over(_ live: Set<String>, profile: String = "default", dashboard: String? = "D1", after seconds: TimeInterval = 120, state: HermesTurnAttributes.ContentState? = nil, attributes a: HermesTurnAttributes? = nil) -> Bool {
-            LiveTurnProgress.isOver(attributes: a ?? attributes, state: state ?? running, liveSessionIDs: live, profile: profile, dashboardID: dashboard, now: start.addingTimeInterval(seconds), grace: LiveTurnActivities.registryGrace)
+        func verdict(_ live: Set<String>, profile: String = "default", dashboard: String? = "D1", after seconds: TimeInterval = 120, state: HermesTurnAttributes.ContentState? = nil, attributes a: HermesTurnAttributes? = nil) -> LiveTurnProgress.RegistryVerdict {
+            LiveTurnProgress.registryVerdict(attributes: a ?? attributes, state: state ?? running, liveSessionIDs: live, profile: profile, dashboardID: dashboard, now: start.addingTimeInterval(seconds), grace: LiveTurnActivities.registryGrace)
         }
-        XCTAssertTrue(over([]), "Its chat isn't running any more")
-        XCTAssertTrue(over(["other"]))
-        XCTAssertFalse(over(["stored"]), "Still running under its stored id")
-        XCTAssertFalse(over([], after: 10), "A snapshot right after the prompt can predate the turn")
-        XCTAssertFalse(over([], profile: "work"), "Another profile's snapshot says nothing about it")
-        XCTAssertFalse(over([], dashboard: "D2"), "Another dashboard's snapshot says nothing about it")
-        XCTAssertFalse(over([], state: LiveTurnProgress.finished(running, .done, now: start)), "Already ended")
+        XCTAssertEqual(verdict([]), .absent, "Its chat isn't running any more")
+        XCTAssertEqual(verdict(["other"]), .absent)
+        XCTAssertEqual(verdict(["stored"]), .running, "Still running under its stored id")
+        XCTAssertEqual(verdict(["rt"], after: 10), .running)
+        XCTAssertEqual(verdict([], after: 10), .unknown, "A snapshot right after the prompt can predate the turn")
+        XCTAssertEqual(verdict([], profile: "work"), .unknown, "Another profile's snapshot says nothing about it")
+        XCTAssertEqual(verdict([], dashboard: "D2"), .unknown, "Another dashboard's snapshot says nothing about it")
+        XCTAssertEqual(verdict([], state: LiveTurnProgress.finished(running, .done, now: start)), .unknown, "Already ended")
 
         var older = attributes
         older.dashboardID = nil
-        XCTAssertTrue(over([], dashboard: "D2", attributes: older), "An older build's activity goes by its chat ids")
+        XCTAssertEqual(verdict([], dashboard: "D2", attributes: older), .absent, "An older build's activity goes by its chat ids")
 
         let rows = [
             LiveSessionStatus(runtimeSessionId: "a", storedSessionId: "a-stored", status: "working"),
@@ -156,5 +157,51 @@ extension WidgetLaunchLinkTests {
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(attributes)) as? [String: Any])
         object["dashboardID"] = nil
         XCTAssertNil(try JSONDecoder().decode(HermesTurnAttributes.self, from: JSONSerialization.data(withJSONObject: object)).dashboardID, "An older build's activity decodes")
+    }
+
+    /// One snapshot without the chat (a gateway restarting can serve an
+    /// empty registry) doesn't end the turn: the absence has to last from
+    /// one snapshot to another `registryAbsenceSpan` later, with none in
+    /// between that runs it.
+    func testLiveTurnEndsOnlyWhenItsChatStaysOutOfTheRegistry() {
+        let span = LiveTurnActivities.registryAbsenceSpan
+        func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
+
+        var absences = LiveTurnProgress.RegistryAbsences()
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span), "Absent once: still running")
+        XCTAssertTrue(absences.record(.absent, for: "a", at: at(span), span: span), "Absent twice: over")
+
+        absences = LiveTurnProgress.RegistryAbsences()
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
+        XCTAssertFalse(absences.record(.running, for: "a", at: at(4), span: span))
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(span), span: span), "Absent, running, absent: still running")
+        XCTAssertTrue(absences.record(.absent, for: "a", at: at(2 * span), span: span))
+
+        absences = LiveTurnProgress.RegistryAbsences()
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(1), span: span), "Reads at the same moment count once")
+        XCTAssertFalse(absences.record(.unknown, for: "a", at: at(4), span: span))
+        XCTAssertTrue(absences.record(.absent, for: "a", at: at(span), span: span), "Another profile's snapshot in between changes nothing")
+        XCTAssertFalse(absences.record(.absent, for: "b", at: at(span), span: span), "Counted per activity")
+
+        absences.forget("b")
+        XCTAssertFalse(absences.record(.absent, for: "b", at: at(3 * span), span: span), "An ended activity's absence is gone")
+
+        absences = LiveTurnProgress.RegistryAbsences()
+        let long = span * LiveTurnProgress.RegistryAbsences.staleSpans + 1
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
+        XCTAssertFalse(absences.record(.absent, for: "a", at: at(long), span: span), "An absence seen long ago starts over")
+        XCTAssertTrue(absences.record(.absent, for: "a", at: at(long + span), span: span))
+    }
+
+    /// Only a relay that took a Live Activity token counts as a route the
+    /// plugin can end activities through; an error or no answer settles
+    /// nothing.
+    func testLiveActivityRouteIsConfirmedOnlyByASuccessfulRegistration() {
+        XCTAssertEqual(PushNotificationService.liveActivityRouteExists(registrationStatus: 200), true)
+        XCTAssertEqual(PushNotificationService.liveActivityRouteExists(registrationStatus: 204), true)
+        XCTAssertEqual(PushNotificationService.liveActivityRouteExists(registrationStatus: 404), false)
+        XCTAssertNil(PushNotificationService.liveActivityRouteExists(registrationStatus: 500))
+        XCTAssertNil(PushNotificationService.liveActivityRouteExists(registrationStatus: 401))
     }
 }

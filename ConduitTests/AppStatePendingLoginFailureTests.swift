@@ -168,11 +168,11 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
 
     func testOffScreenOrWithAPushRouteASignInKeepsTheLockScreenTurns() {
         let reported = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: [])
-        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: false, plugin: reported))
-        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: .predatesCapabilities), "No plugin to push the end")
-        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: .unknown))
-        XCTAssertFalse(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: reported), "The plugin still ends them by push")
-        XCTAssertFalse(AppState.signInEndsLockScreenTurns(screenAway: true, relayReachable: false, plugin: .predatesCapabilities), "Off screen the refusal is retried on screen")
+        XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: reported), .endNotOnRelay, "The plugin still ends by push those the relay took")
+        XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: .predatesCapabilities), .endAll, "No plugin to push the end")
+        XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: .unknown), .endAll)
+        XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: true, plugin: .predatesCapabilities), .keepAll, "Off screen the refusal is retried on screen")
+        XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: true, plugin: reported), .keepAll)
     }
 
     func testEveryLiveRegistrySnapshotSettlesTheLockScreenTurns() {
