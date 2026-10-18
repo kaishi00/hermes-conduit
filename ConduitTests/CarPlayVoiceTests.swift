@@ -193,7 +193,7 @@ final class CarPlayVoiceTemplateFactoryTests: XCTestCase {
         XCTAssertEqual(titlesByID["error"], ["Listen", "New Chat"], "Error offers Listen to retry")
         XCTAssertEqual(titlesByID["listening"], ["Mute", "End"])
         XCTAssertEqual(titlesByID["processing"], ["Mute", "End"])
-        XCTAssertEqual(titlesByID["responding"], ["Mute", "End"])
+        XCTAssertEqual(titlesByID["responding"], ["Stop", "End"], "one tap stops Hermes' reply")
     }
 
     func testTemplateIsBuiltForItsControlsAndOpensOnTheGivenState() throws {
@@ -231,6 +231,15 @@ final class CarPlayVoiceTemplateFactoryTests: XCTestCase {
             CarPlayVoiceButton.buttons(for: .listening, controls: classicPaused), [.resume, .end],
             "a classic microphone paused by silence offers Listen, not Unmute"
         )
+        // While Hermes speaks the car's microphone is closed: Stop is the
+        // one tap that matters. GPT-Live stops when the driver speaks.
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .responding, controls: classic), [.stop, .end])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .processing, controls: classic), [.mute, .end])
+        var gptLive = CarPlayVoiceControls(isClassic: false, isMicrophoneMuted: false)
+        gptLive.canStopReply = false
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .responding, controls: gptLive), [.mute, .end])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .responding, controls: classicPaused), [.resume, .end])
+        XCTAssertEqual(CarPlayVoiceButton.stop.symbol, "stop.fill")
     }
 
     func testEveryStateHasAnIconWithinTheTemplateLimits() throws {
@@ -744,11 +753,13 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
     private func makeHarness(
         connected: Bool = true,
-        continuousConversation: Bool = true
+        continuousConversation: Bool = true,
+        routePolicy: VoiceBargeInRoutePolicy = .fullDuplex
     ) -> Harness {
         let harness = Self.makeSharedHarness(
             connected: connected,
-            continuousConversation: continuousConversation
+            continuousConversation: continuousConversation,
+            routePolicy: routePolicy
         )
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
@@ -761,7 +772,8 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
     /// wrapper registers an XCTest teardown).
     static func makeSharedHarness(
         connected: Bool = true,
-        continuousConversation: Bool = true
+        continuousConversation: Bool = true,
+        routePolicy: VoiceBargeInRoutePolicy = .fullDuplex
     ) -> Harness {
         let suite = "CarPlayVoiceTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -801,7 +813,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
-            routePolicyProvider: { .fullDuplex },
+            routePolicyProvider: { routePolicy },
             submit: { await submits.submit($0) },
             interrupt: { true },
             onEndConversation: { [weak appState] in appState?.closeVoiceConversation() }
@@ -1267,6 +1279,113 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(harness.controller.isMicrophonePaused, "the microphone never reopened")
         XCTAssertEqual(harness.activations.last, .error, "never Listening with a closed microphone")
     }
+
+    /// A phone call or Siri takes the audio and ends the conversation; when
+    /// the system gives it back (the interruption ends with shouldResume)
+    /// the car listens again, hands-free.
+    func testTheCarListensAgainWhenAnInterruptionEndsWithShouldResume() async {
+        let harness = await interruptedConversation()
+        defer { harness.coordinator.handleDisconnect() }
+
+        Self.postInterruptionEnded(shouldResume: true)
+
+        let listening = await harness.controller.waitForState(.listening)
+        XCTAssertTrue(listening, "listening again with no tap")
+        XCTAssertFalse(harness.controller.failedForAudioInterruption)
+    }
+
+    /// Without shouldResume (the other app still wants the audio), with
+    /// the phone's screen showing the conversation, after End or once the
+    /// car has gone, nothing listens.
+    func testAnInterruptionThatEndsWithoutLeaveToResumeListensNoMore() async {
+        let harness = await interruptedConversation()
+        Self.postInterruptionEnded(shouldResume: false)
+        await Self.settle()
+        XCTAssertEqual(harness.controller.state, .failed("Audio was interrupted."))
+
+        harness.coordinator.phoneScreenProvider = { true }
+        Self.postInterruptionEnded(shouldResume: true)
+        await Self.settle()
+        XCTAssertEqual(harness.controller.state, .failed("Audio was interrupted."), "the phone's to restart")
+        harness.coordinator.phoneScreenProvider = { false }
+
+        harness.coordinator.handleDisconnect()
+        Self.postInterruptionEnded(shouldResume: true)
+        await Self.settle()
+        XCTAssertNotEqual(harness.controller.state, .listening, "no car, no listening")
+    }
+
+    func testEndDuringTheWaitIsTheDriversLastWord() async {
+        let harness = await interruptedConversation(delay: .milliseconds(80))
+        defer { harness.coordinator.handleDisconnect() }
+        Self.postInterruptionEnded(shouldResume: true)
+        harness.coordinator.endTapped()
+        await Self.settle()
+        XCTAssertNotEqual(harness.controller.state, .listening)
+    }
+
+    /// A conversation in the car that an interruption ended, the car's
+    /// screen up and the phone's down.
+    private func interruptedConversation(delay: Duration = .milliseconds(10)) async -> Harness {
+        let harness = makeHarness()
+        harness.coordinator.resumeAfterInterruptionDelay = delay
+        harness.coordinator.phoneScreenProvider = { false }
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        await harness.coordinator.waitForPresentation()
+        _ = await harness.controller.waitForState(.listening)
+        harness.capture.emitInterrupted()
+        _ = await harness.controller.waitForFailedState()
+        XCTAssertTrue(harness.controller.failedForAudioInterruption)
+        return harness
+    }
+
+    private static func postInterruptionEnded(shouldResume: Bool) {
+        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil, userInfo: [
+            AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+            AVAudioSessionInterruptionOptionKey: shouldResume ? AVAudioSession.InterruptionOptions.shouldResume.rawValue : UInt(0),
+        ])
+    }
+
+    /// Long enough for the resume's delay and its listening turn.
+    private static func settle() async {
+        try? await Task.sleep(for: .milliseconds(250))
+    }
+
+    /// Stop in the car: Hermes' spoken reply stops and the car listens, in
+    /// one tap, on the car's half-duplex route (the microphone is closed
+    /// while Hermes speaks) and on a route that lets the driver talk over it.
+    func testStopEndsTheSpokenReplyAndListens() async {
+        await assertStopListens(routePolicy: .speakerSafeHalfDuplex)
+        await assertStopListens(routePolicy: .fullDuplex)
+    }
+
+    private func assertStopListens(routePolicy: VoiceBargeInRoutePolicy) async {
+        let harness = makeHarness(routePolicy: routePolicy)
+        defer { harness.coordinator.handleDisconnect() }
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        let start = Date()
+        harness.controller.ingestAudioLevel(0.1, at: start)
+        harness.controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        await harness.submits.waitUntilSubmitted(1)
+        harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
+        harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "A long answer."))
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking)
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        await harness.coordinator.waitForPresentation()
+        XCTAssertEqual(harness.controller.isPlaybackCaptureSuspended, routePolicy == .speakerSafeHalfDuplex)
+
+        harness.coordinator.stopReply()
+        let listening = await harness.controller.waitForState(.listening)
+
+        XCTAssertTrue(listening, "listening again, in one tap (\(routePolicy))")
+        XCTAssertFalse(harness.controller.isPlaybackCaptureSuspended)
+    }
+
 
     func testAChatThatFailsToOpenShowsError() async {
         let harness = makeHarness()

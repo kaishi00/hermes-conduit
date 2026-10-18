@@ -48,6 +48,10 @@ final class VoiceConversationController: ObservableObject {
     /// paused"), this one is Conduit protecting the barge-in detector from
     /// the assistant's own TTS and must never read as a user-selected pause.
     @Published private(set) var isPlaybackCaptureSuspended = false
+    /// The conversation failed because another app took the audio (a phone
+    /// call, Siri): CarPlay listens again once it gives the audio back.
+    /// Cleared by the next listening window.
+    private(set) var failedForAudioInterruption = false
     @Published private(set) var conversationTranscript: [VoiceConversationTranscriptEntry] = []
     /// Set by `suspendRuntimeForLifecycle()` until the runtime is explicitly
     /// re-armed by a fresh listen or torn down by `stop()`. Suspended runtime
@@ -376,6 +380,7 @@ final class VoiceConversationController: ObservableObject {
     }
 
     func startListening(includePreRoll: Bool = false) async {
+        failedForAudioInterruption = false
         let widgetAuthorization = initialWidgetCaptureAuthorization
         initialWidgetCaptureAuthorization = nil
         guard isForegroundActive else { return }
@@ -529,7 +534,20 @@ final class VoiceConversationController: ObservableObject {
         await startListening()
     }
 
+    /// Stop (the CarPlay voice screen): Hermes' spoken reply stops and the
+    /// conversation listens, on any route. Where the microphone is closed
+    /// while Hermes speaks this is the sheet's Interrupt; where it is open
+    /// (talking over is allowed) it is what talking over does.
+    func stopAssistantReply() async {
+        if isPlaybackCaptureSuspended {
+            await interruptAssistantPlayback()
+        } else if isTalkOverAvailable {
+            scheduleBargeIn()
+        }
+    }
+
     func stop() {
+        failedForAudioInterruption = false
         releaseRuntimeResources()
         liveTranscriptionUnavailable = false
         isMicrophonePaused = false
@@ -1461,6 +1479,7 @@ final class VoiceConversationController: ObservableObject {
         // Terminal path: release session-ownership bookkeeping so audio-
         // adjacent side features (response haptics) do not stand down
         // forever after an interruption.
+        failedForAudioInterruption = true
         state = .failed(AppLocalization.string("Audio was interrupted."))
     }
 
