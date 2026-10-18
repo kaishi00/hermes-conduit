@@ -1,26 +1,46 @@
-# CI — GitHub-hosted CI is the merge gate (CI v4)
+# CI — GitHub-hosted CI is the merge gate (CI v5)
 
 **As of 2026-09-30, GitHub-hosted CI is the only merge gate.** The Mac local
 gate described further down is being retired. Its scripts stay in the tree
 until the hosted shape has run clean for a week, but no merge or release
 needs a Mac result any more.
 
-## CI v4 at a glance
+## CI v5 at a glance
+
+CI v5 pairs CI v3's lightweight merge gate with CI v4's comprehensive
+coverage, moved to the nightly run. CI v4 ran three macOS jobs on every PR and
+every push to `main` (two unit shards with every unit class, plus UI smoke),
+about 18 minutes per run, and with GitHub's limit of 5 concurrent macOS jobs
+per account, waiting for a runner had become the main cost.
 
 | Workflow | When | What runs | Gates a merge? |
 |---|---|---|---|
-| `.github/workflows/ci.yml` | every PR and every push to `main` | the Linux validation and CI-tooling self-test, **every unit class** except the nightly-only timing families (split into `unit_shards` balanced jobs), and the curated UI smoke classes | yes, through the single `CI Gate` check |
-| `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, with no retry | no; a failed scheduled run emails the owner. Run it on a release branch before a TestFlight upload. |
+| `.github/workflows/ci.yml` | every PR and every push to `main` | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the curated unit smoke classes and the curated UI smoke classes on that build and simulator | yes, through the single `CI Gate` check |
+| `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, all with no retry | no; a failed scheduled run emails the owner |
 
-`scripts/hosted-suite.json` owns the shape: the shard counts and the
-`nightly_only_unit` list. `plan-tests.py hosted` validates it against the
-discovered inventory on every run, so every unit class lands in exactly one PR
-shard or the nightly list, and a renamed class fails the plan job.
-`scripts/smoke-suite.json` still owns the UI smoke classes.
+**Releases** have no workflow of their own: a release candidate is validated
+by dispatching Nightly on the release ref (Actions > Nightly > Run workflow,
+pick the release branch, or `gh workflow run nightly.yml --ref <release-branch>`)
+before the TestFlight upload, and checking that every job passed. That run
+is the full unit suite, the timing repeats and the complete UI suite on the
+exact code being shipped.
+
+`scripts/smoke-suite.json` owns the smoke classes (7 unit, 2 UI), and
+`plan-tests.py smoke` validates them against the discovered inventory on every
+run. `scripts/hosted-suite.json` owns the nightly shape: the shard counts and
+the `nightly_only_unit` list. `plan-tests.py hosted` puts every discovered
+unit class in exactly one nightly unit shard or the nightly-only list, and
+every UI class in one nightly UI shard. It runs in ci.yml's plan job too, so a
+renamed class fails the PR that renamed it, not the next night, and no test
+can drop out of both workflows.
+
+What a PR no longer gets is the full unit suite: a unit test outside the
+smoke set that a PR breaks fails that night's run on `main`, and whoever
+merged the breaking PR fixes `main` forward.
 
 ### How a macOS test job spends its time
 
-Each macOS job (`unit` shard, `ui-smoke`, and the nightly jobs) runs
+Each macOS job (`smoke` and every nightly job) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
 simulator's lookup, boot and `bootstatus`) in the background and runs
 `ci-build-for-testing.sh` on the same runner, which waits for the preparation
@@ -30,33 +50,39 @@ an artifact hop.
 
 What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
-- **The app without its Watch app and extensions.** Unit shards generate the
-  project from `project-tests.yml`, an xcodegen overlay of `project.yml` whose
-  only change is that the Conduit target no longer embeds the Apple Watch app
-  and the three app extensions. No test runs them, and the Watch app is a
-  second platform compiled from scratch. UI smoke builds the same slim project
-  unless the PR touches those targets' sources (`ConduitWatch/`,
+- **The app without its Watch app and extensions.** The smoke job generates
+  the project from `project-tests.yml`, an xcodegen overlay of `project.yml`
+  whose only change is that the Conduit target no longer embeds the Apple
+  Watch app and the three app extensions. No test runs them, and the Watch app
+  is a second platform compiled from scratch. The smoke job builds the full
+  app instead when the PR touches those targets' sources (`ConduitWatch/`,
   `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
   `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
-  spec); then it builds the full app. `Conduit/Localizable.xcstrings` is left
+  spec). `Conduit/Localizable.xcstrings` is left
   out on purpose: the app target compiles the same catalog in the slim build,
   and nearly every PR edits it. Every push to `main` builds the full app too,
-  as do the nightly run and TestFlight archives. The plan job makes that choice (`ui-spec`).
-- **Incremental builds from main's last build.** Each push to `main` saves
-  its DerivedData to the Actions cache after the tests (unit shard 1 the
-  app-only build, UI smoke the full app), keyed by project kind, Xcode build
-  and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`). Every test job
-  restores the newest matching entry before building (from the same runner
+  as do the nightly timing and UI jobs and TestFlight archives. The plan job
+  makes that choice (`ui-spec`). The nightly unit shards always build
+  `project-tests.yml`.
+- **Incremental builds from main's last build.** Builds on `main` save their
+  DerivedData to the Actions cache after the tests, keyed by project kind,
+  Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
+  smoke job of every push to `main` saves the full app, and nightly unit
+  shard 1 saves the app-only (slim) build when it runs on `main`. The smoke
+  job and the nightly unit shards restore the newest matching entry before
+  building (from the same runner
   image if there is one, otherwise from any image with the same Xcode build,
   which happens while GitHub rolls out a new image), so a PR recompiles only
-  what it changed. Xcode trusts a restored build only when each input's file
+  what it changed. A PR's slim build therefore starts from last night's
+  `main`, and a full build from the latest merge. Xcode trusts a restored build only when each input's file
   info matches exactly, and a fresh checkout stamps every file with the clone
   time, so `ci-build-for-testing.sh` first gives every tracked file (and the
   generated project) a timestamp derived from its content
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
   no error in a source file is retried once from scratch. A new Xcode build
-  misses the cache and builds clean; the nightly never restores one.
+  misses the cache and builds clean; the nightly timing and UI jobs never
+  restore one.
 - **Packages from the restored checkout.** When the restored DerivedData
   holds the WebRTC checkout (the only package), the build passes
   `-skipPackageUpdates` and resolves from it instead of the network. A new
@@ -90,58 +116,72 @@ stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
 package resolution, build planning, waiting on the simulator service.
 
-Unit shards run their classes as sequential `test-without-building` batches on
-the one booted simulator: the fewest batches of at most `UNIT_BATCH_SIZE` (45)
-classes, split evenly, so a shard of about 78 classes runs as two batches of
-about 39. A failing batch does not stop the shard: every batch runs, and the
-job fails at the end listing the failed batches. Each failed batch also posts
-its failing cases as an annotation, since the job log API returns only a job's
-last 5,000 lines and a large first batch's failures fall outside them. Every
-batch also posts how long it took and how much of that ran tests: on a freshly
-booted simulator, the first batch spent 154 s outside its tests and the second
-20 s (#629).
-`-test-timeouts-enabled YES` with a 180s allowance
-kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
-480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
-246s), so a hung launch or idle-wait stall ends and the targeted retry still
-runs inside the job timeout.
+The smoke job then runs two test steps on the one build and booted
+simulator. **Unit smoke** runs the curated unit classes as one
+`test-without-building` invocation with no retry; a failure posts xcodebuild's
+list of failing tests and the first error lines as an annotation, and the
+invocation posts how long it took and how much of that ran tests. **UI smoke**
+runs the curated UI classes as one invocation with one targeted retry (see
+[What the hosted gate deliberately does NOT do](#what-the-hosted-gate-deliberately-does-not-do)).
+The UI step runs even when the unit step failed, so a run always reports
+both; only a failed build or a cancelled run skips it, and the job fails if
+either step failed.
+
+Nightly unit shards run their classes as sequential `test-without-building`
+batches on the one booted simulator: the fewest batches of at most
+`UNIT_BATCH_SIZE` (45) classes, split evenly, so a shard of about 78 classes
+runs as two batches of about 39. A failing batch does not stop the shard:
+every batch runs, and the job fails at the end listing the failed batches.
+Each failed batch also posts its failing cases as an annotation, since the
+job log API returns only a job's last 5,000 lines and a large first batch's
+failures fall outside them. Every batch also posts how long it took and how
+much of that ran tests: on a freshly booted simulator, the first batch spent
+154 s outside its tests and the second 20 s (#629).
+`-test-timeouts-enabled YES` with a 180s allowance (unit smoke and the unit
+shards alike) kills a hung test instead of letting it burn the job ceiling.
+UI smoke uses a 480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing
+hosted UI test took 246s), so a hung launch or idle-wait stall ends and the
+targeted retry still runs inside the job timeout.
 
 Why 45 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
 Since then the hosted hangs we have traced were test bugs, for example the
 scene-phase fixtures fixed in #272/#273 and the dropped fake-socket frames
 fixed in #274. Every invocation has a fixed hosted cost, so fewer, larger
-batches are what make the full suite affordable per PR: measured 2026-10-15
+batches are what make the full suite affordable: measured 2026-10-15
 (#629), an invocation spends 40-60 s before its first test, and the first one
 on a fresh simulator about 100 s. With a cap of 35 each shard ran a third
 batch of 7-9 classes, one of them 39 s for 0.8 s of tests. If a stall
-reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
+reappears, lower `UNIT_BATCH_SIZE` in `nightly.yml` and root-cause the test.
 
 ### Budget
 
 The repository is public, so standard hosted runners cost nothing, but GitHub
-allows **5 concurrent macOS jobs** per account. A PR run uses 3 (2 unit shards
-+ UI smoke), and `cancel-in-progress` retires a PR's superseded runs, which
-leaves room for the next push. A newer push to main never cancels an older
-one's run: each merge gets its own run, because branch protection does not
-require PRs to be up to date with main, and the main run is what catches two
-PRs that are green alone but break together. Whoever merged the breaking PR
-fixes main forward. Any run on main that overlaps another run adds 3 macOS
-jobs behind the ceiling, so it can delay PR runs, and a burst of merges queues
-more. That is accepted: it costs minutes, where updating every open PR after
-each merge cost a full run each. "Require branches to be up to date before
-merging" is a repository setting (Settings > Branches > main) that this
-workflow assumes is off; if it is turned back on, PRs must update again.
-Raise `unit_shards` only with that ceiling in mind.
+allows **5 concurrent macOS jobs** per account, and in CI v4 waiting for one
+was the main bottleneck. A PR run now uses **1** (`smoke`), and
+`cancel-in-progress` retires a PR's superseded runs, which leaves room for the
+next push. A newer push to main never cancels an older one's run: each merge
+gets its own run, because branch protection does not require PRs to be up to
+date with main, and the main run is what catches two PRs that are green alone
+but break together (within the smoke set; the nightly run catches the rest).
+Whoever merged the breaking PR fixes main forward. Any run on main that
+overlaps another run adds one macOS job, so up to five PR or main runs can run
+side by side before anything queues. "Require branches to be up to date
+before merging" is a repository setting (Settings > Branches > main) that this
+workflow assumes is off; if it is turned back on, PRs must update again. Grow
+the smoke set or add a macOS job to ci.yml only with that ceiling in mind.
 
-A nightly run schedules up to 6 macOS jobs (3 timing repeats + 3 UI shards),
-so one of them queues behind the ceiling, and a nightly that overlaps a PR run
-slows both. That is accepted: nightly results are not time-critical.
+A nightly run schedules 8 macOS jobs (2 unit shards + 3 timing repeats + 3 UI
+shards), so three of them queue behind the ceiling, and a nightly that
+overlaps a PR run slows both. That is accepted: nightly results are not
+time-critical. Each extra `unit_shards` or `nightly_ui_shards` shard adds one
+more build and one more queued job.
 
 ---
 
-The rest of this document describes the CI v3 shape and the Mac local gate.
-It is kept for the history of the measurements until the Mac gate tooling is
-deleted.
+The sections below up to [Test discovery](#test-discovery) describe the hosted
+gate's current (CI v5) shape where they say so, and keep the CI v3
+measurements for history. The rest of this document describes the Mac local
+gate, kept until the Mac gate tooling is deleted.
 
 ## Two gates, two jobs
 
@@ -191,41 +231,45 @@ repeating nothing.
 
 ## Hosted gate architecture
 
+The CI v5 shape of `.github/workflows/ci.yml` (every PR and push to `main`):
+
 ```
         source scan (inventory)                     CI tooling self-test (ubuntu)
                  |                                   planner, lane-runner state
    scripts/smoke-suite.json                          machine, destination lookup,
-   (curated selection, validated                    gate + smoke contracts - runs
-    against the inventory)                          concurrently, never delays
+   scripts/hosted-suite.json                         gate + smoke contracts - runs
+   (both validated against the inventory)            concurrently, never delays
                  |                                   the build)
-   plan-tests.py smoke -> unit-csv / ui-csv
+   plan-tests.py smoke  -> unit-csv / ui-csv
+   plan-tests.py hosted -> nightly partition check
+   ui-spec              -> project.yml or project-tests.yml
                  |
-      build-for-testing (once, workspace-anchored DerivedData)
+                 v
+   smoke (ONE macOS job)
+     restore main's build cache
+     build-for-testing  ||  simulator boot      (ci-hosted-build.sh)
+     unit smoke: 7 curated classes, ONE invocation, no retry
+     UI smoke:   2 curated classes, ONE invocation, one targeted retry
+                 (runs even if unit smoke failed)
+     main only: save the full build cache
                  |
-      .xctestrun + products artifact
-                 |
-        +--------+--------+
-        v                 v
-   unit-smoke         ui-smoke        (unit: sequential batches of at most
-   (7 curated         (2 curated       $SMOKE_BATCH_SIZE; UI: ONE invocation;
-    unit classes)      UI classes)     one -only-testing filter per class;
-        |                 |            no native flake retry)
-        |                 |
-        +--------+--------+
                  v
           ci-gate  ->  "CI Gate" (the single required status check)
 ```
+
+`.github/workflows/nightly.yml` runs its own plan job (`plan-tests.py hosted`)
+and fans out into `unit` (one job per unit shard, sequential batches; shard 1
+saves the slim build cache on `main`), `timing` (three repeats of the
+nightly-only families) and `ui` (one job per UI shard).
 
 ### Jobs
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, cheap CI-tooling tests, and the **smoke selection** (`plan-tests.py smoke`). Runs concurrently with the build; both gate the smoke jobs. |
-| `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/contract tests) — concurrent with `build`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
-| `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. This is the compile gate for the whole app and every test target. |
-| `unit-smoke` | macos-26 | The curated unit classes as sequential `test-without-building` batches of at most `SMOKE_BATCH_SIZE` (7) classes. |
-| `ui-smoke` | macos-26 | The curated UI classes (launch/navigation smoke) in one invocation. |
-| `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating the jobs above via `scripts/ci-gate.py`. |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and the smoke build's project (`ui-spec`). |
+| `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/contract tests) in three groups, concurrent with `smoke`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
+| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache, builds the app and every test target once while the simulator boots (the compile gate), then runs the curated unit classes (one invocation, no retry) and the curated UI classes (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`. |
+| `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout hierarchy is load-bearing: each synthetic hang in
 the state-machine suites is watchdog-killed within a 1–6 s test budget < the
@@ -237,7 +281,7 @@ two-worker, merge-mode and per-worker-evidence cases, and ~900 s inside the
 gate's overlapped static phase alongside two live xcodebuild chains; the cap
 and the ceiling moved with it — the coverage is the point.)
 
-Both smoke jobs use `scripts/ci-prepare-smoke.sh`, a hosted-only wrapper around
+Every hosted macOS job uses `scripts/ci-prepare-smoke.sh`, a hosted-only wrapper around
 `ci-lib.sh`'s bounded operations. It attempts to disable automatic clipboard
 sync before boot, warning and continuing if the preference cannot be written.
 It waits for the destination inventory, retains the selected `SIMULATOR_UDID`,
@@ -269,6 +313,10 @@ discovery; no slow suite is skipped in self-test. Standard full discovery,
 including the local gate's static checks, remains unchanged.
 
 ### Where the hosted wall clock goes
+
+These are CI v3 measurements (separate build, unit-smoke and ui-smoke jobs),
+kept for history; CI v5's single `smoke` job pays one build and one simulator
+boot for both test steps.
 
 Measured on the 2026-09-24 main run (20m52s wall, critical path
 `plan` → `build` → `ui-smoke` → `ci-gate`):
@@ -388,15 +436,15 @@ minutes before the plan job fails.
 
 ### The smoke selection
 
-`scripts/smoke-suite.json` is the checked-in selection, and
-`plan-tests.py smoke` validates it against the discovered inventory on every
-run:
+`scripts/smoke-suite.json` is the checked-in selection the `smoke` job runs on
+every PR and push to `main` (CI v5), and `plan-tests.py smoke` validates it
+against the discovered inventory on every run:
 
 * a class that is **renamed, deleted or moved between targets fails the plan
   job** — hosted coverage can never silently shrink;
 * duplicates fail;
-* the run summary states the split (selected vs delegated) so it is visible
-  which coverage came from where.
+* the run summary states the split (selected vs left to the nightly run) so
+  it is visible which coverage came from where.
 
 Selection policy — one or a few classes per risk area, chosen for fast
 deterministic signal:
@@ -412,32 +460,36 @@ deterministic signal:
 | notifications/push routing | `NotificationDashboardOwnershipTests` |
 | basic UI launch/navigation | `ConnectionSetupUITests`, `ProfilePickerUITests` |
 
-**One class per area, and that is the design.** Measured on the 2026-09-23 runs:
-the whole 137-class unit suite is 13.9 minutes of *test* time on a hosted
-runner, but one `test-without-building` invocation costs ~12 minutes of
-xcodebuild + simulator + test-host overhead on top of ~5 minutes of device
-settle/boot. Coverage per minute is therefore flat in class count and steep in
-invocation count — and the stall-avoidance rule caps a batch at 7 classes
-anyway. Seven classes is one invocation, i.e. a ~17-minute smoke job. A second
-cohort doubles the hosted cost without doubling the signal: the Mac gate is the
-exhaustive authority, and this gate only has to answer "is anything obviously
-broken?".
+**One class per area, and that is the design.** Every
+`test-without-building` invocation has a fixed hosted cost (40-100 s before
+its first test, measured 2026-10-15), and the merge gate's job is a fast
+verdict on a shared, queue-limited runner pool. Seven unit classes are one
+invocation. Growing the set adds wall clock to every PR without adding
+coverage the nightly run lacks: it is the exhaustive authority, and the smoke
+job only has to answer "does it build, and is anything obviously broken?".
+(The CI v3 numbers behind the original sizing, from 2026-09-23: the whole
+137-class unit suite was 13.9 minutes of *test* time on a hosted runner, while
+one invocation then cost ~12 minutes of xcodebuild + simulator + test-host
+overhead.)
 
-**Delegated to the Mac exhaustive gate** (deliberately NOT in the hosted set):
-the complete remaining inventory (130 unit + 5 UI classes when this shape
-landed) and in particular the timing/performance/dormancy families —
-`TranscriptPerformanceFixtureTests`, `TranscriptPerfLedgerContractTests`,
-`LongContextScalingFixtureTests`, `SettledMessageIsolationTests`,
-`MarkdownRichContentHostedTests`. Those suites exist to measure scheduling and
-rendering behaviour and are only meaningful with repeats on a machine we
-control; running them on shared runners produced flakes that cost more than
-they caught. `SmokeSelectionTests` asserts they never re-enter the hosted set.
+**Left to the nightly run** (deliberately NOT in the smoke set): every other
+unit class, in the nightly unit shards, and every other UI class, in the
+nightly UI shards (154 unit + 6 UI classes on 2026-10-18). In particular the
+timing/performance/dormancy families — `TranscriptPerformanceFixtureTests`,
+`TranscriptPerfLedgerContractTests`, `LongContextScalingFixtureTests`,
+`SettledMessageIsolationTests`, `MarkdownRichContentHostedTests`
+(`nightly_only_unit` in `scripts/hosted-suite.json`) — run there with three
+repeats. Those suites measure scheduling and rendering behaviour; running
+them on every PR's shared runner produced flakes that cost more than they
+caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
+`HostedSelectionTests` that every smoke class also runs in a nightly shard.
 
 ### What the hosted gate deliberately does NOT do
 
-* **No dynamic lane fanout.** Each target runs in ONE job as a few sequential
-  batches of classes; lane balancing buys nothing at this size and made job
-  count unpredictable.
+* **No dynamic lane fanout.** The PR gate is ONE job with one invocation per
+  target, and the nightly shards are a fixed count from
+  `scripts/hosted-suite.json`; lane balancing buys nothing at this size and
+  made job count unpredictable.
 * **No Xcode-native flake retry** (`-test-iterations` / `-retry-tests-on-failure`).
   A genuine assertion failure must fail the run — never be re-run until it
   agrees. (Contract-tested in `WorkflowContractTests`.) The one exception is the
@@ -468,6 +520,14 @@ they caught. `SmokeSelectionTests` asserts they never re-enter the hosted set.
   hosted runner fails the job and is re-run by a human, deliberately.
 
 ### Cost
+
+CI v5: one macOS job per PR or main run (one build, one boot, two test
+invocations, plus a UI retry when needed), against CI v4's three (each with
+its own build and boot, ~18 minutes of wall clock per run). The full unit
+suite's macOS minutes moved to the nightly run, which spends them once a day
+instead of on every push.
+
+The history below is CI v2 and v3.
 
 Measured on the last full v2 run of main (18 jobs): **129.2 macOS minutes** per
 run, wall clock ~20–21 minutes, longest job 18.8 min. The original v3 shape was 6 jobs:
@@ -860,27 +920,28 @@ timing history any more.
 The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
-* `plan`, `build`, `self-test`, `unit-smoke` and `ui-smoke` all succeed.
-  Nothing is ever legitimately skipped: `plan-tests.py smoke` fails closed on an
-  empty curated selection and both smoke jobs refuse to run unfiltered, so a
-  `skipped` smoke job always means an upstream failure cascade — which fails
-  the gate.
+* `plan`, `smoke` and `self-test` all succeed (CI v5). `smoke` fails when
+  its build, its unit smoke step or its UI smoke step failed. Nothing is ever
+  legitimately skipped: `plan-tests.py smoke` fails closed on an empty curated
+  selection and both smoke test steps refuse to run unfiltered, so a
+  `skipped` job always means an upstream failure cascade — which fails the
+  gate.
 
 Branch protection must require **CI Gate** (and nothing else from this
-workflow): the smoke jobs are implementation detail, and any job that can be
-renamed or split must never be pinned individually. The verdict is produced by
-`scripts/ci-gate.py`, whose `--help`-visible policy is contract-tested.
+workflow): the jobs behind it are implementation detail, and any job that can
+be renamed or split must never be pinned individually — CI v5 removed the
+`unit` shard and `ui-smoke` jobs without touching branch protection. The
+verdict is produced by `scripts/ci-gate.py`, whose policy is contract-tested.
 
-The gate's own docstring records what it is not: the hosted verdict is the
-smoke gate's, and a release additionally needs the Mac local exhaustive gate on
-the exact head — that result is never produced by, and cannot be substituted
-by, this job.
+The gate covers the PR shape only. The nightly workflow (full unit suite,
+timing repeats, complete UI suite) never gates a merge; it reports on `main`
+every night, and a release is validated by dispatching it on the release ref.
 
 Each run ends with a smoke-selection summary (selected classes per target and
-the count delegated to the Mac gate) so the coverage split is visible on the
-run page. When the smoke gate fails, the failing job's log names the class and
-method; there is no retry layer that could turn a genuine assertion into a
-green run.
+the count left to the nightly run) so the coverage split is visible on the
+run page. When the smoke job fails, its annotations and log name the class
+and method; there is no retry layer that could turn a genuine unit assertion
+into a green run.
 
 ## Local exhaustive gate (Mac, outside GitHub)
 

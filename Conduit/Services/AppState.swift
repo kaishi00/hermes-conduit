@@ -10827,6 +10827,18 @@ final class AppState: ObservableObject {
         return context
     }
 
+    /// Round 6: Repair Connection appears only once the connection is
+    /// actually down AND a failed attempt has surfaced — through the typed
+    /// classified failure or the visible error banner — never while the
+    /// first automatic attempts are still quiet, and never uninvited. It
+    /// stays between the retries that follow a surfaced failure. Offered by
+    /// the composer and, in V2, at the top of Chats, where the app opens.
+    var showsConnectionRepair: Bool {
+        connection != nil
+            && !isConnected
+            && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
+    }
+
     /// Entering Repair is an explicit user takeover of connection recovery:
     /// outstanding automatic recovery — the scheduled reconnect timer, its
     /// operations, and its automatic work — loses authority here, so a stale
