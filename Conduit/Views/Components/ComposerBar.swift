@@ -578,6 +578,10 @@ struct ComposerBar: View, Equatable {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
+                    // Gone with the first keystroke. The send button's
+                    // spring would otherwise fade it out under the words
+                    // being typed.
+                    .transition(.identity)
             }
             ComposerPasteTextView(
                 text: $text,
