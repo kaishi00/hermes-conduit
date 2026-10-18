@@ -187,6 +187,34 @@ enum WatchAudioBridgeWire {
     }
 
     static let end = Data(#"{"type":"end"}"#.utf8)
+    /// Hermes Voice: the user stopped the reply on the Watch; the host
+    /// drops the rest of it.
+    static let interrupt = Data(#"{"type":"interrupt"}"#.utf8)
+
+    /// Hermes Voice's own engine events, beside GPT-Live's names.
+    enum HostEvent: Equatable {
+        enum State: String {
+            case listening
+            case thinking
+            case speaking
+        }
+
+        /// Where the call's turn is.
+        case state(State)
+        /// A spoken reply starts or ends: the audio between is all speech.
+        case speech(on: Bool)
+    }
+
+    static func hostEvent(_ object: [String: Any]) -> HostEvent? {
+        switch object["type"] as? String {
+        case "conduit.state":
+            return (object["state"] as? String).flatMap(HostEvent.State.init(rawValue:)).map(HostEvent.state)
+        case "conduit.speech":
+            return (object["on"] as? Bool).map { .speech(on: $0) }
+        default:
+            return nil
+        }
+    }
 
     struct Started: Equatable {
         var engine: String

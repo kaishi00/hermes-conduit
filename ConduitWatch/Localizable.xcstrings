@@ -8462,6 +8462,334 @@
           }
         }
       }
+    },
+    "Hermes Voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice"
+          }
+        }
+      }
+    },
+    "Hermes Voice failed on Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice ist auf Hermes fehlgeschlagen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice falló en Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice a échoué sur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice gagal di Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice non è riuscito su Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes で Hermes Voice が失敗しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에서 Hermes Voice가 실패했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice nie zadziałał na Hermesie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes Voice falhou no Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice не сработал на Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice, Hermes'te başarısız oldu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice 在 Hermes 上失败了。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice 在 Hermes 上失敗了。"
+          }
+        }
+      }
+    },
+    "Calls from Hermes ring your iPhone while the Watch uses Hermes Voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe von Hermes klingeln auf deinem iPhone, solange die Watch Hermes Voice verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas de Hermes suenan en tu iPhone mientras el Apple Watch usa Hermes Voice."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels de Hermes sonnent sur votre iPhone tant que l'Apple Watch utilise Hermes Voice."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dari Hermes berdering di iPhone Anda selama Watch memakai Hermes Voice."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate di Hermes squillano sul tuo iPhone finché Apple Watch usa Hermes Voice."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch で Hermes Voice を使っている間、Hermes からの通話は iPhone で鳴ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch에서 Hermes Voice를 사용하는 동안 Hermes의 통화는 iPhone에서 울려요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia od Hermesa dzwonią na iPhonie, dopóki zegarek używa Hermes Voice."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas do Hermes tocam no seu iPhone enquanto o Watch usa o Hermes Voice."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки от Hermes поступают на iPhone, пока часы используют Hermes Voice."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch Hermes Voice kullanırken Hermes'ten gelen aramalar iPhone'unuzda çalar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 使用 Hermes Voice 时，来自 Hermes 的通话会在你的 iPhone 上响铃。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch 使用 Hermes Voice 時，來自 Hermes 的通話會在你的 iPhone 上響鈴。"
+          }
+        }
+      }
+    },
+    "With Hermes Voice, your Hermes host's own speech server listens and speaks, and each call is a new Hermes chat with your profile's memory and persona." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit Hermes Voice hört der eigene Sprachserver deines Hermes-Hosts zu und spricht, und jeder Anruf ist ein neuer Hermes-Chat mit dem Gedächtnis und der Persona deines Profils."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con Hermes Voice, el propio servidor de voz de tu servidor de Hermes escucha y habla, y cada llamada es un chat nuevo de Hermes con la memoria y la personalidad de tu perfil."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec Hermes Voice, le serveur vocal de votre hôte Hermes écoute et parle, et chaque appel est une nouvelle discussion Hermes avec la mémoire et la personnalité de votre profil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dengan Hermes Voice, server suara milik host Hermes Anda mendengar dan berbicara, dan setiap panggilan menjadi obrolan Hermes baru dengan memori dan persona profil Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con Hermes Voice, il server vocale del tuo host Hermes ascolta e parla, e ogni chiamata è una nuova chat di Hermes con la memoria e la personalità del tuo profilo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice では Hermes ホスト自身の音声サーバーが聞き取りと読み上げを行い、通話ごとにプロフィールのメモリとペルソナを使った新しい Hermes チャットになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice에서는 Hermes 호스트의 자체 음성 서버가 듣고 말하며, 통화마다 프로필의 메모리와 페르소나를 갖춘 새 Hermes 채팅이 돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Z Hermes Voice własny serwer mowy Twojego hosta Hermes słucha i mówi, a każda rozmowa to nowy czat Hermesa z pamięcią i personą Twojego profilu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com o Hermes Voice, o próprio servidor de voz do seu host do Hermes ouve e fala, e cada chamada é um novo chat do Hermes com a memória e a persona do seu perfil."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "С Hermes Voice собственный речевой сервер вашего хоста Hermes слушает и говорит, а каждый звонок — это новый чат Hermes с памятью и персоной вашего профиля."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice ile Hermes sunucunuzun kendi konuşma sunucusu dinler ve konuşur; her arama, profilinizin belleği ve kişiliğiyle yeni bir Hermes sohbetidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes Voice 时，由你的 Hermes 主机自己的语音服务器负责聆听和朗读，每次通话都是一个带有你个人资料记忆和人设的新 Hermes 聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes Voice 時，由你的 Hermes 主機自己的語音伺服器負責聆聽和朗讀，每通通話都是一個帶有你個人檔案記憶和角色設定的新 Hermes 聊天。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

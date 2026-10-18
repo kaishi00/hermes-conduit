@@ -50,8 +50,15 @@ struct WatchHomeView: View {
                 .accessibilityValue(notSetUp ? Text("Not set up on your Hermes host") : Text(call.engine.detail))
                 // Calls from Hermes ring the Watch only while its voice can
                 // start (WatchCallVoices).
-                if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+                if call.engine != .hermesVoice, notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
                     Text("Calls from Hermes ring only your iPhone until \(call.engine.title) is set up. Voice settings in Conduit on your iPhone show what it needs.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else if call.engine == .hermesVoice, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+                    // Each Hermes Voice call is a new chat, not the one a
+                    // call from Hermes is about (WatchCallVoices.rings).
+                    Text("Calls from Hermes ring your iPhone while the Watch uses Hermes Voice.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -142,7 +149,13 @@ struct WatchEnginePicker: View {
                 .accessibilityAddTraits(engine == call.engine ? .isSelected : [])
             }
             Section {
-                Text("Your iPhone sets up each call with your Hermes profile's memory, persona and voice settings. Calls are saved to your iPhone's voice history.")
+                Group {
+                    if call.engine == .hermesVoice {
+                        Text("With Hermes Voice, your Hermes host's own speech server listens and speaks, and each call is a new Hermes chat with your profile's memory and persona.")
+                    } else {
+                        Text("Your iPhone sets up each call with your Hermes profile's memory, persona and voice settings. Calls are saved to your iPhone's voice history.")
+                    }
+                }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)

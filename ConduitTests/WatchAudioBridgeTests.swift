@@ -195,6 +195,31 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.gptLive.rawValue))
     }
 
+    /// Hermes Voice's own events and controls: where the turn is, where each
+    /// spoken reply starts and ends, and the Watch's tap.
+    func testHermesVoiceHostEventsAndTheInterrupt() {
+        XCTAssertEqual(WatchAudioBridgeWire.hostEvent(["type": "conduit.state", "state": "thinking"]), .state(.thinking))
+        XCTAssertEqual(WatchAudioBridgeWire.hostEvent(["type": "conduit.state", "state": "listening"]), .state(.listening))
+        XCTAssertNil(WatchAudioBridgeWire.hostEvent(["type": "conduit.state", "state": "dreaming"]))
+        XCTAssertEqual(WatchAudioBridgeWire.hostEvent(["type": "conduit.speech", "on": true]), .speech(on: true))
+        XCTAssertEqual(WatchAudioBridgeWire.hostEvent(["type": "conduit.speech", "on": false]), .speech(on: false))
+        XCTAssertNil(WatchAudioBridgeWire.hostEvent(["type": "conduit.speech"]))
+        XCTAssertNil(WatchAudioBridgeWire.hostEvent(["type": "turn.done"]), "GPT-Live's names stay GPT-Live's")
+        XCTAssertEqual(WatchAudioBridgeWire.interrupt, Data(#"{"type":"interrupt"}"#.utf8))
+    }
+
+    /// Voice settings > Apple Watch shows the host's word on Hermes Voice.
+    @MainActor
+    func testWatchSettingsShowWhatHermesVoiceNeeds() {
+        XCTAssertEqual(WatchHermesVoiceSetup.state(.init(runtime: "ready", reason: nil)), .ready)
+        guard case .notReady(let reason) = WatchHermesVoiceSetup.state(.init(runtime: "missing", reason: "No speech server is set for this profile")) else {
+            return XCTFail("not ready")
+        }
+        XCTAssertTrue(reason.hasSuffix("No speech server is set for this profile"))
+        guard case .notReady(let older) = WatchHermesVoiceSetup.state(.init(runtime: "missing", reason: nil)) else { return XCTFail("not ready") }
+        XCTAssertTrue(older.contains("Update the Conduit notifier plugin"))
+    }
+
     /// What the iPhone hands the Watch: the grant with its audio bridge
     /// and the briefing, through the message dictionary.
     @MainActor

@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Voice settings > Apple Watch: whether the Watch app is there, what a
-//  Watch call may do on Hermes (jobs, approvals), GPT-Live's setup on the
-//  Hermes host, and the call log to share for a support question.
+//  Watch call may do on Hermes (jobs, approvals), GPT-Live's setup and
+//  Hermes Voice's readiness on the Hermes host, and the call log to share
+//  for a support question.
 //
 
 import SwiftUI
@@ -15,6 +16,7 @@ struct WatchSettingsSection: View {
     @ObservedObject private var link = WatchVoiceLink.shared
     @ObservedObject private var log = WatchPhoneCallLog.shared
     @StateObject private var gptLive = WatchGPTLiveSetup()
+    @StateObject private var hermesVoice = WatchHermesVoiceSetup()
     @AppStorage(WatchJobSettings.jobsPerCallKey) private var jobsPerCall = WatchJobSettings.defaultJobsPerCall
     @AppStorage(WatchJobSettings.voiceApprovalsKey) private var voiceApprovals = false
     @State private var confirmingClear = false
@@ -60,6 +62,8 @@ struct WatchSettingsSection: View {
                 .foregroundStyle(.secondary)
 
             gptLiveRow
+
+            hermesVoiceRow
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Call log")
@@ -127,6 +131,30 @@ struct WatchSettingsSection: View {
         case .unavailable(let reason):
             Text(reason).foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder
+    private var hermesVoiceRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Hermes Voice on the Watch")
+                .font(.subheadline.weight(.semibold))
+            Text("Your Hermes host's own speech server listens and speaks, and Hermes answers in a chat of the call's own, with its tools and memory. No cloud voice model, and the call stays in that chat rather than in voice history. It uses the speech server set in Voice settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Group {
+                switch hermesVoice.state {
+                case .unknown:
+                    Text("Checking…").foregroundStyle(.secondary)
+                case .ready:
+                    Label(AppLocalization.string("Ready"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                case .notReady(let reason):
+                    Text(reason).foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            .accessibilityIdentifier("voice.watchHermesVoiceStatus")
+        }
+        .task { await hermesVoice.refresh() }
     }
 
     // `isWatchAppInstalled` has read false at launch with the Watch app
@@ -211,5 +239,42 @@ final class WatchGPTLiveSetup: ObservableObject {
         case "failed": state = .failed(runtime.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch."))
         default: state = .notSetUp
         }
+    }
+}
+
+/// Hermes Voice on the Hermes host (watch-audio/status, speech_server): the
+/// profile's speech server and Hermes' chats in the dashboard. Nothing to
+/// set up from here; the host says what's missing.
+@MainActor
+final class WatchHermesVoiceSetup: ObservableObject {
+    enum State: Equatable {
+        case unknown
+        case ready
+        case notReady(String)
+    }
+
+    @Published private(set) var state: State = .unknown
+    private let client = WatchToolGrantClient.activeDashboard()
+
+    func refresh() async {
+        let appState = AppStateRuntimeRegistry.shared.appState
+        guard appState.isConnected else {
+            state = .notReady(AppLocalization.string("Connect to Hermes to check."))
+            return
+        }
+        do {
+            let status = try await client.audioStatus(profile: appState.activeProfile, engine: WatchAudioBridgeWire.speechServer)
+            state = Self.state(status)
+            appState.noteWatchCallVoice(.hermesVoice, ready: state == .ready)
+        } catch {
+            // The host out of reach says nothing about Hermes Voice on it.
+            state = .notReady(UserFacingError.message(for: error))
+        }
+    }
+
+    /// An older plugin lists no speech_server: missing, with no reason.
+    static func state(_ status: WatchToolGrantClient.AudioRuntime) -> State {
+        if status.runtime == "ready" { return .ready }
+        return .notReady(WatchDirectBroker.hermesVoiceUnavailable(reason: status.reason))
     }
 }

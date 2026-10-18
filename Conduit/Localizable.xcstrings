@@ -293705,6 +293705,170 @@
           }
         }
       }
+    },
+    "Hermes Voice on the Watch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice auf der Watch"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice en el Apple Watch"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice sur l'Apple Watch"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice di Watch"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice su Apple Watch"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch の Hermes Voice"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch의 Hermes Voice"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice na zegarku"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice no Watch"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice на часах"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch'ta Hermes Voice"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 上的 Hermes Voice"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch 上的 Hermes Voice"
+          }
+        }
+      }
+    },
+    "Your Hermes host's own speech server listens and speaks, and Hermes answers in a chat of the call's own, with its tools and memory. No cloud voice model, and the call stays in that chat rather than in voice history. It uses the speech server set in Voice settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der eigene Sprachserver deines Hermes-Hosts hört zu und spricht, und Hermes antwortet in einem eigenen Chat für den Anruf, mit seinen Werkzeugen und seinem Gedächtnis. Kein Sprachmodell in der Cloud, und der Anruf bleibt in diesem Chat statt im Sprachverlauf. Es wird der Sprachserver aus den Spracheinstellungen verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El propio servidor de voz de tu servidor de Hermes escucha y habla, y Hermes responde en un chat propio de la llamada, con sus herramientas y su memoria. Sin modelo de voz en la nube, y la llamada queda en ese chat en lugar del historial de voz. Usa el servidor de voz configurado en los ajustes de Voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le serveur vocal de votre hôte Hermes écoute et parle, et Hermes répond dans une discussion propre à l'appel, avec ses outils et sa mémoire. Aucun modèle vocal dans le cloud, et l'appel reste dans cette discussion plutôt que dans l'historique vocal. Il utilise le serveur vocal défini dans les réglages Voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara milik host Hermes Anda mendengar dan berbicara, dan Hermes menjawab di obrolan khusus panggilan itu, dengan alat dan memorinya. Tanpa model suara cloud, dan panggilan tetap di obrolan itu, bukan di riwayat suara. Menggunakan server suara yang diatur di pengaturan Suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il server vocale del tuo host Hermes ascolta e parla, e Hermes risponde in una chat dedicata alla chiamata, con i suoi strumenti e la sua memoria. Nessun modello vocale nel cloud, e la chiamata resta in quella chat invece che nella cronologia vocale. Usa il server vocale impostato nelle impostazioni Voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ホスト自身の音声サーバーが聞き取りと読み上げを行い、Hermes が通話専用のチャットで、ツールとメモリを使って答えます。クラウドの音声モデルは使わず、通話は音声履歴ではなくそのチャットに残ります。音声設定で指定した音声サーバーを使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트의 자체 음성 서버가 듣고 말하며, Hermes가 통화 전용 채팅에서 도구와 메모리를 사용해 답해요. 클라우드 음성 모델은 사용하지 않으며, 통화는 음성 기록이 아니라 그 채팅에 남아요. 음성 설정에서 지정한 음성 서버를 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Własny serwer mowy Twojego hosta Hermes słucha i mówi, a Hermes odpowiada w osobnym czacie rozmowy, ze swoimi narzędziami i pamięcią. Bez modelu głosowego w chmurze, a rozmowa zostaje w tym czacie zamiast w historii głosowej. Używa serwera mowy ustawionego w ustawieniach Głosu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O próprio servidor de voz do seu host do Hermes ouve e fala, e o Hermes responde em um chat próprio da chamada, com suas ferramentas e memória. Sem modelo de voz na nuvem, e a chamada fica nesse chat em vez do histórico de voz. Usa o servidor de voz definido nos ajustes de Voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Собственный речевой сервер вашего хоста Hermes слушает и говорит, а Hermes отвечает в отдельном чате звонка, со своими инструментами и памятью. Без облачной голосовой модели, и звонок остаётся в этом чате, а не в истории голоса. Используется речевой сервер из настроек голоса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuzun kendi konuşma sunucusu dinler ve konuşur; Hermes araçları ve belleğiyle, aramaya ait bir sohbette yanıt verir. Bulutta ses modeli yok ve arama ses geçmişinde değil, o sohbette kalır. Ses ayarlarında belirlenen konuşma sunucusunu kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的 Hermes 主机自己的语音服务器负责聆听和朗读，Hermes 在本次通话专属的聊天中借助其工具和记忆回答。不使用云端语音模型，通话保留在该聊天中，而不是语音记录中。使用语音设置中指定的语音服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的 Hermes 主機自己的語音伺服器負責聆聽和朗讀，Hermes 會在這通通話專屬的聊天中運用其工具和記憶回答。不使用雲端語音模型，通話會留在該聊天中，而不是語音記錄中。使用語音設定中指定的語音伺服器。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

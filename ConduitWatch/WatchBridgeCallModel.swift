@@ -53,7 +53,15 @@ final class WatchBridgeCallModel: ObservableObject {
         case ended(String?)
     }
 
-    static let engine = WatchAudioBridgeWire.gptLive
+    /// The engine of this call: GPT-Live, or Hermes Voice (the host's own
+    /// speech server, with Hermes answering in a chat of the call's own).
+    private(set) var engine = WatchAudioBridgeWire.gptLive
+    private var isHermesVoice: Bool { engine == WatchAudioBridgeWire.speechServer }
+    /// Hermes Voice: past this long thinking, a tap on the wrist says the
+    /// call is still there.
+    /// Most replies start within it (end of speech to first audio is about
+    /// 2 s on a household speech server), so the tap marks a slow turn.
+    static let thinkingHapticAfter: TimeInterval = 3
     static let captureRate = WatchAudio.captureRate
     static let playbackRate: Double = 24_000
     static let sessionWait: TimeInterval = 30
@@ -260,6 +268,14 @@ final class WatchBridgeCallModel: ObservableObject {
     private var approvalsShown = 0
     private var approvalsAnswered = 0
 
+    // Hermes Voice
+    /// The call's Hermes chat, from the host's "started": a rejoin names it.
+    private var hermesSessionID: String?
+    private var thinkingSince: TimeInterval?
+    private var thinkingHapticPlayed = false
+    /// The host is sending a spoken reply (conduit.speech).
+    private var hostSpeaking = false
+
     // Liveness and screen
     private var lastTickAt: TimeInterval?
     private var watchSuspendedMs = 0
@@ -287,9 +303,10 @@ final class WatchBridgeCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start(ring: String? = nil, answer: HermesRingAnswer? = nil) async {
+    func start(ring: String? = nil, answer: HermesRingAnswer? = nil, engine: String = WatchAudioBridgeWire.gptLive) async {
         guard !isActive else { return }
         reset()
+        self.engine = engine
         self.ring = ring
         // The id the start sent through the relay named.
         self.answer = answer
@@ -324,7 +341,7 @@ final class WatchBridgeCallModel: ObservableObject {
         batteryAtStart = WKInterfaceDevice.current().batteryLevel
         note("bridgeCallStart", [
             "callID": Int(callID),
-            "engine": Self.engine,
+            "engine": engine,
             "keepAliveMs": Int((now - callStartedAt) * 1000),
             "reachable": link.isReachable,
         ])
@@ -358,7 +375,8 @@ final class WatchBridgeCallModel: ObservableObject {
             restartAudio()
             return
         }
-        guard modelSpeaking || audio.isPlaying else { return }
+        // Hermes Voice: also between the sentences of a reply still coming.
+        guard modelSpeaking || audio.isPlaying || (isHermesVoice && hostSpeaking) else { return }
         // Playback stops now and the rest of this stretch of speech is
         // dropped; the microphone opens, and GPT-Live stops when it hears
         // the user.
@@ -368,6 +386,9 @@ final class WatchBridgeCallModel: ObservableObject {
         lastPlaybackEndedAt = now
         awaitingFirstAudio = false
         if phase == .speaking { phase = .listening }
+        // Hermes Voice stops its reply on the host too (the host drops what
+        // it hadn't sent); GPT-Live stops when it hears the user.
+        if isHermesVoice { send(WatchAudioBridgeWire.interrupt, kind: .control) }
         note("bridgeInterrupt", ["screen": "\(scenePhase)"])
     }
 
@@ -462,7 +483,7 @@ final class WatchBridgeCallModel: ObservableObject {
 
     // MARK: The call from the iPhone
 
-    static func startRequest(callID: UInt32, ring: String?) -> WatchVoiceWire.Message {
+    static func startRequest(callID: UInt32, ring: String?, engine: String = WatchAudioBridgeWire.gptLive) -> WatchVoiceWire.Message {
         .bridgeStart(callID: callID, version: WatchVoiceWire.version, engine: engine, ring: ring)
     }
 
@@ -470,7 +491,7 @@ final class WatchBridgeCallModel: ObservableObject {
         sessionRequests += 1
         let id = callID
         if sessionRequests == 1, let answer { fetchHandoff(answer) }
-        link.send(Self.startRequest(callID: id, ring: ring), reply: { [weak self] answer in
+        link.send(Self.startRequest(callID: id, ring: ring, engine: engine), reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             self.sessionAnswered(answer)
         }, failure: { [weak self] error in
@@ -537,7 +558,9 @@ final class WatchBridgeCallModel: ObservableObject {
         guard let bridge = session.grant.audio,
               let url = URL(string: bridge.url), url.scheme == "wss",
               let root = WatchToolSeal.data(base64URL: session.grant.key), root.count == 32 else {
-            finish(String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
+            finish(isHermesVoice
+                ? String(localized: "The iPhone's session couldn't be read. Update Conduit on both devices.")
+                : String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
             return
         }
         guard bridge.version == Int(WatchAudioBridgeWire.version) else {
@@ -546,7 +569,9 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         // Delegations, jobs and approvals all go through the grant.
         guard let relayClient = WatchToolRelayClient(session.grant) else {
-            finish(String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
+            finish(isHermesVoice
+                ? String(localized: "The iPhone's session couldn't be read. Update Conduit on both devices.")
+                : String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
             return
         }
         bridgeURL = url
@@ -555,7 +580,8 @@ final class WatchBridgeCallModel: ObservableObject {
         watchKey = session.grant.watchKey
         briefing = session.briefingText
         greeting = session.greeting
-        openingTurn = session.openingTurn
+        // Hermes Voice's host takes no opening turn (its calls are new chats).
+        openingTurn = isHermesVoice ? nil : session.openingTurn
         voice = session.voice
         endPhrases = session.endPhrases ?? []
         relay = relayClient
@@ -600,6 +626,9 @@ final class WatchBridgeCallModel: ObservableObject {
         modelSpeaking = false
         suppressingTurn = false
         leadInSamples = []
+        // A new connection's host says again where its turn is.
+        hostSpeaking = false
+        thinkingSince = nil
         let socket = WatchBridgeSocket(url: bridgeURL, watchKey: watchKey)
         socket.onEvent = { [weak self] kind, fields in self?.socketEvent(number, kind, fields) }
         socket.onMessage = { [weak self] data in self?.received(data, connection: number) }
@@ -640,11 +669,21 @@ final class WatchBridgeCallModel: ObservableObject {
         guard let stream else { return }
         socket?.send(WatchAudioBridgeWire.hello(streamID: stream.streamID))
         let rejoining = firstStartedAt != nil
+        if isHermesVoice {
+            // Hermes has the persona and memory, and the conversation is its
+            // chat: a rejoin names the chat and carries on in it.
+            send(WatchAudioBridgeWire.start(
+                engine: engine, voice: nil, briefing: nil, greeting: nil, history: [],
+                resumeSessionID: rejoining ? hermesSessionID : nil
+            ), kind: .control)
+            startSentAt = now
+            return
+        }
         let history = rejoining
             ? transcript.suffix(Self.historyTurns).map { GPTLiveProtocol.historyItem(role: $0.role.rawValue, text: $0.text) }
             : []
         send(WatchAudioBridgeWire.start(
-            engine: Self.engine,
+            engine: engine,
             voice: voice,
             briefing: briefing,
             greeting: rejoining ? nil : greeting,
@@ -742,6 +781,7 @@ final class WatchBridgeCallModel: ObservableObject {
         case .started(let info):
             live = true
             started = info
+            if let sessionID = info.sessionID { hermesSessionID = sessionID }
             hostOfflineTries = 0
             phase = audio.isPlaying ? .speaking : .listening
             let rejoining = firstStartedAt != nil
@@ -759,12 +799,15 @@ final class WatchBridgeCallModel: ObservableObject {
                 "outputRate": info.outputRate,
                 "briefingApplied": info.briefingApplied,
                 "greetingApplied": info.greetingApplied,
+                "resumed": info.resumed,
             ])
             // The host's rates are fixed for wire version 1; other rates
             // would play at the wrong speed and send mis-framed audio.
             if info.inputRate != Int(Self.captureRate) || info.outputRate != Int(Self.playbackRate) {
                 note("bridgeRateMismatch", ["input": info.inputRate, "output": info.outputRate])
-                finish(String(localized: "Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together."))
+                finish(isHermesVoice
+                    ? String(localized: "Update the Hermes notifier plugin and Conduit to matching versions.")
+                    : String(localized: "Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together."))
                 return
             }
             // A call from Hermes: the model says what it called about, as
@@ -786,7 +829,8 @@ final class WatchBridgeCallModel: ObservableObject {
             }
         case .error(let code, let message):
             note("bridgeHostError", ["code": code as Any, "message": String(message.prefix(200)), "live": live])
-            let text = message.isEmpty ? String(localized: "GPT-Live failed on Hermes.") : message
+            let text = !message.isEmpty ? message
+                : isHermesVoice ? String(localized: "Hermes Voice failed on Hermes.") : String(localized: "GPT-Live failed on Hermes.")
             switch code ?? "" {
             case "unreachable", "failed":
                 // Worth another try once it was working; "ended" follows.
@@ -805,6 +849,10 @@ final class WatchBridgeCallModel: ObservableObject {
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = object["type"] as? String {
             events[type, default: 0] += 1
+            if let event = WatchAudioBridgeWire.hostEvent(object) {
+                hostEvent(event)
+                return
+            }
         }
         guard let event = GPTLiveProtocol.decode(text) else { return }
         switch event {
@@ -847,6 +895,31 @@ final class WatchBridgeCallModel: ObservableObject {
         }
     }
 
+    /// Hermes Voice's own events: where its turn is, and where each spoken
+    /// reply starts and ends (its audio carries speech only).
+    private func hostEvent(_ event: WatchAudioBridgeWire.HostEvent) {
+        switch event {
+        case .state(let state):
+            if state == .thinking {
+                thinkingSince = now
+                thinkingHapticPlayed = false
+            } else {
+                thinkingSince = nil
+            }
+        case .speech(let on):
+            hostSpeaking = on
+            // A reply a tap stopped is over (or a new one starts).
+            suppressingTurn = false
+            // The reply's audio is all in: once it has played, the
+            // microphone opens (after the echo tail), with no wait for a
+            // quiet stretch.
+            if !on, modelSpeaking, !audio.isPlaying {
+                modelSpeaking = false
+                playbackDrained()
+            }
+        }
+    }
+
     // MARK: Audio
 
     private func handleAudio(_ samples: [Int16]) {
@@ -856,8 +929,10 @@ final class WatchBridgeCallModel: ObservableObject {
         if loud { lastLoudAt = now }
         let quietFor = lastLoudAt.map { now - $0 } ?? .infinity
         if suppressingTurn {
-            // Dropped until this stretch of speech ends.
-            if quietFor > Self.speechGap { suppressingTurn = false }
+            // Dropped until this stretch of speech ends. Hermes Voice sends
+            // speech only, with no quiet between its sentences: its reply
+            // ends with the host's conduit.speech instead.
+            if !isHermesVoice, quietFor > Self.speechGap { suppressingTurn = false }
             return
         }
         if modelSpeaking {
@@ -920,7 +995,9 @@ final class WatchBridgeCallModel: ObservableObject {
     private func endAfterGoodbyeIfDue(at: TimeInterval) {
         guard let heard = goodbyeHeardAt, endRequestedAt == nil else { return }
         let quietSince = max(heard, lastLoudAt ?? 0, lastPlaybackEndedAt ?? 0)
-        let quiet = !modelSpeaking && !audio.isPlaying && at - quietSince >= Self.goodbyeGrace
+        // Hermes Voice's goodbye comes after Hermes thinks: waited for too.
+        let hostBusy = isHermesVoice && (thinkingSince != nil || hostSpeaking)
+        let quiet = !modelSpeaking && !audio.isPlaying && !hostBusy && at - quietSince >= Self.goodbyeGrace
         guard quiet || at - heard >= Self.goodbyeTimeout else { return }
         end()
     }
@@ -929,6 +1006,7 @@ final class WatchBridgeCallModel: ObservableObject {
     static let goodbyeTimeout: TimeInterval = 10
 
     private func playbackDrained() {
+        if isHermesVoice, !hostSpeaking { modelSpeaking = false }
         lastPlaybackEndedAt = now
         guard isActive, phase == .speaking, !modelSpeaking else { return }
         phase = .listening
@@ -1597,6 +1675,11 @@ final class WatchBridgeCallModel: ObservableObject {
             finish(nil)
             return
         }
+        if let since = thinkingSince, !thinkingHapticPlayed, at - since >= Self.thinkingHapticAfter,
+           phase == .listening {
+            thinkingHapticPlayed = true
+            WKInterfaceDevice.current().play(.click)
+        }
         endAfterGoodbyeIfDue(at: at)
         reactivateIfDue()
         audio.checkPlayback()
@@ -1804,6 +1887,10 @@ final class WatchBridgeCallModel: ObservableObject {
         approvals = []
         approvalsShown = 0
         approvalsAnswered = 0
+        hermesSessionID = nil
+        thinkingSince = nil
+        thinkingHapticPlayed = false
+        hostSpeaking = false
         lastTickAt = nil
         watchSuspendedMs = 0
         watchGaps = 0
@@ -1842,14 +1929,14 @@ final class WatchBridgeCallModel: ObservableObject {
             startedAt: callStartedDate,
             endedAt: Date(),
             turns: saved,
-            engine: Self.engine,
+            engine: engine,
             jobs: jobLog.jobs.isEmpty ? nil : jobLog.jobs
         )))
         let battery = WKInterfaceDevice.current().batteryLevel
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
         WatchCallLog.shared.report("bridgeCallSummary", [
             "callID": Int(callID),
-            "engine": Self.engine,
+            "engine": engine,
             "reason": reason as Any,
             "durationS": Int(now - callStartedAt),
             "sessionMs": sessionAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
