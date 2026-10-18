@@ -200,7 +200,7 @@
           "prompt": "Plan three easy dinners this week. We have chicken, spinach and a lot of lemons.",
           "steps": [
             {
-              "content": "Three quick ones that use it all up.\n\n- **Mon** Lemon garlic chicken with spinach orzo\n- **Wed** Chicken and spinach quesadillas\n- **Fri** Lemon pasta with crispy chicken thighs\n\nI added parmesan and tortillas to your shopping list."
+              "content": "Three quick ones that use it all up: lemon garlic chicken with spinach orzo on Monday, chicken and spinach quesadillas on Wednesday, and lemon pasta with crispy chicken thighs on Friday.\n\nI added parmesan and tortillas to your shopping list."
             }
           ]
         }
@@ -296,7 +296,6 @@
     }
   ],
   "default_bot": {
-    "title": "Hermes",
-    "color": "purple"
+    "title": "Hermes"
   }
 }

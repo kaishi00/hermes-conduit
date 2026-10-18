@@ -93,12 +93,12 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
     }
 
-    /// Waits for the board, then scrolls it until the Ready column (the
-    /// first with several cards) is on screen; empty Triage leads otherwise.
+    /// Waits for the board, then scrolls it past the empty Triage column:
+    /// to Ready on a phone, to Ready and Running on an iPad.
     private func showBoardWork() {
-        let card = app.staticTexts["Book campsite for Big Sur"]
-        _ = card.waitForExistence(timeout: 30)
+        _ = app.staticTexts["Book campsite for Big Sur"].waitForExistence(timeout: 30)
         let window = app.windows.firstMatch.frame
+        let card = app.staticTexts[window.width > 700 ? "Compare flights to Tokyo" : "Book campsite for Big Sur"]
         for _ in 0..<5 {
             if card.exists, window.contains(card.frame) { return }
             let board = app.windows.firstMatch
