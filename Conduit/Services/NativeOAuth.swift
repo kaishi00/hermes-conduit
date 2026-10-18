@@ -439,6 +439,18 @@ final class NativeOAuthSession {
         return request
     }
 
+    /// The access token a dashboard WebSocket upgrade presents, refreshed
+    /// first once it has expired. Not earlier, unlike a REST request: the
+    /// upgrade's ticket was minted a moment ago (refreshing first if
+    /// needed) with the current token, and a server may bind the ticket to
+    /// it. The caller sends it only to this dashboard.
+    func upgradeBearer() async throws -> String {
+        guard !isInvalidated else { throw CancellationError() }
+        if tokens.needsRefresh(skewSeconds: 0) { try await refresh() }
+        guard !isInvalidated else { throw CancellationError() }
+        return tokens.accessToken
+    }
+
     /// Forgets a grant the server rejected again right after a refresh, as
     /// `requestJSON`'s replay does.
     func discardRejectedGrant() {

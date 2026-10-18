@@ -10680,6 +10680,7 @@ final class AppState: ObservableObject {
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = nil
+            let pluginStateBeforeSignIn = notifierPlugin.state
             notifierPlugin = freshNotifierPluginStatus
             let failure = ConnectionFailureClassifier.classify(error)
             if keepOfflineChatInsteadOfSignIn(failure) { return }
@@ -10688,6 +10689,7 @@ final class AppState: ObservableObject {
             isConnected = false
             showLogin = true
             pendingLoginFailure = .presenting(ConnectionFailureClassifier.classify(error))
+            endLockScreenTurnsForSignIn(plugin: pluginStateBeforeSignIn)
         }
     }
 
@@ -11900,6 +11902,8 @@ final class AppState: ObservableObject {
         lastConnectionFailure = failure
         showLogin = true
         pendingLoginFailure = .presenting(failure)
+        // The saved-password restore never resets the plugin status.
+        endLockScreenTurnsForSignIn(plugin: notifierPlugin.state)
         return true
     }
 
@@ -12162,11 +12166,18 @@ final class AppState: ObservableObject {
         errorMessage = nil
         showLogin = true
         pendingLoginFailure = pendingFailure
-        // A turn of this dashboard nothing can end now stops counting up on
-        // the Lock Screen.
+        endLockScreenTurnsForSignIn(plugin: pluginStateBeforeSignIn)
+    }
+
+    /// A refused or expired sign-in of the active dashboard (required,
+    /// saved password, native OAuth restore): a turn of it nothing can end
+    /// now stops counting up on the Lock Screen. A cancelled Face ID isn't
+    /// a refusal, and leaves them for the retry. `plugin` is the notifier
+    /// plugin's state before the sign-in reset it.
+    private func endLockScreenTurnsForSignIn(plugin: NotifierPluginStatus.State) {
         if let keepingThoseOnRelay = Self.signInEndsLockScreenTurns(
             screenAway: phoneScreenIsAway(),
-            plugin: pluginStateBeforeSignIn
+            plugin: plugin
         ).keepingThoseOnRelay {
             liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, keepingThoseOnRelay)
         }

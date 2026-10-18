@@ -77,10 +77,12 @@ struct LiveVoiceCallSheet: View {
         case job(UUID)
         case screen(VoiceScreenCard)
 
-        var id: UUID {
+        /// A live card keeps its sheet open as it's brought up to date.
+        var id: String {
             switch self {
-            case .job(let id): return id
-            case .screen(let card): return card.id
+            case .job(let id): return "job-\(id)"
+            case .screen(let card):
+                return card.liveNames.min().map { "live-\($0)" } ?? "screen-\(card.id)"
             }
         }
     }
@@ -167,6 +169,13 @@ struct LiveVoiceCallSheet: View {
     /// user it's there. Something the user opened, or a chat being opened,
     /// isn't replaced: the card waits in the strip and the transcript.
     private func showNewScreenCard(_ cards: [VoiceScreenCard]) {
+        // An open live card follows its updates, whoever opened it.
+        if case .screen(let open) = selection, let card = cards.last, card.id != open.id,
+           card.callAnchor.callID == jobs.liveCallID, open.isUpdated(by: card) {
+            autoOpenedCardIDs.insert(card.id)
+            selection = .screen(card)
+            return
+        }
         guard let card = cards.last,
               pendingJobChat == nil,
               canReplaceSelection,

@@ -48,6 +48,12 @@ struct RichCardView: View {
             RichComparisonCard(card: card)
         case .steps:
             RichStepsCard(card: card)
+        case .media:
+            RichMediaCard(card: card)
+        case .contact:
+            RichContactCard(card: card)
+        case .status:
+            RichStatusCard(card: card)
         }
     }
 }

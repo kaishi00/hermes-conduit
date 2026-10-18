@@ -74,7 +74,21 @@ extension AppState {
             if shown == nil { unshown.append(card) }
         }
         guard showVoiceSheet, !unshown.isEmpty else { return }
-        let parts = (classicVoiceCard == nil ? [] : classicVoiceCardParts) + unshown
+        // A live card replaces the sheet's earlier one of the same name,
+        // one that came in the same exchange included.
+        var parts = classicVoiceCard == nil ? [] : classicVoiceCardParts
+        for card in unshown {
+            let live = Set(card.cards.compactMap { $0["live"] as? String })
+            if !live.isEmpty {
+                parts = parts.compactMap { part -> PresentedCard? in
+                    let kept = part.cards.filter { ($0["live"] as? String).map { !live.contains($0) } ?? true }
+                    if kept.count == part.cards.count { return part }
+                    return kept.isEmpty && part.markdown.isEmpty
+                        ? nil : PresentedCard(id: part.id, title: part.title, markdown: part.markdown, cards: kept)
+                }
+            }
+            parts.append(card)
+        }
         classicVoiceCardParts = parts
         let title = parts.count == 1 ? parts[0].title : AppLocalization.string("From Hermes")
         // Each card under its own heading when there are several, clipped as

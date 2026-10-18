@@ -13,7 +13,7 @@
 //  authority travels only in what the request builder put there for the
 //  selected dashboard: its single-use ticket and, in cookie mode, its own
 //  session cookies for that address (an auth proxy in front admits the
-//  upgrade only with them).
+//  upgrade only with them), or in native mode its bearer.
 //
 
 import Foundation

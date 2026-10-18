@@ -2,8 +2,8 @@
 //  RichCardSchema.swift
 //  Conduit
 //
-//  Rich cards (maps, places, stats, charts, forecasts, comparisons and
-//  steps) are defined once, in hermes-conduit-notifier's
+//  Rich cards (maps, places, stats, charts, forecasts, comparisons, steps,
+//  media, contacts and statuses) are defined once, in hermes-conduit-notifier's
 //  cards/card-schema.json. This app ships a byte-identical copy
 //  (card-schema.json beside this file); scripts/check-card-schema.py fails
 //  CI when it differs from the plugin's main. Only the rules name a card's
@@ -26,7 +26,10 @@
 //    its first place; a chart keeps the series that fit its labels (one,
 //    never negative, for a pie); a forecast needs a source and something
 //    to show, and drops a day whose low is above its high; a comparison
-//    recommends one option at most.
+//    recommends one option at most; media needs a source and https links,
+//    and an image has no duration or artwork; a contact keeps only a phone and an email
+//    that look like one; a live name is kept on the first card of a set
+//    that has it.
 //
 
 import Foundation
@@ -61,9 +64,14 @@ struct RichCardSchema {
     func normalizeCards(_ value: Any?) -> [[String: Any]] {
         guard let list = value as? [Any] else { return [] }
         var cards: [[String: Any]] = []
+        var live: Set<String> = []
         for raw in list {
             if cards.count == maxCards { break }
-            if let card = normalizeCard(raw) { cards.append(card) }
+            guard var card = normalizeCard(raw) else { continue }
+            if let name = card["live"] as? String, !live.insert(name).inserted {
+                card["live"] = nil
+            }
+            cards.append(card)
         }
         return cards
     }
@@ -183,16 +191,40 @@ struct RichCardSchema {
     private static let typeFields: [String: [String]] = [
         "map": ["places", "route"], "place": ["places"], "places": ["places"], "stats": ["stats"],
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
+        "media": ["media"], "contact": ["people"], "status": ["status"],
     ]
 
-    /// The information cards: they can name a source.
-    static let infoTypes: Set<String> = ["stats", "chart", "weather", "comparison", "steps"]
+    /// The cards about places; every other type can name a source.
+    static let placeTypes: Set<String> = ["map", "place", "places"]
+
+    /// A phone number's characters, and an address with nothing that could
+    /// end a link or a header early (the plugin's _PHONE and _EMAIL).
+    private static let phonePattern = try! NSRegularExpression(pattern: #"^[0-9+\-(). ]+$"#)
+    private static let emailPattern = try! NSRegularExpression(
+        pattern: #"^[^@\s<>()\[\]"'`,;:\\]+@[^@\s<>()\[\]"'`,;:\\]+\.[^@\s<>()\[\]"'`,;:\\.]+$"#)
+
+    private static func matches(_ pattern: NSRegularExpression, _ text: String) -> Bool {
+        pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    static func isPhone(_ text: String) -> Bool {
+        let digits = text.unicodeScalars.filter { (48...57).contains($0.value) }.count
+        return matches(phonePattern, text) && (3...20).contains(digits)
+    }
+
+    private static func isHTTPS(_ value: Any?) -> Bool {
+        (value as? String).map { $0.prefix(8).lowercased() == "https://" } ?? false
+    }
+
+    static func isEmail(_ text: String) -> Bool {
+        matches(emailPattern, text)
+    }
 
     /// The card after the schema's rules, or nil when they drop it.
     private static func applyRules(_ card: [String: Any], raw: [String: Any]) -> [String: Any]? {
         guard let type = card["type"] as? String, let fields = typeFields[type], let field = fields.first else { return nil }
-        var keep = Set(fields).union(["type", "title"])
-        if infoTypes.contains(type) { keep.insert("source") }
+        var keep = Set(fields).union(["type", "title", "live"])
+        if !placeTypes.contains(type) { keep.insert("source") }
         var card = card.filter { keep.contains($0.key) }
         guard card[field] != nil else { return nil }
         switch type {
@@ -220,6 +252,26 @@ struct RichCardSchema {
                 var option = option
                 if seen { option["recommended"] = nil }
                 return option
+            }
+        case "media":
+            guard card["source"] != nil else { return nil }
+            // The phone loads media over https only.
+            let media = (card["media"] as? [[String: Any]] ?? []).filter { isHTTPS($0["url"]) }
+            guard !media.isEmpty else { return nil }
+            card["media"] = media.map { item in
+                var item = item
+                if item["kind"] as? String == "image" || (item["artwork"] != nil && !isHTTPS(item["artwork"])) {
+                    item["artwork"] = nil
+                }
+                if item["kind"] as? String == "image" { item["duration"] = nil }
+                return item
+            }
+        case "contact":
+            card["people"] = (card["people"] as? [[String: Any]] ?? []).map { person in
+                var person = person
+                if let phone = person["phone"] as? String, !isPhone(phone) { person["phone"] = nil }
+                if let email = person["email"] as? String, !isEmail(email) { person["email"] = nil }
+                return person
             }
         default:
             break

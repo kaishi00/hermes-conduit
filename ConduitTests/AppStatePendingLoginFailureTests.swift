@@ -195,6 +195,20 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         }
     }
 
+    /// A refused saved sign-in at launch presents sign-in without
+    /// `requireSignIn`, and ends the dashboard's turns the same way.
+    func testARefusedSavedSignInEndsTheLockScreenTurns() {
+        for away in [false, true] {
+            let appState = makeAppState()
+            appState.phoneScreenIsAway = { away }
+            var ends: [Bool] = []
+            appState.liveTurnActivitiesEndDashboard = { _, keepingThoseOnRelay in ends.append(keepingThoseOnRelay) }
+            XCTAssertTrue(appState.presentCredentialRestoreFailure(.authenticationRejected, switchGeneration: nil))
+            XCTAssertTrue(appState.showLogin)
+            XCTAssertEqual(ends, away ? [] : [false], "No plugin reported: all of them end, on screen only")
+        }
+    }
+
     func testEveryLiveRegistrySnapshotSettlesTheLockScreenTurns() {
         let appState = makeAppState()
         var snapshots: [(Set<String>, String)] = []

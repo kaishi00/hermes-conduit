@@ -246,6 +246,15 @@ struct VoiceScreenCard: Identifiable, Equatable {
     var cards: [RichCard] = []
     /// The cards as normalized JSON, which the saved call keeps.
     var cardsJSON: Data? = nil
+
+    /// The live names of its cards: a later card with one of them is the
+    /// same thing brought up to date.
+    var liveNames: Set<String> { Set(cards.compactMap(\.live)) }
+
+    /// Whether `other` brings one of this card's live cards up to date.
+    func isUpdated(by other: VoiceScreenCard) -> Bool {
+        !liveNames.isDisjoint(with: other.liveNames)
+    }
 }
 
 /// What the voice conversation should do with a pending job update.
@@ -1007,6 +1016,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             cardsJSON: rich.isEmpty ? nil : try? JSONSerialization.data(withJSONObject: cards)
         )
         onScreenCardShown?(card)
+        // A live card replaces the call's earlier one of the same name; a
+        // screen that showed something else too keeps the rest.
+        let live = card.liveNames
+        if !live.isEmpty {
+            screenCards = screenCards.compactMap { shown in
+                guard shown.callAnchor.callID == anchor.callID, shown.isUpdated(by: card) else { return shown }
+                var kept = shown
+                kept.cards.removeAll { $0.live.map(live.contains) ?? false }
+                return kept.cards.isEmpty && kept.markdown.isEmpty ? nil : kept
+            }
+        }
         screenCards.append(card)
         if screenCards.count > Self.maximumScreenCards {
             screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)

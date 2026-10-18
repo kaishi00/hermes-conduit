@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -1464,6 +1464,373 @@
           "places": [
             {
               "name": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Media keeps its items, and an image has no length or artwork",
+      "input": [
+        {
+          "type": "media",
+          "title": "Apollo 11",
+          "source": {
+            "name": "NASA",
+            "url": "https://nasa.gov"
+          },
+          "media": [
+            {
+              "kind": "IMAGE",
+              "url": "https://a.test/moon.jpg",
+              "title": "Moon",
+              "duration": 5,
+              "artwork": "https://a.test/x.jpg",
+              "page": "https://a.test/moon"
+            },
+            {
+              "kind": "video",
+              "url": "https://a.test/launch.m3u8",
+              "duration": 300,
+              "artwork": "https://a.test/launch.jpg",
+              "by": "NASA TV"
+            },
+            {
+              "kind": "audio",
+              "url": "https://a.test/talk.mp3",
+              "caption": "The landing"
+            },
+            {
+              "kind": "podcast",
+              "url": "https://a.test/p.mp3"
+            },
+            {
+              "kind": "image",
+              "url": "javascript:alert(1)"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "media",
+          "title": "Apollo 11",
+          "source": {
+            "name": "NASA",
+            "url": "https://nasa.gov"
+          },
+          "media": [
+            {
+              "kind": "image",
+              "url": "https://a.test/moon.jpg",
+              "title": "Moon",
+              "page": "https://a.test/moon"
+            },
+            {
+              "kind": "video",
+              "url": "https://a.test/launch.m3u8",
+              "by": "NASA TV",
+              "duration": 300,
+              "artwork": "https://a.test/launch.jpg"
+            },
+            {
+              "kind": "audio",
+              "url": "https://a.test/talk.mp3",
+              "caption": "The landing"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Media without a source is dropped",
+      "input": [
+        {
+          "type": "media",
+          "media": [
+            {
+              "kind": "image",
+              "url": "https://a.test/a.jpg"
+            }
+          ]
+        },
+        {
+          "type": "media",
+          "source": {
+            "name": "Unsplash"
+          },
+          "media": [
+            {
+              "kind": "image",
+              "url": "not a url"
+            }
+          ]
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "A contact keeps only a phone and an email that read as one",
+      "input": [
+        {
+          "type": "contact",
+          "source": {
+            "name": "Yelp"
+          },
+          "people": [
+            {
+              "name": "Dr Lee",
+              "detail": "Dentist",
+              "phone": "+1 (415) 555-0100",
+              "email": "front@lee.example",
+              "url": "https://lee.example",
+              "address": "1 Main St",
+              "note": "Open Saturdays",
+              "photo": {
+                "url": "https://a.test/lee.jpg",
+                "source": "Yelp"
+              }
+            },
+            {
+              "name": "Sam",
+              "phone": "12",
+              "email": "sam at home"
+            },
+            {
+              "name": "Ana",
+              "phone": "tel:+44 20 7946 0000",
+              "email": "ana@example.com, bo@example.com"
+            },
+            {
+              "name": "Bo",
+              "phone": "+44 20 7946 0000 0000 0000 0000",
+              "email": "bo@example",
+              "photo": {
+                "url": "https://a.test/bo.jpg"
+              }
+            },
+            {
+              "detail": "No name"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "contact",
+          "source": {
+            "name": "Yelp"
+          },
+          "people": [
+            {
+              "name": "Dr Lee",
+              "detail": "Dentist",
+              "phone": "+1 (415) 555-0100",
+              "email": "front@lee.example",
+              "url": "https://lee.example",
+              "address": "1 Main St",
+              "note": "Open Saturdays",
+              "photo": {
+                "url": "https://a.test/lee.jpg",
+                "source": "Yelp"
+              }
+            },
+            {
+              "name": "Sam"
+            },
+            {
+              "name": "Ana"
+            },
+            {
+              "name": "Bo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A status keeps its state, and a live name stays on the first card that has it",
+      "input": [
+        {
+          "type": "status",
+          "live": "order-4411",
+          "title": "Your order",
+          "source": {
+            "name": "UPS"
+          },
+          "status": {
+            "state": "Out for delivery",
+            "phase": "Active",
+            "progress": 0.75,
+            "eta": "14:20",
+            "detail": "3 stops away",
+            "milestones": [
+              {
+                "label": "Ordered",
+                "done": true
+              },
+              {
+                "label": "Shipped",
+                "done": true
+              },
+              {
+                "label": "Delivered"
+              },
+              {
+                "done": true
+              }
+            ]
+          }
+        },
+        {
+          "type": "status",
+          "live": "order-4411",
+          "status": {
+            "state": "Delivered",
+            "phase": "done",
+            "progress": 1.5
+          }
+        },
+        {
+          "type": "stats",
+          "live": "score",
+          "stats": [
+            {
+              "label": "Arsenal",
+              "value": "2"
+            }
+          ]
+        },
+        {
+          "type": "status",
+          "status": {
+            "phase": "done"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "status",
+          "title": "Your order",
+          "live": "order-4411",
+          "source": {
+            "name": "UPS"
+          },
+          "status": {
+            "state": "Out for delivery",
+            "phase": "active",
+            "progress": 0.75,
+            "detail": "3 stops away",
+            "eta": "14:20",
+            "milestones": [
+              {
+                "label": "Ordered",
+                "done": true
+              },
+              {
+                "label": "Shipped",
+                "done": true
+              },
+              {
+                "label": "Delivered"
+              }
+            ]
+          }
+        },
+        {
+          "type": "status",
+          "status": {
+            "state": "Delivered",
+            "phase": "done"
+          }
+        },
+        {
+          "type": "stats",
+          "live": "score",
+          "stats": [
+            {
+              "label": "Arsenal",
+              "value": "2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A live name goes on any card type",
+      "input": [
+        {
+          "type": "place",
+          "live": "pickup",
+          "places": [
+            {
+              "name": "Gate 4",
+              "lat": 51.47,
+              "lon": -0.45
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "live": "pickup",
+          "places": [
+            {
+              "name": "Gate 4",
+              "lat": 51.47,
+              "lon": -0.45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Media keeps only https items and artwork, and is dropped with none left",
+      "input": [
+        {
+          "type": "media",
+          "source": {
+            "name": "Archive"
+          },
+          "media": [
+            {
+              "kind": "audio",
+              "url": "http://example.org/a.mp3",
+              "title": "Plain http"
+            },
+            {
+              "kind": "video",
+              "url": "HTTPS://example.org/b.mp4",
+              "artwork": "http://example.org/b.jpg",
+              "duration": 60
+            }
+          ]
+        },
+        {
+          "type": "media",
+          "source": {
+            "name": "Archive"
+          },
+          "media": [
+            {
+              "kind": "image",
+              "url": "http://example.org/c.jpg"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "media",
+          "source": {
+            "name": "Archive"
+          },
+          "media": [
+            {
+              "kind": "video",
+              "url": "HTTPS://example.org/b.mp4",
+              "duration": 60
             }
           ]
         }

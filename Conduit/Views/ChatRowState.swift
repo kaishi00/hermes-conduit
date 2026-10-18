@@ -29,6 +29,9 @@ struct ChatRowState: Equatable {
     /// A call card finds its call through AppState; this redraws it when
     /// the links change.
     var voiceCallLinksRevision = 0
+    /// Each live card's last row: earlier rows with that live name show
+    /// that it was updated below.
+    var latestLiveRows: [String: String] = [:]
 
     init() {}
 
@@ -47,6 +50,7 @@ struct ChatRowState: Equatable {
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
+        latestLiveRows = RichCard.latestLiveRows(appState.messages)
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

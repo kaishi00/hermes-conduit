@@ -7,7 +7,7 @@
 //  (even on the same origin), an identity provider or an external service;
 //  a cookie-mode upgrade carries the dashboard's own session cookies a
 //  browser would send to that address, and a native-mode upgrade carries
-//  none. Synthetic hosts only.
+//  none, and the grant's bearer to that address only. Synthetic hosts only.
 //
 
 import Foundation
@@ -46,11 +46,12 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
     private func nativeAuthorizer(
         _ baseURL: String,
         access: String = "access-selected",
+        tokens: NativeOAuthTokenSet? = nil,
         others: [String] = []
     ) -> DashboardRequestAuthorizer {
         let id = UUID()
         let session = NativeOAuthSession(
-            tokens: DashboardSocketFixture.tokens(access: access),
+            tokens: tokens ?? DashboardSocketFixture.tokens(access: access),
             dashboardID: id,
             client: NativeOAuthAPIClient(baseURL: baseURL)
         )
@@ -136,7 +137,7 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
 
     // MARK: - Native upgrades
 
-    func testNativeUpgradeKeepsItsTicketAndProxyHeadersAndCarriesNoCookie() async throws {
+    func testNativeUpgradeKeepsItsTicketAndProxyHeadersAndCarriesTheBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let authorizer = nativeAuthorizer(fixture.baseURL)
@@ -158,7 +159,135 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
         XCTAssertEqual(authorized.url, request.url)
         XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"))
         XCTAssertEqual(authorized.value(forHTTPHeaderField: "X-Proxy-Header"), "kept")
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Bearer access-selected")
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), fixture.authorizationThatMinted(ticket),
+                       "The upgrade presents the bearer that minted its ticket")
         XCTAssertEqual(asked, 0, "A native sign-in has no session cookies to send")
+    }
+
+    func testNativeUpgradeBearerReplacesAnAuthorizationHeaderAlreadyThere() async throws {
+        let authorizer = nativeAuthorizer("https://dashboard.example.test")
+        var request = URLRequest(url: url("wss://dashboard.example.test/api/ws?ticket=t"))
+        request.setValue("Basic c3RhbGU=", forHTTPHeaderField: "Authorization")
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Bearer access-selected")
+    }
+
+    func testNativeUpgradeToAnotherAddressCarriesNoBearer() async throws {
+        let fixture = try DashboardSocketFixture()
+        defer { fixture.stop() }
+        // An expired grant: an upgrade the bearer went to would refresh it.
+        let expired = NativeOAuthTokenSet(
+            accessToken: "access-selected",
+            refreshToken: "refresh-selected",
+            expiresAt: Date().timeIntervalSince1970 - 5,
+            provider: "self-hosted",
+            userID: "fixture-user"
+        )
+        let authorizer = nativeAuthorizer(
+            "\(fixture.baseURL)/team",
+            tokens: expired,
+            others: ["\(fixture.baseURL)/team/ops"]
+        )
+        let port = fixture.server.port
+        for address in [
+            "ws://localhost:\(port)/team/api/ws?ticket=t",
+            "wss://127.0.0.1:\(port)/team/api/ws?ticket=t",
+            "ws://127.0.0.1:\(port + 1)/team/api/ws?ticket=t",
+            "ws://127.0.0.1:\(port)/api/ws?ticket=t",
+            "ws://127.0.0.1:\(port)/teammate/api/ws?ticket=t",
+            "ws://127.0.0.1:\(port)/team/ops/api/ws?ticket=t",
+            "wss://sso.example.test/authorize",
+            "wss://voice-provider.example.test/live",
+        ] {
+            let authorized = try await authorizer.authorizeUpgrade(URLRequest(url: url(address)))
+            XCTAssertNil(authorized.value(forHTTPHeaderField: "Authorization"), address)
+            XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"), address)
+        }
+        XCTAssertTrue(fixture.refreshes.isEmpty, "Nothing was refreshed for an address the bearer does not go to")
+
+        let own = try await authorizer.authorizeUpgrade(URLRequest(url: url("\(fixture.baseURL)/team/api/ws?ticket=t")))
+        XCTAssertEqual(own.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-access-renewed")
+    }
+
+    func testNativeUpgradeOverCleartextToASecureDashboardCarriesNoBearer() async throws {
+        let authorizer = nativeAuthorizer("https://dashboard.example.test")
+        let secure = try await authorizer.authorizeUpgrade(URLRequest(url: url("wss://dashboard.example.test/api/ws?ticket=t")))
+        XCTAssertEqual(secure.value(forHTTPHeaderField: "Authorization"), "Bearer access-selected")
+        let cleartext = try await authorizer.authorizeUpgrade(URLRequest(url: url("ws://dashboard.example.test/api/ws?ticket=t")))
+        XCTAssertNil(cleartext.value(forHTTPHeaderField: "Authorization"), "ws:// is another origin than an https dashboard")
+    }
+
+    func testNativeUpgradeRefreshesAnExpiredBearerFirst() async throws {
+        let fixture = try DashboardSocketFixture(refreshedAccessToken: "access-renewed")
+        defer { fixture.stop() }
+        let expired = NativeOAuthTokenSet(
+            accessToken: "access-expired",
+            refreshToken: "refresh-expired",
+            expiresAt: Date().timeIntervalSince1970 - 5,
+            provider: "self-hosted",
+            userID: "fixture-user"
+        )
+        let authorizer = nativeAuthorizer(fixture.baseURL, tokens: expired)
+
+        let request = URLRequest(url: try ConnectionURLPolicy.webSocketURL(
+            baseURL: fixture.baseURL,
+            path: "/api/ws",
+            queryItems: [URLQueryItem(name: "ticket", value: "t")]
+        ))
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Bearer access-renewed")
+        XCTAssertEqual(fixture.refreshes.count, 1)
+
+        // The renewed token is fresh: the next upgrade refreshes nothing.
+        let again = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(again.value(forHTTPHeaderField: "Authorization"), "Bearer access-renewed")
+        XCTAssertEqual(fixture.refreshes.count, 1)
+    }
+
+    func testNativeUpgradeKeepsAnUnexpiredBearerThatMintedItsTicket() async throws {
+        // Within REST's early-refresh margin but not expired: the ticket was
+        // just minted with this token, so the upgrade presents the same one.
+        let fixture = try DashboardSocketFixture(refreshedAccessToken: "access-renewed")
+        defer { fixture.stop() }
+        let ticket = "fixture-minted-elsewhere"
+        let closeToExpiry = NativeOAuthTokenSet(
+            accessToken: "access-current",
+            refreshToken: "refresh-current",
+            expiresAt: Date().timeIntervalSince1970 + 30,
+            provider: "self-hosted",
+            userID: "fixture-user"
+        )
+        let authorizer = nativeAuthorizer(fixture.baseURL, tokens: closeToExpiry)
+        let request = URLRequest(url: try ConnectionURLPolicy.webSocketURL(
+            baseURL: fixture.baseURL,
+            path: "/api/ws",
+            queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+        ))
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Bearer access-current")
+        XCTAssertTrue(fixture.refreshes.isEmpty)
+    }
+
+    func testNativeUpgradeWhoseRefreshIsRefusedThrowsAndCarriesNothing() async throws {
+        let server = try LoopbackHTTPServer.start { _ in .status(401) }
+        defer { server.stop() }
+        let baseURL = "http://127.0.0.1:\(server.port)"
+        let expired = NativeOAuthTokenSet(
+            accessToken: "access-expired",
+            refreshToken: "refresh-refused",
+            expiresAt: Date().timeIntervalSince1970 - 5,
+            provider: "self-hosted",
+            userID: "fixture-user"
+        )
+        let authorizer = nativeAuthorizer(baseURL, tokens: expired)
+        do {
+            let authorized = try await authorizer.authorizeUpgrade(URLRequest(url: url("ws://127.0.0.1:\(server.port)/api/ws?ticket=t")))
+            XCTFail("A refused refresh must not authorize the upgrade, got \(String(describing: authorized.allHTTPHeaderFields?.keys))")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // Expected: sign-in is required, as for a REST request.
+        }
+        XCTAssertFalse(server.receivedRequests.contains { $0.headers["upgrade"] != nil }, "No upgrade was attempted")
     }
 
     private func cookie(

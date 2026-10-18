@@ -954,10 +954,18 @@ struct MessageBubble: View, Equatable {
             } else if let tool = message.tool, case let cards = RichCard.cards(for: tool), !cards.isEmpty {
                 // Maps and places Hermes showed (conduit_show): drawn from
                 // the call's saved answer, so they come back with the chat,
-                // whatever the tool-progress setting.
-                RichCardsView(cards: cards)
-                    .frame(maxWidth: 560, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // whatever the tool-progress setting. A live card shows
+                // only where it was last brought up to date.
+                let current = RichCard.current(cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
+                Group {
+                    if current.isEmpty {
+                        RichLiveUpdatedLine(title: cards.first?.title)
+                    } else {
+                        RichCardsView(cards: current)
+                    }
+                }
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else if let step {
                 ChatStepRow(message: message, placement: step)
             } else {

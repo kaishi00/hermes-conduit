@@ -274,6 +274,27 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(labels, ["line 0", "job", "line 1", "line 2"])
     }
 
+    func testALiveScreenCardReplacesTheCallsEarlierOneOfItsName() {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        let order: [String: Any] = ["type": "status", "live": "order", "status": ["state": "Preparing"]]
+        let steps: [String: Any] = ["type": "steps", "steps": [["text": "Wait."]]]
+        let first = supervisor.showOnScreen(title: "Order", markdown: "", cards: [order, steps])
+        XCTAssertEqual(first?.liveNames, ["order"])
+        supervisor.showOnScreen(title: "Other", markdown: "pie")
+        var update = order
+        update["status"] = ["state": "On its way", "phase": "active"]
+        let second = supervisor.showOnScreen(title: "Order", markdown: "", cards: [update])
+        XCTAssertEqual(supervisor.screenCards.count, 3)
+        XCTAssertEqual(supervisor.screenCards[0].cards.map(\.kind), [.steps], "the earlier screen keeps its other card")
+        XCTAssertEqual(supervisor.screenCards.last?.cards.first?.status?.state, "On its way")
+        XCTAssertTrue(first.map { $0.isUpdated(by: second!) } ?? false)
+
+        supervisor.showOnScreen(title: "Order", markdown: "", cards: [order])
+        XCTAssertEqual(supervisor.screenCards.filter { !$0.liveNames.isEmpty }.count, 1, "only the newest stays")
+    }
+
     func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
         let (supervisor, _) = makeSupervisor()
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")

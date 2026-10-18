@@ -1,32 +1,36 @@
 {
-  "version": 2,
+  "version": 3,
   "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri) that goes into the tool definitions as is. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Then the rules in 'rules' apply. cards/card-vectors.json holds the shared examples both test suites run.",
   "max_cards": 4,
   "rules": [
-    "A card keeps only its own type's field (places for map, place and places; stats, chart, weather, options or steps for the others), plus title, source on stats, chart, weather, comparison and steps, and needs on steps; a card without its type's field is dropped.",
+    "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media or status for the others), plus title and live, source on every type but map, place and places, and needs on steps; a card without its type's field is dropped.",
     "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
     "A place card keeps only its first place.",
     "A chart keeps only the series with one value per label; a pie keeps only its first series, and no value of a pie may be negative. A chart with no series left is dropped.",
     "A weather card needs a source and at least one of now, hours or days (an empty list counts as none); a day whose low is above its high is dropped.",
-    "A comparison keeps only its first recommended option."
+    "A comparison keeps only its first recommended option.",
+    "A media card needs a source and keeps only items whose url is https (dropped when none is left); artwork is kept only when it is https, and an image keeps no duration or artwork.",
+    "A contact's phone is kept only when it holds 3 to 20 digits and nothing but digits, spaces and + - ( ) . characters; an email only when it is one address like name@example.com, with no spaces, quotes, brackets, commas, semicolons or colons.",
+    "Only the first card in a set keeps a given live name."
   ],
   "card": {
     "type": "object",
-    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers.",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email. status: how something in progress is going, like a delivery, a flight, a match or a job.",
     "properties": {
       "type": {
         "type": "string",
-        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps"],
-        "description": "The kind of card; fill in its field: places for map, place and places, otherwise the field named like the type (options for comparison)."
+        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps", "media", "contact", "status"],
+        "description": "The kind of card; fill in its field: places for map, place and places, people for contact, otherwise the field named like the type (options for comparison)."
       },
       "title": {
         "type": "string",
         "maxLength": 80,
         "description": "A short heading, a few words."
       },
+      "live": {"type": "string", "maxLength": 60, "description": "A name for a card you'll keep up to date, like order-4411 or deploy. Show a card with the same live name again in this conversation and it replaces this one wherever it's shown, so give the whole card each time."},
       "source": {
         "type": "object",
-        "description": "stats, chart, weather, comparison and steps: where the information is from, when it's from a tool, a site or a service rather than your own knowledge. Required for weather. Shown on the card.",
+        "description": "Every type but map, place and places: where the information is from, when it's from a tool, a site or a service rather than your own knowledge. Required for weather and media. Shown on the card.",
         "properties": {
           "name": {"type": "string", "maxLength": 40, "description": "Like Open-Meteo, Yahoo Finance or the user's Health data."},
           "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's from."}
@@ -262,6 +266,80 @@
           },
           "required": ["text"]
         }
+      },
+      "media": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "media only: the photos, videos or audio, in order. Only files you actually found, as direct links the phone can load; send a file on this machine as an attachment instead.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": {"type": "string", "enum": ["image", "video", "audio"], "description": "What it is."},
+            "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "A direct https link to the file or stream (like .jpg, .png, .mp4, .m3u8, .mp3 or .m4a), not a page."},
+            "title": {"type": "string", "maxLength": 120, "description": "Its title."},
+            "by": {"type": "string", "maxLength": 80, "description": "Who made it: the artist, channel or photographer."},
+            "caption": {"type": "string", "maxLength": 300, "description": "A line about it."},
+            "duration": {"type": "integer", "minimum": 1, "maximum": 86400, "description": "video and audio: its length in seconds, if known."},
+            "artwork": {"type": "string", "format": "uri", "maxLength": 500, "description": "video and audio: a direct link to a still or cover image."},
+            "page": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's on."}
+          },
+          "required": ["kind", "url"]
+        }
+      },
+      "people": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 6,
+        "description": "contact only: the people or businesses. The phone checks each against the user's own contacts and says when one is there; anything else reads as yours.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string", "maxLength": 80, "description": "Their name, or the business's."},
+            "detail": {"type": "string", "maxLength": 120, "description": "Who they are: a role, a business, or how they're related to the user."},
+            "phone": {"type": "string", "maxLength": 40, "description": "A phone number you actually have, with the country code when you know it."},
+            "email": {"type": "string", "maxLength": 120, "description": "An email address you actually have."},
+            "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "Their website or profile page."},
+            "address": {"type": "string", "maxLength": 200, "description": "Their address, when it matters."},
+            "note": {"type": "string", "maxLength": 300, "description": "Your own short note: why you're showing them."},
+            "photo": {
+              "type": "object",
+              "description": "A photo of them you actually found: a direct image URL, with where it's from. Left out without a source; the phone uses the contact's own photo when it has one.",
+              "properties": {
+                "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "A direct https image URL."},
+                "source": {"type": "string", "maxLength": 40, "description": "Where it's from."},
+                "page_url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's on."}
+              },
+              "required": ["url", "source"]
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      "status": {
+        "type": "object",
+        "description": "status only: where something in progress stands. Give it a live name and show it again as it changes.",
+        "properties": {
+          "state": {"type": "string", "maxLength": 60, "description": "Where it stands now, a few words: Out for delivery, Boarding, 2-1 at half time, Building."},
+          "phase": {"type": "string", "enum": ["waiting", "active", "done", "problem"], "description": "waiting: not started. active: under way. done: finished. problem: delayed, failed or stuck. active if left out."},
+          "progress": {"type": "number", "minimum": 0, "maximum": 1, "description": "How far along, from 0 to 1, only when you actually know."},
+          "detail": {"type": "string", "maxLength": 200, "description": "A line more: where it is, the score, what's happening."},
+          "eta": {"type": "string", "maxLength": 40, "description": "When it should finish or arrive, like 14:20 or in 5 min."},
+          "milestones": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "The stages, in order, each done or not yet.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {"type": "string", "maxLength": 40, "description": "Like Ordered, Shipped, Out for delivery."},
+                "done": {"type": "boolean", "description": "true once it's happened."}
+              },
+              "required": ["label"]
+            }
+          }
+        },
+        "required": ["state"]
       }
     },
     "required": ["type"]

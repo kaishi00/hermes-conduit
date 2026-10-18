@@ -14,7 +14,7 @@ import SwiftUI
 import UserNotifications
 
 /// A card's heading and its "where it's from" line around its content.
-private struct RichInfoCardFrame<Content: View>: View {
+struct RichInfoCardFrame<Content: View>: View {
     let title: String?
     let source: RichCardSource?
     @ViewBuilder let content: Content
@@ -36,7 +36,7 @@ private struct RichInfoCardFrame<Content: View>: View {
 }
 
 /// Where a card's information is from.
-private struct RichInfoSourceLine: View {
+struct RichInfoSourceLine: View {
     let source: RichCardSource?
 
     @Environment(\.openURL) private var openURL

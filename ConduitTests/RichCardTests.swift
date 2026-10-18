@@ -120,6 +120,55 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichCard.cards(raw: comparison).first?.options.map(\.recommended), [true, false])
     }
 
+    func testRichMediaContactAndStatusCardsReadTheirOwnParts() throws {
+        let photo: [String: Any] = ["kind": "image", "url": "https://p.test/a.jpg", "title": "Bridge"]
+        let clip: [String: Any] = ["kind": "audio", "url": "https://p.test/a.mp3", "duration": 185, "artwork": "https://p.test/c.jpg"]
+        let person: [String: Any] = ["name": "Ada Lovelace", "phone": "+44 (20) 7946-0958", "email": "ada@example.org"]
+        let milestones: [[String: Any]] = [["label": "Ordered", "done": true], ["label": "Delivered"]]
+        let status: [String: Any] = ["state": "On its way", "phase": "active", "progress": 0.6, "milestones": milestones]
+        let raw: [[String: Any]] = [
+            ["type": "media", "source": ["name": "Wikimedia"], "media": [photo, clip]],
+            ["type": "contact", "people": [person, ["name": "No Number", "phone": "call me", "email": "nope"]]],
+            ["type": "status", "live": "order", "status": status],
+            ["type": "status", "live": "order", "status": ["state": "Twice in one set"]],
+        ]
+        let cards = RichCard.cards(raw: raw)
+        XCTAssertEqual(cards.map(\.kind), [.media, .contact, .status, .status])
+        XCTAssertEqual(cards[0].media.map(\.kind), [.image, .audio])
+        XCTAssertEqual(cards[0].media[1].duration, 185)
+        XCTAssertEqual(cards[1].people[0].dialable, "+442079460958")
+        XCTAssertNil(cards[1].people[1].phone, "a phone that isn't one is left out")
+        XCTAssertNil(cards[1].people[1].email)
+        XCTAssertEqual(cards[2].status?.progress, 0.6)
+        XCTAssertEqual(cards[2].status?.milestones.map(\.done), [true, false])
+        XCTAssertEqual(cards.map(\.live), [nil, nil, "order", nil],
+                       "a live name stays on the first card of a set that has it")
+
+        let unsourced: [[String: Any]] = [["type": "media", "media": [photo]]]
+        XCTAssertTrue(RichCard.cards(raw: unsourced).isEmpty, "media needs its source")
+
+        var known = PhonePerson(id: "1", name: "Augusta Ada King", relation: "Friend")
+        known.phones = [.init(number: "020 7946 0958", label: nil)]
+        XCTAssertEqual(cards[1].people[0].match(in: [known])?.relation, "Friend", "the same number is the same person")
+        let byName = PhonePerson(id: "2", name: "ada lovelace")
+        XCTAssertEqual(cards[1].people[1].match(in: [byName]), nil)
+        XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
+    }
+
+    func testAChatShowsALiveCardOnlyWhereItWasLastUpdated() {
+        func show(_ id: String, _ state: String) -> ChatMessage {
+            let answer = #"{"ok": true, "cards": [{"type": "status", "live": "order", "status": {"state": "\#(state)"}}]}"#
+            let tool = ToolActivity(id: id, name: "conduit_show", input: "{}", output: answer, status: .complete)
+            return ChatMessage(id: id, role: .tool, content: "", timestamp: "", tool: tool)
+        }
+        let messages = [show("a", "Preparing"), ChatMessage(id: "b", role: .assistant, content: "Ok.", timestamp: ""), show("c", "On its way")]
+        let latest = RichCard.latestLiveRows(messages)
+        XCTAssertEqual(latest, ["order": "c"])
+        let first = RichCard.cards(for: messages[0].tool!)
+        XCTAssertTrue(RichCard.current(first, row: "a", latestLiveRows: latest).isEmpty, "updated below")
+        XCTAssertEqual(RichCard.current(RichCard.cards(for: messages[2].tool!), row: "c", latestLiveRows: latest).count, 1)
+    }
+
     func testRichStepsKeepTheirTicksByContent() {
         let defaults = UserDefaults(suiteName: "RichStepsMemoryTests")!
         defaults.removePersistentDomain(forName: "RichStepsMemoryTests")

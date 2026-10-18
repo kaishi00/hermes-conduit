@@ -1062,7 +1062,8 @@ final class HermesClient: ObservableObject {
     }
 
     /// The `/api/ws` upgrade for `ticket`: proxy headers first, then what
-    /// the selected dashboard's authorizer adds (its own session cookies).
+    /// the selected dashboard's authorizer adds (its own session cookies, or
+    /// a native sign-in's bearer).
     private func upgradeRequest(ticket: String, generation: UInt64) async throws -> URLRequest {
         let url: URL
         do {
