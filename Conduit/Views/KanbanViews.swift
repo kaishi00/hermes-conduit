@@ -972,7 +972,15 @@ struct KanbanView: View {
             }
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $scrolledColumn, anchor: .leading)
+            // Sideways only, whatever a column holds.
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
+        // A lane that left the board, or another board, starts the board at
+        // its leading edge rather than at a lane id that isn't there.
+        .onChange(of: columns.map(\.name)) { _, names in
+            if let scrolled = scrolledColumn, !names.contains(scrolled) { scrolledColumn = nil }
+        }
+        .onChange(of: store.resolvedSelectedBoardSlug) { _, _ in scrolledColumn = nil }
         .disabled(!store.isSelectedSnapshotLoaded)
         .overlay(alignment: .top) {
             if !store.isSelectedSnapshotLoaded {
