@@ -254,6 +254,10 @@ final class LoginFlowModel: ObservableObject {
 
     private func inputsChanged() {
         inputGeneration += 1
+        // A sign-in code's credentials belong to its own dashboard: once the
+        // address or the token is edited, Retry checks the address again
+        // instead of sending them to whatever is typed now.
+        signsInFromLink = false
     }
 
     // MARK: Fields
