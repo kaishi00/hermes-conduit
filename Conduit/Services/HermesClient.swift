@@ -775,6 +775,11 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 
     private var session: URLSession?
     private var delegate: DashboardWebSocketDelegate?
+    /// The refused upgrade's status, handed over as the socket ends before
+    /// opening: the delegate forgets its own record at that moment, and
+    /// `handshakeStatus(for:)` is read later, on the main actor.
+    private let refusalLock = NSLock()
+    private var refusedStatus: Int?
 
     /// URLSession only confirms the WebSocket handshake through its delegate.
     /// The client must not issue session RPCs or paint a green indicator
@@ -794,11 +799,21 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
         )
         self.session = session
         self.delegate = delegate
+        refusalLock.lock()
+        refusedStatus = nil
+        refusalLock.unlock()
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = Self.maximumMessageSize
         delegate.register(task, handlers: .init(
             onOpen: { [weak task] in if let task { onOpen(task) } },
-            onEndBeforeOpen: { [weak task] _ in if let task { onCloseBeforeOpen(task) } }
+            onEndBeforeOpen: { [weak self, weak task] status in
+                if let self, let status {
+                    self.refusalLock.lock()
+                    self.refusedStatus = status
+                    self.refusalLock.unlock()
+                }
+                if let task { onCloseBeforeOpen(task) }
+            }
         ))
         return task
     }
@@ -811,7 +826,11 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 
     func handshakeStatus(for socket: any HermesWebSocket) -> Int? {
         guard let task = socket as? URLSessionWebSocketTask else { return nil }
-        return delegate?.handshakeStatus(of: task)
+        if let status = delegate?.handshakeStatus(of: task) { return status }
+        // The last socket made here: a recorded refusal is this socket's.
+        refusalLock.lock()
+        defer { refusalLock.unlock() }
+        return refusedStatus
     }
 }
 
