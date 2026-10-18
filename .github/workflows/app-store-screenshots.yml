@@ -35,6 +35,9 @@ jobs:
       DEMO_WORK: ${{ github.workspace }}/demo-hermes
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Hermes and Homebrew code runs later; only the publish step gets the token.
+          persist-credentials: false
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -213,6 +216,9 @@ jobs:
       WATCH_DEVICE: ${{ inputs.watch || 'Apple Watch Ultra 3' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Only the publish step needs the token, and it passes its own.
+          persist-credentials: false
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app

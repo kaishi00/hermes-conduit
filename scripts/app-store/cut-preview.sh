@@ -21,11 +21,14 @@ fi
 start=$(awk '$2 == "start" {print $3}' "$marks")
 end=$(awk '$2 == "end" {print $3}' "$marks")
 [ -n "$record" ] && [ -n "$start" ] && [ -n "$end" ] || { echo "$marks lacks a RECORD_START, start or end mark" >&2; exit 1; }
-from=$(python3 -c "print(max(0.0, $start - $record - $lead, $end - $record - 30.0))")
+# 15-30 s: a short flow takes earlier footage in, a long one loses its start.
+from=$(python3 -c "print(max(0.0, min($start - $record - $lead, $end - $record - 15.0), $end - $record - 30.0))")
 length=$(python3 -c "print(min(30.0, $end - $record - $from))")
+python3 -c "import sys; sys.exit(0 if $length >= 15.0 else 1)" \
+  || { echo "$raw: only ${length}s of footage; App Previews need 15-30 s" >&2; exit 1; }
 w=${size%x*}; h=${size#*x}
 ffmpeg -v error -y -ss "$from" -t "$length" -i "$raw" \
   -f lavfi -t "$length" -i anullsrc=channel_layout=stereo:sample_rate=44100 \
   -vf "fps=30,scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p" \
-  -c:v libx264 -profile:v high -crf 18 -c:a aac -b:a 128k -shortest -movflags +faststart "$out"
+  -c:v libx264 -profile:v high -crf 18 -c:a aac -b:a 256k -shortest -movflags +faststart "$out"
 echo "$out: ${length}s from ${from}s"

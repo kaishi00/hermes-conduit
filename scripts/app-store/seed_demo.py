@@ -34,9 +34,12 @@ async def seed(script_path, base, user, password):
         async def reader():
             async for raw in ws:
                 frame = json.loads(raw)
-                if "id" in frame and frame["id"] in pending:
+                if "method" not in frame and frame.get("id") in pending:
                     pending.pop(frame["id"]).set_result(frame)
                 elif "method" in frame:
+                    if "id" in frame:
+                        # Nothing here answers the gateway's own requests.
+                        print(f"  unanswered server request: {json.dumps(frame)[:200]}")
                     if DEBUG:
                         print("event", json.dumps(frame)[:200])
                     await events.put(frame)

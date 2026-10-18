@@ -32,7 +32,7 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// local, or 8 a.m. late in the hour so no time reads after 9:41.
     static func timeZoneNearStatusBarTime(now: Date = Date()) -> String {
         var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(identifier: "UTC")!
+        utc.timeZone = .gmt
         let parts = utc.dateComponents([.hour, .minute], from: now)
         var offset = ((parts.minute ?? 0) <= 41 ? 9 : 8) - (parts.hour ?? 0)
         if offset > 14 { offset -= 24 }
@@ -49,21 +49,21 @@ final class AppStoreScreenshotTests: XCTestCase {
         settle()
         snap("01-chats")
 
-        openChat("Q3 spending summary", waitingFor: "Dining out")
-        snap("02-chat-steps")
+        if openChat("Q3 spending summary", waitingFor: "Dining out") { snap("02-chat-steps") }
         backToTabs()
 
-        openChat("Weekend trip to Big Sur", waitingFor: "Sierra Mar")
-        snap("03-chat-trip")
+        if openChat("Weekend trip to Big Sur", waitingFor: "Sierra Mar") { snap("03-chat-trip") }
         backToTabs()
 
-        openChat("Fix the flaky upload test", waitingFor: "50 runs")
-        snap("04-chat-code")
+        if openChat("Fix the flaky upload test", waitingFor: "50 runs") { snap("04-chat-code") }
         backToTabs()
 
         for (number, tab) in [(5, "Tasks"), (7, "Bots"), (8, "Settings")] {
             let button = app.buttons[tab]
-            guard button.waitForExistence(timeout: 5) else { continue }
+            guard button.waitForExistence(timeout: 5) else {
+                XCTFail("No \(tab) tab, so no \(tab) screenshot")
+                continue
+            }
             button.tap()
             if tab == "Tasks" { showBoardWork() }
             settle(3)
@@ -125,6 +125,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         let newChat = app.buttons["New Chat"]
         guard newChat.waitForExistence(timeout: 10) else {
             snap("debug-no-new-chat")
+            XCTFail("No New Chat button, so the preview has nothing to record")
             return
         }
         newChat.tap()
@@ -151,17 +152,26 @@ final class AppStoreScreenshotTests: XCTestCase {
         print("PREVIEW_MARK stop \(Date().timeIntervalSince1970)")
     }
 
-    private func openChat(_ title: String, waitingFor text: String) {
+    /// Opens a seeded chat and waits for its answer. False (and a failed
+    /// test) when either is missing, so no other screen is saved under the
+    /// chat's name.
+    private func openChat(_ title: String, waitingFor text: String) -> Bool {
         let row = app.staticTexts[title]
         guard row.waitForExistence(timeout: 15) else {
             snap("debug-missing-\(title)")
-            return
+            XCTFail("Seeded chat \(title) is not in the list")
+            return false
         }
         row.tap()
         let content = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
-        if !content.waitForExistence(timeout: 20) { snap("debug-slow-\(title)") }
+        guard content.waitForExistence(timeout: 20) else {
+            snap("debug-slow-\(title)")
+            XCTFail("\(title) never showed \(text)")
+            return false
+        }
         settle(3)
+        return true
     }
 
     /// Back to the Chats list. The list and tab bar stay in the hierarchy
