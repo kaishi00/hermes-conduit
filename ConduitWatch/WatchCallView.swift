@@ -244,6 +244,8 @@ struct WatchCallCaptions: View {
                     // the smallest Watch.
                     .lineLimit(3)
                     .layoutPriority(1)
+                    // Three lines of it still leave the controls on screen.
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .minimumScaleFactor(0.75)
             }
         }
@@ -380,6 +382,8 @@ struct WatchCallSummary: View {
             VStack(spacing: 8) {
                 Image(systemName: WatchCallEnd.isNormal(reason) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 36))
+                    // The title under it says the same.
+                    .accessibilityHidden(true)
                     .foregroundStyle(WatchCallEnd.isNormal(reason) ? accent : Color.watchAttention)
                 Text(WatchCallEnd.isNormal(reason) ? String(localized: "Call ended") : String(localized: "Call didn't work"))
                     .font(.headline)
