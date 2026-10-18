@@ -63,8 +63,8 @@ struct WatchRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: call.isPresenting)
-        // The iPhone's accent: toggles, checkmarks and titles take it too.
+        // The iPhone's accent. Not the app's tint: watchOS fills toolbar
+        // buttons with it, which hid the Settings gear in a gold disc.
         .environment(\.watchAccent, accent)
-        .tint(accent)
     }
 }

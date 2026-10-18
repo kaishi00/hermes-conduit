@@ -157,11 +157,13 @@ struct WatchEnginePicker: View {
 struct WatchSettingsView: View {
     @EnvironmentObject private var link: WatchLink
     @EnvironmentObject private var call: WatchVoiceCall
+    @Environment(\.watchAccent) private var accent
 
     var body: some View {
         List {
             Section {
                 Toggle("Call on open", isOn: $call.startsOnOpen)
+                    .tint(accent)
             } footer: {
                 Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
             }
