@@ -13,7 +13,11 @@ import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
-struct ComposerBar: View {
+/// Equatable by AppState identity, and mounted with `.equatable()`: its
+/// StateObject would otherwise make every ChatView redraw rebuild it.
+/// It redraws on its own for what it shows (ComposerUpdates), its state
+/// and its environment.
+struct ComposerBar: View, Equatable {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Redraws only when something the composer shows changes, not on
     /// every AppState publish (ComposerUpdates.swift).
@@ -80,8 +84,15 @@ struct ComposerBar: View {
     @State private var holdsExpanded = false
     @State private var collapseTask: Task<Void, Never>?
 
+    private let appStateID: ObjectIdentifier
+
     init(appState: AppState) {
+        appStateID = ObjectIdentifier(appState)
         _updates = StateObject(wrappedValue: ComposerUpdates(appState))
+    }
+
+    nonisolated static func == (lhs: ComposerBar, rhs: ComposerBar) -> Bool {
+        lhs.appStateID == rhs.appStateID
     }
 
     struct AsyncAttachmentContext: Equatable {

@@ -236,6 +236,39 @@ final class SettledMessageIsolationTests: XCTestCase {
         )
     }
 
+    func testAppStatePublishRedrawsTheComposerOnlyWhenWhatItShowsChanges() throws {
+        let appState = try makeAppState()
+        let host = UIHostingController(rootView: ComposerParent().environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        testWindow = window
+        drainUntil(0.5) { false }
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.composerBarBodyEvaluations, 0,
+            "a publish that changes nothing the composer shows must not redraw it, though its parent redraws"
+        )
+
+        appState.composerNotice = "Reconnecting"
+        drainUntil(2.0) { TranscriptPerf.composerBarBodyEvaluations > 0 }
+        XCTAssertGreaterThan(TranscriptPerf.composerBarBodyEvaluations, 0, "a notice changes what it shows")
+    }
+
+    /// Redraws on every publish, as ChatView does.
+    private struct ComposerParent: View {
+        @EnvironmentObject var appState: AppState
+        var body: some View {
+            VStack {
+                Text(appState.activeProfile)
+                ComposerBar(appState: appState).equatable()
+            }
+        }
+    }
+
     func testResolverChangeStillReRendersSettledContent() throws {
         let appState = try makeAppState()
         let resolverA = GatewayMediaDataURLResolver(appState: appState, profile: "default")

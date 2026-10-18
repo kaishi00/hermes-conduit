@@ -241,7 +241,7 @@ struct ChatView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             // Composer + control bar
-            if !probeOmitsComposer { ComposerBar(appState: appState) } // PROBE
+            if !probeOmitsComposer { ComposerBar(appState: appState).equatable() } // PROBE
         }
     }
 
