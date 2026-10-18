@@ -73,8 +73,9 @@ struct RichMapCard: View {
                 RichMapPicture(coordinates: found.map(\.coordinate), route: route?.polyline, height: 190, looked: looked)
             }
             .buttonStyle(.plain)
-            // The full map opens with the pins and route found.
-            .disabled(!looked)
+            // The full map opens with the pins and route found, and only
+            // when there is one to show.
+            .disabled(!looked || found.isEmpty)
             .accessibilityLabel(Text(verbatim: card.title ?? card.places.map(\.name).joined(separator: ", ")))
             .accessibilityHint(Text("Opens the map"))
 
@@ -175,6 +176,7 @@ struct RichMapPicture: View {
     }
 
     private func draw(width: CGFloat) async {
+        failed = false
         guard !coordinates.isEmpty else {
             image = nil
             return
@@ -376,6 +378,7 @@ private struct RichPhotoHeader: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(placeName), \(photo.source)"))
+        .richSourceAction(photo.source, url: photo.pageURL ?? photo.url)
     }
 }
 
@@ -446,7 +449,7 @@ private struct RichRatingLine: View {
             Text(verbatim: rating.value.formatted(.number.precision(.fractionLength(1)).locale(AppLocalization.formattingLocale)))
                 .font(.subheadline.weight(.semibold))
             if let count = rating.count {
-                Text(verbatim: "(\(count.formatted()))")
+                Text(verbatim: "(\(count.formatted(.number.locale(AppLocalization.formattingLocale))))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -454,6 +457,7 @@ private struct RichRatingLine: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Rated \(rating.value.formatted(.number.precision(.fractionLength(1)).locale(AppLocalization.formattingLocale))) out of 5 on \(rating.source)"))
+        .richSourceAction(rating.source, url: rating.url)
     }
 
     static func symbol(star: Int, value: Double) -> String {
@@ -479,6 +483,31 @@ private struct RichSourcedLine: View {
             RichSource(name: fact.source, url: fact.url)
         }
         .accessibilityElement(children: .combine)
+        .richSourceAction(fact.source, url: fact.url)
+    }
+}
+
+extension View {
+    /// A row that reads as one element hides the source's link button, so
+    /// VoiceOver gets it back as an action named for the source.
+    @ViewBuilder
+    fileprivate func richSourceAction(_ name: String, url: URL?) -> some View {
+        if let url {
+            modifier(RichSourceAction(name: name, url: url))
+        } else {
+            self
+        }
+    }
+}
+
+private struct RichSourceAction: ViewModifier {
+    let name: String
+    let url: URL
+
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        content.accessibilityAction(named: Text(verbatim: name)) { openURL(url) }
     }
 }
 
