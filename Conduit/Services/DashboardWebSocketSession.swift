@@ -36,21 +36,46 @@ enum DashboardWebSocketSessionPolicy {
 /// How the server turned down a dashboard WebSocket upgrade, read from the
 /// handshake's HTTP status.
 enum DashboardSocketHandshakeError: LocalizedError, Equatable {
-    /// A 3xx answer. The server wants a browser session first; the redirect
-    /// is never followed, so the ticket never goes along.
+    /// A 3xx to a sign-in: the server wants a browser session first. The
+    /// redirect is never followed, so the ticket never goes along.
     case browserSessionRequired(status: Int)
 
-    /// The typed refusal for a handshake status. A 401 or 403 says nothing
-    /// about the account (Hermes answers a spent ticket with 403): it stays
-    /// a closed connection for the reconnect path.
-    static func failure(status: Int?) -> DashboardSocketHandshakeError? {
-        guard let status else { return nil }
-        switch status {
-        case 300...399:
-            return .browserSessionRequired(status: status)
-        default:
-            return nil
+    /// The typed refusal for a handshake: a redirect counts as sign-in only
+    /// when its target is one (`DashboardSignInRedirect`: another origin,
+    /// or a sign-in page on the dashboard's own). A same-origin redirect to
+    /// an ordinary address (a load balancer's 307, the same host moving to
+    /// https/wss) and a redirect without a target stay a closed connection
+    /// for the reconnect path, like a 401 or 403, which says nothing about
+    /// the account (Hermes answers a spent ticket with 403).
+    static func failure(status: Int?, redirectTarget: URL?, dashboardURL: String) -> DashboardSocketHandshakeError? {
+        guard let status, (300...399).contains(status),
+              let target = redirectTarget.map(httpEquivalent),
+              let dashboard = URL(string: dashboardURL) else { return nil }
+        let signIn: Bool
+        if isSecureUpgrade(target, of: dashboard) {
+            signIn = DashboardSignInRedirect.isSignInPath(target.path)
+        } else {
+            signIn = DashboardSignInRedirect.isSignIn(target, forDashboard: dashboard)
         }
+        return signIn ? .browserSessionRequired(status: status) : nil
+    }
+
+    /// A socket address as the page address it stands for (ws as http, wss
+    /// as https), for the sign-in rule.
+    private static func httpEquivalent(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return url }
+        switch components.scheme?.lowercased() {
+        case "ws": components.scheme = "http"
+        case "wss": components.scheme = "https"
+        default: break
+        }
+        return components.url ?? url
+    }
+
+    /// The dashboard's own host on https, its http address upgraded.
+    private static func isSecureUpgrade(_ target: URL, of dashboard: URL) -> Bool {
+        dashboard.scheme?.lowercased() == "http" && target.scheme?.lowercased() == "https"
+            && target.host?.lowercased() == dashboard.host?.lowercased()
     }
 
     var errorDescription: String? {
@@ -70,13 +95,15 @@ final class DashboardWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, @
     struct Handlers {
         var onOpen: (() -> Void)?
         /// The task ended (or was closed) before its upgrade completed.
-        /// `status` is the HTTP status that refused it, when there was one.
-        var onEndBeforeOpen: ((_ status: Int?) -> Void)?
+        /// `status` is the HTTP status that refused it, when there was one,
+        /// and `redirectTarget` where a refused redirect pointed.
+        var onEndBeforeOpen: ((_ status: Int?, _ redirectTarget: URL?) -> Void)?
     }
 
     private let lock = NSLock()
     private var handlers: [Int: Handlers] = [:]
     private var redirectStatuses: [Int: Int] = [:]
+    private var redirectTargets: [Int: URL] = [:]
     private var openedTasks: Set<Int> = []
 
     /// Registers before `resume()`, so no callback can arrive first.
@@ -110,6 +137,7 @@ final class DashboardWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, @
         // same one. The upgrade fails here, carrying nothing further.
         lock.lock()
         redirectStatuses[task.taskIdentifier] = response.statusCode
+        redirectTargets[task.taskIdentifier] = request.url
         lock.unlock()
         completionHandler(nil)
     }
@@ -140,14 +168,16 @@ final class DashboardWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, @
         lock.lock()
         let opened = openedTasks.contains(task.taskIdentifier)
         let onEnd = handlers[task.taskIdentifier]?.onEndBeforeOpen
+        let target = redirectTargets[task.taskIdentifier]
         if forget {
             handlers.removeValue(forKey: task.taskIdentifier)
             redirectStatuses.removeValue(forKey: task.taskIdentifier)
+            redirectTargets.removeValue(forKey: task.taskIdentifier)
             openedTasks.remove(task.taskIdentifier)
         }
         lock.unlock()
         guard !opened else { return }
-        onEnd?(status)
+        onEnd?(status, target)
     }
 }
 
@@ -171,7 +201,7 @@ final class DashboardWebSocketSession: @unchecked Sendable {
         onRefused: ((_ status: Int) -> Void)? = nil
     ) -> URLSessionWebSocketTask {
         let task = session.webSocketTask(with: request)
-        delegate.register(task, handlers: .init(onOpen: nil, onEndBeforeOpen: { status in
+        delegate.register(task, handlers: .init(onOpen: nil, onEndBeforeOpen: { status, _ in
             if let status { onRefused?(status) }
         }))
         return task

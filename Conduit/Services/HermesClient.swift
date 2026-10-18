@@ -752,10 +752,15 @@ protocol HermesWebSocketTransport: AnyObject {
     /// The HTTP status that refused `socket`'s upgrade (a refused redirect's
     /// 3xx, or a final non-101 answer); nil when there was none.
     func handshakeStatus(for socket: any HermesWebSocket) -> Int?
+
+    /// Where a refused redirect of `socket`'s upgrade pointed; nil when it
+    /// wasn't redirected.
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL?
 }
 
 extension HermesWebSocketTransport {
     func handshakeStatus(for socket: any HermesWebSocket) -> Int? { nil }
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL? { nil }
 }
 
 /// Production transport: one `URLSession` per socket, delegate-driven
@@ -780,6 +785,7 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
     /// `handshakeStatus(for:)` is read later, on the main actor.
     private let refusalLock = NSLock()
     private var refusedStatus: Int?
+    private var refusedTarget: URL?
 
     /// URLSession only confirms the WebSocket handshake through its delegate.
     /// The client must not issue session RPCs or paint a green indicator
@@ -801,15 +807,17 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
         self.delegate = delegate
         refusalLock.lock()
         refusedStatus = nil
+        refusedTarget = nil
         refusalLock.unlock()
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = Self.maximumMessageSize
         delegate.register(task, handlers: .init(
             onOpen: { [weak task] in if let task { onOpen(task) } },
-            onEndBeforeOpen: { [weak self, weak task] status in
+            onEndBeforeOpen: { [weak self, weak task] status, target in
                 if let self, let status {
                     self.refusalLock.lock()
                     self.refusedStatus = status
+                    self.refusedTarget = target
                     self.refusalLock.unlock()
                 }
                 if let task { onCloseBeforeOpen(task) }
@@ -831,6 +839,13 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
         refusalLock.lock()
         defer { refusalLock.unlock() }
         return refusedStatus
+    }
+
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL? {
+        guard socket is URLSessionWebSocketTask else { return nil }
+        refusalLock.lock()
+        defer { refusalLock.unlock() }
+        return refusedTarget
     }
 }
 
@@ -1190,10 +1205,15 @@ final class HermesClient: ObservableObject {
 
     private func didClose(_ socket: any HermesWebSocket) {
         guard self.socket === socket, !socketHasOpened else { return }
-        // A refused upgrade says why through its status: a redirect (never
-        // followed) wants a browser session. Anything else stays a closed
-        // connection for the reconnect path.
-        let refusal = DashboardSocketHandshakeError.failure(status: transport?.handshakeStatus(for: socket))
+        // A refused upgrade says why through its status and, for a redirect
+        // (never followed), where it pointed: a sign-in wants a browser
+        // session. Anything else stays a closed connection for the
+        // reconnect path.
+        let refusal = DashboardSocketHandshakeError.failure(
+            status: transport?.handshakeStatus(for: socket),
+            redirectTarget: transport?.refusedRedirectTarget(for: socket),
+            dashboardURL: connection.baseUrl
+        )
         failSocketOpen(socket, error: refusal ?? HermesError.connectionClosed)
     }
 

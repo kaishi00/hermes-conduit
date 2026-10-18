@@ -74,6 +74,9 @@ extension HermesClientTests {
         XCTAssertEqual(fixture.upgrades.count, 1)
     }
 
+    /// A same-origin redirect to an ordinary address (a load balancer's
+    /// 307) is not followed, and it is no sign-in either: the reconnect
+    /// path, never a sign-out.
     func testChatSocketRefusesASameOriginRedirect() async throws {
         let fixture = try DashboardSocketFixture(upgradeStatuses: [307], redirectLocation: "/other/ws")
         defer { fixture.stop() }
@@ -82,13 +85,30 @@ extension HermesClientTests {
         do {
             try await client.connect()
             XCTFail("A redirected upgrade must not connect")
-        } catch let error as DashboardSocketHandshakeError {
-            XCTAssertEqual(error, .browserSessionRequired(status: 307))
+        } catch HermesError.connectionClosed {
+            // The reconnect path.
         }
         client.disconnect()
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(fixture.upgrades.map(DashboardSocketFixture.route(of:)), ["/api/ws"],
                        "A path-changing redirect is not followed")
+    }
+
+    /// A redirect to a sign-in page on the dashboard's own origin (an auth
+    /// proxy's) says sign-in is required.
+    func testChatSocketRedirectToASameOriginSignInPageWantsABrowserSession() async throws {
+        let fixture = try DashboardSocketFixture(upgradeStatuses: [302], redirectLocation: "/oauth2/sign_in?rd=%2Fapi%2Fws")
+        defer { fixture.stop() }
+
+        let client = transportClient(fixture, ticket: "transport-ticket")
+        do {
+            try await client.connect()
+            XCTFail("A redirected upgrade must not connect")
+        } catch let error as DashboardSocketHandshakeError {
+            XCTAssertEqual(error, .browserSessionRequired(status: 302))
+        }
+        client.disconnect()
+        XCTAssertEqual(fixture.upgrades.count, 1, "The redirect is not followed")
     }
 
     /// A 401 or 403 says nothing about an account (Hermes answers a spent

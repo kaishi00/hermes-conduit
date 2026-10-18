@@ -132,14 +132,26 @@ final class ConnectionFailureTests: XCTestCase {
     }
 
     func testRefusedUpgradeStatusIsTypedOnlyWhenItSaysSomething() {
-        XCTAssertEqual(DashboardSocketHandshakeError.failure(status: 302), .browserSessionRequired(status: 302))
-        XCTAssertEqual(DashboardSocketHandshakeError.failure(status: 307), .browserSessionRequired(status: 307))
+        let dashboard = "http://dashboard.example.test:9119"
+        func failure(_ status: Int?, _ target: String?) -> DashboardSocketHandshakeError? {
+            DashboardSocketHandshakeError.failure(status: status, redirectTarget: target.flatMap(URL.init(string:)), dashboardURL: dashboard)
+        }
+        // A redirect to a sign-in: another origin, or a sign-in page on the
+        // dashboard's own.
+        XCTAssertEqual(failure(302, "https://sso.example.test/authorize"), .browserSessionRequired(status: 302))
+        XCTAssertEqual(failure(302, "http://dashboard.example.test:9119/oauth2/sign_in?rd=%2Fapi%2Fws"), .browserSessionRequired(status: 302))
+        XCTAssertEqual(failure(307, "https://dashboard.example.test/login"), .browserSessionRequired(status: 307))
+        // A same-origin redirect to an ordinary address, the same host moved
+        // to wss/https, or no target at all: the reconnect path.
+        XCTAssertNil(failure(307, "ws://dashboard.example.test:9119/other/ws"))
+        XCTAssertNil(failure(301, "wss://dashboard.example.test/api/ws"))
+        XCTAssertNil(failure(302, nil))
         // A 401/403 says nothing about an account: Hermes answers a spent
         // ticket with 403.
-        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 401))
-        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 403))
-        XCTAssertNil(DashboardSocketHandshakeError.failure(status: 502))
-        XCTAssertNil(DashboardSocketHandshakeError.failure(status: nil))
+        XCTAssertNil(failure(401, nil))
+        XCTAssertNil(failure(403, nil))
+        XCTAssertNil(failure(502, nil))
+        XCTAssertNil(failure(nil, nil))
     }
 
     func testCancelledURLErrorClassifiesAsUnknownNotCredentials() {
