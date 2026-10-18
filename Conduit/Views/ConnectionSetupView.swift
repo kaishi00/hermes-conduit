@@ -53,6 +53,10 @@ struct ConnectionSetupView: View {
     /// by the flow's generation guard, so correctness never relies on view
     /// destruction.
     @State private var testTask: Task<Void, Never>?
+    /// Sign In to Reconnect / Sign In Again while its capability check
+    /// runs: cancelled when the step changes or the wizard goes away.
+    @State private var repairSignInTask: Task<Void, Never>?
+    @State private var repairSignInToken = UUID()
     /// Round 6 (Repair): the memory-only validated native transaction from
     /// the current successful test, bound to the revision/generation that
     /// produced it. One-shot: consumed by Reconnect Now whether activation
@@ -130,12 +134,17 @@ struct ConnectionSetupView: View {
                 }
             }
             .onChange(of: flow.step) { _, newStep in
+                // A sign-in started from this step opens nothing elsewhere.
+                stopRepairSignIn()
                 // Leaving the test screen for any editable step cancels the
                 // probe; a success advance to Review does not.
                 guard newStep != .connectionTest, newStep != .review else { return }
                 stopTestRun()
             }
-            .onDisappear { stopTestRun() }
+            .onDisappear {
+                stopRepairSignIn()
+                stopTestRun()
+            }
             .navigationTitle("Connection Setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -292,19 +301,29 @@ struct ConnectionSetupView: View {
                 .supportsNativeOAuth()
         })
         isActivating = true
-        Task { @MainActor in
-            defer { isActivating = false }
+        repairSignInTask?.cancel()
+        let token = UUID()
+        repairSignInToken = token
+        repairSignInTask = Task { @MainActor in
+            // A cancelled sign-in hands the activity back at once
+            // (stopRepairSignIn); only the current one ends it here.
+            defer {
+                if repairSignInToken == token {
+                    isActivating = false
+                    repairSignInTask = nil
+                }
+            }
             let resolved: DashboardInteractiveSignIn?
             do {
                 resolved = try await ConnectionRepairSignIn.signIn(for: testState, resolver: resolver)
             } catch is CancellationError {
                 return
             } catch {
-                guard request.isCurrent(in: flow) else { return }
+                guard !Task.isCancelled, request.isCurrent(in: flow) else { return }
                 activationFailure = ConnectionFailureClassifier.classify(error)
                 return
             }
-            guard request.isCurrent(in: flow), let interactive = resolved else { return }
+            guard !Task.isCancelled, request.isCurrent(in: flow), let interactive = resolved else { return }
             if case .nativeOAuth = interactive {
                 guard let dashboardID = appState.resolveDashboardID(
                     forURL: request.configuration.serverURL,
@@ -396,6 +415,14 @@ struct ConnectionSetupView: View {
                 generation: generation
             )
         }
+    }
+
+    private func stopRepairSignIn() {
+        guard let task = repairSignInTask else { return }
+        task.cancel()
+        repairSignInTask = nil
+        repairSignInToken = UUID()
+        isActivating = false
     }
 
     private func stopTestRun() {
