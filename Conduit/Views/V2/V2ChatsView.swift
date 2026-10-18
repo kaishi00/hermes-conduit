@@ -352,7 +352,13 @@ struct V2ChatsView: View, Equatable {
         .environmentObject(updates)
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
-        .onChange(of: isShown, initial: true) { _, shown in updates.isShown = shown }
+        .onChange(of: isShown, initial: true) { _, shown in
+            updates.isShown = shown
+            // Anything over the list (a chat, a page, another tab) puts the
+            // keyboard away and keeps the search: SwiftUI otherwise hands
+            // focus back to the field on the way back, over the results.
+            if !shown { searchFocused = false }
+        }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
         .onChange(of: appState.activeSessionId) { _, active in
