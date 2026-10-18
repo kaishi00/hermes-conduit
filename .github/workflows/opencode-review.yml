@@ -9,9 +9,10 @@ on:
         required: true
         type: string
 concurrency:
-  # Any other label added to a PR gets a group of its own, so it can't
-  # cancel a review that is running.
-  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && github.event.label.name != 'run-review' && format('-{0}', github.run_id) || '' }}
+  # A run-review label gets a group of its own, so a push to the PR can't
+  # cancel that review; any other label gets one per run, so it can't cancel
+  # anything.
+  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name == 'run-review' && '-run-review' || format('-{0}', github.run_id)) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -20,12 +21,14 @@ jobs:
     # The reviewer is an agent holding the review secrets, and a PR's title,
     # body and diff all reach its prompt. PRs from this repository's own
     # branches (people with push access) get it on every push. A fork's PR
-    # gets it only when a maintainer adds the run-review label after reading
-    # it, once per labeling: later pushes need the label removed and re-added.
+    # gets it only when someone with triage access or more adds the run-review
+    # label after reading it, once per labeling, and only while the PR is open
+    # and still at the commit that was labeled: later pushes need the label
+    # removed and re-added.
     if: >-
       github.event_name != 'pull_request_target' ||
       (github.event.action != 'labeled' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event.action == 'labeled' && github.event.label.name == 'run-review')
+      (github.event.action == 'labeled' && github.event.label.name == 'run-review' && github.event.pull_request.state == 'open')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -109,6 +112,18 @@ jobs:
           fi
 
           echo "$opencode_bin_dir" >> "$GITHUB_PATH"
+      - name: Check the PR is still at the labeled commit
+        if: github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABELED_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+          if [ "$head" != "$LABELED_SHA" ]; then
+            echo "The PR moved to $head after it was labeled at $LABELED_SHA; re-add run-review to review it." >&2
+            exit 1
+          fi
       - name: Run opencode review
         run: GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
