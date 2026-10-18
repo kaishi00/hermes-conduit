@@ -377,20 +377,30 @@ struct SessionList: View {
                     projectContent(hasPinnedSessions: !pinned.isEmpty)
                 }
                 if layout.loadingState {
-                    ProgressView("Loading chats…")
+                    ProgressView(AppLocalization.string("Loading chats…"))
                         .frame(maxWidth: .infinity, minHeight: 140)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
                 if layout.emptyState {
-                    ContentUnavailableView(
-                        statusFilter?.emptyTitle
+                    SessionListPlaceholderView(
+                        placeholder: SessionListPlaceholder.resolve(
+                            hasRows: false,
+                            hasOfflineCopy: false,
+                            catalogPhase: appState.sessionCatalogPhase,
+                            isRefreshing: appState.isRefreshingSessionCatalog,
+                            filteredOutRows: !appState.listedSessions.isEmpty || !appState.listedCronSessions.isEmpty
+                        ),
+                        emptyTitle: statusFilter?.emptyTitle
                             ?? (selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions")),
-                        systemImage: statusFilter?.emptySystemImage ?? "tray",
-                        description: Text(searchText.isEmpty
+                        emptyDescription: searchText.isEmpty
                             ? statusFilter?.emptyDescription ?? AppLocalization.string("Sessions will appear here once created.")
-                            : AppLocalization.string("Try a different search."))
+                            : AppLocalization.string("Try a different search."),
+                        emptySystemImage: statusFilter?.emptySystemImage ?? "tray",
+                        retry: { Task { await appState.refreshSessionCatalog() } }
                     )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
 
                 let sections = nestedSessionSections
@@ -457,6 +467,11 @@ struct SessionList: View {
         }
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
+        }
+        // The list's first read once the connection is up, when the
+        // connect's own catalog sync settled without publishing one.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)") {
+            await appState.loadSessionCatalogIfNeeded()
         }
         // Working / Needs input (#454) follow the gateway's live registry
         // while the list is on screen.
@@ -1944,6 +1959,7 @@ struct CronList: View {
 
             if !jobs.isEmpty {
                 let shown = CronJobFilter.shownJobs(jobs, showAll: showAllJobs, isSearching: isSearching)
+                let zoneLabel = ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)
                 HStack {
                     Text("Jobs").font(.headline)
                     Spacer()
@@ -1954,7 +1970,7 @@ struct CronList: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 ForEach(shown) { job in
-                    Button { selectedJob = job } label: { CronJobRow(job: job, notifies: appState.cronJobNotifies(job)) }
+                    Button { selectedJob = job } label: { CronJobRow(job: job, notifies: appState.cronJobNotifies(job), zoneLabel: zoneLabel) }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
@@ -2089,7 +2105,7 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
     }
 
     static func matches(_ job: CronJob, query: String) -> Bool {
-        [job.displayName, job.prompt ?? "", job.scheduleDisplay ?? job.schedule?.display ?? "", job.deliver ?? ""]
+        [job.displayName, job.prompt ?? "", job.scheduleDisplay ?? job.schedule?.display ?? "", CronScheduleText.describe(job, zoneLabel: nil) ?? "", job.deliver ?? ""]
             .contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
@@ -2128,6 +2144,8 @@ private struct CronJobRow: View {
     let job: CronJob
     /// Whether the job's runs notify (the host's per-job setting).
     var notifies = true
+    /// The profile zone the schedule's times are in, when not this iPhone's.
+    var zoneLabel: String? = nil
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
@@ -2136,7 +2154,7 @@ private struct CronJobRow: View {
                 .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.displayName).font(.subheadline.weight(.medium)).lineLimit(1)
-                Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
+                Text(CronScheduleText.describe(job, zoneLabel: zoneLabel) ?? AppLocalization.string("No schedule"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -2172,6 +2190,13 @@ struct CronJobDetailSheet: View {
         appState.cronJobs.first { $0.id == selectedJob.id } ?? selectedJob
     }
 
+    /// A run time as a date and time on this iPhone's clock; Hermes' raw
+    /// value when it isn't one Conduit can read.
+    private func runTime(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "—" }
+        return CronScheduleText.parseDate(raw).map { CronScheduleText.absoluteDateText($0) } ?? raw
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -2180,9 +2205,9 @@ struct CronJobDetailSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         ConduitSettingsSection(title: job.displayName, symbol: "clock.fill", tint: .conduitAccent) {
                             SettingsMetricRow(label: AppLocalization.string("Status"), value: job.statusLabel)
-                            SettingsMetricRow(label: AppLocalization.string("Schedule"), value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
-                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : job.nextRunAt ?? "—")
-                            SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
+                            SettingsMetricRow(label: AppLocalization.string("Schedule"), value: CronScheduleText.describe(job, zoneLabel: ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)) ?? "—")
+                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : runTime(job.nextRunAt))
+                            SettingsMetricRow(label: AppLocalization.string("Last run"), value: runTime(job.lastRunAt))
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? AppLocalization.string("Local"))
                         }
                         if appState.supportsCronNotifications {
@@ -2335,6 +2360,41 @@ enum SidebarOfflineLayout {
             emptyState: empty && !isLoadingList,
             loadingState: empty && isLoadingList
         )
+    }
+}
+
+/// The Chats list without rows: loading until the catalog arrives, the
+/// failure with Try Again when the read failed, and the empty state only once
+/// Hermes answered an empty catalog (SessionListPlaceholder).
+struct SessionListPlaceholderView: View {
+    let placeholder: SessionListPlaceholder
+    let emptyTitle: String
+    let emptyDescription: String
+    var emptySystemImage = "tray"
+    let retry: () -> Void
+
+    var body: some View {
+        switch placeholder {
+        case .none:
+            EmptyView()
+        case .loading:
+            ProgressView(AppLocalization.string("Loading chats…"))
+                .frame(maxWidth: .infinity, minHeight: 140)
+        case .failed(let message):
+            ContentUnavailableView {
+                Label(AppLocalization.string("Couldn’t Load Chats"), systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(message)
+            } actions: {
+                Button(AppLocalization.string("Try Again"), action: retry)
+            }
+        case .empty:
+            ContentUnavailableView(
+                emptyTitle,
+                systemImage: emptySystemImage,
+                description: Text(emptyDescription)
+            )
+        }
     }
 }
 

@@ -149,9 +149,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
         let ticket = try await bridge.mintTicket()
-        let request: URLRequest
+        let unauthorized: URLRequest
         do {
-            request = try Self.speechStreamRequest(
+            unauthorized = try Self.speechStreamRequest(
                 baseURL: baseURL,
                 ticket: ticket,
                 profile: profile,
@@ -160,7 +160,10 @@ final class HermesVoiceGateway: VoiceGatewayService {
         } catch {
             throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
         }
-        let task = URLSession.shared.webSocketTask(with: request)
+        // The dashboard's own session cookies (cookie mode), on the
+        // cookie-less, redirect-refusing dashboard socket session.
+        let request = try await bridge.requestAuthorizer.authorizeUpgrade(unauthorized)
+        let task = bridge.requestAuthorizer.webSocketTask(with: request)
         task.resume()
         return HermesSpeechStream(
             task: task,
@@ -220,13 +223,14 @@ extension HermesVoiceGateway: VoiceLiveTranscriptionGateway {
         // A ticket or URL failure is not a verdict on the profile: this
         // utterance just uses the upload, and the next one tries again.
         guard let ticket = try? await bridge.mintTicket(),
-              let request = try? Self.liveTranscriptionRequest(
+              let unauthorized = try? Self.liveTranscriptionRequest(
                 baseURL: baseURL,
                 ticket: ticket,
                 profile: profile,
                 cloudflareAccess: bridge.cloudflareAccess
-              ) else { return nil }
-        let task = URLSession.shared.webSocketTask(with: request)
+              ),
+              let request = try? await bridge.requestAuthorizer.authorizeUpgrade(unauthorized) else { return nil }
+        let task = bridge.requestAuthorizer.webSocketTask(with: request)
         task.resume()
         return HermesLiveTranscription(
             socket: task,

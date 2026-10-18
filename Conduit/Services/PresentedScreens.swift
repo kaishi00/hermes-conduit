@@ -38,6 +38,46 @@ struct PresentedMapsTarget: Equatable {
     }
 }
 
+/// Something Hermes put on the screen of the user's voice call with
+/// `conduit_show`: a table, steps, a chart. Shown once, never answered.
+struct PresentedCard: Identifiable, Equatable {
+    /// The Hermes tool that shows one.
+    static let toolName = "conduit_show"
+
+    let id: String
+    let title: String
+    /// What to show, as Markdown.
+    let markdown: String
+    /// Maps and places drawn above the Markdown, as the card schema
+    /// normalized them.
+    let cards: [[String: Any]]
+
+    init(id: String, title: String, markdown: String, cards: [[String: Any]] = []) {
+        self.id = id
+        self.title = title
+        self.markdown = markdown
+        self.cards = cards
+    }
+
+    init?(json: Any?) {
+        guard let entry = json as? [String: Any],
+              let id = entry["id"] as? String, !id.isEmpty,
+              let markdown = (entry["markdown"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !markdown.isEmpty else { return nil }
+        let cards = RichCardSchema.bundled?.normalizeCards(entry["cards"]) ?? []
+        // Markdown that's only the cards' own text (plugin 0.45.1+) would
+        // show the places twice beside the drawn cards.
+        let isFallback = !cards.isEmpty && entry["fallback"] as? Bool == true
+        self.init(id: id, title: (entry["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                  markdown: isFallback ? "" : markdown, cards: cards)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.title == rhs.title && lhs.markdown == rhs.markdown
+            && RichCard.cards(lhs.cards) == RichCard.cards(rhs.cards)
+    }
+}
+
 /// One confirmation Hermes is waiting on.
 struct PresentedConfirm: Identifiable, Equatable {
     let id: String
@@ -152,9 +192,14 @@ final class PresentedScreensSync: ObservableObject {
     static let path = "/api/plugins/conduit_push/present/exchange"
     static let capability = "present-v1"
     /// What this Conduit does with a confirmation beyond showing it, told to
-    /// the host in each exchange. "chat-cards": it draws conduit_show's map
-    /// and place cards in a chat, so the host offers the tool there too.
-    static let features = ["maps-navigate", "chat-cards"]
+    /// the host in each exchange. "show-cards": it shows the cards
+    /// `conduit_show` puts on a voice call's screen. "chat-cards": it draws
+    /// conduit_show's map and place cards in a chat, so the host offers the
+    /// tool there too. "info-cards": it also draws stats, charts, forecasts,
+    /// comparisons and steps (plugin 0.46+).
+    static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards"]
+    /// Card ids remembered as seen, so a card is shown at most once.
+    private static let maxSeenCards = 200
     private static let resultsKey = "conduit.presentedScreens.results.v1"
     private static let maxResults = 40
 
@@ -174,6 +219,12 @@ final class PresentedScreensSync: ObservableObject {
     /// The user's last turn in the call when each confirmation appeared:
     /// words from before it was on screen can't confirm it.
     private(set) var userTurnWhenShown: [String: UUID] = [:]
+    /// New cards from Hermes, as each exchange brings them.
+    var onCards: (@MainActor (_ cards: [PresentedCard]) -> Void)?
+    /// Cards already handed on, oldest first. Nil until the first exchange
+    /// with this host and profile, which only notes what's there: those
+    /// cards were for a conversation before this app's.
+    private var seenCardIDs: [String]?
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
@@ -191,6 +242,7 @@ final class PresentedScreensSync: ObservableObject {
             self.scope = scope
             prompts = []
             userTurnWhenShown = [:]
+            seenCardIDs = nil
         }
         latest = (profile, installationID, isCurrent, request)
         if syncing {
@@ -241,6 +293,19 @@ final class PresentedScreensSync: ObservableObject {
             .filter { !answered.contains($0.id) && !$0.isExpired() }
         let listed = Set(prompts.map(\.id))
         userTurnWhenShown = userTurnWhenShown.filter { listed.contains($0.key) }
+        takeCards(response["cards"])
+    }
+
+    private func takeCards(_ json: Any?) {
+        let cards = (json as? [Any] ?? []).compactMap(PresentedCard.init(json:))
+        guard let seen = seenCardIDs else {
+            seenCardIDs = cards.map(\.id)
+            return
+        }
+        let fresh = cards.filter { !seen.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        seenCardIDs = Array((seen + fresh.map(\.id)).suffix(Self.maxSeenCards))
+        onCards?(fresh)
     }
 
     /// Records the user's answer and takes the confirmation off screen; the
@@ -269,6 +334,7 @@ final class PresentedScreensSync: ObservableObject {
         latest = nil
         prompts = []
         userTurnWhenShown = [:]
+        seenCardIDs = nil
     }
 
     private func results(for scope: String) -> [[String: Any]] {

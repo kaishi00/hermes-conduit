@@ -279,7 +279,21 @@ private struct LiveVoiceTimelinePlacement {
 
 /// What the voice model put on screen, over the call.
 struct LiveVoiceScreenCardSheet: View {
-    let card: VoiceScreenCard
+    let title: String
+    let markdown: String
+    let cards: [RichCard]
+
+    init(card: VoiceScreenCard) {
+        self.init(title: LiveVoiceScreenCardRow.title(for: card), markdown: card.markdown, cards: card.cards)
+    }
+
+    /// A card Hermes showed in a Classic voice conversation, which has no
+    /// call screen to keep it on.
+    init(title: String, markdown: String, cards: [RichCard] = []) {
+        self.title = title.isEmpty ? AppLocalization.string("On screen") : title
+        self.markdown = markdown
+        self.cards = cards
+    }
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -288,13 +302,13 @@ struct LiveVoiceScreenCardSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if !card.cards.isEmpty {
-                        RichCardsView(cards: card.cards)
+                    if !cards.isEmpty {
+                        RichCardsView(cards: cards)
                     }
-                    if !card.markdown.isEmpty {
+                    if !markdown.isEmpty {
                         // Hermes' own images (MEDIA: paths) load through the gateway.
                         let profile = appState.activeProfile
-                        MarkdownText(source: card.markdown, gatewayMediaDataURL: { path in
+                        MarkdownText(source: markdown, gatewayMediaDataURL: { path in
                             await appState.gatewayMediaDataURL(for: path, profile: profile)
                         })
                         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
@@ -303,7 +317,7 @@ struct LiveVoiceScreenCardSheet: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle(LiveVoiceScreenCardRow.title(for: card))
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

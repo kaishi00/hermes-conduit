@@ -373,13 +373,16 @@ extension HermesVoiceGateway: SpeechServerTranscriptionGateway {
         onFailure: @escaping @MainActor (String) -> Void
     ) async -> VoiceLiveTranscription? {
         guard let ticket = try? await bridge.mintTicket(),
-              let request = try? Self.speechServerRequest(
+              let unauthorized = try? Self.speechServerRequest(
                 baseURL: baseURL,
                 ticket: ticket,
                 profile: profile,
                 cloudflareAccess: bridge.cloudflareAccess
-              ) else { return nil }
-        let task = URLSession.shared.webSocketTask(with: request)
+              ),
+              // The dashboard's own session cookies (cookie mode), on the
+              // cookie-less, redirect-refusing dashboard socket session.
+              let request = try? await bridge.requestAuthorizer.authorizeUpgrade(unauthorized) else { return nil }
+        let task = bridge.requestAuthorizer.webSocketTask(with: request)
         task.resume()
         return SpeechServerTranscription(
             socket: task,

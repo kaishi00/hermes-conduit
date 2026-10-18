@@ -158,6 +158,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list, .sound])
             return
         }
+        // A step's timer from a rich card rings wherever the user is.
+        if notification.request.identifier.hasPrefix(RichStepsMemory.notificationPrefix) {
+            completionHandler([.banner, .list, .sound])
+            return
+        }
         completionHandler([])
     }
 }
@@ -228,6 +233,7 @@ struct ConduitApp: App {
             // The accent colours resolve the choice from this trait, so a
             // new pick redraws in place: no view is rebuilt.
             .environment(\.conduitAccent, accentChoice)
+            .background(WindowAccentTint(choice: accentChoice))
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
             .modifier(ScreenshotCallFixtureModifier(appState: appState))

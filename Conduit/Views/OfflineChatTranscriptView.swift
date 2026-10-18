@@ -84,6 +84,7 @@ struct OfflineChatTranscriptView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showsBanner)
         .accessibilityIdentifier("offline-chat-transcript")
+        .chatRows()
     }
 }
 
@@ -103,6 +104,7 @@ private struct OfflineChatRows: View {
                 gatewayResolver: appState.gatewayMediaResolver,
                 step: row.step
             )
+            .equatable()
         }
         .environment(\.chatRowDisclosure, disclosure)
     }

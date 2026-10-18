@@ -186,7 +186,7 @@ struct ChatWorkingLine: View {
     let isThinking: Bool
     /// When the turn began; nil hides the timer.
     var startedAt: Date?
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -210,7 +210,7 @@ struct ChatWorkingLine: View {
 
     var body: some View {
         // The bot's identity inside a Bot Chat, else the workspace profile's.
-        let identity = appState.conversationAgentIdentity
+        let identity = rowState.agentIdentity
         let largeText = dynamicTypeSize.isAccessibilitySize
         // Large text: the words wrap and stack instead of truncating.
         let lineLimit = largeText ? nil : 1 as Int?
@@ -218,7 +218,7 @@ struct ChatWorkingLine: View {
             ConduitAgentMark(
                 isActive: true,
                 identity: identity,
-                glow: appState.profileGlowTint(appState.conversationIdentityProfile)
+                glow: rowState.agentGlowTint
             )
 
             AdaptiveStack(spacing: 9) {
@@ -375,11 +375,11 @@ enum ChatStepTiming {
 struct ChatStepRow: View {
     let message: ChatMessage
     let placement: ChatStepPlacement
-    @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowDisclosure) private var disclosure
 
     var body: some View {
-        let preferences = appState.displayPreferences
+        let preferences = rowState.displayPreferences
         if let disclosure {
             ChatStepRowBody(
                 message: message,
@@ -389,7 +389,7 @@ struct ChatStepRow: View {
                 showReasoning: preferences.showReasoning,
                 showTools: preferences.showToolProgress,
                 expandToolsByDefault: preferences.expandToolsByDefault,
-                isBusy: appState.isBusy
+                isBusy: rowState.isBusy
             )
         } else {
             ChatStepRowBody.single(message)

@@ -630,3 +630,44 @@ enum KanbanCompactDuration {
         return formatter
     }
 }
+
+// MARK: - V2 column board
+
+/// One lane of the V2 board as its column header and jump bar show it.
+struct KanbanBoardColumnSummary: Identifiable, Equatable {
+    let status: String
+    let title: String
+    let systemImage: String
+    let count: Int
+    /// A system-owned lane (Scheduled, Running, Review, or one Conduit
+    /// doesn't know): shown with a lock, never a manual destination.
+    let isLocked: Bool
+
+    var id: String { status }
+}
+
+/// The V2 board's columns: every lane the server reported, in workflow
+/// order, Blocked and Done included. The board shows them side by side and
+/// lists them all in the jump bar above, so a lane past the screen's edge is
+/// one tap away and never hidden behind a swipe.
+enum KanbanColumnBoardPolicy {
+    static func summaries(for columns: [KanbanColumn]) -> [KanbanBoardColumnSummary] {
+        columns.map { column in
+            let presentation = KanbanStatusPresentation.forStatus(column.name)
+            return KanbanBoardColumnSummary(
+                status: column.name,
+                title: presentation.displayName,
+                systemImage: presentation.systemImage,
+                count: column.tasks.count,
+                isLocked: presentation.isBackendControlled
+            )
+        }
+    }
+
+    /// The lane the jump bar marks: the one the board is scrolled to, else
+    /// the first.
+    static func currentColumn(scrolledTo status: String?, in columns: [KanbanColumn]) -> String? {
+        if let status, columns.contains(where: { $0.name == status }) { return status }
+        return columns.first?.name
+    }
+}

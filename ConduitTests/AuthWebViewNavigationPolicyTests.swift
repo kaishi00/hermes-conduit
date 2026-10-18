@@ -27,6 +27,25 @@ final class AuthWebViewNavigationPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - When the sign-in is done
+
+    func testOnlyTheDashboardPastItsSignInPagesCountsAsSignedIn() {
+        for signedIn in ["https://hermes.example/", "https://hermes.example/chat", "https://hermes.example/docs/login-guide"] {
+            XCTAssertTrue(AuthWebViewNavigationPolicy.isSignedInDashboardPage(URL(string: signedIn), expectedDashboardURL: dashboard), signedIn)
+        }
+        for notYet in [
+            // Hermes' own sign-in, and an auth proxy's page on the same origin.
+            "https://hermes.example/login?next=%2F",
+            "https://hermes.example/oauth2/sign_in?rd=%2Flogin",
+            "https://hermes.example/oauth2/start?rd=%2F",
+            // The identity provider's page.
+            "https://sso.example/authorize",
+        ] {
+            XCTAssertFalse(AuthWebViewNavigationPolicy.isSignedInDashboardPage(URL(string: notYet), expectedDashboardURL: dashboard), notYet)
+        }
+        XCTAssertFalse(AuthWebViewNavigationPolicy.isSignedInDashboardPage(nil, expectedDashboardURL: dashboard))
+    }
+
     // MARK: - Construction-failure deferral
 
     func testConstructionFailureReportsOnNextMainRunloopTurnNotSynchronously() throws {

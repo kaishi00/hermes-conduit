@@ -99,7 +99,7 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "chat-cards"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards"])
     }
 
     func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {
@@ -125,5 +125,45 @@ extension AppStateVoiceCapabilityTests {
         let prompt = PresentedConfirm(id: "p1", title: "Buy it?", preview: "", actionLabel: "Buy",
                                       expiresAt: Date().addingTimeInterval(-1))
         XCTAssertTrue(prompt.isExpired())
+    }
+
+    func testHermesCardsAreHandedOnOnceAndNotFromBeforeTheApp() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        var handed: [[String]] = []
+        sync.onCards = { cards in handed.append(cards.map(\.id)) }
+        var cards: [[String: Any]] = [["id": "old", "title": "Before", "markdown": "| a |"]]
+        let exchange: PresentedScreensSync.Request = { _, _ in ["ok": true, "prompts": [], "cards": cards] }
+
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1", request: exchange)
+        XCTAssertEqual(handed, [], "a card from before this app's first exchange was for another conversation")
+
+        cards.append(["id": "new", "title": "Forecast", "markdown": " | Mon | 20 | "])
+        cards.append(["id": "empty", "title": "Nothing", "markdown": "  "])
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1", request: exchange)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1", request: exchange)
+        XCTAssertEqual(handed, [["new"]], "once, and never a card with nothing to show")
+        XCTAssertEqual(PresentedCard(json: cards[1]), PresentedCard(id: "new", title: "Forecast", markdown: "| Mon | 20 |"))
+
+        // Another host or profile starts over.
+        await sync.sync(scope: "host|bot", profile: "bot", installationID: "install-1", request: exchange)
+        XCTAssertEqual(handed, [["new"]])
+    }
+
+    func testAHermesCardDrawsItsPlacesAndLeavesOutTheirOwnText() throws {
+        let map: [String: Any] = ["type": "map", "places": [["name": "Kin Khao", "lat": 37.7853, "lon": -122.4089]]]
+        let drawn = try XCTUnwrap(PresentedCard(json: [
+            "id": "dinner", "title": "Dinner", "markdown": "- **Kin Khao**", "cards": [map], "fallback": true,
+        ]))
+        XCTAssertEqual(drawn.cards.count, 1)
+        XCTAssertEqual(drawn.markdown, "", "the places' own text would show them twice")
+
+        let written = try XCTUnwrap(PresentedCard(json: [
+            "id": "plan", "title": "Plan", "markdown": "| a |", "cards": [map],
+        ]))
+        XCTAssertEqual(written.markdown, "| a |", "what Hermes wrote shows beside the cards")
+        XCTAssertNotEqual(drawn, PresentedCard(id: "dinner", title: "Dinner", markdown: ""), "the cards count")
     }
 }

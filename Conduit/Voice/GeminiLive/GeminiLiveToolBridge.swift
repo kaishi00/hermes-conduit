@@ -315,7 +315,7 @@ final class GeminiLiveToolBridge {
 
     static let showOnScreenDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.showOnScreen.rawValue,
-        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. For places, use cards instead of Markdown: a map with pins and a route, one place in detail, or several to swipe through. The phone adds the address, phone, website and travel time from Apple Maps itself, so give names and addresses or coordinates, and only ratings, hours, prices and photos you actually found, each with its source. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
+        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Prefer cards, which the phone draws natively: a map with pins and a route, one place in detail, several places to swipe through, big numbers (stats), a line, bar or pie chart, a weather forecast, a comparison of two to four options, or steps the user can tick off, with timers. For places, the phone adds the address, phone, website and travel time from Apple Maps itself, so give names and addresses or coordinates, and only ratings, hours, prices and photos you actually found, each with its source. Name the source of numbers and forecasts you looked up; a forecast needs one. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
         parameters: showOnScreenParameters(RichCardSchema.bundled),
         behavior: .blocking
     )
@@ -336,11 +336,11 @@ final class GeminiLiveToolBridge {
         guard let schema else {
             return ["type": "OBJECT", "properties": properties, "required": ["title", "markdown"]]
         }
-        properties["cards"] = schema.liveToolParameter(description: "Maps and places for the phone to draw, shown above the Markdown.")
+        properties["cards"] = schema.liveToolParameter(description: "Cards for the phone to draw, shown above the Markdown.")
         return ["type": "OBJECT", "properties": properties, "required": ["title"]]
     }
 
-    static let invalidCardsNote = "None of the cards could be shown: each needs a type (map, place or places) and places with names."
+    static let invalidCardsNote = "None of the cards could be shown: each needs a type and that type's field (places with names for map, place and places; stats, chart, weather, options or steps for the others), and a forecast needs its source."
 
     /// call_me_when_done's scope: a job_id names one job, scope all asks
     /// about everything; anything else is the newest request.

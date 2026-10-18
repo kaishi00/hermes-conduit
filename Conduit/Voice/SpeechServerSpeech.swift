@@ -377,9 +377,9 @@ extension HermesVoiceGateway {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void
     ) async throws -> VoiceSpeechStream {
         let ticket = try await bridge.mintTicket()
-        let request: URLRequest
+        let unauthorized: URLRequest
         do {
-            request = try Self.speechServerSpeechRequest(
+            unauthorized = try Self.speechServerSpeechRequest(
                 baseURL: baseURL,
                 ticket: ticket,
                 profile: profile,
@@ -389,7 +389,12 @@ extension HermesVoiceGateway {
             speechServerSpeechLog.notice("Speech server speak request failed: \(String(describing: error), privacy: .private)")
             throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
         }
-        let task = URLSession.shared.webSocketTask(with: request)
+        // The dashboard's own session cookies (cookie mode), on the
+        // cookie-less, redirect-refusing dashboard socket session, like the
+        // speech stream: a redirect never carries the ticket or the
+        // Cloudflare token anywhere.
+        let request = try await bridge.requestAuthorizer.authorizeUpgrade(unauthorized)
+        let task = bridge.requestAuthorizer.webSocketTask(with: request)
         task.resume()
         return SpeechServerSpeechStream(socket: task, onStart: onStart, onPCM16: onPCM16)
     }

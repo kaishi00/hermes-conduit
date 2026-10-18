@@ -748,10 +748,26 @@ protocol HermesWebSocketTransport: AnyObject {
     ) -> any HermesWebSocket
 
     func invalidate()
+
+    /// The HTTP status that refused `socket`'s upgrade (a refused redirect's
+    /// 3xx, or a final non-101 answer); nil when there was none.
+    func handshakeStatus(for socket: any HermesWebSocket) -> Int?
+
+    /// Where a refused redirect of `socket`'s upgrade pointed; nil when it
+    /// wasn't redirected.
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL?
+}
+
+extension HermesWebSocketTransport {
+    func handshakeStatus(for socket: any HermesWebSocket) -> Int? { nil }
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL? { nil }
 }
 
 /// Production transport: one `URLSession` per socket, delegate-driven
-/// handshake. Behaviour is identical to the client's pre-seam connect().
+/// handshake. The session is ephemeral and cookie-less: the upgrade carries
+/// only what the request builder put on it (the ticket, proxy headers and,
+/// in native mode, the dashboard's bearer), and a redirect is never
+/// followed.
 final class URLSessionWebSocketTransport: HermesWebSocketTransport {
     /// Explicit incoming-message bound for the production socket. URLSession's
     /// own default (1 MiB) closes the connection with close code 1009 as soon
@@ -763,23 +779,50 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
     static let maximumMessageSize = 4 * 1024 * 1024
 
     private var session: URLSession?
-    private var delegate: WebSocketOpenDelegate?
+    private var delegate: DashboardWebSocketDelegate?
+    /// The refused upgrade's status, handed over as the socket ends before
+    /// opening: the delegate forgets its own record at that moment, and
+    /// `handshakeStatus(for:)` is read later, on the main actor.
+    private let refusalLock = NSLock()
+    private var refusedStatus: Int?
+    private var refusedTarget: URL?
 
+    /// URLSession only confirms the WebSocket handshake through its delegate.
+    /// The client must not issue session RPCs or paint a green indicator
+    /// before `onOpen`, otherwise a just-opened socket can race its first
+    /// `session.resume`. A refused upgrade ends in `onCloseBeforeOpen` at
+    /// once, with its status readable through `handshakeStatus(for:)`.
     func makeSocket(
         request: URLRequest,
         onOpen: @escaping (any HermesWebSocket) -> Void,
         onCloseBeforeOpen: @escaping (any HermesWebSocket) -> Void
     ) -> any HermesWebSocket {
-        let delegate = WebSocketOpenDelegate()
-        delegate.onOpen = onOpen
-        delegate.onCloseBeforeOpen = onCloseBeforeOpen
-        let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = true
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        let delegate = DashboardWebSocketDelegate()
+        let session = URLSession(
+            configuration: DashboardWebSocketSessionPolicy.configuration(waitsForConnectivity: true),
+            delegate: delegate,
+            delegateQueue: nil
+        )
         self.session = session
         self.delegate = delegate
+        refusalLock.lock()
+        refusedStatus = nil
+        refusedTarget = nil
+        refusalLock.unlock()
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = Self.maximumMessageSize
+        delegate.register(task, handlers: .init(
+            onOpen: { [weak task] in if let task { onOpen(task) } },
+            onEndBeforeOpen: { [weak self, weak task] status, target in
+                if let self, let status {
+                    self.refusalLock.lock()
+                    self.refusedStatus = status
+                    self.refusedTarget = target
+                    self.refusalLock.unlock()
+                }
+                if let task { onCloseBeforeOpen(task) }
+            }
+        ))
         return task
     }
 
@@ -788,21 +831,21 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
         session = nil
         delegate = nil
     }
-}
 
-/// URLSession only confirms the WebSocket handshake through its delegate. The
-/// client must not issue session RPCs or paint a green indicator before this
-/// callback, otherwise a just-opened socket can race its first `session.resume`.
-private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate {
-    var onOpen: ((any HermesWebSocket) -> Void)?
-    var onCloseBeforeOpen: ((any HermesWebSocket) -> Void)?
-
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        onOpen?(webSocketTask)
+    func handshakeStatus(for socket: any HermesWebSocket) -> Int? {
+        guard let task = socket as? URLSessionWebSocketTask else { return nil }
+        if let status = delegate?.handshakeStatus(of: task) { return status }
+        // The last socket made here: a recorded refusal is this socket's.
+        refusalLock.lock()
+        defer { refusalLock.unlock() }
+        return refusedStatus
     }
 
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        onCloseBeforeOpen?(webSocketTask)
+    func refusedRedirectTarget(for socket: any HermesWebSocket) -> URL? {
+        guard socket is URLSessionWebSocketTask else { return nil }
+        refusalLock.lock()
+        defer { refusalLock.unlock() }
+        return refusedTarget
     }
 }
 
@@ -867,10 +910,18 @@ final class HermesClient: ObservableObject {
     private let keepaliveInterval: TimeInterval?
     private let keepalivePingTimeout: TimeInterval
     private let monitorsPath: Bool
+    /// Bumped by every connect(): a connect suspended while its upgrade is
+    /// authorized must not install a socket after a newer one began.
+    private var connectGeneration: UInt64 = 0
 
     let connection: HermesConnection
     let profile: String?
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// The selected dashboard's upgrade authorization: in cookie mode the
+    /// dashboard's own session cookies for this address. Nil keeps the
+    /// upgrade to the connection's ticket and proxy headers (tests, legacy
+    /// callers).
+    let requestAuthorizer: (any DashboardUpgradeAuthorizing)?
 
     // Callback for stream events (set by AppState)
     var onEvent: ((StreamEvent) -> Void)?
@@ -935,6 +986,7 @@ final class HermesClient: ObservableObject {
         connection: HermesConnection,
         profile: String? = nil,
         cloudflareAccess: CloudflareAccessCredentials? = nil,
+        requestAuthorizer: (any DashboardUpgradeAuthorizing)? = nil,
         transportFactory: @escaping @MainActor () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() },
         keepaliveInterval: TimeInterval? = HermesClient.defaultKeepaliveInterval,
         keepalivePingTimeout: TimeInterval = HermesClient.keepalivePingTimeout,
@@ -946,6 +998,7 @@ final class HermesClient: ObservableObject {
         self.connection = connection
         self.profile = profile
         self.cloudflareAccess = cloudflareAccess
+        self.requestAuthorizer = requestAuthorizer
         self.transportFactory = transportFactory
     }
 
@@ -993,32 +1046,11 @@ final class HermesClient: ObservableObject {
 
         closedIntentionally = false
         socketHasOpened = false
-        let url: URL
-        do {
-            url = try ConnectionURLPolicy.webSocketURL(
-                baseURL: connection.baseUrl,
-                path: "/api/ws",
-                queryItems: [URLQueryItem(name: "ticket", value: connection.ticket)]
-            )
-        } catch {
-            throw HermesError.invalidUrl
-        }
+        connectGeneration &+= 1
+        let generation = connectGeneration
 
-        let transport = transportFactory()
-        self.transport = transport
-
-        var request = URLRequest(url: url)
-        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
-        // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
-        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
-        let socket = transport.makeSocket(
-            request: request,
-            onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
-            onCloseBeforeOpen: { [weak self] socket in Task { @MainActor in self?.didClose(socket) } }
-        )
-        self.socket = socket
-        socket.resume()
-        try await waitForSocketOpen(socket)
+        let request = try await upgradeRequest(ticket: connection.ticket, generation: generation)
+        let socket = try await openSocket(with: request, generation: generation)
         isConnected = true
         logger.notice("WebSocket handshake completed")
 
@@ -1027,6 +1059,50 @@ final class HermesClient: ObservableObject {
             await self?.receiveLoop()
         }
         startKeepalive(for: socket)
+    }
+
+    /// The `/api/ws` upgrade for `ticket`: proxy headers first, then what
+    /// the selected dashboard's authorizer adds (its own session cookies).
+    private func upgradeRequest(ticket: String, generation: UInt64) async throws -> URLRequest {
+        let url: URL
+        do {
+            url = try ConnectionURLPolicy.webSocketURL(
+                baseURL: connection.baseUrl,
+                path: "/api/ws",
+                queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+            )
+        } catch {
+            throw HermesError.invalidUrl
+        }
+        var request = URLRequest(url: url)
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
+        // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
+        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
+        guard let requestAuthorizer else { return request }
+        let authorized = try await requestAuthorizer.authorizeUpgrade(request)
+        try ensureCurrentConnect(generation)
+        return authorized
+    }
+
+    private func ensureCurrentConnect(_ generation: UInt64) throws {
+        guard generation == connectGeneration, !closedIntentionally else {
+            throw HermesError.connectionClosed
+        }
+    }
+
+    private func openSocket(with request: URLRequest, generation: UInt64) async throws -> any HermesWebSocket {
+        try ensureCurrentConnect(generation)
+        let transport = transportFactory()
+        self.transport = transport
+        let socket = transport.makeSocket(
+            request: request,
+            onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
+            onCloseBeforeOpen: { [weak self] socket in Task { @MainActor in self?.didClose(socket) } }
+        )
+        self.socket = socket
+        socket.resume()
+        try await waitForSocketOpen(socket)
+        return socket
     }
 
     // MARK: - Keepalive
@@ -1129,7 +1205,16 @@ final class HermesClient: ObservableObject {
 
     private func didClose(_ socket: any HermesWebSocket) {
         guard self.socket === socket, !socketHasOpened else { return }
-        failSocketOpen(socket, error: HermesError.connectionClosed)
+        // A refused upgrade says why through its status and, for a redirect
+        // (never followed), where it pointed: a sign-in wants a browser
+        // session. Anything else stays a closed connection for the
+        // reconnect path.
+        let refusal = DashboardSocketHandshakeError.failure(
+            status: transport?.handshakeStatus(for: socket),
+            redirectTarget: transport?.refusedRedirectTarget(for: socket),
+            dashboardURL: connection.baseUrl
+        )
+        failSocketOpen(socket, error: refusal ?? HermesError.connectionClosed)
     }
 
     private func failSocketOpen(_ socket: any HermesWebSocket, error: Error) {

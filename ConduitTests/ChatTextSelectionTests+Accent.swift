@@ -109,6 +109,28 @@ extension ChatTextSelectionTests {
         XCTAssertTrue(Self.isClose(textView.tintColor.resolvedColor(with: textView.traitCollection), .white))
     }
 
+    /// #748: the photo picker runs out of process and tints from the window.
+    @MainActor
+    func testAPickRetintsTheWindow() {
+        let model = AccentProbeModel()
+        let host = UIHostingController(rootView: WindowTintProbeView(model: model))
+        let window = Self.window(hosting: host)
+        defer { Self.close(window) }
+
+        XCTAssertTrue(Self.isClose(window.tintColor.resolvedColor(with: window.traitCollection), ConduitAccentChoice.amber.color(dark: true)))
+
+        model.choice = .blue
+        Self.settle(host)
+        XCTAssertTrue(
+            Self.isClose(window.tintColor.resolvedColor(with: window.traitCollection), ConduitAccentChoice.blue.color(dark: true)),
+            "the window takes the new accent"
+        )
+        XCTAssertTrue(Self.isClose(
+            window.tintColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
+            ConduitAccentChoice.blue.color(dark: false)
+        ), "and still follows light and dark")
+    }
+
     func testCopyingASentMessageLeavesOutTheQuotedReply() {
         let plain = ChatMessage(id: "u1", role: .user, content: "Just me", timestamp: "1")
         XCTAssertEqual(UserMessageCopyButton.copyText(for: plain), "Just me")
@@ -227,6 +249,14 @@ private struct SentBubbleProbeView: View {
     var body: some View {
         MarkdownText(source: "Something I wrote", foregroundStyle: .white, usesAccentSurface: true)
             .environment(\.conduitAccent, model.choice)
+    }
+}
+
+private struct WindowTintProbeView: View {
+    @ObservedObject var model: AccentProbeModel
+
+    var body: some View {
+        Color.clear.background(WindowAccentTint(choice: model.choice))
     }
 }
 

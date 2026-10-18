@@ -618,7 +618,10 @@ enum VoiceConfigurationParser {
             id: id, displayName: id.replacingOccurrences(of: "_", with: " ").capitalized,
             kind: kind, supportsStreaming: false
         )
-        let row = readiness.first { $0.id == id && $0.kind == kind }
+        // Two rows can name one provider (a plugin's row beside a built-in
+        // one): the row Hermes marks active speaks for the selection.
+        let matching = readiness.filter { $0.id == id && $0.kind == kind }
+        let row = matching.first(where: \.isActive) ?? matching.first
         let fields = typedFields(id: id, kind: kind)
         let required = row?.requiredCredentials ?? credentials.filter { credential in
             (id == "stepfun" && credential.key == "STEPFUN_API_KEY") ||
@@ -977,13 +980,19 @@ enum VoiceConfigurationParser {
         return nil
     }
 
+    /// Whether Hermes reports the selected provider ready. The row's own
+    /// `status` decides, for any provider id: Hermes computes `is_active`
+    /// only for rows it knows how to match to `tts.provider` (built-ins
+    /// carrying `tts_provider`), so a plugin or newer provider's row (a
+    /// custom OpenAI-compatible one, say) reads inactive even while it is
+    /// the one selected, and requiring it would call that voice not ready.
     private static func selectedProviderIsReady(
         _ providers: [VoiceProviderConfiguration],
         selectedID: String
     ) -> Bool {
         guard let selected = providers.first(where: { $0.descriptor.id == selectedID }),
               let readiness = selected.readiness else { return false }
-        return readiness.isActive && readiness.status.lowercased() == "ready"
+        return readiness.status.caseInsensitiveCompare("ready") == .orderedSame
     }
 
     private static func unique(_ values: [String]) -> [String] {

@@ -328,6 +328,12 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.screenCards.last?.title, "Card \(VoiceBackgroundJobSupervisor.maximumScreenCards)")
         XCTAssertFalse(supervisor.screenCards.contains { $0.title == "Chart" }, "The oldest cards go first")
 
+        screenIsVisible = false
+        XCTAssertNil(supervisor.showOnScreen(title: "Hidden", markdown: "pie"))
+        XCTAssertEqual(supervisor.showOnScreen(title: "Kept", markdown: "pie", evenIfHidden: true)?.title, "Kept",
+                       "What Hermes already said is on screen waits for the call screen")
+        XCTAssertEqual(supervisor.screenCards.last?.title, "Kept")
+
         supervisor.beginLiveCall()
         XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "A later call shows only its own cards")
     }

@@ -33,7 +33,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
-            "-CONNECTION_SETUP_TEST_RESULT", "success"
+            "-CONNECTION_SETUP_TEST_RESULT", "auth:password"
         ]
         app.launch()
 
@@ -57,7 +57,12 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         XCTAssertTrue(urlField.waitForExistence(timeout: 5), "Details screen did not appear. Tree:\n\(app.debugDescription)")
         XCTAssertEqual(urlField.value as? String, Identity.stubDashboardURL)
 
+        // Continue goes straight back to the staged test (discovery
+        // first); the password dashboard then asks for credentials.
         tapVisible(app.buttons[Identity.next], in: app)
+        XCTAssertTrue(app.buttons[Identity.testRun].waitForExistence(timeout: 5), "Test screen did not appear. Tree:\n\(app.debugDescription)")
+        tapVisible(app.buttons[Identity.testRun], in: app)
+        tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
         let username = app.textFields[Identity.username]
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)

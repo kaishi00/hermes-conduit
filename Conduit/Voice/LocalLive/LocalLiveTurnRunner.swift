@@ -13,6 +13,10 @@
 //  a second turn the chat couldn't take. A cancelled turn only stops being
 //  spoken: Hermes' reply still lands in the chat.
 //
+//  What the reply writes to be seen (a table, code, links) isn't spoken:
+//  unless Hermes showed it with `conduit_show`, it goes on the call's
+//  screen when the reply ends (SpokenVisualSplitter).
+//
 
 import Foundation
 
@@ -50,6 +54,9 @@ final class LocalLiveTurnRunner {
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
     var onDone: (@MainActor (_ turnID: String) -> Void)?
+    /// Puts what a reply wrote to be seen on the call's screen; false when
+    /// there's no screen to put it on.
+    var onVisual: (@MainActor (_ markdown: String) -> Bool)?
 
     private let backend: Backend
 
@@ -73,6 +80,13 @@ final class LocalLiveTurnRunner {
         var skipsCompletions = 0
     }
     private var reply: Reply?
+    /// The open turn's words, with what's to be seen kept out.
+    private var splitter = SpokenVisualSplitter()
+    /// Hermes showed something with `conduit_show` while answering the
+    /// open turn: what its reply writes isn't shown again.
+    private var showedCard = false
+    /// What the open turn said so far ends a line (or nothing was said).
+    private var endedLine = true
     private var task: Task<Void, Never>?
     /// Bumped by every new turn and reset, so older work stops at its next step.
     private var generation = 0
@@ -90,6 +104,9 @@ final class LocalLiveTurnRunner {
         // The plugin cancels a turn before sending the next: whatever is
         // still open here has nobody waiting for it.
         turn = (turnID, false)
+        splitter.reset()
+        showedCard = false
+        endedLine = true
         generation += 1
         let generation = generation
         // After the last turn's work: one send or correction at a time, in
@@ -119,6 +136,9 @@ final class LocalLiveTurnRunner {
         task = nil
         turn = nil
         reply = nil
+        splitter.reset()
+        showedCard = false
+        endedLine = true
     }
 
     private func run(turnID: String, text: String, generation: Int) async {
@@ -199,6 +219,9 @@ final class LocalLiveTurnRunner {
 
     func observe(_ event: StreamEvent) {
         guard let current = reply else { return }
+        if case .toolStart(let id, let name, _, _) = event, id == current.runtimeID, name == PresentedCard.toolName {
+            showedCard = true
+        }
         switch event {
         case .messageStart(let id), .reasoningDelta(let id, _), .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _):
             guard id == current.runtimeID else { return }
@@ -251,15 +274,25 @@ final class LocalLiveTurnRunner {
 
     // MARK: Speaking
 
+    /// Hermes' words, as they come.
     private func speak(_ text: String) {
         guard let current = turn, !text.isEmpty else { return }
         turn?.spoke = true
-        onDelta?(current.id, text)
+        let spoken = splitter.feed(text)
+        if !spoken.isEmpty {
+            endedLine = spoken.hasSuffix("\n")
+            onDelta?(current.id, spoken)
+        }
     }
 
+    /// A line of the call's own instead of Hermes' reply.
     private func say(_ text: String, to turnID: String, generation: Int) {
         guard generation == self.generation, turn?.id == turnID else { return }
-        speak(text)
+        turn?.spoke = true
+        // What the reply still held ends with it: nothing of it follows the
+        // call's line.
+        splitter.reset()
+        onDelta?(turnID, text)
         finish(turnID)
     }
 
@@ -270,6 +303,17 @@ final class LocalLiveTurnRunner {
 
     private func finish(_ turnID: String) {
         guard turn?.id == turnID else { return }
+        let rest = splitter.finish()
+        if !rest.isEmpty {
+            endedLine = rest.hasSuffix("\n")
+            onDelta?(turnID, rest)
+        }
+        if splitter.hasVisual, !showedCard, onVisual?(splitter.visualMarkdown) == true {
+            onDelta?(turnID, (endedLine ? "" : "\n") + Self.onScreenLine)
+        }
+        splitter.reset()
+        showedCard = false
+        endedLine = true
         turn = nil
         onDone?(turnID)
     }
@@ -285,6 +329,10 @@ final class LocalLiveTurnRunner {
 
     static var errorLine: String {
         AppLocalization.string("Hermes ran into a problem with that.")
+    }
+
+    static var onScreenLine: String {
+        AppLocalization.string("The rest is on your screen.")
     }
 
     static var needsInputLine: String {

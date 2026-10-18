@@ -174,6 +174,12 @@ extension UIColor {
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
 
+    /// The accent of one fixed choice, light or dark with the trait. For
+    /// places outside the root's accent trait: the window itself.
+    static func conduitAccent(_ choice: ConduitAccentChoice) -> UIColor {
+        UIColor { traits in choice.color(dark: traits.userInterfaceStyle == .dark) }
+    }
+
     /// See ConduitAccentChoice.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
         traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
@@ -634,6 +640,40 @@ extension View {
             }
         } else {
             self.buttonStyle(.plain)
+        }
+    }
+}
+
+/// Gives the window the chosen accent as its tint. System screens Conduit
+/// presents but doesn't draw (the photo picker runs in another process)
+/// take their tint from the window, not from SwiftUI's `.tint`, so without
+/// this they keep the built-in amber AccentColor (#748).
+struct WindowAccentTint: UIViewRepresentable {
+    let choice: ConduitAccentChoice
+
+    func makeUIView(context: Context) -> TintingView {
+        let view = TintingView()
+        view.isUserInteractionEnabled = false
+        view.choice = choice
+        return view
+    }
+
+    func updateUIView(_ view: TintingView, context: Context) {
+        view.choice = choice
+    }
+
+    final class TintingView: UIView {
+        var choice = ConduitAccentChoice.defaultChoice {
+            didSet { if choice != oldValue { applyTint() } }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            applyTint()
+        }
+
+        private func applyTint() {
+            window?.tintColor = .conduitAccent(choice)
         }
     }
 }

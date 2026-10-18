@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -51,6 +52,32 @@ final class ComposerDraftStoreTests: XCTestCase {
             ),
             "Another profile's chat with the same id"
         )
+    }
+
+    func testComposerRedrawsOnlyWhenWhatItShowsChanges() {
+        let suite = "ComposerDraftStoreTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let updates = ComposerUpdates(appState)
+        var sends = 0
+        let subscription = updates.objectWillChange.sink { sends += 1 }
+        defer { subscription.cancel() }
+        func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+
+        appState.objectWillChange.send()
+        appState.objectWillChange.send()
+        settle()
+        XCTAssertEqual(sends, 0, "a publish that changes nothing the composer shows")
+
+        appState.composerNotice = "Reconnecting"
+        appState.activeAgents = 2
+        settle()
+        XCTAssertEqual(sends, 1, "changes in one turn redraw it once")
+
+        appState.showModelPicker = true
+        settle()
+        XCTAssertEqual(sends, 2)
     }
 
     func testPrefillIsForTheOpenChatUntilTheComposerTakesIt() {

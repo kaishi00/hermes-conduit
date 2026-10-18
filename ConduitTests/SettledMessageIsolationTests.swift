@@ -106,6 +106,7 @@ final class SettledMessageIsolationTests: XCTestCase {
                     readAloudController: appState.messageReadAloudController,
                     gatewayResolver: resolver
                 )
+                .chatRows()
                 .environmentObject(appState)
             )
         )
@@ -189,6 +190,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolver
         )
+        .chatRows()
         .environmentObject(appState)
         .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
@@ -205,6 +207,113 @@ final class SettledMessageIsolationTests: XCTestCase {
         )
     }
 
+    /// An AppState publish that changes nothing a row shows leaves the row
+    /// alone (rows used to observe AppState, so each publish redrew every
+    /// row on screen); one that changes what it shows redraws it: a newer
+    /// reply decides whether this one still takes a reaction.
+    func testAppStatePublishRedrawsARowOnlyWhenWhatItShowsChanges() throws {
+        let appState = try makeAppState()
+        let host = mountRow(message: markdownMessage(), appState: appState, resolver: nil)
+        drainUntil(0.5) { false }
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a publish that changes nothing the row shows must not redraw it"
+        )
+
+        appState.messages = [markdownMessage(id: "newest")]
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        drainUntil(2.0) { TranscriptPerf.settledMessageBubbleBodyEvaluations > 0 }
+        XCTAssertGreaterThan(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a newer reply changes what the row shows"
+        )
+    }
+
+    func testAppStatePublishRedrawsTheComposerOnlyWhenWhatItShowsChanges() throws {
+        let appState = try makeAppState()
+        let host = UIHostingController(rootView: ComposerParent().environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        testWindow = window
+        XCTAssertTrue(PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0), "the mount never settled")
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.composerBarBodyEvaluations, 0,
+            "a publish that changes nothing the composer shows must not redraw it, though its parent redraws"
+        )
+
+        appState.composerNotice = "Reconnecting"
+        drainUntil(2.0) { TranscriptPerf.composerBarBodyEvaluations > 0 }
+        XCTAssertGreaterThan(TranscriptPerf.composerBarBodyEvaluations, 0, "a notice changes what it shows")
+    }
+
+    func testTranscriptRedrawLeavesRowsAlone() throws {
+        let appState = try makeAppState()
+        let messages = [markdownMessage(id: "first"), markdownMessage(id: "second")]
+        let host = UIHostingController(rootView: TranscriptParent(messages: messages).chatRows().environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        testWindow = window
+        XCTAssertTrue(PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0), "the mount never settled")
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "the transcript redrawing on a publish must not rebuild rows whose message is unchanged"
+        )
+
+        // Same messages, but a newer reply changes what each row shows
+        // (`ChatRowState.latestAssistantMessageID`): the row state reaches
+        // the rows through `.equatable()`.
+        appState.messages = [markdownMessage(id: "newest")]
+        drainUntil(2.0) { TranscriptPerf.settledMessageBubbleBodyEvaluations > 0 }
+        XCTAssertGreaterThan(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a row state change redraws rows whose message is unchanged"
+        )
+    }
+
+    /// Redraws on every publish and rebuilds its rows, as ChatView's
+    /// transcript does.
+    private struct TranscriptParent: View {
+        @EnvironmentObject var appState: AppState
+        let messages: [ChatMessage]
+        var body: some View {
+            VStack {
+                Text(appState.activeProfile)
+                ForEach(messages) { message in
+                    MessageBubble(message: message, gatewayResolver: appState.gatewayMediaResolver)
+                        .equatable()
+                }
+            }
+        }
+    }
+
+    /// Redraws on every publish, as ChatView does.
+    private struct ComposerParent: View {
+        @EnvironmentObject var appState: AppState
+        var body: some View {
+            VStack {
+                Text(appState.activeProfile)
+                ComposerBar(appState: appState).equatable()
+            }
+        }
+    }
+
     func testResolverChangeStillReRendersSettledContent() throws {
         let appState = try makeAppState()
         let resolverA = GatewayMediaDataURLResolver(appState: appState, profile: "default")
@@ -219,6 +328,7 @@ final class SettledMessageIsolationTests: XCTestCase {
             readAloudController: appState.messageReadAloudController,
             gatewayResolver: resolverB
         )
+        .chatRows()
         .environmentObject(appState)
         .environment(\.sizeCategory, .large))
         host.view.setNeedsLayout()
@@ -710,6 +820,7 @@ private struct SettledGateHarnessRow: View {
                 readAloudController: readAloudController,
                 gatewayResolver: gatewayResolver
             )
+            .chatRows()
             .environmentObject(appState),
             sizeCategory: sizeCategory
         )

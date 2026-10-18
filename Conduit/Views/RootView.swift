@@ -243,6 +243,12 @@ struct MainView: View {
             )
                 .safeAreaInset(edge: .top, spacing: 0) { callTopBanners }
                 .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
+                // What Hermes put on screen (conduit_show), over the conversation.
+                .sheet(item: $appState.classicVoiceCard) { card in
+                    LiveVoiceScreenCardSheet(title: card.title, markdown: card.markdown, cards: RichCard.cards(card.cards))
+                        .environmentObject(appState)
+                        .presentationDetents([.medium, .large])
+                }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -286,6 +292,12 @@ struct MainView: View {
             // publication. A resize, rotation, or the Appearance toggle can
             // activate the persistent layout while the drawer is presented.
             if persistentActive { appState.dismissSidebarDrawer() }
+        }
+        // Back to the list (V2) or the drawer opening covers the chat: the
+        // list reads the catalog again, so a conversation started in that
+        // chat, or a turn that ran there, shows without a pull to refresh.
+        .onChange(of: appState.showSidebar) { _, covered in
+            if covered { appState.refreshCatalogAfterLeavingChat() }
         }
         .task(id: voiceCapabilityRefreshKey) {
             await appState.refreshVoiceCapabilities()

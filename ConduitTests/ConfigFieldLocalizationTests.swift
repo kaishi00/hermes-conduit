@@ -154,7 +154,7 @@ final class ConfigFieldLocalizationTests: XCTestCase {
                     XCTAssertEqual(a, b)
                 case (.toggle(let a), .toggle(let b)):
                     XCTAssertEqual(a, b)
-                case (.stringList, .stringList):
+                case (.stringList, .stringList), (.timeZone, .timeZone):
                     break
                 default:
                     XCTFail("\(before.key) control changed shape under \(language)")

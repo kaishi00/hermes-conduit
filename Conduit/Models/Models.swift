@@ -917,10 +917,40 @@ enum CronJobAction: String {
     case pause, resume, trigger
 }
 
+/// Hermes' parsed schedule: `cron` carries `expr`, `interval` its
+/// `minutes`, `once` its `run_at`; `display` is Hermes' own wording (for a
+/// cron job, the expression itself).
 struct CronSchedule: Codable {
     var display: String?
     var expr: String?
     var kind: String?
+    var minutes: Int?
+    var runAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case display, expr, kind, minutes
+        case runAt = "run_at"
+    }
+
+    init(display: String? = nil, expr: String? = nil, kind: String? = nil, minutes: Int? = nil, runAt: String? = nil) {
+        self.display = display
+        self.expr = expr
+        self.kind = kind
+        self.minutes = minutes
+        self.runAt = runAt
+    }
+
+    /// Lenient: a field of an unexpected type is dropped rather than
+    /// dropping the whole job from the list.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        display = try? container.decodeIfPresent(String.self, forKey: .display)
+        expr = try? container.decodeIfPresent(String.self, forKey: .expr)
+        kind = try? container.decodeIfPresent(String.self, forKey: .kind)
+        minutes = (try? container.decodeIfPresent(Int.self, forKey: .minutes))
+            ?? (try? container.decodeIfPresent(Double.self, forKey: .minutes)).flatMap { Int(exactly: $0.rounded()) }
+        runAt = try? container.decodeIfPresent(String.self, forKey: .runAt)
+    }
 }
 
 struct CronRun: Codable, Identifiable {

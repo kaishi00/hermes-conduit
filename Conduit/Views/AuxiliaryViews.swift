@@ -458,6 +458,10 @@ enum ProfileSettingControl {
     case number(defaultValue: Double)
     /// One string per line, saved as a list.
     case stringList
+    /// An IANA time zone name, blank for the server's local time
+    /// (ProfileTimeZone): a text field with this iPhone's zone one tap away,
+    /// checked before it is saved.
+    case timeZone
 }
 
 struct ProfileSettingField: Identifiable {
@@ -1103,26 +1107,34 @@ private struct SettingsHome: View {
                 // wizard re-verifies the origin itself before sending it and
                 // never displays, edits, or persists it.
                 initialCloudflareAccess: seed.cloudflareAccess,
-                initialCloudflareOriginURL: seed.url
-            ) { result in
-                // Reload the saved state at apply time: the plan must decide
-                // against what exists NOW, not what existed when the sheet
-                // was seeded.
-                let plan = ConnectionSetupApplication.plan(
-                    result: result,
-                    currentDashboardURL: seed.url,
-                    savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
-                    savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
-                )
-                plan.perform(appState: appState)
-                pendingAppliedNotice = !plan.isEmpty
-            }
+                initialCloudflareOriginURL: seed.url,
+                onComplete: { result in
+                    // Reload the saved state at apply time: the plan must
+                    // decide against what exists NOW, not what existed when
+                    // the sheet was seeded.
+                    let plan = ConnectionSetupApplication.plan(
+                        result: result,
+                        currentDashboardURL: seed.url,
+                        savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
+                        savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
+                    )
+                    plan.perform(appState: appState)
+                    pendingAppliedNotice = !plan.isEmpty
+                },
+                // Sign In Again (a test that found browser sign-in for this
+                // dashboard) signs in and reconnects through the same
+                // explicit activation as Repair.
+                onRepair: appState.connectionRepairActivationHandler()
+            )
             .environmentObject(appState)
         }
         .alert("Settings applied", isPresented: $appliedConnectionNotice) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Saved for your next reconnect. Your current session stays connected.")
+            // Only a connected session "stays connected".
+            Text(appState.isConnected
+                 ? AppLocalization.string("Saved for your next reconnect. Your current session stays connected.")
+                 : AppLocalization.string("Saved for your next reconnect."))
         }
         // Asked again on every visit and dashboard switch: the connect-time
         // check can miss (the dashboard was still loading), and the plugin
@@ -1498,7 +1510,7 @@ struct ChatSettingsDetail: View {
 
     static var fields: [ProfileSettingField] { [
         .init(key: "display.personality", label: AppLocalization.string("Personality"), help: AppLocalization.string("Default response style for new conversations."), control: .options([], defaultValue: "")),
-        .init(key: "timezone", label: AppLocalization.string("Timezone"), help: AppLocalization.string("Used for dates, reminders, and scheduled work."), control: .text(defaultValue: "")),
+        .init(key: ProfileTimeZone.configKey, label: AppLocalization.string("Timezone"), help: AppLocalization.string("Used for dates, reminders, and scheduled work."), control: .timeZone),
         .init(key: "display.show_reasoning", label: AppLocalization.string("Show thinking"), help: AppLocalization.string("Show collapsible thinking blocks when provided."), control: .toggle(defaultValue: true)),
         .init(key: "display.tool_progress", label: AppLocalization.string("Tool cards"), help: AppLocalization.string("Show tool calls and expandable details in conversations."), control: .textToggle(onValue: "all", offValue: "off", defaultValue: true)),
         .init(key: "display.expand_tools", label: AppLocalization.string("Keep tool cards expanded"), help: AppLocalization.string("Keep completed tool details open by default."), control: .toggle(defaultValue: false)),
@@ -2351,7 +2363,15 @@ struct ProfileConfigSettingsPage: View {
     @State private var schema = ProfileConfigSchema()
     @State private var loading = true
     @State private var savingKey: String?
-    @State private var error: String?
+    /// Each field's last save problem, shown in its own card.
+    @State private var fieldErrors: [String: String] = [:]
+    /// The field whose save just landed, for a brief "Saved".
+    @State private var savedKey: String?
+    @State private var savedToken = UUID()
+    @FocusState private var focusedKey: String?
+
+    /// How long "Saved" stays up after a save lands.
+    private static let savedConfirmationDuration: Duration = .seconds(2)
 
     var body: some View {
         SettingsDetailContainer {
@@ -2367,7 +2387,6 @@ struct ProfileConfigSettingsPage: View {
                 }
             }
             if let trailingSection { trailingSection }
-            if let error { Label(error, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.red) }
         }
         .navigationTitle(showsNavigationTitle ? title : "")
         .task { await reload() }
@@ -2473,8 +2492,12 @@ struct ProfileConfigSettingsPage: View {
             case .stringList:
                 fieldLabel(field)
                 listEditor(field)
+            case .timeZone:
+                fieldLabel(field)
+                textEditor(field, defaultValue: "", keyboard: .asciiCapable, placeholder: AppLocalization.string("Server's local time"))
+                timeZoneShortcuts(field)
             }
-            if savingKey == field.key { HStack { ProgressView().controlSize(.small); Text("Saving…").font(.caption).foregroundStyle(.secondary) } }
+            saveStatus(field)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2492,19 +2515,40 @@ struct ProfileConfigSettingsPage: View {
         }
     }
 
-    private func textEditor(_ field: ProfileSettingField, defaultValue: String, keyboard: UIKeyboardType) -> some View {
+    /// Saving…, a brief Saved, or what went wrong, under the field it is about.
+    @ViewBuilder
+    private func saveStatus(_ field: ProfileSettingField) -> some View {
+        if savingKey == field.key {
+            HStack { ProgressView().controlSize(.small); Text("Saving…").font(.caption).foregroundStyle(.secondary) }
+        } else if let message = fieldErrors[field.key] {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
+        } else if savedKey == field.key {
+            Label(AppLocalization.string("Saved"), systemImage: "checkmark.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
+                .transition(.opacity)
+        }
+    }
+
+    private func textEditor(_ field: ProfileSettingField, defaultValue: String, keyboard: UIKeyboardType, placeholder: String? = nil) -> some View {
         AdaptiveStack(spacing: 8) {
-            TextField(field.label, text: Binding(get: { drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue) }, set: { drafts[field.key] = $0 }))
+            TextField(placeholder ?? field.label, text: Binding(
+                get: { drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue) },
+                set: {
+                    drafts[field.key] = $0
+                    fieldErrors[field.key] = nil
+                }
+            ))
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(keyboard)
+                .focused($focusedKey, equals: field.key)
+                .submitLabel(.done)
+                .onSubmit { saveDraft(field, defaultValue: defaultValue) }
                 .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
-            Button("Save") {
-                let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
-                if case .number = field.control, let number = Double(raw) { save(field, value: .number(number)) }
-                else if case .number = field.control { error = AppLocalization.string("Enter a valid number for \(field.label).") }
-                else { save(field, value: .text(raw)) }
-            }
-            .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
-            .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
+            Button("Save") { saveDraft(field, defaultValue: defaultValue) }
+                .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
+                .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
         }
     }
 
@@ -2531,6 +2575,64 @@ struct ProfileConfigSettingsPage: View {
             .filter { !$0.isEmpty }
     }
 
+    /// One tap to this iPhone's zone, or back to the server's own time.
+    @ViewBuilder
+    private func timeZoneShortcuts(_ field: ProfileSettingField) -> some View {
+        let saved = textValue(field.key, defaultValue: "")
+        let device = TimeZone.current.identifier
+        VStack(alignment: .leading, spacing: 6) {
+            if !ProfileTimeZone.matches(saved, device), case .identifier(let id) = ProfileTimeZone.resolve(device) {
+                Button {
+                    drafts[field.key] = id
+                    commitText(field, value: id)
+                } label: {
+                    Label(AppLocalization.string("Use this iPhone's time zone (\(id))"), systemImage: "location")
+                        .font(.subheadline.weight(.medium))
+                }
+                .disabled(savingKey != nil)
+            }
+            if !saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    drafts[field.key] = ""
+                    commitText(field, value: "")
+                } label: {
+                    Label(AppLocalization.string("Use the server's local time"), systemImage: "server.rack")
+                        .font(.subheadline.weight(.medium))
+                }
+                .disabled(savingKey != nil)
+            }
+        }
+        .buttonStyle(.borderless)
+        .tint(.conduitAccent)
+    }
+
+    private func saveDraft(_ field: ProfileSettingField, defaultValue: String) {
+        let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
+        switch field.control {
+        case .number:
+            guard let number = Double(raw) else {
+                fieldErrors[field.key] = AppLocalization.string("Enter a valid number for \(field.label).")
+                return
+            }
+            focusedKey = nil
+            save(field, value: .number(number))
+        case .timeZone:
+            guard let value = ProfileTimeZone.resolve(raw).storedValue else {
+                fieldErrors[field.key] = AppLocalization.string("That isn't a time zone name. Use one like America/Toronto or Europe/Paris, or leave it blank for the server's local time.")
+                return
+            }
+            drafts[field.key] = value
+            commitText(field, value: value)
+        default:
+            commitText(field, value: raw)
+        }
+    }
+
+    private func commitText(_ field: ProfileSettingField, value: String) {
+        focusedKey = nil
+        save(field, value: .text(value))
+    }
+
     private func reload() async {
         loading = true
         let fields = allFields
@@ -2544,16 +2646,23 @@ struct ProfileConfigSettingsPage: View {
     private func save(_ field: ProfileSettingField, value: ProfileSettingValue) {
         let previous = values[field.key]
         values[field.key] = value
-        error = nil
+        fieldErrors[field.key] = nil
+        if savedKey == field.key { savedKey = nil }
         Task {
             savingKey = field.key
             guard await save(field.key, value) else {
                 values[field.key] = previous
-                error = AppLocalization.string("Could not save \(field.label).")
+                fieldErrors[field.key] = AppLocalization.string("Could not save \(field.label).")
                 savingKey = nil
                 return
             }
             savingKey = nil
+            let token = UUID()
+            savedToken = token
+            withAnimation { savedKey = field.key }
+            try? await Task.sleep(for: Self.savedConfirmationDuration)
+            guard savedToken == token else { return }
+            withAnimation { savedKey = nil }
         }
     }
 

@@ -48,8 +48,10 @@ struct ChatReadState: Equatable {
     private(set) var pendingServerValues: [String: PendingServerValue] = [:]
     /// Conversations the user had on screen, with when, whose listed count
     /// may predate what they saw (their own last turn, a reply that streamed
-    /// in). A later listing adopts its count as seen unless the row's activity
-    /// is newer than that moment.
+    /// in). Each listing until the moment lapses adopts its count as seen
+    /// unless the row's activity is newer than that moment. It isn't spent on
+    /// the first listing: one fetched before the turn was stored, or a local
+    /// edit of the catalog, would use it up and leave the real count unread.
     private(set) var seenPendingRefresh: [String: Date] = [:]
 
     private var writeGeneration: UInt64 = 0
@@ -156,7 +158,14 @@ struct ChatReadState: Equatable {
     /// Folds a fresh listing in: seeds unknown rows as read, adopts counts for
     /// chats the user just had on screen, and retires pending server values
     /// the listing now confirms (or that have lapsed).
-    mutating func observe(_ sessions: [SessionSummary], profile: String, now: Date = Date()) {
+    ///
+    /// Returns the durable ids of rows whose latest activity the user saw
+    /// here (it landed before they left the chat). Hermes flags such a row
+    /// unread on its own, since its activity postdates the read watermark
+    /// written when the chat opened, so the caller clears that flag.
+    @discardableResult
+    mutating func observe(_ sessions: [SessionSummary], profile: String, now: Date = Date()) -> Set<String> {
+        var seenThrough = Set<String>()
         var counts = ledger.seenCounts[profile] ?? [:]
         var listed = Set<String>()
         for session in sessions {
@@ -174,8 +183,8 @@ struct ChatReadState: Equatable {
                     } ?? true
                     if !activityIsNewer {
                         counts[id] = max(count, counts[id] ?? 0)
+                        seenThrough.insert(id)
                     }
-                    seenPendingRefresh[key] = nil
                 }
                 // Desktop had the chat when its latest activity landed, so
                 // everything in it was on a screen. Both times are the host's.
@@ -208,11 +217,14 @@ struct ChatReadState: Equatable {
         if ledger.seenCounts[profile] != counts {
             ledger.seenCounts[profile] = counts
         }
+        return seenThrough
     }
 
     /// The user is looking at this conversation: everything in it is seen,
-    /// including whatever the next listing reports for it.
-    mutating func markSeen(_ session: SessionSummary, profile: String, at date: Date = Date()) {
+    /// including whatever the next listing reports for it. `restamp` moves
+    /// the seen moment to `date` even when it was set moments ago: leaving
+    /// a chat after a turn finished in it counts that turn as seen.
+    mutating func markSeen(_ session: SessionSummary, profile: String, at date: Date = Date(), restamp: Bool = false) {
         let id = Self.durableID(for: session)
         if let count = session.messageCount {
             let seen = max(count, ledger.seenCounts[profile]?[id] ?? 0)
@@ -221,7 +233,7 @@ struct ChatReadState: Equatable {
             }
         }
         let key = Self.key(profile, id)
-        if let stamped = seenPendingRefresh[key], date.timeIntervalSince(stamped) < Self.seenRestampInterval {
+        if !restamp, let stamped = seenPendingRefresh[key], date.timeIntervalSince(stamped) < Self.seenRestampInterval {
             // Recent enough: keep the state unchanged.
         } else {
             seenPendingRefresh[key] = date

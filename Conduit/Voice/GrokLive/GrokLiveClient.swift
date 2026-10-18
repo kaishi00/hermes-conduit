@@ -6,7 +6,8 @@
 //  plugin opens xAI's realtime socket with the host's SuperGrok sign-in
 //  (or its XAI_API_KEY) and relays Conduit's events both ways. The xAI
 //  credential never reaches Conduit; the socket is opened with the same
-//  single-use dashboard ticket the speech stream uses.
+//  single-use dashboard ticket the speech stream uses. The xAI upstream is
+//  the host's connection: Conduit never opens it.
 //
 
 import Foundation

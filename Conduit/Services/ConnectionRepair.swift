@@ -87,14 +87,57 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
     var debugDescription: String { description }
 }
 
+/// What Repair's Sign In to Reconnect opens: the sign-in the current staged
+/// test decided through the shared `DashboardSignInResolver`, never a second
+/// discovery that could disagree with it.
+enum ConnectionRepairSignIn {
+    /// The tested interactive outcome's sign-in, or, for the sign-in-choice
+    /// outcome, its browser sign-in, whose native capability check runs now
+    /// that it is picked. A failed check is an error: never the browser view
+    /// or a password instead. Nil when the test ended in neither outcome.
+    static func signIn(
+        for testState: ConnectionSetupTestState,
+        resolver: DashboardSignInResolver
+    ) async throws -> DashboardInteractiveSignIn? {
+        if let signIn = testState.interactiveSignIn {
+            return signIn
+        }
+        if let offer = testState.browserSignInOffer {
+            return try await resolver.signIn(for: offer)
+        }
+        return nil
+    }
+}
+
+/// One Sign In to Reconnect resolution, bound to the draft revision and test
+/// generation it started from (the `ConnectionRepairCandidate.isCurrent`
+/// idiom). A choice's capability check runs while the wizard stays
+/// interactive, so its answer opens a sign-in only if the user has not
+/// edited the draft or started another test in the meantime.
+struct ConnectionRepairSignInRequest {
+    let configuration: ConnectionSetupResult
+    let revision: Int
+    let generation: Int
+
+    func isCurrent(in flow: ConnectionSetupFlow) -> Bool {
+        flow.draftRevision == revision
+            && flow.testGeneration == generation
+            && flow.hasCurrentInteractiveAuthOutcome
+    }
+}
+
 /// Round 6: the Repair review's action model, built by ConnectionSetupView
 /// when the wizard runs in Repair mode. The view evaluates candidate
 /// currency; the form only renders states and forwards taps.
 struct ConnectionSetupRepairReview {
-    /// The staged test ended in an interactive sign-in outcome — the final
-    /// action is Sign In to Reconnect, not Reconnect Now. The view selects
-    /// native OAuth or the legacy browser bridge from fresh discovery.
+    /// The staged test ended in an interactive sign-in outcome (or a choice
+    /// that includes one) — the final action is Sign In to Reconnect, not
+    /// Reconnect Now, which opens the sign-in that test decided
+    /// (`ConnectionRepairSignIn`).
     let isInteractive: Bool
+    /// The dashboard also offers password sign-in (the sign-in-choice
+    /// outcome): Enter Credentials leads to a password test instead.
+    let offersPasswordSignIn: Bool
     /// A validated native transaction exists and is still current. Reconnect
     /// Now requires it; a consumed candidate forces a fresh test.
     let isCandidateAvailable: Bool
@@ -103,6 +146,7 @@ struct ConnectionSetupRepairReview {
     let isActivating: Bool
     let reconnectNow: () -> Void
     let signInToReconnect: () -> Void
+    let enterCredentials: () -> Void
     let testAgain: () -> Void
 }
 
@@ -155,4 +199,49 @@ final class AppStateConnectionRepairActivator: ConnectionRepairActivating {
             : .activated
     }
     #endif
+}
+
+/// Settings › Connection Setup's Review for the dashboard Conduit is set up
+/// for. When the staged test finds that this dashboard signs in through a
+/// browser (or offers it), the next step is signing in, right there: Sign
+/// In Again opens the sign-in the test decided, the way Repair's Sign In to
+/// Reconnect does, and the copy never claims a session that isn't there.
+/// Built by ConnectionSetupView; the form only renders it.
+struct ConnectionSetupSettingsReview {
+    /// Whether Conduit is connected to Hermes right now.
+    let isSessionConnected: Bool
+    /// The tested address is the active dashboard's and the test ended in
+    /// browser sign-in (or a choice offering it).
+    let offersSignInAgain: Bool
+    let isSigningIn: Bool
+    /// The classified failure of the last Sign In Again.
+    let signInFailure: ConnectionFailure?
+    let signInAgain: () -> Void
+
+    /// Sign In Again applies to the dashboard Conduit is set up for only:
+    /// another address signs in from the login card, never as a side
+    /// effect of Settings.
+    static func offersSignInAgain(for flow: ConnectionSetupFlow, activeDashboardURL: String?) -> Bool {
+        guard flow.enteredFromCurrentConnection,
+              flow.hasCurrentInteractiveAuthOutcome,
+              let activeDashboardURL,
+              let active = try? ConnectionURLPolicy.normalizedBaseURL(activeDashboardURL),
+              let tested = try? flow.draft.testConfiguration().serverURL else { return false }
+        return (try? ConnectionURLPolicy.normalizedBaseURL(tested)) == active
+    }
+
+    /// The Review headline when Sign In Again is offered.
+    static func signInAgainMessage(connected: Bool) -> String {
+        connected
+            ? AppLocalization.string("This dashboard uses browser-based sign-in. Sign in again here if Conduit stops connecting to it.")
+            : AppLocalization.string("This dashboard uses browser-based sign-in, and Conduit isn’t signed in to it right now. Sign in again to reconnect.")
+    }
+
+    /// What Use these settings / Done does with the current session. Only a
+    /// connected session "stays connected".
+    static func applyNote(connected: Bool) -> String {
+        connected
+            ? AppLocalization.string("Applying saves these settings for your next reconnect. Your current session stays connected.")
+            : AppLocalization.string("Applying saves these settings for your next reconnect. Conduit isn’t connected to this dashboard right now.")
+    }
 }

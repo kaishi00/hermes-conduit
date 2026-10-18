@@ -233,9 +233,109 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.sessions.map(\.title), ["Original"])
         XCTAssertEqual(appState.activeSessionTitle, previousActiveTitle)
         XCTAssertEqual(
-            appState.errorMessage,
+            appState.pinSyncNotice?.message,
             "Could not rename this conversation: Gateway rejected rename"
         )
+    }
+
+    // Archive and delete failures show over the Chats list and the open chat:
+    // `errorMessage` only shows while the composer is locked, so a refused
+    // change looked like the tap did nothing.
+
+    func testRefusedArchiveKeepsTheChatAndSaysWhy() async {
+        let appState = AppState(loadSavedConnection: false)
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+        appState.widgetSessionMutationRequestOverride = { _, method, _ in
+            if method == "GET" { return ["runtime_revision": 3, "runtime_generation": 1] }
+            throw DashboardTicketBridgeError.http(status: 403, detail: "permission_denied")
+        }
+
+        let archived = await appState.archiveSession(session)
+
+        XCTAssertFalse(archived)
+        XCTAssertEqual(appState.sessions.map(\.id), [session.id])
+        XCTAssertEqual(
+            appState.pinSyncNotice?.message,
+            "Could not archive this conversation: Hermes only lets the computer it runs on change this older chat. Change it there instead."
+        )
+    }
+
+    func testRefusedDeleteKeepsTheChatAndSaysWhy() async {
+        let appState = AppState(loadSavedConnection: false)
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+        var deletePath: String?
+        appState.widgetSessionMutationRequestOverride = { path, method, _ in
+            if method == "GET" { return ["runtime_revision": 3, "runtime_generation": 1] }
+            deletePath = path
+            throw DashboardTicketBridgeError.http(status: 403, detail: "permission_denied")
+        }
+
+        let deleted = await appState.deleteSession(session)
+
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(appState.sessions.map(\.id), [session.id])
+        XCTAssertTrue(deletePath?.contains("expected_generation=1") == true)
+        XCTAssertEqual(
+            appState.pinSyncNotice?.message,
+            "Could not delete this conversation: Hermes only lets the computer it runs on change this older chat. Change it there instead."
+        )
+    }
+
+    func testDeleteRemovesTheChatWhenHermesTakesIt() async {
+        let appState = AppState(loadSavedConnection: false)
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+        appState.widgetSessionMutationRequestOverride = { _, method, _ in
+            method == "GET" ? ["runtime_revision": 3, "runtime_generation": 1] : ["ok": true]
+        }
+
+        let deleted = await appState.deleteSession(session)
+
+        XCTAssertTrue(deleted)
+        XCTAssertTrue(appState.sessions.isEmpty)
+        XCTAssertNil(appState.pinSyncNotice)
+    }
+
+    func testDeleteDuringAnotherChangeSaysToWait() async {
+        let appState = AppState(loadSavedConnection: false)
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+        var release: CheckedContinuation<Void, Never>?
+        appState.widgetSessionMutationRequestOverride = { _, method, _ in
+            if method == "GET" { return ["runtime_revision": 3, "runtime_generation": 1] }
+            await withCheckedContinuation { release = $0 }
+            return ["ok": true]
+        }
+
+        let archive = Task { await appState.archiveSession(session) }
+        let deadline = Date().addingTimeInterval(5)
+        while !appState.isSessionMutationInFlight(session) || release == nil {
+            guard Date() < deadline else { return XCTFail("The archive never reached Hermes") }
+            await Task.yield()
+        }
+        let deleted = await appState.deleteSession(session)
+
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(
+            appState.pinSyncNotice?.message,
+            "Wait for the current conversation change to finish, then try again."
+        )
+        release?.resume()
+        let archived = await archive.value
+        XCTAssertTrue(archived)
+    }
+
+    func testArchiveWithoutHermesSaysToReconnect() async {
+        let appState = AppState(loadSavedConnection: false)
+        let session = makeSession(profile: appState.activeProfile)
+        appState.sessions = [session]
+
+        let archived = await appState.archiveSession(session)
+
+        XCTAssertFalse(archived)
+        XCTAssertEqual(appState.pinSyncNotice?.message, "Reconnect to Hermes to change this conversation.")
     }
 
     func testTransportCancellationRemainsAUserVisibleFailure() async {

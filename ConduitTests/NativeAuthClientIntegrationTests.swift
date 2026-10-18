@@ -527,6 +527,65 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
         XCTAssertNotNil(server.lastRequest(path: "/api/auth/providers/redirected"))
     }
 
+    func testSameOriginRedirectToASignInPortalIsInteractiveSignIn() async throws {
+        // A forward-auth gate on the dashboard's own origin: Hermes is
+        // mounted under /hermes and an unauthenticated request is redirected
+        // to a sign-in portal on the same origin. The delegate follows that
+        // redirect (same origin), lands on the portal's page, and discovery
+        // reports the interactive-auth signal, as it does for a redirect to
+        // another origin, rather than an unrecognized server.
+        let server = try LoopbackHTTPServer.start { request in
+            if request.path == "/hermes/api/auth/providers" {
+                return LoopbackHTTPResponse(
+                    status: 302,
+                    headers: [("Location", "/portal/sign-in?rd=%2Fhermes%2Fapi%2Fauth%2Fproviders")],
+                    body: Data()
+                )
+            }
+            if request.path.hasPrefix("/portal/sign-in") {
+                return LoopbackHTTPResponse(
+                    status: 200,
+                    headers: [("Content-Type", "text/html")],
+                    body: Data("<html>sign in</html>".utf8)
+                )
+            }
+            return .json(status: 404, body: #"{"detail":"Not found"}"#)
+        }
+        defer { server.stop() }
+
+        let discovery = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)/hermes",
+            sessionConfiguration: realSessionConfiguration()
+        ).authProviderDiscovery()
+
+        XCTAssertEqual(discovery, .interactiveSignInRequired)
+        XCTAssertEqual(
+            server.receivedRequests.map(\.path),
+            ["/hermes/api/auth/providers", "/portal/sign-in?rd=%2Fhermes%2Fapi%2Fauth%2Fproviders"],
+            "The same-origin redirect is followed once and nothing else is asked"
+        )
+    }
+
+    func testDirectNonHermesAnswerStaysUnrecognized() async throws {
+        // The same page answered directly, without a redirect, is not a
+        // sign-in signal: another web app or a proxy's own page answered.
+        let server = try LoopbackHTTPServer.start { _ in
+            LoopbackHTTPResponse(
+                status: 200,
+                headers: [("Content-Type", "text/html")],
+                body: Data("<html>not hermes</html>".utf8)
+            )
+        }
+        defer { server.stop() }
+
+        let discovery = try await NativeAuthClient(
+            baseURL: "http://127.0.0.1:\(server.port)",
+            sessionConfiguration: realSessionConfiguration()
+        ).authProviderDiscovery()
+
+        XCTAssertEqual(discovery, .unrecognized)
+    }
+
     private func realSessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
@@ -574,31 +633,6 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
     }
 }
 
-private struct LoopbackHTTPRequest: Sendable {
-    let method: String
-    let path: String
-    let headers: [String: String]
-    let body: Data
-}
-
-private struct LoopbackHTTPResponse: Sendable {
-    let status: Int
-    let headers: [(String, String)]
-    let body: Data
-
-    static func json(
-        status: Int,
-        headers: [(String, String)] = [],
-        body: String
-    ) -> LoopbackHTTPResponse {
-        LoopbackHTTPResponse(
-            status: status,
-            headers: [("Content-Type", "application/json")] + headers,
-            body: Data(body.utf8)
-        )
-    }
-}
-
 private final class TwoRequestBarrier: @unchecked Sendable {
     private let condition = NSCondition()
     private var arrivals = 0
@@ -620,192 +654,5 @@ private final class TwoRequestBarrier: @unchecked Sendable {
         }
         condition.unlock()
         return true
-    }
-}
-
-private final class LoopbackHTTPServer: @unchecked Sendable {
-    typealias Handler = @Sendable (LoopbackHTTPRequest) -> LoopbackHTTPResponse
-
-    private let listener: NWListener
-    private let queue = DispatchQueue(
-        label: "conduit.native-auth.loopback",
-        attributes: .concurrent
-    )
-    private let handler: Handler
-    private let lock = NSLock()
-    private var requests: [LoopbackHTTPRequest] = []
-    private var connections: [ObjectIdentifier: NWConnection] = [:]
-
-    private init(listener: NWListener, handler: @escaping Handler) {
-        self.listener = listener
-        self.handler = handler
-    }
-
-    static func start(handler: @escaping Handler) throws -> LoopbackHTTPServer {
-        let listener = try NWListener(using: .tcp, on: .any)
-        let server = LoopbackHTTPServer(listener: listener, handler: handler)
-        try server.startAndWaitUntilReady()
-        return server
-    }
-
-    var port: UInt16 {
-        listener.port?.rawValue ?? 0
-    }
-
-    func stop() {
-        listener.cancel()
-        lock.lock()
-        let activeConnections = Array(connections.values)
-        connections.removeAll()
-        lock.unlock()
-        for connection in activeConnections {
-            connection.cancel()
-        }
-    }
-
-    func lastRequest(path: String) -> LoopbackHTTPRequest? {
-        lock.lock()
-        defer { lock.unlock() }
-        return requests.last(where: { $0.path == path })
-    }
-
-    private func startAndWaitUntilReady() throws {
-        let ready = DispatchSemaphore(value: 0)
-        let stateLock = NSLock()
-        var startError: Error?
-
-        listener.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                ready.signal()
-            case .failed(let error):
-                stateLock.lock()
-                startError = error
-                stateLock.unlock()
-                ready.signal()
-            default:
-                break
-            }
-        }
-        listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection)
-        }
-        listener.start(queue: queue)
-
-        guard ready.wait(timeout: .now() + 5) == .success else {
-            listener.cancel()
-            throw NSError(
-                domain: "LoopbackHTTPServer",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Timed out starting loopback HTTP server"]
-            )
-        }
-        stateLock.lock()
-        let error = startError
-        stateLock.unlock()
-        if let error {
-            listener.cancel()
-            throw error
-        }
-        guard port != 0 else {
-            listener.cancel()
-            throw NSError(
-                domain: "LoopbackHTTPServer",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Loopback HTTP server did not receive a port"]
-            )
-        }
-    }
-
-    private func accept(_ connection: NWConnection) {
-        lock.lock()
-        connections[ObjectIdentifier(connection)] = connection
-        lock.unlock()
-        connection.start(queue: queue)
-        receive(on: connection, buffer: Data())
-    }
-
-    private func receive(on connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else {
-                connection.cancel()
-                return
-            }
-            var accumulated = buffer
-            if let data {
-                accumulated.append(data)
-            }
-            if let request = Self.parseRequest(from: accumulated) {
-                lock.lock()
-                requests.append(request)
-                lock.unlock()
-                send(handler(request), on: connection)
-                return
-            }
-            if error != nil || isComplete {
-                remove(connection)
-                connection.cancel()
-                return
-            }
-            receive(on: connection, buffer: accumulated)
-        }
-    }
-
-    private func send(_ response: LoopbackHTTPResponse, on connection: NWConnection) {
-        let reason: String
-        switch response.status {
-        case 200: reason = "OK"
-        case 302: reason = "Found"
-        case 401: reason = "Unauthorized"
-        case 404: reason = "Not Found"
-        default: reason = "Response"
-        }
-        var header = "HTTP/1.1 \(response.status) \(reason)\r\n"
-        for (name, value) in response.headers {
-            header += "\(name): \(value)\r\n"
-        }
-        header += "Content-Length: \(response.body.count)\r\n"
-        header += "Connection: close\r\n\r\n"
-        var payload = Data(header.utf8)
-        payload.append(response.body)
-        connection.send(content: payload, completion: .contentProcessed { [weak self] _ in
-            self?.remove(connection)
-            connection.cancel()
-        })
-    }
-
-    private func remove(_ connection: NWConnection) {
-        lock.lock()
-        connections.removeValue(forKey: ObjectIdentifier(connection))
-        lock.unlock()
-    }
-
-    private static func parseRequest(from data: Data) -> LoopbackHTTPRequest? {
-        let delimiter = Data("\r\n\r\n".utf8)
-        guard let headerRange = data.range(of: delimiter),
-              let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
-            return nil
-        }
-        let lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return nil }
-        let parts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
-        guard parts.count >= 2 else { return nil }
-
-        var headers: [String: String] = [:]
-        for line in lines.dropFirst() {
-            guard let separator = line.firstIndex(of: ":") else { continue }
-            let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
-            headers[name] = value
-        }
-        let contentLength = Int(headers["content-length"] ?? "0") ?? 0
-        let bodyStart = headerRange.upperBound
-        guard data.count >= bodyStart + contentLength else { return nil }
-        return LoopbackHTTPRequest(
-            method: parts[0],
-            path: parts[1],
-            headers: headers,
-            body: data.subdata(in: bodyStart..<(bodyStart + contentLength))
-        )
     }
 }

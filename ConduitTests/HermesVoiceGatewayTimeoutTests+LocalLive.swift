@@ -380,6 +380,8 @@ private final class LocalLiveTurnScript {
     private(set) var redirected: [String] = []
     private(set) var spoken: [String] = []
     private(set) var done: [String] = []
+    private(set) var shown: [String] = []
+    var hasScreen = true
 
     func makeRunner() -> LocalLiveTurnRunner {
         let runner = LocalLiveTurnRunner(backend: LocalLiveTurnRunner.Backend(
@@ -400,6 +402,10 @@ private final class LocalLiveTurnScript {
         ))
         runner.onDelta = { [unowned self] id, text in self.spoken.append("\(id):\(text)") }
         runner.onDone = { [unowned self] id in self.done.append(id) }
+        runner.onVisual = { [unowned self] markdown in
+            self.shown.append(markdown)
+            return self.hasScreen
+        }
         return runner
     }
 }
@@ -423,6 +429,113 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(script.spoken, ["t1:Two ", "t1:meetings."], "the reply isn't said twice")
         XCTAssertEqual(script.done, ["t1"])
         XCTAssertFalse(runner.isFollowingReply)
+    }
+
+    func testLocalLiveTurnShowsWhatsToBeSeenAndSaysTheRest() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Weather this week?")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        let reply = "Mild all week.\n| Day | High |\n|---|---|\n| Mon | 20 |\nSee [the forecast](https://example.com/f)."
+        for chunk in stride(from: 0, to: reply.count, by: 4) {
+            let start = reply.index(reply.startIndex, offsetBy: chunk)
+            let end = reply.index(start, offsetBy: 4, limitedBy: reply.endIndex) ?? reply.endIndex
+            runner.observe(.messageDelta(sessionId: "rt-1", text: String(reply[start..<end])))
+        }
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m1", content: reply, reasoning: nil))
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+        XCTAssertEqual(said, "Mild all week.\nSee the forecast.\n" + LocalLiveTurnRunner.onScreenLine)
+        XCTAssertEqual(script.shown, ["| Day | High |\n|---|---|\n| Mon | 20 |\n\n- [the forecast](https://example.com/f)"])
+        XCTAssertEqual(script.done, ["t1"])
+    }
+
+    func testLocalLiveTurnDoesntShowWhatHermesShowedOrHasNoScreenFor() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Show me the table")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        runner.observe(.toolStart(sessionId: "rt-1", toolName: PresentedCard.toolName, toolInput: nil))
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m1", content: "It's up.\n| a |", reasoning: nil))
+        XCTAssertEqual(script.shown, [], "conduit_show already put it on screen")
+        XCTAssertEqual(script.spoken, ["t1:It's up.\n"])
+
+        script.hasScreen = false
+        runner.start(turnID: "t2", text: "And the code?")
+        await localLiveSettle(until: { script.submitted.count == 2 })
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m2", content: "Here.\n```\nx = 1\n```", reasoning: nil))
+        XCTAssertEqual(script.shown, ["```\nx = 1\n```"])
+        XCTAssertEqual(script.spoken.last, "t2:Here.\n", "no screen took it: the call doesn't say it's there")
+
+        script.hasScreen = true
+        runner.start(turnID: "t3", text: "And now?")
+        await localLiveSettle(until: { script.submitted.count == 3 })
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m3", content: "Now.\n| b |", reasoning: nil))
+        XCTAssertEqual(Array(script.spoken.suffix(2)), ["t3:Now.\n", "t3:" + LocalLiveTurnRunner.onScreenLine],
+                       "a line already ended: no extra pause")
+        XCTAssertEqual(script.done, ["t1", "t2", "t3"])
+    }
+
+    func testSpokenVisualSplitterGivesTheSameResultHoweverTheReplyIsSplit() {
+        let reply = """
+        Here's the plan, or https://example.com/plan.
+        https://example.com/raw
+        ```swift
+        let x = 1
+        ```
+        Inline ![chart](https://example.com/c.png) and [a link](https://example.com/l)!
+        ~~~
+        open fence
+        """
+        func split(every size: Int) -> (String, String) {
+            var splitter = SpokenVisualSplitter()
+            var said = ""
+            var index = reply.startIndex
+            while index < reply.endIndex {
+                let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                said += splitter.feed(String(reply[index..<end]))
+                index = end
+            }
+            said += splitter.finish()
+            return (said, splitter.visualMarkdown)
+        }
+        let whole = split(every: reply.count)
+        XCTAssertEqual(whole.0, "Here's the plan, or .\nInline  and a link!\n")
+        XCTAssertEqual(whole.1, """
+        - https://example.com/plan
+        - https://example.com/raw
+
+        ```swift
+        let x = 1
+        ```
+
+        - ![chart](https://example.com/c.png)
+        - [a link](https://example.com/l)
+
+        ~~~
+        open fence
+        ~~~
+        """)
+        // A word ending in "h" or "ht" is said whole, at once.
+        var words = SpokenVisualSplitter()
+        XCTAssertEqual(words.feed("Go with"), "Go with")
+        XCTAssertEqual(words.feed(" light h"), " light ")
+        XCTAssertEqual(words.feed("ttps://a.b ok"), " ok")
+        XCTAssertEqual(words.visualMarkdown, "- https://a.b")
+        // So is a word ending in "!".
+        var exclaimed = SpokenVisualSplitter()
+        XCTAssertEqual(exclaimed.feed("Hello!"), "Hello!")
+        XCTAssertEqual(exclaimed.feed(" See !"), " See ")
+        // A fence opened with a language inside a block is content, not its end.
+        var nested = SpokenVisualSplitter()
+        XCTAssertEqual(nested.feed("```markdown\n```bash\nls\n"), "", "ls is still inside the block")
+        XCTAssertEqual(nested.feed("```\nAfter.\n"), "After.\n")
+        XCTAssertEqual(nested.visualMarkdown, "```markdown\n```bash\nls\n```")
+
+        for size in 1...9 {
+            let parts = split(every: size)
+            XCTAssertEqual(parts.0, whole.0, "split every \(size)")
+            XCTAssertEqual(parts.1, whole.1, "split every \(size)")
+        }
     }
 
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {
@@ -533,6 +646,14 @@ extension VoiceConversationControllerTests {
         runner.observe(.messageError(sessionId: "rt-1", message: "Provider timeout"))
         XCTAssertEqual(script.spoken, ["t1:\(LocalLiveTurnRunner.errorLine)"])
         XCTAssertEqual(script.done, ["t1"])
+
+        runner.start(turnID: "t2", text: "Try again")
+        await localLiveSettle(until: { script.submitted.count == 2 })
+        runner.observe(.messageDelta(sessionId: "rt-1", text: "Here's the table:\n| a |"))
+        runner.observe(.messageError(sessionId: "rt-1", message: "Provider timeout"))
+        XCTAssertEqual(Array(script.spoken.suffix(2)), ["t2:Here's the table:\n", "t2:\(LocalLiveTurnRunner.errorLine)"],
+                       "what the broken reply still held isn't said after the call's line")
+        XCTAssertEqual(script.shown, [])
     }
 }
 

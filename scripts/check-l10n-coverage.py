@@ -148,6 +148,7 @@ STRING_DISPLAY_PARAMETERS = {
     "ConduitSettingsSection": ("title",),
     "ConduitSheetHeader": ("title",),
     "SettingsMetricRow": ("label", "value"),
+    "SessionListPlaceholderView": ("emptyTitle", "emptyDescription"),
     "NotificationSetupCommand": ("title",),
     "ModelPickerSection": ("title",),
     "BotModeNoticeRow": ("message",),

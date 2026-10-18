@@ -10,6 +10,10 @@ struct ConnectionSetupForm: View {
     /// actions are Reconnect Now / Sign In to Reconnect instead of the
     /// login-form handoff or the Settings Done/apply paths.
     let repairReview: ConnectionSetupRepairReview?
+    /// Non-nil only for the Settings current-connection entry: whether the
+    /// session is connected, and Sign In Again when the test found that the
+    /// active dashboard signs in through a browser.
+    var settingsReview: ConnectionSetupSettingsReview? = nil
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case host, port, url, username, password }
@@ -205,7 +209,7 @@ struct ConnectionSetupForm: View {
             ConnectionSetupHeader(
                 symbol: "stethoscope",
                 title: AppLocalization.string("Test connection"),
-                detail: AppLocalization.string("Conduit will check the dashboard address and try your credentials now. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen.")
+                detail: AppLocalization.string("Conduit will check the dashboard address and how it signs in, and try a username and password only if you entered them. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen.")
             )
             // Entries that skipped the details form (the Settings
             // current-connection and Repair entries) still show what is
@@ -231,6 +235,9 @@ struct ConnectionSetupForm: View {
                 // re-testing.
                 LoginPrimaryButton(title: AppLocalization.string("Continue")) { flow.continueToReview() }
                     .accessibilityIdentifier("setup.test.continue")
+                if flow.testState.requiresSignInChoice {
+                    signInChoiceEnterCredentialsButton
+                }
             } else if !flow.testState.isRunning {
                 LoginPrimaryButton(title: AppLocalization.string("Test Connection")) { onStartTest() }
                     .accessibilityIdentifier("setup.test.run")
@@ -252,12 +259,20 @@ struct ConnectionSetupForm: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.test.credentials-required")
-            Button("Enter Credentials") {
+            Button(AppLocalization.string("Enter Credentials")) {
                 flow.editAfterFailedTest(.loginCredentials)
             }
             .buttonStyle(.settingsPrimary)
             .accessibilityIdentifier("setup.test.enter-credentials")
         }
+    }
+
+    /// The sign-in-choice outcome's password path: test a username and
+    /// password now instead of choosing on the login screen.
+    private var signInChoiceEnterCredentialsButton: some View {
+        Button(AppLocalization.string("Enter Credentials")) { flow.enterCredentialsForSignInChoice() }
+            .buttonStyle(.settings)
+            .accessibilityIdentifier("setup.test.choice-enter-credentials")
     }
 
     @ViewBuilder
@@ -285,7 +300,7 @@ struct ConnectionSetupForm: View {
                     plan.remediationStep == .connectionDetails ? "setup.test.edit-details" : "setup.test.edit-credentials"
                 )
                 if plan.offersRetry {
-                    Button("Try Again") { onStartTest() }
+                    Button(AppLocalization.string("Try Again")) { onStartTest() }
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.test.retry")
                 }
@@ -299,7 +314,17 @@ struct ConnectionSetupForm: View {
             // The staged result that authorizes this screen: a current
             // successful test or the interactive-auth outcome.
             if flow.canUseSettings {
-                if flow.testState.requiresInteractiveSignIn {
+                if let settingsReview, settingsReview.offersSignInAgain {
+                    // Settings, for the dashboard Conduit is set up for:
+                    // the next step is signing in, here. Never "return to
+                    // the login screen" while the app shell is up.
+                    ConnectionSetupBanner(tone: .pending) {
+                        Text(ConnectionSetupSettingsReview.signInAgainMessage(connected: settingsReview.isSessionConnected))
+                            .font(.callout.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("setup.test.sign-in-again")
+                    }
+                } else if flow.testState.requiresInteractiveSignIn {
                     // The user has NOT authenticated: say what happens next
                     // instead of claiming success. Never "Login successful".
                     ConnectionSetupBanner(tone: .pending) {
@@ -309,6 +334,15 @@ struct ConnectionSetupForm: View {
                             .font(.callout.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("setup.test.interactive-ready")
+                    }
+                } else if flow.testState.requiresSignInChoice {
+                    ConnectionSetupBanner(tone: .pending) {
+                        Text(flow.isRepairingConnection
+                             ? ConnectionSetupTestState.repairSignInChoiceMessage
+                             : ConnectionSetupTestState.signInChoiceMessage)
+                            .font(.callout.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("setup.test.sign-in-choice")
                     }
                 } else if repairReview?.activationFailure != nil {
                     // Repair: the explicit reconnect failed after a verified
@@ -334,17 +368,59 @@ struct ConnectionSetupForm: View {
                 repairReviewFooter(repair)
             } else {
                 ConnectionSetupNote(text: flow.enteredFromCurrentConnection
-                     ? AppLocalization.string("Applying saves these settings for your next reconnect. Your current session stays connected.")
-                     : AppLocalization.string("These settings will fill the login form. You’ll tap Connect there when you’re ready."))
+                     ? ConnectionSetupSettingsReview.applyNote(connected: settingsReview?.isSessionConnected ?? true)
+                     : AppLocalization.string("These settings will fill the login form. Tap Continue there when you’re ready."))
+                    .accessibilityIdentifier("setup.review.apply-note")
                 validationNotice
                 // From Settings with unchanged, successfully tested settings
                 // there is nothing to apply — Done simply closes the wizard.
-                LoginPrimaryButton(title: flow.testedSettingsUnchanged ? AppLocalization.string("Done") : AppLocalization.string("Use these settings")) {
-                    if let result = flow.complete() { onComplete(result) }
+                if let settingsReview, settingsReview.offersSignInAgain {
+                    // Sign In Again is the primary action.
+                    settingsSignInAgain(settingsReview)
+                    Button(useSettingsTitle) {
+                        if let result = flow.complete() { onComplete(result) }
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(!reviewIsValid || settingsReview.isSigningIn)
+                    .accessibilityIdentifier("setup.use-settings")
+                } else {
+                    LoginPrimaryButton(title: useSettingsTitle) {
+                        if let result = flow.complete() { onComplete(result) }
+                    }
+                    .disabled(!reviewIsValid)
+                    .accessibilityIdentifier("setup.use-settings")
                 }
-                .disabled(!reviewIsValid)
-                .accessibilityIdentifier("setup.use-settings")
+                if flow.canUseSettings, flow.testState.requiresSignInChoice {
+                    signInChoiceEnterCredentialsButton
+                }
             }
+        }
+    }
+
+    private var useSettingsTitle: String {
+        flow.testedSettingsUnchanged ? AppLocalization.string("Done") : AppLocalization.string("Use these settings")
+    }
+
+    /// Settings' Sign In Again: opens the sign-in the test decided for the
+    /// active dashboard, and reconnects when it finishes.
+    @ViewBuilder
+    private func settingsSignInAgain(_ review: ConnectionSetupSettingsReview) -> some View {
+        if review.isSigningIn {
+            LoginPrimaryButton(title: AppLocalization.string("Reconnecting…"), isBusy: true) {}
+                .disabled(true)
+                .accessibilityIdentifier("setup.review.reconnecting")
+        } else {
+            if let failure = review.signInFailure {
+                ConnectionSetupBanner(tone: .failure) {
+                    Text(failure.userMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("setup.review.sign-in-again-failure")
+                }
+            }
+            LoginPrimaryButton(title: AppLocalization.string("Sign In Again")) { review.signInAgain() }
+                .accessibilityIdentifier("setup.review.sign-in-again")
         }
     }
 
@@ -372,6 +448,11 @@ struct ConnectionSetupForm: View {
             if repair.isInteractive {
                 LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")
+                if repair.offersPasswordSignIn {
+                    Button(AppLocalization.string("Enter Credentials")) { repair.enterCredentials() }
+                        .buttonStyle(.settings)
+                        .accessibilityIdentifier("setup.review.enter-credentials")
+                }
             } else if repair.isCandidateAvailable {
                 LoginPrimaryButton(title: AppLocalization.string("Reconnect Now")) { repair.reconnectNow() }
                     .accessibilityIdentifier("setup.review.reconnect-now")
@@ -393,9 +474,15 @@ struct ConnectionSetupForm: View {
                 }
                 if result.password.isEmpty {
                     // Only reachable through the interactive-auth acceptance:
-                    // discovery proved this dashboard signs in via the browser,
-                    // so the absent password is expected, not an omission.
-                    reviewValue(AppLocalization.string("Password"), AppLocalization.string("None — browser sign-in"))
+                    // discovery proved this dashboard signs in via the browser
+                    // (or offers it alongside a password the user has not
+                    // entered), so the absent password is expected.
+                    reviewValue(
+                        AppLocalization.string("Password"),
+                        flow.testState.requiresSignInChoice
+                            ? AppLocalization.string("Not entered")
+                            : AppLocalization.string("None — browser sign-in")
+                    )
                 } else {
                     reviewValue(AppLocalization.string("Password"), AppLocalization.string("Entered"))
                 }
@@ -542,10 +629,10 @@ struct ConnectionSetupStageRow: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.body)
                 .foregroundStyle(.green)
-        case .requiresInteractiveSignIn, .requiresCredentials:
+        case .requiresInteractiveSignIn, .requiresCredentials, .requiresSignInChoice:
             // An open circle in the accent color: deliberately not a
             // checkmark (the user has not authenticated) and not an error
-            // mark (nothing failed). Both are partial outcomes — text and
+            // mark (nothing failed). All are partial outcomes — text and
             // VoiceOver carry which one it is.
             Image(systemName: "circle")
                 .font(.body)

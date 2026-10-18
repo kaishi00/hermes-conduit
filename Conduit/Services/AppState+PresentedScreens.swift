@@ -32,6 +32,64 @@ extension AppState {
         await openExpectedPresentedMaps()
     }
 
+    /// Whether a voice conversation is up that can show Hermes' cards.
+    var voiceConversationShowsCards: Bool {
+        isGeminiLiveActive || isGrokLiveActive || isLocalLiveActive || showVoiceSheet
+    }
+
+    /// Hermes showing a card (`conduit_show`) or ending a reply during a
+    /// voice conversation: fetch what it showed. The tool's start comes
+    /// before the card is kept, and its end isn't sent when tool progress
+    /// is off, so the reply's end fetches too.
+    func notePresentedCardEvent(_ event: StreamEvent) {
+        guard voiceConversationShowsCards else { return }
+        switch event {
+        case .toolStart(_, let name, _, _):
+            guard name == PresentedCard.toolName else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.voiceConversationShowsCards else { return }
+                await self.syncPresentedScreens()
+            }
+        case .toolComplete(_, let name, _, _):
+            guard name == PresentedCard.toolName else { return }
+            Task { [weak self] in await self?.syncPresentedScreens() }
+        case .messageComplete:
+            Task { [weak self] in await self?.syncPresentedScreens() }
+        default:
+            return
+        }
+    }
+
+    /// New cards from Hermes: on the call's screen (waiting there while
+    /// it's minimised: Hermes has said they're on it), or over a Classic
+    /// voice conversation, where one sheet holds them all, cards arriving
+    /// while it's open included. Outside a voice conversation they're only
+    /// noted.
+    func showPresentedCards(_ cards: [PresentedCard]) {
+        var unshown: [PresentedCard] = []
+        for card in cards {
+            let shown = voiceBackgroundJobSupervisor.showOnScreen(
+                title: card.title, markdown: card.markdown, cards: card.cards, evenIfHidden: true)
+            if shown == nil { unshown.append(card) }
+        }
+        guard showVoiceSheet, !unshown.isEmpty else { return }
+        let parts = (classicVoiceCard == nil ? [] : classicVoiceCardParts) + unshown
+        classicVoiceCardParts = parts
+        let title = parts.count == 1 ? parts[0].title : AppLocalization.string("From Hermes")
+        // Each card under its own heading when there are several, clipped as
+        // the call screen clips its cards.
+        let markdown = parts.count == 1 ? parts[0].markdown : parts.map { card in
+            card.title.isEmpty ? card.markdown : "### \(card.title)\n\n\(card.markdown)"
+        }.joined(separator: "\n\n")
+        classicVoiceCard = PresentedCard(
+            id: parts.map(\.id).joined(separator: "+"),
+            title: String(title.prefix(VoiceBackgroundJobSupervisor.maximumTitleCharacters)),
+            markdown: VoiceBackgroundJobSupervisor.clippedScreenMarkdown(markdown),
+            cards: parts.flatMap(\.cards)
+        )
+    }
+
     /// Hermes was seen asking to open Apple Maps (`conduit_maps` navigate)
     /// in the chat on screen: that Go confirmation opens Maps without a tap.
     func noteMapsNavigateExpected(_ promptID: String) {

@@ -4,8 +4,8 @@
 //
 //  Tasks: a glass segmented control over the Kanban board (its lanes as
 //  side-by-side columns) and the scheduled jobs (schedule, next run, and an
-//  on/off switch). Each scheduled run lands in Chats as its own
-//  conversation.
+//  on/off switch). Each scheduled run is its own conversation, listed in
+//  Chats under the Scheduled filter.
 //
 
 import SwiftUI
@@ -237,11 +237,25 @@ struct V2ScheduledList: View {
         }
     }
 
+    /// Runs are kept out of the All list in Chats, so a job running every
+    /// few minutes doesn't bury the conversations; the Scheduled filter
+    /// there lists them, one tap away.
     private var listFooter: some View {
-        Text(AppLocalization.string("Each run lands in Chats as its own conversation. Ask Hermes to add or change a schedule."))
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.top, 6)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppLocalization.string("Each run is saved as its own conversation. Chats lists them under the Scheduled filter. Ask Hermes to add or change a schedule."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button {
+                Haptics.light()
+                shell.showScheduledRuns()
+            } label: {
+                Label(AppLocalization.string("Show runs in Chats"), systemImage: "bubble.left.and.bubble.right")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .tint(.conduitAccent)
+        }
+        .padding(.top, 6)
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -313,7 +327,7 @@ struct V2ScheduledList: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
-                    Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
+                    Text(CronScheduleText.describe(job, zoneLabel: scheduleZoneLabel) ?? AppLocalization.string("No schedule"))
                         .font(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
@@ -365,8 +379,7 @@ struct V2ScheduledList: View {
                 )
             }
             .tint(.conduitAccent)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // On the side away from Run now, so it isn't hit by accident.
             // Not a destructive role: that removes the row before the
             // confirmation is answered.
             Button {
@@ -377,6 +390,8 @@ struct V2ScheduledList: View {
             }
             .tint(.red)
             .disabled(appState.cronJobActionID != nil)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !job.isFinished {
                 Button {
                     Haptics.medium()
@@ -401,37 +416,20 @@ struct V2ScheduledList: View {
         }
     }
 
-    /// "Next run in 3 hours", the job's state when it won't run again.
+    /// The profile zone Hermes runs schedules in, when it isn't this
+    /// iPhone's (a schedule's times are that zone's wall clock).
+    private var scheduleZoneLabel: String? {
+        ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)
+    }
+
+    /// "Next run in 3 hours" or "Next run Monday 8:00 AM", the job's state
+    /// when it won't run again.
     private func nextRunLine(_ job: CronJob) -> String {
         guard job.isActive else { return job.statusLabel }
         guard let raw = job.nextRunAt, !raw.isEmpty else { return job.statusLabel }
-        guard let date = Self.parseDate(raw) else {
+        guard let date = CronScheduleText.parseDate(raw) else {
             return AppLocalization.string("Next run \(raw)")
         }
-        let formatter = Self.relativeFormatter
-        formatter.locale = AppLocalization.formattingLocale
-        return AppLocalization.string("Next run \(formatter.localizedString(for: date, relativeTo: Date()))")
-    }
-
-    // Shared per list; rows read them on the main actor only.
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter
-    }()
-
-    private static let fractionalISOFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let plainISOFormatter = ISO8601DateFormatter()
-
-    private static func parseDate(_ raw: String) -> Date? {
-        if let date = fractionalISOFormatter.date(from: raw) { return date }
-        if let date = plainISOFormatter.date(from: raw) { return date }
-        if let seconds = Double(raw) { return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds) }
-        return nil
+        return AppLocalization.string("Next run \(CronScheduleText.runTimeText(date))")
     }
 }
