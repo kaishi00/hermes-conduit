@@ -17,6 +17,7 @@
 //  re-lays-out the whole document at 30 fps (measured 0.8–3.3 s per frame).
 //
 
+import Combine
 import SwiftUI
 
 struct StreamingText: View {

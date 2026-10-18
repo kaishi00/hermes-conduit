@@ -18,8 +18,8 @@ enum ScreenQuestionStartAppEnum: String, AppEnum {
     case voice
     case keyboard
 
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Start with")
-    static var caseDisplayRepresentations: [ScreenQuestionStartAppEnum: DisplayRepresentation] = [
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Start with")
+    static let caseDisplayRepresentations: [ScreenQuestionStartAppEnum: DisplayRepresentation] = [
         .voice: "Voice",
         .keyboard: "Keyboard"
     ]
@@ -38,8 +38,8 @@ enum ScreenQuestionChatAppEnum: String, AppEnum {
     case recent
     case new
 
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Chat")
-    static var caseDisplayRepresentations: [ScreenQuestionChatAppEnum: DisplayRepresentation] = [
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Chat")
+    static let caseDisplayRepresentations: [ScreenQuestionChatAppEnum: DisplayRepresentation] = [
         .recent: "Recent Chat",
         .new: "New Chat"
     ]
@@ -115,15 +115,15 @@ struct ScreenQuestionStagingError: LocalizedError {
 /// the chat once Hermes is connected.
 @available(iOS 16.0, *)
 struct AskHermesAboutScreenIntent: AppIntent {
-    static var title: LocalizedStringResource = "Ask Hermes About Screen"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Ask Hermes About Screen"
+    static let description = IntentDescription(
         "Open Conduit with this screenshot attached to a chat, ready for your question."
     )
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.
     @available(iOS, deprecated: 26.0, message: "Use supportedModes on iOS 26+; retained for iOS 17–25.")
-    static var openAppWhenRun: Bool = true
+    static let openAppWhenRun: Bool = true
 
     @available(iOS 26.0, *)
     static var supportedModes: IntentModes {

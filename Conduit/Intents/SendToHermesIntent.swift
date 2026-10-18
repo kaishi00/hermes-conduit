@@ -283,15 +283,15 @@ struct ShortcutSender {
 /// Background-only: the text goes to Hermes without Conduit opening.
 @available(iOS 16.0, *)
 struct SendToHermesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Send to Hermes"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Send to Hermes"
+    static let description = IntentDescription(
         "Send text to your Hermes agent as a chat message. With Wait for Answer on, Hermes's reply comes back to the shortcut."
     )
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.
     @available(iOS, deprecated: 26.0, message: "Use supportedModes on iOS 26+; retained for iOS 17–25.")
-    static var openAppWhenRun: Bool = false
+    static let openAppWhenRun: Bool = false
 
     @available(iOS 26.0, *)
     static var supportedModes: IntentModes {

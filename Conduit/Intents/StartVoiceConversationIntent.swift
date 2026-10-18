@@ -8,8 +8,8 @@ import Foundation
 
 @available(iOS 16.0, *)
 struct ConduitProfileEntity: AppEntity, Identifiable {
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conduit profile")
-    static var defaultQuery = ConduitProfileEntityQuery()
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conduit profile")
+    static let defaultQuery = ConduitProfileEntityQuery()
 
     let id: String
     let displayName: String
@@ -47,8 +47,8 @@ struct ConduitProfileEntityQuery: EntityQuery {
 /// microphone or a full voice conversation inside the App Intent context.
 @available(iOS 16.0, *)
 struct StartVoiceConversationIntent: AppIntent {
-    static var title: LocalizedStringResource = "Talk to Conduit"
-    static var description = IntentDescription("Open Conduit and start a voice conversation.")
+    static let title: LocalizedStringResource = "Talk to Conduit"
+    static let description = IntentDescription("Open Conduit and start a voice conversation.")
 
     /// iOS 26+ deprecates `openAppWhenRun` in favor of `supportedModes`. This
     /// redeclaration stays only for iOS 17–25 (the project's deployment
@@ -60,7 +60,7 @@ struct StartVoiceConversationIntent: AppIntent {
     /// The value must be a boolean literal: the App Intents metadata
     /// processor rejects computed/unknown values for this property.
     @available(iOS, deprecated: 26.0, message: "Use supportedModes on iOS 26+; retained for iOS 17–25.")
-    static var openAppWhenRun: Bool = true
+    static let openAppWhenRun: Bool = true
 
     /// Bring Conduit to the foreground before the pending voice launch is
     /// consumed. Never background-only: microphone capture and the voice
@@ -87,7 +87,7 @@ struct StartVoiceConversationIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct ConduitVoiceShortcuts: AppShortcutsProvider {
-    static var shortcutTileColor: ShortcutTileColor = .blue
+    static let shortcutTileColor: ShortcutTileColor = .blue
 
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

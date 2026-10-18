@@ -14,13 +14,13 @@ import AppIntents
 import Foundation
 
 struct TalkToHermesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Talk to Hermes"
-    static var description = IntentDescription("Starts a voice call to Hermes on your Watch.")
+    static let title: LocalizedStringResource = "Talk to Hermes"
+    static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
 
     /// watchOS before 26 (the Watch app's floor). A boolean literal: the
     /// App Intents metadata processor reads it.
     @available(watchOS, deprecated: 26.0, message: "Use supportedModes on watchOS 26+; retained for watchOS 10–25.")
-    static var openAppWhenRun: Bool = true
+    static let openAppWhenRun: Bool = true
 
     /// The call needs the app in front: the microphone and the call screen
     /// belong to it.
@@ -40,9 +40,9 @@ struct TalkToHermesIntent: AppIntent {
 /// a control opens its app, so `perform()` runs in the app with its
 /// handler set rather than in the widget extension.
 struct OpenTalkToHermesIntent: OpenIntent {
-    static var title: LocalizedStringResource = "Talk to Hermes"
-    static var description = IntentDescription("Starts a voice call to Hermes on your Watch.")
-    static var isDiscoverable: Bool = false
+    static let title: LocalizedStringResource = "Talk to Hermes"
+    static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
+    static let isDiscoverable: Bool = false
 
     @Parameter(title: "Talk to Hermes")
     var target: WatchCallTarget
@@ -60,8 +60,8 @@ struct OpenTalkToHermesIntent: OpenIntent {
 enum WatchCallTarget: String, AppEnum {
     case call
 
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Hermes"
-    static var caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Hermes"
+    static let caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
         .call: "Talk to Hermes",
     ]
 }

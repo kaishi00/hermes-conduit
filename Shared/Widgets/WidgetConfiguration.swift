@@ -89,8 +89,8 @@ enum WidgetEntityIdentifier {
 }
 
 struct WidgetWorkspaceEntity: AppEntity {
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Workspace")
-    static var defaultQuery = WidgetWorkspaceEntityQuery()
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Workspace")
+    static let defaultQuery = WidgetWorkspaceEntityQuery()
 
     let workspaceID: WidgetWorkspaceID
     let displayName: String?
@@ -116,8 +116,8 @@ struct WidgetWorkspaceEntity: AppEntity {
 }
 
 struct WidgetConversationEntity: AppEntity {
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conversation")
-    static var defaultQuery = WidgetConversationEntityQuery()
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conversation")
+    static let defaultQuery = WidgetConversationEntityQuery()
 
     let workspaceID: WidgetWorkspaceID
     let reference: WidgetConversationReference
@@ -206,8 +206,8 @@ struct WidgetConversationEntityQuery: EntityQuery {
 }
 
 struct LauncherWidgetConfigurationIntent: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource = "Conduit Widget"
-    static var description = IntentDescription("Choose a workspace and conversation for this widget.")
+    static let title: LocalizedStringResource = "Conduit Widget"
+    static let description = IntentDescription("Choose a workspace and conversation for this widget.")
 
     @Parameter(title: "Workspace") var workspace: WidgetWorkspaceEntity?
     @Parameter(title: "Conversation") var conversation: WidgetConversationEntity?

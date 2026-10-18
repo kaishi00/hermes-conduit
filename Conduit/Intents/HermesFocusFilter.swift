@@ -17,8 +17,8 @@ import Foundation
 
 @available(iOS 16.0, *)
 struct HermesFocusFilter: SetFocusFilterIntent {
-    static var title: LocalizedStringResource = "Tell Hermes"
-    static var description: IntentDescription? = IntentDescription(
+    static let title: LocalizedStringResource = "Tell Hermes"
+    static let description: IntentDescription? = IntentDescription(
         "Let your Hermes agent know which Focus you're in, and hold its calls while it's on.")
 
     @Parameter(title: "Name for Hermes", default: "")

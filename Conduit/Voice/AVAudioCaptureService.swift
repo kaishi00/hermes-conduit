@@ -146,17 +146,15 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     }
 
     func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            switch session.recordPermission {
-            case .granted:
-                continuation.resume(returning: true)
-            case .denied:
-                continuation.resume(returning: false)
-            case .undetermined:
-                session.requestRecordPermission { continuation.resume(returning: $0) }
-            @unknown default:
-                continuation.resume(returning: false)
-            }
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            return true
+        case .denied:
+            return false
+        case .undetermined:
+            return await AVAudioApplication.requestRecordPermission()
+        @unknown default:
+            return false
         }
     }
 

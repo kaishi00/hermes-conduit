@@ -204,7 +204,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         if let destination = buffer.int16ChannelData {
             pcm.withUnsafeBytes { source in
                 guard let base = source.baseAddress else { return }
-                destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
+                destination[0].update(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
             }
         } else if let destination = buffer.floatChannelData {
             pcm.withUnsafeBytes { source in
