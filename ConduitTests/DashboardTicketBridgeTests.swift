@@ -409,6 +409,37 @@ extension DashboardTicketBridgeTests {
             XCTAssertEqual(status, 404)
         }
     }
+
+    /// The background session returns only redirects to sign-in or another
+    /// origin; each is judged by the shared sign-in decision, not by a
+    /// "/login" substring (#791).
+    func testADownloadRedirectedToAnAuthProxysSignInIsSignIn() async throws {
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/fs/download?path=/tmp/a.mp3")))
+        let root = try downloadRoot()
+        for location in [
+            "https://auth.example.org/oauth2/start?rd=%2Fapi%2Ffs%2Fdownload",
+            "/oauth2/sign_in?rd=%2Fapi%2Ffs%2Fdownload",
+            "/signin",
+        ] {
+            do {
+                _ = try await DashboardTicketBridge.download(
+                    request, filename: "a.mp3", into: root, maxBytes: 1_000,
+                    session: downloadSession(status: 302, body: Data(), headers: ["Location": location])
+                )
+                XCTFail("A redirect to \(location) needs a sign-in")
+            } catch DashboardTicketBridgeError.signInRequired {}
+        }
+
+        do {
+            _ = try await DashboardTicketBridge.download(
+                request, filename: "a.mp3", into: root, maxBytes: 1_000,
+                session: downloadSession(status: 302, body: Data(), headers: ["Location": "/docs/login-guide"])
+            )
+            XCTFail("An unfollowed redirect to an ordinary page is not a file")
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            XCTAssertEqual(status, 302)
+        }
+    }
 }
 
 private final class DashboardDownloadURLProtocolStub: URLProtocol {

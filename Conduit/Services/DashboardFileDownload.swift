@@ -105,8 +105,18 @@ extension DashboardTicketBridge {
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")
         }
+        // The background session follows only same-origin redirects to
+        // ordinary pages. One that comes back is judged as everywhere else:
+        // to another origin or a sign-in page, sign-in is required.
         if (300...399).contains(http.statusCode),
-           (http.value(forHTTPHeaderField: "Location") ?? "").contains("/login") {
+           let requestURL = request.url,
+           DashboardSignInRedirect.redirectIsSignIn(
+            location: http.value(forHTTPHeaderField: "Location"),
+            from: http.url ?? requestURL,
+            // Only the origin is compared: the file's URL stands for the
+            // dashboard it was requested from.
+            forDashboard: requestURL
+           ) {
             throw DashboardTicketBridgeError.signInRequired
         }
         if http.statusCode == 401 || http.statusCode == 403 {

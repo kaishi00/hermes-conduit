@@ -286,6 +286,241 @@ final class DashboardProxySignOutTests: XCTestCase {
         XCTAssertEqual(bridge.cancelledSignInNavigationCount, 0)
     }
 
+    // MARK: - The ready page's own requests
+
+    /// The live case: the page loaded while the proxy still had a session,
+    /// then the proxy lost it (a session-store migration signed everyone
+    /// out). The page's ticket request is answered with a redirect to the
+    /// proxy's sign-in host, another origin. Followed, that failed like a
+    /// network error ("Load failed", status 0); it is sign-in required, and
+    /// the sign-in host is never contacted.
+    func testAReadyPagesTicketRequestRedirectedToAnotherOriginIsSignIn() async throws {
+        let identityProvider = try LoopbackHTTPServer.start { _ in
+            .json(status: 200, body: #"{"ticket":"never"}"#)
+        }
+        defer { identityProvider.stop() }
+        let dashboard = try signedOutTicketProxy(signInHostPort: identityProvider.port)
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("A ticket request the proxy sends to sign in mints no ticket")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected
+        } catch {
+            XCTFail("Expected .signInRequired, got \(error)")
+        }
+
+        XCTAssertTrue(identityProvider.receivedRequests.isEmpty, "The sign-in host is never contacted")
+        let tickets = dashboard.receivedRequests.filter { $0.path.hasPrefix("/api/auth/ws-ticket") }
+        let posts = tickets.filter { $0.method == "POST" }.count
+        XCTAssertGreaterThanOrEqual(posts, 1)
+        XCTAssertLessThanOrEqual(posts, 3, "One request per bounded attempt")
+        XCTAssertEqual(tickets.count - posts, posts, "Each refused redirect is probed once, with a GET")
+    }
+
+    func testAReadyPagesRequestRedirectedToTheProxysOwnSignInPageIsSignIn() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch path {
+            case "/api/status":
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case "/oauth2/sign_in":
+                return LoopbackHTTPResponse(
+                    status: 200,
+                    headers: [("Content-Type", "text/html")],
+                    body: Data("<html>Sign in</html>".utf8)
+                )
+            default:
+                return .redirect(to: "/oauth2/sign_in?rd=%2Fapi%2Fsessions")
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions")
+            XCTFail("The proxy's sign-in page is not the dashboard's answer")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected
+        } catch {
+            XCTFail("Expected .signInRequired, got \(error)")
+        }
+    }
+
+    func testAReadyPagesRequestFollowsASameOriginRedirectToAnOrdinaryPage() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch (request.method, path) {
+            case ("GET", "/api/status"):
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case ("POST", "/api/auth/ws-ticket"):
+                return .redirect(status: 307, to: "/api/auth/ws-ticket/")
+            case ("POST", "/api/auth/ws-ticket/"):
+                return .json(status: 200, body: #"{"ticket":"followed-ticket"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not Found"}"#)
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        let ticket = try await bridge.mintTicket()
+
+        XCTAssertEqual(ticket, "followed-ticket")
+        XCTAssertEqual(
+            dashboard.receivedRequests.filter { $0.path == "/api/auth/ws-ticket" }.count, 1,
+            "A request that is answered is sent once"
+        )
+    }
+
+    /// A write redirected within the dashboard (307 keeps the method and
+    /// body) reaches its target once, with its body.
+    func testAReadyPagesWriteFollowsASameOriginRedirectOnceWithItsBody() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            switch (request.method, request.path) {
+            case ("POST", "/api/sessions/s1/title"):
+                return .redirect(status: 307, to: "/api/sessions/s1/title/")
+            case ("POST", "/api/sessions/s1/title/"):
+                return .json(status: 200, body: #"{"ok":true}"#)
+            default:
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        let response = try await bridge.requestJSON(
+            path: "/api/sessions/s1/title", method: "POST", body: ["title": "Renamed"]
+        )
+
+        XCTAssertEqual(response["ok"] as? Bool, true)
+        let writes = dashboard.receivedRequests.filter { $0.path.hasPrefix("/api/sessions/s1/title") }
+        XCTAssertEqual(writes.map(\.path), ["/api/sessions/s1/title", "/api/sessions/s1/title/"])
+        let body = try XCTUnwrap(writes.last?.body)
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: body) as? [String: String], ["title": "Renamed"])
+    }
+
+    /// A dashboard the phone can't reach is still a network failure, not a
+    /// sign-out.
+    func testAReadyPagesRequestThatCannotReachTheDashboardIsStillANetworkError() async throws {
+        let dashboard = try LoopbackHTTPServer.start { _ in
+            .json(status: 200, body: #"{"version":"fixture"}"#)
+        }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+        dashboard.stop()
+
+        do {
+            _ = try await bridge.mintTicket()
+            XCTFail("An unreachable dashboard mints no ticket")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(
+                DashboardTicketBridgeError.describe(status: status, detail: detail).contains("couldn't reach"),
+                detail
+            )
+        } catch {
+            XCTFail("Expected a status-0 network failure, got \(error)")
+        }
+    }
+
+    /// End to end with the real page: the reconnect says the sign-in
+    /// expired and stops, instead of "couldn't reach your Hermes dashboard"
+    /// and a reconnect every 5 seconds.
+    func testAReconnectWhoseTicketRequestIsSentToSignInStopsReconnecting() async throws {
+        let identityProvider = try LoopbackHTTPServer.start { _ in .status(200) }
+        defer { identityProvider.stop() }
+        let dashboard = try signedOutTicketProxy(signInHostPort: identityProvider.port)
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+        let reconnects = ReconnectLedger()
+        let appState = try makeAppState(
+            dashboardAddress: bridge.baseURL,
+            mintTicket: { _ in try await bridge.mintTicket() },
+            reconnects: reconnects
+        )
+        appState.connection = HermesConnection(baseUrl: bridge.baseURL, ticket: "spent")
+        appState.showLogin = false
+
+        await appState.reconnect()
+
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertEqual(appState.pendingLoginFailure, .signInExpired)
+        XCTAssertEqual(appState.lastConnectionFailure, .loginRequired)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(appState.connection)
+        XCTAssertTrue(reconnects.scheduledDelays.isEmpty, "No reconnect is scheduled")
+        // A sanity check on the page itself: nothing it runs keeps asking.
+        let tickets = ticketRequests(dashboard)
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(ticketRequests(dashboard), tickets, "Nothing keeps asking for a ticket")
+        XCTAssertTrue(identityProvider.receivedRequests.isEmpty)
+    }
+
+    func testAReconnectThatCannotReachTheDashboardStillRetries() async throws {
+        let dashboard = try LoopbackHTTPServer.start { _ in
+            .json(status: 200, body: #"{"version":"fixture"}"#)
+        }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+        dashboard.stop()
+        let reconnects = ReconnectLedger()
+        let appState = try makeAppState(
+            dashboardAddress: bridge.baseURL,
+            mintTicket: { _ in try await bridge.mintTicket() },
+            reconnects: reconnects
+        )
+        appState.connection = HermesConnection(baseUrl: bridge.baseURL, ticket: "spent")
+        appState.showLogin = false
+
+        await appState.reconnect()
+
+        XCTAssertFalse(appState.showLogin)
+        XCTAssertNil(appState.pendingLoginFailure)
+        XCTAssertTrue(appState.errorMessage?.contains("couldn't reach") == true, appState.errorMessage ?? "nil")
+        XCTAssertEqual(reconnects.scheduledDelays.count, 1)
+    }
+
+    /// A proxy whose session is gone for the ticket route only: the page
+    /// itself loads, and the ticket request is sent to the sign-in host.
+    private func signedOutTicketProxy(signInHostPort: UInt16) throws -> LoopbackHTTPServer {
+        try LoopbackHTTPServer.start { request in
+            if request.path.hasPrefix("/api/auth/ws-ticket") {
+                return .redirect(to: "http://localhost:\(signInHostPort)/oauth2/start?rd=%2Fapi%2Fauth%2Fws-ticket")
+            }
+            return .json(status: 200, body: #"{"version":"fixture"}"#)
+        }
+    }
+
+    private func ticketRequests(_ server: LoopbackHTTPServer) -> Int {
+        server.receivedRequests.filter { $0.path.hasPrefix("/api/auth/ws-ticket") }.count
+    }
+
+    /// A real hidden page on the loopback dashboard, loaded and ready. The
+    /// generous readiness window covers a cold simulator's first WebKit
+    /// process; a ready page stops the wait at once.
+    private func readyPageBridge(port: UInt16) async throws -> DashboardTicketBridge {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:\(port)",
+            dashboardID: UUID(),
+            readinessPollAttempts: 300,
+            readinessPollInterval: .milliseconds(100)
+        )
+        bridge.webViewCanRun = { true }
+        addTeardownBlock { @MainActor in bridge.invalidate() }
+        for attempt in 0..<3 {
+            do {
+                _ = try await bridge.requestJSON(path: "/api/status")
+                break
+            } catch DashboardTicketBridgeError.notReady where attempt < 2 {
+                // A cold load that failed outright: load it again.
+                if bridge.isLoadFailed { bridge.reload() }
+            }
+        }
+        XCTAssertTrue(bridge.isReady)
+        return bridge
+    }
+
     // MARK: - Requests sent without the page
 
     func testABackgroundRequestRedirectedToAnotherOriginIsSignIn() async throws {
