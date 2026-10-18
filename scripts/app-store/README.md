@@ -12,7 +12,8 @@ Results:
   and the rest, `preview-<device>.mp4` (ready to upload) and the raw
   `preview-<device>.mov`. Artifact `app-store-watch-screenshots` holds
   the Watch shots.
-- Artifact `app-store-logs`: the demo Hermes, seeding and xcodebuild logs.
+- Artifacts `app-store-logs` and `app-store-watch-logs`: the demo Hermes,
+  seeding, recorder and xcodebuild logs.
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
   files minus large raw videos, for sessions that can't download artifacts:
   `git fetch origin refs/app-store-shots/<id> && git archive FETCH_HEAD | tar -x`.

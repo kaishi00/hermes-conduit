@@ -116,7 +116,10 @@ jobs:
                 > "results-$slug-preview.log" 2>&1
               prc=$?
               if [ "$prc" -ne 0 ]; then echo "$name preview recording exited $prc" >> failures.txt; fi
+              # SIGINT lets the recorder finish the file; TERM if it ignores it.
               kill -INT "$recorder" || true
+              for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
+              kill -TERM "$recorder" 2>/dev/null || true
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
               grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
@@ -182,7 +185,7 @@ jobs:
           cp -R shots "$out/" 2>/dev/null || true
           find "$out" -name '*.mov' -size +90M -delete
           mkdir -p "$out/logs"
-          for f in demo-hermes/*.log results-*.log; do
+          for f in demo-hermes/*.log results-*.log record-*.log; do
             [ -f "$f" ] && tail -c 400000 "$f" > "$out/logs/$(basename "$f")"
           done
           cd "$out"
@@ -209,6 +212,7 @@ jobs:
           path: |
             demo-hermes/*.log
             results-*.log
+            record-*.log
             results/
           if-no-files-found: ignore
 
@@ -308,3 +312,11 @@ jobs:
           name: app-store-watch-screenshots
           path: shots
           if-no-files-found: warn
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-watch-logs
+          path: watch-build.log
+          if-no-files-found: ignore

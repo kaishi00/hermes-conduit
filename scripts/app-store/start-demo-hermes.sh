@@ -123,5 +123,7 @@ for _ in $(seq 1 30); do
   curl -sf -b "$jar" "$BASE/api/sessions" | grep -q '"sessions":\[{' && break
   sleep 2
 done
+curl -sf -b "$jar" "$BASE/api/sessions" | grep -q '"sessions":\[{' \
+  || { echo "::error::the dashboard lists no seeded chats"; tail -40 "$DEMO_WORK/dashboard.log"; exit 1; }
 echo "Demo dashboard ready at $BASE:"
 curl -sf -b "$jar" "$BASE/api/sessions" | "$PY" -c 'import json,sys; [print(" -", s.get("title"), s.get("message_count")) for s in json.load(sys.stdin)["sessions"]]'
