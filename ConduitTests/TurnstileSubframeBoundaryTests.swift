@@ -25,7 +25,7 @@ final class TurnstileSubframeBoundaryTests: XCTestCase {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
             let allowed: Bool

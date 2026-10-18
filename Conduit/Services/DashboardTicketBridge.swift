@@ -1136,7 +1136,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
         // Subframe check must come BEFORE the main-frame transport guard:
         // Turnstile's WebView requirements call for about:blank and

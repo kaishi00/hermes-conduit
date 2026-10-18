@@ -565,7 +565,7 @@ struct HTMLPreviewWebView: UIViewRepresentable {
             }
         }
 
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             let decision = HTMLPreviewPage.navigationDecision(
                 url: navigationAction.request.url,
                 isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
