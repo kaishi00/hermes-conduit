@@ -54,6 +54,16 @@ final class AppStoreScreenshotTests: XCTestCase {
             snap(String(format: "%02d-%@", number, tab.lowercased()))
         }
         app.buttons["Chats"].tap()
+
+        // Live voice: the real call screen over a scripted conversation
+        // (Conduit/Services/ScreenshotCallFixture.swift); the sign-in is saved.
+        for (number, state) in [(8, "speaking"), (9, "listening")] {
+            app.terminate()
+            app.launchArguments = ["-conduitScreenshotCall", state]
+            app.launch()
+            settle(5)
+            snap(String(format: "%02d-voice-%@", number, state))
+        }
     }
 
     private func openChat(_ title: String, waitingFor text: String) {
