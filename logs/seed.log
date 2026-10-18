@@ -1,0 +1,35 @@
+seeded bot: chef
+seeded bot: coach
+seeded bot: scout
+seeded: Garden watering schedule
+seeded: Japanese study plan, week 3
+seeded: Reply to the landlord
+seeded: Q3 spending summary
+seeded: Espresso machine shortlist
+seeded: Fix the flaky upload test
+seeded: Weekend trip to Big Sur
+board: Compare flights to Tokyo (running)
+board: Book campsite for Big Sur (ready)
+board: Send the landlord follow-up (ready)
+board: Pick an espresso machine (ready)
+board: Order a grinder (todo)
+board: Renew passport (blocked)
+board: Weekly meal plan (done)
+board: Q3 spending summary (done)
+board: Fix the flaky upload test (done)
+Created job: 03a6ed94e03c
+  Name: Morning briefing
+  Schedule: 0 7 * * *
+  Next run: 2026-10-19T07:00:00+00:00
+Created job: 860dde29dd5b
+  Name: Inbox digest
+  Schedule: every 240m
+  Next run: 2026-10-18T16:06:28.979840+00:00
+Created job: 657956b06faf
+  Name: Weekly review
+  Schedule: 0 18 * * 0
+  Next run: 2026-10-18T18:00:00+00:00
+Created job: 633fa0180944
+  Name: Flight price watch
+  Schedule: every 360m
+  Created PAUSED — resume to schedule, or explicitly run now.
