@@ -507,7 +507,7 @@ private struct RichSourceAction: ViewModifier {
     @Environment(\.openURL) private var openURL
 
     func body(content: Content) -> some View {
-        content.accessibilityAction(named: Text(verbatim: name)) { openURL(url) }
+        content.accessibilityAction(named: Text("Open \(name)")) { openURL(url) }
     }
 }
 
