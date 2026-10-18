@@ -46,8 +46,10 @@ struct ConduitWatchApp: App {
 /// The home screen, or the call while one is on screen.
 struct WatchRootView: View {
     @EnvironmentObject private var call: WatchVoiceCall
+    @EnvironmentObject private var link: WatchLink
 
     var body: some View {
+        let accent = WatchAccent.color(link.phoneContext?.accent)
         Group {
             if call.isPresenting {
                 WatchCallView()
@@ -60,5 +62,8 @@ struct WatchRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: call.isPresenting)
+        // The iPhone's accent: toggles, checkmarks and titles take it too.
+        .environment(\.watchAccent, accent)
+        .tint(accent)
     }
 }

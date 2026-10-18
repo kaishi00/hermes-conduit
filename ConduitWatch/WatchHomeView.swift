@@ -2,8 +2,8 @@
 //  WatchHomeView.swift
 //  Conduit Watch
 //
-//  The home screen: one big button to talk to Hermes, the voice it will
-//  use, and settings.
+//  The home screen: the V2 voice button to talk to Hermes, the voice it
+//  will use, and settings.
 //
 
 import SwiftUI
@@ -11,6 +11,7 @@ import SwiftUI
 struct WatchHomeView: View {
     @EnvironmentObject private var call: WatchVoiceCall
     @EnvironmentObject private var link: WatchLink
+    @Environment(\.watchAccent) private var accent
 
     /// The iPhone found this voice can't start for its Hermes profile.
     private var notSetUp: Bool {
@@ -28,7 +29,8 @@ struct WatchHomeView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: call.engine.symbol)
-                            .foregroundStyle(Color.watchAura)
+                            .foregroundStyle(accent)
+                            .frame(width: 20)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(call.engine.title)
                                 .font(.footnote.weight(.semibold))
@@ -39,7 +41,11 @@ struct WatchHomeView: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(WatchCard())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(Text("Voice: \(call.engine.title)"))
                 .accessibilityValue(notSetUp ? Text("Not set up on your Hermes host") : Text(call.engine.detail))
                 // Calls from Hermes ring the Watch only while its voice can
@@ -54,6 +60,7 @@ struct WatchHomeView: View {
             .padding(.horizontal, 4)
         }
         .navigationTitle("Conduit")
+        .watchBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
@@ -71,7 +78,7 @@ struct WatchHomeView: View {
         let button = Button {
             call.start()
         } label: {
-            WatchVoiceOrb(mood: .ready, size: 84)
+            WatchVoiceButtonFace(size: 80)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Start a call"))
@@ -108,6 +115,7 @@ struct WatchEnginePicker: View {
     @EnvironmentObject private var call: WatchVoiceCall
     @EnvironmentObject private var link: WatchLink
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.watchAccent) private var accent
 
     var body: some View {
         List {
@@ -118,7 +126,7 @@ struct WatchEnginePicker: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: engine.symbol)
-                            .foregroundStyle(Color.watchAura)
+                            .foregroundStyle(accent)
                             .frame(width: 20)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(engine.title)
@@ -127,7 +135,7 @@ struct WatchEnginePicker: View {
                         Spacer(minLength: 0)
                         if engine == call.engine {
                             Image(systemName: "checkmark")
-                                .foregroundStyle(Color.watchAura)
+                                .foregroundStyle(accent)
                         }
                     }
                 }
@@ -141,6 +149,7 @@ struct WatchEnginePicker: View {
             }
         }
         .navigationTitle("Voice")
+        .watchBackdrop()
     }
 }
 
@@ -189,6 +198,7 @@ struct WatchSettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .watchBackdrop()
     }
 
     private var version: String? {
@@ -230,8 +240,21 @@ struct WatchLogView: View {
             }
         }
         .navigationTitle("Call log")
+        .watchBackdrop()
         .confirmationDialog("Clear the Watch call log?", isPresented: $confirmingClear) {
             Button("Clear", role: .destructive) { log.clear() }
         }
+    }
+}
+
+/// V2's card on the Watch: a soft raised panel over the backdrop.
+struct WatchCard: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.white.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
     }
 }

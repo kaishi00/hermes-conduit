@@ -712,10 +712,11 @@ extension VoiceConversationControllerTests {
         store.saveDefaultName("Unscoped", dashboardID: nil)
         XCTAssertEqual(store.defaultNamesByDashboard(), [dashboard.uuidString: "Ada"])
 
-        let context = WatchPhoneContext(callsRing: true, mainProfileNames: [dashboard.uuidString: "Ada"], activeDashboardID: dashboard.uuidString)
+        let context = WatchPhoneContext(callsRing: true, mainProfileNames: [dashboard.uuidString: "Ada"], activeDashboardID: dashboard.uuidString, accent: "teal")
         XCTAssertEqual(WatchPhoneContext.decode(context.encoded()), context)
         let older = try JSONEncoder().encode(WatchPhoneContext(voices: [:], callsRing: true))
         XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.mainProfileNames, "An older iPhone app names no one")
+        XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.accent, "An older iPhone app picks no accent: the Watch draws gold")
     }
 
     func testAVoIPPushSaysWhenItWasSentAndTheRelayLearnsTheToken() throws {

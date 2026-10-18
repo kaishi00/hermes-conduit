@@ -2,10 +2,10 @@
 //  WatchCallView.swift
 //  Conduit Watch
 //
-//  The call screen: the orb and controls on the first page, the
-//  conversation so far on the second (scroll down or turn the Digital
-//  Crown), a job's approval request over both, and a summary once the
-//  call ends.
+//  The call screen in V2's look: captions, level bars and controls on the
+//  first page, the conversation so far on the second (scroll down or turn
+//  the Digital Crown), a job's approval request over both, and a summary
+//  once the call ends.
 //
 
 import SwiftUI
@@ -17,12 +17,21 @@ struct WatchCallView: View {
         Group {
             if case .ended(let reason) = call.phase {
                 WatchCallSummary(reason: reason)
+                    .background(WatchBackdrop())
             } else {
-                TabView {
-                    WatchCallControls()
-                    WatchTranscriptPage()
+                // In a NavigationStack so the system lays out the voice's
+                // name beside the clock: drawn in the page itself, the
+                // header ran under the time.
+                NavigationStack {
+                    TabView {
+                        WatchCallControls()
+                        WatchTranscriptPage()
+                    }
+                    .tabViewStyle(.verticalPage)
+                    .containerBackground(for: .tabView) { WatchBackdrop() }
+                    .navigationTitle(call.callEngine.title)
+                    .navigationBarTitleDisplayMode(.inline)
                 }
-                .tabViewStyle(.verticalPage)
             }
         }
         .sheet(isPresented: approvalShown) {
@@ -42,67 +51,44 @@ struct WatchCallView: View {
 
 // MARK: - Controls
 
+/// V2's call screen, sized for the wrist: the conversation's last lines
+/// large at the top, the level bars (a tap interrupts or continues), the
+/// state with the jobs and the call's clock, then Mute and End.
 struct WatchCallControls: View {
     @EnvironmentObject private var call: WatchVoiceCall
 
     var body: some View {
-        VStack(spacing: 4) {
-            header
-            Spacer(minLength: 0)
-            orb
-            VStack(spacing: 1) {
-                Text(status)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                if let detail {
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            Spacer(minLength: 0)
+        VStack(spacing: 6) {
+            WatchCallCaptions(previous: captionLines.previous, current: captionLines.current)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            levelButton
+            statusLine
             buttons
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 6)
     }
 
-    private var header: some View {
-        HStack(spacing: 4) {
-            Text(call.callEngine.title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.watchAura)
-            Spacer(minLength: 0)
-            if call.jobsRunning > 0 {
-                Label {
-                    Text(verbatim: "\(call.jobsRunning)")
-                } icon: {
-                    Image(systemName: "hammer.fill")
-                }
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Color.watchVoice.opacity(0.3)))
-                .accessibilityLabel(Text("Jobs running: \(String(call.jobsRunning))"))
-            }
-            if let since = call.liveSince {
-                Text(since, style: .timer)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
+    /// The line being said (the call's caption, or else the newest turn)
+    /// and the one before it.
+    private var captionLines: (previous: String?, current: String?) {
+        let turns = call.transcript
+        guard let current = call.caption ?? turns.last?.text else { return (nil, nil) }
+        // A notice in the caption follows the newest turn; a live line is
+        // the newest turn's end.
+        if let caption = call.caption, let last = turns.last, !last.text.hasSuffix(caption) {
+            return (last.text, current)
         }
+        return (turns.dropLast().last?.text, current)
     }
 
     @ViewBuilder
-    private var orb: some View {
+    private var levelButton: some View {
         let button = Button {
             call.tap()
         } label: {
-            WatchVoiceOrb(mood: mood, size: 88)
+            WatchLevelBars(mood: mood)
+                .frame(height: 34)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!tapDoesSomething)
@@ -115,34 +101,80 @@ struct WatchCallControls: View {
         }
     }
 
+    private var statusLine: some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 5) {
+                Text(status)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let since = call.liveSince {
+                    Text(since, style: .timer)
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                        // A label changing every second keeps VoiceOver
+                        // from settling on the line.
+                        .accessibilityHidden(true)
+                }
+                if call.jobsRunning > 0 {
+                    Label {
+                        Text(verbatim: "\(call.jobsRunning)")
+                    } icon: {
+                        Image(systemName: "hammer.fill")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                    .fixedSize()
+                    .accessibilityLabel(Text("Jobs running: \(String(call.jobsRunning))"))
+                }
+            }
+            if let hint {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(call.phase == .lost || call.phase == .needsTap ? Color.watchAttention : Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     private var buttons: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 22) {
             Button {
                 call.toggleMute()
             } label: {
                 Image(systemName: call.isMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.title3)
-                    .frame(maxWidth: .infinity)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(call.isMuted ? Color.black : Color.white)
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(call.isMuted ? Color.white : Color.white.opacity(0.16)))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
             }
-            .tint(call.isMuted ? .watchAttention : .gray)
             .disabled(!call.isActive)
+            .opacity(call.isActive ? 1 : 0.4)
             .accessibilityLabel(Text(call.isMuted ? String(localized: "Unmute") : String(localized: "Mute")))
             Button(role: .destructive) {
                 call.end()
             } label: {
                 Image(systemName: "phone.down.fill")
-                    .font(.title3)
-                    .frame(maxWidth: .infinity)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(Color.red))
             }
-            .tint(.red)
             .disabled(call.phase == .ending)
             .accessibilityLabel(Text("End call"))
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
+        .buttonStyle(.plain)
     }
 
-    private var mood: WatchVoiceOrb.Mood {
+    private var mood: WatchLevelBars.Mood {
         switch call.phase {
         case .idle, .preparing, .connecting, .reconnecting: return .working
         case .listening: return call.isMuted ? .muted : .listening
@@ -177,16 +209,46 @@ struct WatchCallControls: View {
         }
     }
 
-    /// A hint under the status, or the newest line of the conversation.
-    private var detail: String? {
+    /// What to do now, under the state; the conversation itself is in
+    /// the captions.
+    private var hint: String? {
         switch call.phase {
         case .preparing: return String(localized: "Asking your iPhone to set up the call")
-        case .speaking: return call.caption ?? String(localized: "Tap to interrupt")
+        case .speaking: return captionLines.current == nil ? String(localized: "Tap to interrupt") : nil
         case .lost: return String(localized: "Raise your wrist to reconnect")
         case .needsTap: return String(localized: "Tap to continue")
-        case .listening: return call.caption
         default: return nil
         }
+    }
+}
+
+/// V2's captions on the Watch: the line before small and faded, the line
+/// being said large, both cut from the front so the newest words show.
+struct WatchCallCaptions: View {
+    let previous: String?
+    let current: String?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let previous {
+                Text(verbatim: previous)
+                    .font(.caption2)
+                    .foregroundStyle(Color.primary.opacity(0.42))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            if let current {
+                Text(verbatim: current)
+                    .font(.system(.body, weight: .semibold))
+                    .lineLimit(4)
+                    .truncationMode(.head)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: current)
     }
 }
 
@@ -224,17 +286,21 @@ struct WatchTranscriptPage: View {
 struct WatchTranscriptLine: View {
     let turn: WatchVoiceWire.DirectTurn
 
+    @Environment(\.watchAccent) private var accent
+
     var body: some View {
         let isUser = turn.role == .user
         HStack {
             if isUser { Spacer(minLength: 16) }
+            // As V2's chat: what you said in an accent bubble, Hermes'
+            // answer as plain text.
             Text(verbatim: turn.text)
                 .font(.footnote)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.horizontal, isUser ? 8 : 2)
+                .padding(.vertical, isUser ? 5 : 2)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isUser ? Color.watchAura.opacity(0.35) : Color.white.opacity(0.12))
+                        .fill(isUser ? accent.opacity(0.32) : Color.clear)
                 )
             if !isUser { Spacer(minLength: 16) }
         }
@@ -296,6 +362,7 @@ struct WatchApprovalCard: View {
 
 struct WatchCallSummary: View {
     @EnvironmentObject private var call: WatchVoiceCall
+    @Environment(\.watchAccent) private var accent
     let reason: String?
 
     var body: some View {
@@ -303,7 +370,7 @@ struct WatchCallSummary: View {
             VStack(spacing: 8) {
                 Image(systemName: WatchCallEnd.isNormal(reason) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 36))
-                    .foregroundStyle(WatchCallEnd.isNormal(reason) ? Color.watchAura : Color.watchAttention)
+                    .foregroundStyle(WatchCallEnd.isNormal(reason) ? accent : Color.watchAttention)
                 Text(WatchCallEnd.isNormal(reason) ? String(localized: "Call ended") : String(localized: "Call didn't work"))
                     .font(.headline)
                 if let reason, !WatchCallEnd.isNormal(reason) {
@@ -321,9 +388,13 @@ struct WatchCallSummary: View {
                     call.dismissEnded()
                 } label: {
                     Text("Done")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
                 }
-                .tint(.watchAura)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .tint(accent)
                 if !WatchCallEnd.isNormal(reason) {
                     Button {
                         call.dismissEnded()

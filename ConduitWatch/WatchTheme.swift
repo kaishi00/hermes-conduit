@@ -2,25 +2,120 @@
 //  WatchTheme.swift
 //  Conduit Watch
 //
-//  The Watch app's colours and the voice orb, in Conduit's palette: the
-//  iPhone's aura blue while it listens, violet while Hermes speaks, amber
-//  when the call needs the user.
+//  The Watch app in the iPhone's V2 look: the accent picked in Conduit on
+//  the iPhone (gold unless changed), the dark backdrop with its soft glow,
+//  the gold voice button with its five bars, and the call's level bars
+//  (blue while it listens, the accent while Hermes speaks, amber when the
+//  call needs the user).
 //
 
 import SwiftUI
 
 extension Color {
-    /// Conduit's accent (Theme.swift on the iPhone).
+    /// Conduit's listening blue (`conduitAura` on the iPhone).
     static let watchAura = Color(red: 0.38, green: 0.58, blue: 0.98)
-    static let watchVoice = Color(red: 0.62, green: 0.45, blue: 0.98)
-    static let watchAttention = Color(red: 1.0, green: 0.66, blue: 0.24)
+    /// V2's approval amber (`conduitAttention`, dark).
+    static let watchAttention = Color(red: 0.96, green: 0.65, blue: 0.24)
 }
 
-/// The call's orb: what the call is doing, at a glance, and the control a
-/// tap reaches (start, interrupt, continue).
-struct WatchVoiceOrb: View {
+/// The iPhone's accent presets (ConduitAccentChoice in Theme.swift), in
+/// their dark shades: the Watch is always dark. The iPhone shares the pick
+/// in its WatchPhoneContext; an older iPhone app shares none, which is gold.
+enum WatchAccent {
+    static func color(_ choice: String?) -> Color {
+        switch choice {
+        case "blue": return Color(red: 0.33, green: 0.58, blue: 0.98)
+        case "green": return Color(red: 0.30, green: 0.72, blue: 0.47)
+        case "teal": return Color(red: 0.22, green: 0.70, blue: 0.75)
+        case "purple": return Color(red: 0.62, green: 0.48, blue: 0.96)
+        case "pink": return Color(red: 0.93, green: 0.42, blue: 0.64)
+        default: return Color(red: 0.88, green: 0.67, blue: 0.28)
+        }
+    }
+}
+
+private struct WatchAccentKey: EnvironmentKey {
+    static let defaultValue = WatchAccent.color(nil)
+}
+
+extension EnvironmentValues {
+    /// The accent, set once at the root from the iPhone's pick.
+    var watchAccent: Color {
+        get { self[WatchAccentKey.self] }
+        set { self[WatchAccentKey.self] = newValue }
+    }
+}
+
+// MARK: - Backdrop
+
+/// V2's backdrop on the Watch: near black, the accent's glow up top and a
+/// faint blue one low down, still (nothing drifts on the wrist).
+struct WatchBackdrop: View {
+    @Environment(\.watchAccent) private var accent
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.045, green: 0.052, blue: 0.072)
+            if !isLuminanceReduced {
+                RadialGradient(
+                    colors: [accent.opacity(0.30), .clear],
+                    center: UnitPoint(x: 0.2, y: 0),
+                    startRadius: 0,
+                    endRadius: 170
+                )
+                RadialGradient(
+                    colors: [Color.watchAura.opacity(0.16), .clear],
+                    center: UnitPoint(x: 0.9, y: 1),
+                    startRadius: 0,
+                    endRadius: 150
+                )
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+extension View {
+    /// Draws the V2 backdrop behind a screen in a NavigationStack.
+    func watchBackdrop() -> some View {
+        containerBackground(for: .navigation) { WatchBackdrop() }
+    }
+}
+
+// MARK: - Voice button
+
+/// The iPhone's V2 voice button: an accent circle with five dark bars.
+struct WatchVoiceButtonFace: View {
+    var size: CGFloat = 76
+
+    @Environment(\.watchAccent) private var accent
+
+    private static let heights: [CGFloat] = [0.34, 0.62, 0.9, 0.62, 0.34]
+
+    var body: some View {
+        HStack(spacing: size * 0.055) {
+            ForEach(0..<5, id: \.self) { index in
+                Capsule()
+                    .fill(Color.black.opacity(0.82))
+                    .frame(width: size * 0.065, height: size * 0.4 * Self.heights[index])
+            }
+        }
+        .frame(width: size, height: size)
+        .background(accent, in: Circle())
+        .shadow(color: accent.opacity(0.35), radius: 10)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Call level
+
+/// V2's call level on the Watch: thin bars in an arch over a soft glow,
+/// coloured and moving by what the call is doing. No engine feeds a common
+/// audio level, so the bars move with the phase, as on the iPhone. Nothing
+/// moves in always-on, or with Reduce Motion on.
+struct WatchLevelBars: View {
     enum Mood: Equatable {
-        case ready
         case working
         case listening
         case muted
@@ -30,94 +125,72 @@ struct WatchVoiceOrb: View {
     }
 
     let mood: Mood
-    var size: CGFloat = 96
+    var barCount = 15
 
+    @Environment(\.watchAccent) private var accent
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
-
-    var body: some View {
-        ZStack {
-            if mood == .speaking, animates {
-                ripples
-            }
-            Circle()
-                .fill(fill)
-                .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
-                .shadow(color: tint.opacity(isLuminanceReduced ? 0 : 0.45), radius: breathing ? 12 : 6)
-                .scaleEffect(breathing ? 1.04 : 0.98)
-            if mood == .working, !isLuminanceReduced {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(.white)
-                    .scaleEffect(1.3)
-            } else {
-                Image(systemName: symbol)
-                    .font(.system(size: size * 0.34, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .symbolEffect(.variableColor.iterative, isActive: mood == .speaking && animates)
-                    // A new image per symbol: one changed in place under an
-                    // indefinite effect can keep drawing the old symbol.
-                    .id(symbol)
-            }
-        }
-        .frame(width: size, height: size)
-        .onAppear { updateBreathing() }
-        .onChange(of: mood) { _, _ in updateBreathing() }
-        .onChange(of: isLuminanceReduced) { _, _ in updateBreathing() }
-        .onChange(of: reduceMotion) { _, _ in updateBreathing() }
-    }
-
-    /// Nothing moves in always-on, or with Reduce Motion on.
-    private var animates: Bool { !isLuminanceReduced && !reduceMotion }
-
-    /// Listening breathes slowly.
-    private func updateBreathing() {
-        let wanted = mood == .listening && animates
-        guard wanted != breathing else { return }
-        if wanted {
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathing = true }
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) { breathing = false }
-        }
-    }
-
-    private var ripples: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            ZStack {
-                ForEach(0..<3, id: \.self) { ring in
-                    let progress = (t / 1.8 + Double(ring) / 3).truncatingRemainder(dividingBy: 1)
-                    Circle()
-                        .stroke(tint.opacity(0.5 * (1 - progress)), lineWidth: 2)
-                        .scaleEffect(1 + 0.32 * progress)
-                }
-            }
-        }
-    }
 
     private var tint: Color {
         switch mood {
-        case .ready, .working, .listening: return .watchAura
+        case .working, .listening: return .watchAura
+        case .speaking: return accent
         case .muted, .done: return .gray
-        case .speaking: return .watchVoice
         case .attention: return .watchAttention
         }
     }
 
-    private var fill: LinearGradient {
-        LinearGradient(colors: [tint.opacity(0.95), tint.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// Scale swing and speed, as the iPhone's orb motion.
+    private var motion: (amplitude: Double, speed: Double, opacity: Double) {
+        switch mood {
+        case .working: return (0.05, 1.4, 0.65)
+        case .listening: return (0.035, 1.9, 1)
+        case .speaking: return (0.06, 4.6, 1)
+        case .attention: return (0.02, 1, 1)
+        case .muted: return (0, 0, 0.8)
+        case .done: return (0, 0, 0.6)
+        }
     }
 
-    private var symbol: String {
-        switch mood {
-        case .ready: return "mic.fill"
-        case .working: return "ellipsis"
-        case .listening: return "mic.fill"
-        case .muted: return "mic.slash.fill"
-        case .speaking: return "waveform"
-        case .attention: return "hand.tap.fill"
-        case .done: return "checkmark"
+    private var moves: Bool {
+        motion.amplitude > 0 && !isLuminanceReduced && !reduceMotion
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !moves)) { context in
+            let t = moves ? context.date.timeIntervalSinceReferenceDate : 0
+            GeometryReader { proxy in
+                ZStack {
+                    if !isLuminanceReduced {
+                        Ellipse()
+                            .fill(tint.opacity(0.22))
+                            .blur(radius: 14)
+                            .frame(width: proxy.size.width * 0.9, height: proxy.size.height * 0.8)
+                    }
+                    HStack(alignment: .center, spacing: 3) {
+                        ForEach(0..<barCount, id: \.self) { index in
+                            Capsule()
+                                .fill(tint)
+                                .frame(height: max(3, proxy.size.height * level(index, time: t)))
+                        }
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
         }
+        .opacity(motion.opacity)
+        .animation(.easeInOut(duration: 0.4), value: mood)
+        .accessibilityHidden(true)
+    }
+
+    /// A bar's height, 0...1: taller in the middle, rippling faster and
+    /// higher while Hermes speaks.
+    private func level(_ index: Int, time: TimeInterval) -> CGFloat {
+        let position = Double(index) / Double(max(1, barCount - 1))
+        let arch = 0.25 + 0.5 * sin(position * .pi)
+        guard moves else { return CGFloat(mood == .muted || mood == .done ? 0.08 : arch * 0.6) }
+        let swing = motion.amplitude * 8
+        let ripple = 0.6 * sin(time * motion.speed * 2 + position * 9) + 0.4 * sin(time * motion.speed * 3.1 + position * 23)
+        return CGFloat(max(0.06, min(1, arch + ripple * swing * arch)))
     }
 }

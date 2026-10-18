@@ -229,6 +229,8 @@ struct ConduitApp: App {
             // new pick redraws in place: no view is rebuilt.
             .environment(\.conduitAccent, accentChoice)
             .background(WindowAccentTint(choice: accentChoice))
+            // The Watch app draws in the same accent.
+            .onChange(of: accentChoice) { _, _ in appState.shareWatchCallVoices() }
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
 #endif
