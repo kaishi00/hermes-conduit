@@ -51,10 +51,24 @@ extension AppState {
             engine.note(nil)
         }
         // Coming back to the app often isn't news; Apple Health's own wakes
-        // and the background refresh cover the rest.
-        if reason == .foreground, let last = engine.state.lastAttempt, Date().timeIntervalSince(last) < 180 {
-            return .unfinished
+        // and the background refresh cover the rest. A voice call reuses a
+        // pass from the last few minutes, and Low Power or Low Data Mode
+        // spaces routine passes further (ContextUploadPolicy).
+        // An Apple Health wake spaced behind another pass isn't dropped:
+        // close to its turn it waits for it, otherwise the next pass, for
+        // any reason, runs at once.
+        let conditions = deviceConditions()
+        let spacing = ContextUploadPolicy.healthSpacing(for: reason, conditions: conditions)
+        if !engine.changesWaiting,
+           let wait = ContextUploadPolicy.remainingSpacing(lastAttempt: engine.state.lastAttempt, spacing: spacing, now: Date()) {
+            guard reason == .healthChanged else { return .unfinished }
+            engine.changesWaiting = true
+            guard wait <= ContextUploadPolicy.healthTrailingWait else { return .unfinished }
+            try? await Task.sleep(for: .seconds(wait))
+            // Another pass took the new data meanwhile.
+            guard engine.changesWaiting else { return .unfinished }
         }
+        let options = ContextUploadPolicy.healthPass(for: reason, conditions: conditions)
         let inBackground = !PhoneScenePresence.isInForeground
         // A background launch connects on its own; give it a moment.
         if dashboardTicketBridge == nil, inBackground {
@@ -76,7 +90,8 @@ extension AppState {
         // Sharing may have been turned off while this waited.
         guard healthSyncPreferences.isOn, healthSyncPreferences.destination == destination else { return .off }
         let profile = destination.profile
-        let outcome = await engine.sync(preferences: preferences, deadline: deadline) { [weak self] path, method, body in
+        engine.changesWaiting = false
+        let outcome = await engine.sync(preferences: preferences, deadline: deadline, options: options) { [weak self] path, method, body in
             // A dashboard swapped mid-pass belongs to someone else's data.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == destination.dashboardID else {
                 throw DashboardTicketBridgeError.notReady
