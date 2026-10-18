@@ -1366,8 +1366,9 @@ extension VoiceConversationControllerTests {
     }
 
     func testAHostWithoutTheConduitPluginTellsTheWatchNoVoiceIsSetUp() {
+        let allNotSetUp = Dictionary(uniqueKeysWithValues: WatchCallVoices.Voice.allCases.map { ($0.rawValue, false) })
         let none = AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: .predatesCapabilities)
-        XCTAssertEqual(none, ["geminiLive": false, "gptLive": false, "grokLive": false], "Every Watch voice needs the plugin")
+        XCTAssertEqual(none, allNotSetUp, "Every Watch voice needs the plugin")
         let context = WatchPhoneContext(voices: none, callsRing: false)
         XCTAssertTrue(WatchCallVoices.Voice.allCases.allSatisfy { context.notSetUp($0) })
 
@@ -1375,13 +1376,41 @@ extension VoiceConversationControllerTests {
         voices.note(.geminiLive, ready: true, scope: "d|default")
         XCTAssertEqual(
             AppState.watchContextVoices(voices, scope: "d|default", plugin: .predatesCapabilities),
-            ["geminiLive": true, "gptLive": false, "grokLive": false],
-            "A voice checked ready on an old plugin stays ready"
+            allNotSetUp,
+            "A ready check from before the plugin went missing doesn't survive it"
         )
 
-        let reported = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: ["gemini-live"])
-        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: reported), ["geminiLive": true])
-        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|work", plugin: reported), [:], "Another profile's checks say nothing")
+        let all = Set(WatchCallVoices.Voice.allCases.flatMap(AppState.watchVoiceCapabilities))
+        let current = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: all.union(["hermes-calls"]))
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["geminiLive": true])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|work", plugin: current), [:], "Another profile's checks say nothing")
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: .unknown), ["geminiLive": true], "Not asked yet: nothing new to say")
+    }
+
+    func testAPluginWithoutAWatchVoicesRoutesTellsTheWatchItIsNotSetUp() {
+        var voices = WatchCallVoices()
+        voices.note(.geminiLive, ready: true, scope: "d|default")
+        voices.note(.grokLive, ready: true, scope: "d|default")
+        // A 0.4-0.8 plugin: it reports the three voice routes but not the
+        // Watch audio bridge (0.9) GPT-Live and Grok need, nor hermes-calls,
+        // so the voices aren't checked on connect. A voice it can't serve
+        // isn't set up, whatever an earlier check found.
+        let older = NotifierPluginStatus.State.reported(version: "0.8.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "memory"])
+        let shared = AppState.watchContextVoices(voices, scope: "d|default", plugin: older)
+        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false])
+        let context = WatchPhoneContext(voices: shared, callsRing: false)
+        XCTAssertFalse(context.notSetUp(.geminiLive), "Its route is there: the voice may start")
+        XCTAssertTrue(context.notSetUp(.gptLive))
+        XCTAssertTrue(context.notSetUp(.grokLive), "No audio bridge: a stale ready check doesn't count")
+        XCTAssertEqual(
+            AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: older),
+            ["gptLive": false, "grokLive": false],
+            "Gemini not checked, but served: nothing to say"
+        )
+
+        // 0.9-0.12 serves every Watch voice without hermes-calls: only the
+        // checks are missing, so nothing is marked.
+        let bridged = NotifierPluginStatus.State.reported(version: "0.10.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "watch-audio"])
+        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), [:])
     }
 }
