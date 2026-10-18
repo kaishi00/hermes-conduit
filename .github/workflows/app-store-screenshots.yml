@@ -215,10 +215,12 @@ jobs:
             > watch-build.log 2>&1 || { grep -E "error:" watch-build.log | head -20; exit 1; }
           app=$(find watch-dd/Build/Products -name 'ConduitWatch.app' -path '*watchsimulator*' | head -1)
           xcrun simctl install "$udid" "$app"
-          xcrun simctl status_bar "$udid" override --time 9:41 || true
+          xcrun simctl status_bar "$udid" override --time 9:41 \
+            || xcrun simctl status_bar "$udid" override --time "2026-10-18T09:41:00" \
+            || echo "::warning::the Watch status bar time could not be set"
           mkdir -p shots/watch
           n=1
-          for state in home speaking ended; do
+          for state in home speaking listening; do
             xcrun simctl terminate "$udid" com.milim.relay.watchkitapp 2>/dev/null || true
             xcrun simctl launch "$udid" com.milim.relay.watchkitapp -conduitScreenshotCall "$state"
             sleep 6

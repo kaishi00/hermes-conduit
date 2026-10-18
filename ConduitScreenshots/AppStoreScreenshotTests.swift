@@ -69,16 +69,19 @@ final class AppStoreScreenshotTests: XCTestCase {
         settle(3)
     }
 
+    /// Back to the Chats list. The tab bar stays in the hierarchy (and
+    /// reports itself hittable) under a pushed chat, so the list's own
+    /// search field is the sign the list is showing.
     private func backToTabs() {
-        // The tab bar stays in the hierarchy under a pushed chat, so wait for
-        // it to be hittable, not to exist.
-        let chatsTab = app.buttons["Chats"]
-        if !chatsTab.isHittable {
+        let list = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "placeholderValue BEGINSWITH 'Search' OR label BEGINSWITH 'Search'")).firstMatch
+        for _ in 0..<3 {
+            if list.exists && list.isHittable { break }
             // The V2 conversation's Back is the top-left round button.
             let screen = app.frame
             let back = app.buttons.allElementsBoundByIndex.first { button in
                 let f = button.frame
-                return button.isHittable && f.minX < screen.width * 0.15 && f.minY < screen.height * 0.12
+                return f.width > 0 && f.minX < screen.width * 0.15 && f.minY < screen.height * 0.12
             }
             if let back {
                 back.tap()
@@ -86,10 +89,9 @@ final class AppStoreScreenshotTests: XCTestCase {
                 let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                 start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
             }
+            _ = list.waitForExistence(timeout: 4)
         }
-        let deadline = Date().addingTimeInterval(8)
-        while !chatsTab.isHittable, Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
-        if !chatsTab.isHittable {
+        if !list.exists {
             snap("debug-back-failed")
             let tree = XCTAttachment(string: app.debugDescription)
             tree.name = "debug-back-tree"

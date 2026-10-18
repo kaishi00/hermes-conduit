@@ -325,7 +325,7 @@ final class WatchVoiceCall: ObservableObject {
 
     // MARK: Screenshot fixture
 
-    /// Set by `-conduitScreenshotCall home|speaking|ended` (debug builds only):
+    /// Set by `-conduitScreenshotCall home|speaking|listening|ended` (debug builds only):
     /// the App Store screenshot run (scripts/app-store) shows a call in that
     /// state with no audio or connection behind it.
     private(set) var isScreenshotFixture = false
@@ -350,6 +350,8 @@ final class WatchVoiceCall: ObservableObject {
         case "ended":
             endedAt = now
             phase = .ended(nil)
+        case "listening":
+            phase = .listening
         default:
             caption = transcript.last?.text
             phase = .speaking
