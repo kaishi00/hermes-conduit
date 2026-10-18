@@ -743,8 +743,9 @@ struct V2ChatsView: View, Equatable {
             }
 
             // A failed connection: the app opens here, not on a composer,
-            // so the composer's Repair Connection is offered here too.
-            if appState.showsConnectionRepair && !isSearching {
+            // so the composer's Repair Connection is offered here too,
+            // searching or not.
+            if appState.showsConnectionRepair {
                 connectionRepairCard
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)

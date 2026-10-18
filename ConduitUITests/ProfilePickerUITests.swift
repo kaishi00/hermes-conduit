@@ -268,10 +268,6 @@ final class ProfilePickerUITests: XCTestCase {
             .tap()
     }
 
-    /// The photo control opens `UIImagePickerController`, which can ask for the
-    /// photo library on a fresh simulator. Allow it when asked so the picker the
-    /// test waits for can appear; a denial would leave the test failing on its
-    /// own assertion rather than on an unexpected alert.
     /// Drags the photo picker sheet down by its top edge, below the status
     /// bar, until the profile picker shows again (up to three tries).
     private func dismissUnloadedPhotoPicker(_ app: XCUIApplication) {
@@ -286,6 +282,10 @@ final class ProfilePickerUITests: XCTestCase {
         XCTFail("Three drags did not put the unloaded photo picker away. Tree:\n\(app.debugDescription)")
     }
 
+    /// The photo control opens `UIImagePickerController`, which can ask for the
+    /// photo library on a fresh simulator. Allow it when asked so the picker the
+    /// test waits for can appear; a denial would leave the test failing on its
+    /// own assertion rather than on an unexpected alert.
     private func allowPhotoAccessIfAsked(_ app: XCUIApplication) {
         let allow = app.alerts.buttons["Allow"]
         if allow.waitForExistence(timeout: 3) {
