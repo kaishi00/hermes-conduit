@@ -110,6 +110,10 @@ final class WidgetLaunchCoordinator {
     private let finish: @MainActor (WidgetLaunchOutcome) -> Void
     /// Told the pending link whenever it changes, and nil once there is none.
     private let pendingLinkChanged: @MainActor (WidgetLaunchLink?) -> Void
+    /// Told each request's link when it ends: with its outcome, or nil when
+    /// something newer superseded it. A shared draft (#812) rides on a
+    /// launch and needs to know which one ended.
+    private let ended: @MainActor (WidgetLaunchLink, WidgetLaunchOutcome?) -> Void
     private var generation: UInt64 = 0
     private var request: Request? {
         didSet {
@@ -127,13 +131,15 @@ final class WidgetLaunchCoordinator {
         prepare: @escaping Operation,
         perform: @escaping Operation,
         finish: @escaping @MainActor (WidgetLaunchOutcome) -> Void,
-        pendingLinkChanged: @escaping @MainActor (WidgetLaunchLink?) -> Void = { _ in }
+        pendingLinkChanged: @escaping @MainActor (WidgetLaunchLink?) -> Void = { _ in },
+        ended: @escaping @MainActor (WidgetLaunchLink, WidgetLaunchOutcome?) -> Void = { _, _ in }
     ) {
         self.now = now
         self.prepare = prepare
         self.perform = perform
         self.finish = finish
         self.pendingLinkChanged = pendingLinkChanged
+        self.ended = ended
     }
 
     var hasPendingRequest: Bool { request != nil }
@@ -174,6 +180,7 @@ final class WidgetLaunchCoordinator {
         activeLeaseExpiryTask = nil
         old?.task?.cancel()
         old?.expiryTask?.cancel()
+        if let old { ended(old.link, nil) }
     }
 
     func readinessChanged() {
@@ -309,6 +316,7 @@ final class WidgetLaunchCoordinator {
         request.inFlight = false
         self.request = nil
         if !retainTalkCaptureDeadline { activeLease = nil }
+        ended(request.link, outcome)
         finish(outcome)
     }
 

@@ -1404,8 +1404,9 @@ struct ComposerBar: View, Equatable {
     /// Why a waiting message came back, until the next edit or send.
     private func composerNoticeLine(_ notice: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "arrow.uturn.backward.circle")
+            Image(systemName: appState.composerNoticeSystemImage)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(notice)
                 .font(.footnote)
                 .foregroundStyle(.secondary)

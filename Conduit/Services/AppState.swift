@@ -700,6 +700,24 @@ final class AppState: ObservableObject {
     var widgetBotEvidenceIsAvailable: Bool { botEvidenceIsAvailable }
     var widgetSnapshotStoreOverride: WidgetSnapshotStore?
     var widgetSnapshotReloadOverride: (() -> Void)?
+    // MARK: Shared drafts (AppState+ShareDraft.swift)
+    /// Test seam: the share inbox in place of the App Group's.
+    var shareDraftInboxOverride: ShareDraftInbox?
+    /// Test seam: where the composer's limit is published for the share sheet.
+    var shareDraftSettingsDefaultsOverride: UserDefaults?
+    /// The shared draft whose chat is opening.
+    var sharedDraftLaunch: SharedDraftLaunch?
+    /// A shared draft is being put in the composer.
+    var isDeliveringSharedDraft = false
+    /// The launch that just ended was a shared draft's, which says what
+    /// happened itself: the widget's words don't apply.
+    var sharedDraftLaunchOwnsFinish = false
+    /// A shared draft with no dashboard of its own, waiting for the user to
+    /// pick one.
+    @Published var sharedDraftChoice: SharedDraftChoice?
+    /// Drafts the user put off choosing a dashboard for: not asked about
+    /// again until Conduit next comes to the front.
+    var postponedSharedDraftIDs: Set<UUID> = []
     var widgetAwaitingInteractiveAuthenticationDashboardID: UUID?
     lazy var widgetLaunchCoordinator: WidgetLaunchCoordinator = {
         let clock = ContinuousClock()
@@ -716,6 +734,12 @@ final class AppState: ObservableObject {
             },
             finish: { [weak self] outcome in
                 guard let self else { return }
+                if self.sharedDraftLaunchOwnsFinish {
+                    self.sharedDraftLaunchOwnsFinish = false
+                    self.newChatLaunchStartedInApp = false
+                    if case .failed = outcome { self.widgetAwaitingInteractiveAuthenticationDashboardID = nil }
+                    return
+                }
                 let startedInApp = self.newChatLaunchStartedInApp
                 self.newChatLaunchStartedInApp = false
                 guard case .failed(let widgetMessage) = outcome else { return }
@@ -732,6 +756,9 @@ final class AppState: ObservableObject {
             },
             pendingLinkChanged: { [weak self] link in
                 self?.widgetLaunchPendingLinkChanged(link)
+            },
+            ended: { [weak self] link, outcome in
+                self?.sharedDraftLaunchEnded(link, outcome: outcome)
             }
         )
     }()
@@ -2032,6 +2059,10 @@ final class AppState: ObservableObject {
             // runs again once Conduit is on screen instead of leaving the
             // user signed out.
             signInWaitsForForeground = showLogin && phoneScreenIsAway()
+            // Signed in: a draft shared meanwhile opens now (#812).
+            if oldValue, !showLogin, isSceneActive {
+                Task { @MainActor [weak self] in self?.pickUpSharedDrafts() }
+            }
         }
     }
     /// A sign-in screen came up while Conduit was off the phone screen; the
@@ -2068,7 +2099,17 @@ final class AppState: ObservableObject {
     @Published var composerRestoreRequests: [ComposerRestoreRequest] = []
     /// Why a waiting message went back to a draft, until it's dismissed or
     /// the composer is used.
-    @Published var composerNotice: String?
+    @Published var composerNotice: String? {
+        didSet {
+            // Each notice says what it is; a new one starts as a waiting
+            // message's until its writer says otherwise.
+            if composerNotice != oldValue { composerNoticeSystemImage = Self.composerReturnNoticeSystemImage }
+        }
+    }
+    /// The symbol beside the notice: a message that came back, or a draft
+    /// shared from another app (AppState+ShareDraft.swift).
+    @Published var composerNoticeSystemImage = AppState.composerReturnNoticeSystemImage
+    static let composerReturnNoticeSystemImage = "arrow.uturn.backward.circle"
     /// The chat Conduit last created, while it's the one open: it takes the
     /// New Chat draft and a message that waited for it.
     var newChatOpenedSessionID: String? {
@@ -11198,6 +11239,10 @@ final class AppState: ObservableObject {
     func disconnect() {
         // Its turns' Lock Screen progress has nothing left to follow.
         liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
+        // Drafts shared for this dashboard belong to the signed-out user,
+        // including one whose chat was opening.
+        sharedDraftLaunch = nil
+        if let activeDashboardID { discardSharedDrafts(forDashboard: activeDashboardID) }
         widgetLaunchCoordinator.supersede()
         cancelExplicitSessionOpen()
         dismissChatTakeover()
@@ -11627,6 +11672,8 @@ final class AppState: ObservableObject {
     /// active dashboard this is the full Disconnect teardown, scoped.
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        // Drafts shared for this dashboard belong to the signed-out user.
+        discardSharedDrafts(forDashboard: id)
         if id == activeDashboardID {
             disconnect()
             return
@@ -15327,6 +15374,11 @@ final class AppState: ObservableObject {
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
             widgetLaunchCoordinator.readinessChanged()
+            // A draft shared from another app opens its chat (#812).
+            publishShareDraftSettings()
+            postponedSharedDraftIDs = []
+            pickUpSharedDrafts()
+            pruneSharedDraftNotifications()
             // A Talk that arrived before there was a window shows its call
             // screen now.
             presentWaitingCallIfNeeded()
@@ -15499,6 +15551,10 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            // A shared draft whose chat was still opening waits on disk for
+            // the next time Conduit is on screen.
+            sharedDraftLaunch = nil
+            publishShareDraftSettings()
             widgetLaunchCoordinator.supersede()
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".

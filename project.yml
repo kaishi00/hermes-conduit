@@ -70,6 +70,9 @@ targets:
       # Answers the agent's on-demand locate while Conduit isn't running
       # (designs/location-awareness.md section 12).
       - target: ConduitLocationPush
+      # Share text, links, pictures and files from other apps into a
+      # Conduit draft (#812).
+      - target: ConduitShareExtension
     postBuildScripts:
       # A draft language (Info.plist ConduitDraftLanguages) is compiled from
       # the String Catalogs like any other; drop its lproj so it never ships.
@@ -174,6 +177,7 @@ targets:
           - "LocalLive/**"
           - "Widgets/**"
           - "Location/**"
+          - "ShareDraft/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService
@@ -202,6 +206,7 @@ targets:
           - "GrokLive/**"
           - "LocalLive/**"
           - "Widgets/**"
+          - "ShareDraft/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
     dependencies:
@@ -251,6 +256,48 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
+            --development-language "$DEVELOPMENT_LANGUAGE"
+  ConduitShareExtension:
+    # Conduit in the share sheet (#812): reads what another app shared and
+    # leaves it as a draft in the launcher App Group's ShareInbox folder,
+    # with the chat it goes to, picked from the chat index the app keeps
+    # there for its widgets. It never contacts Hermes and holds no
+    # credentials; the app shows the draft in that chat's composer.
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ConduitShareExtension
+        excludes:
+          - "Info.plist"
+          - "ConduitShareExtension.entitlements"
+      - path: Shared/ShareDraft
+      # The widgets' chat index, read only.
+      - path: Shared/Widgets/WidgetSnapshot.swift
+      - path: Shared/Widgets/WidgetSnapshotStore.swift
+      - path: Conduit/Localizable.xcstrings
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.ShareExtension
+        PRODUCT_NAME: ConduitShareExtension
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ConduitShareExtension/Info.plist
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        CODE_SIGN_ENTITLEMENTS: ConduitShareExtension/ConduitShareExtension.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: "Conduit Share Extension App Store"
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # The app's draft languages (Conduit/Info.plist) never ship here either.
+      - name: Strip draft localizations
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
+            --info-plist "$SRCROOT/Conduit/Info.plist" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
   ConduitTests:
