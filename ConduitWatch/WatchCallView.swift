@@ -94,7 +94,7 @@ struct WatchCallControls: View {
         }
         .buttonStyle(.plain)
         .disabled(!tapDoesSomething)
-        .accessibilityLabel(Text(orbLabel))
+        .accessibilityLabel(Text(levelLabel))
         if #available(watchOS 11, *) {
             // Double tap interrupts, or continues after Siri or an alarm.
             button.handGestureShortcut(.primaryAction)
@@ -153,6 +153,7 @@ struct WatchCallControls: View {
             } label: {
                 Image(systemName: call.isMuted ? "mic.slash.fill" : "mic.fill")
                     .font(.body.weight(.semibold))
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(call.isMuted ? Color.black : Color.white)
                     .frame(width: 46, height: 46)
                     .background(Circle().fill(call.isMuted ? Color.white : Color.white.opacity(0.16)))
@@ -166,6 +167,7 @@ struct WatchCallControls: View {
             } label: {
                 Image(systemName: "phone.down.fill")
                     .font(.body.weight(.semibold))
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(.white)
                     .frame(width: 46, height: 46)
                     .background(Circle().fill(Color.red))
@@ -190,7 +192,7 @@ struct WatchCallControls: View {
         call.phase == .speaking || call.phase == .needsTap
     }
 
-    private var orbLabel: String {
+    private var levelLabel: String {
         switch call.phase {
         case .speaking: return String(localized: "Interrupt")
         case .needsTap: return String(localized: "Continue")

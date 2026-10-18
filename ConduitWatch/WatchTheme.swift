@@ -106,6 +106,7 @@ struct WatchVoiceButtonFace: View {
     var size: CGFloat = 76
 
     @Environment(\.watchAccent) private var accent
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     private static let heights: [CGFloat] = [0.34, 0.62, 0.9, 0.62, 0.34]
 
@@ -119,7 +120,7 @@ struct WatchVoiceButtonFace: View {
         }
         .frame(width: size, height: size)
         .background(accent, in: Circle())
-        .shadow(color: accent.opacity(0.35), radius: 10)
+        .shadow(color: accent.opacity(isLuminanceReduced ? 0 : 0.35), radius: 10)
         .accessibilityHidden(true)
     }
 }
