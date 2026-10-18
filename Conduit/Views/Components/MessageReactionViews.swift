@@ -154,7 +154,7 @@ struct MessageReactButton: View {
     }
 
     var body: some View {
-        let enabled = appState.canReact(to: message)
+        let enabled = rowState.canReact(to: message)
         Button {
             Haptics.light()
             isPresented = true

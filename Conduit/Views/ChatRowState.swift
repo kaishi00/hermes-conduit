@@ -20,8 +20,8 @@ struct ChatRowState: Equatable {
     var isBranchingChat = false
     var isOffline = false
     var canQuoteIntoComposer = false
-    /// Reactions can be sent at all; `AppState.canReact(to:)` adds the
-    /// message's own part, which also reads the latest reply's id.
+    /// Reactions can be sent at all; `canReact(to:)` adds the message's
+    /// own part.
     var reactionsAvailable = false
     var latestAssistantMessageID: String?
     var readAloudUnavailable = false
@@ -48,12 +48,23 @@ struct ChatRowState: Equatable {
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
     }
+
+    /// `AppState.canReact(to:)`, from these values alone.
+    func canReact(to message: ChatMessage) -> Bool {
+        reactionsAvailable
+            && message.content.contains(where: { !$0.isWhitespace })
+            && AppState.reactionTarget(
+                for: message,
+                isBusy: isBusy,
+                latestAssistantMessageID: latestAssistantMessageID
+            ) != nil
+    }
 }
 
 /// The AppState the rows act on (send a reaction, answer a card), held
 /// without observing it.
 struct ChatRowActions: Equatable {
-    unowned let appState: AppState
+    let appState: AppState
 
     nonisolated static func == (lhs: ChatRowActions, rhs: ChatRowActions) -> Bool {
         lhs.appState === rhs.appState
@@ -81,7 +92,8 @@ extension EnvironmentValues {
 }
 
 extension Optional where Wrapped == ChatRowActions {
-    /// The rows only draw under `chatRows()`.
+    /// The rows only draw under `chatRows()`: missing it is a programming
+    /// error, like a missing `environmentObject`, which crashes the same way.
     var required: AppState {
         guard let actions = self else { preconditionFailure("Chat rows draw under .chatRows()") }
         return actions.appState
@@ -109,6 +121,7 @@ private struct ChatRowsEnvironment: ViewModifier {
 
 /// The last state handed down, kept while equal: the same instance, URL
 /// and color storage included, compares unchanged however SwiftUI checks.
+@MainActor
 private final class LastChatRowState {
     private var value: ChatRowState?
 

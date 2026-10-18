@@ -19205,10 +19205,22 @@ final class AppState: ObservableObject {
     /// assistant row", which is right only for the latest reply while no
     /// turn is writing newer rows.
     func reactionTarget(for message: ChatMessage) -> MessageReactionTarget? {
+        Self.reactionTarget(
+            for: message,
+            isBusy: isBusy,
+            latestAssistantMessageID: messages.last(where: { $0.role == .assistant })?.id
+        )
+    }
+
+    /// Also how a chat row decides, from what it shows (ChatRowState).
+    nonisolated static func reactionTarget(
+        for message: ChatMessage,
+        isBusy: Bool,
+        latestAssistantMessageID: String?
+    ) -> MessageReactionTarget? {
         guard message.role == .assistant else { return nil }
         if let rowId = message.rowId { return .row(rowId) }
-        guard !isBusy,
-              messages.last(where: { $0.role == .assistant })?.id == message.id else { return nil }
+        guard !isBusy, latestAssistantMessageID == message.id else { return nil }
         return .newest(role: "assistant")
     }
 

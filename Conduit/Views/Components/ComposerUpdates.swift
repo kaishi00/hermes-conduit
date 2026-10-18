@@ -114,25 +114,32 @@ final class ComposerUpdates: ObservableObject {
     /// Held strongly: AppState never holds this, and the sink below holds
     /// it weakly.
     let appState: AppState
-    private var shown: ComposerInputs
+    /// What the composer shows now. Its effects (`onChange`, `task(id:)`)
+    /// key on these too, so a value they wait on can't be left out.
+    private(set) var inputs: ComposerInputs
     private var checkPending = false
     private var subscription: AnyCancellable?
 
     init(_ appState: AppState) {
         self.appState = appState
-        shown = ComposerInputs(appState)
+        inputs = ComposerInputs(appState)
+        // AppState is main-actor isolated and publishes on the main thread.
         subscription = appState.objectWillChange.sink { [weak self] _ in
-            guard let self, !self.checkPending else { return }
-            self.checkPending = true
-            DispatchQueue.main.async { [weak self] in self?.check() }
+            MainActor.assumeIsolated {
+                guard let self, !self.checkPending else { return }
+                self.checkPending = true
+                DispatchQueue.main.async { [weak self] in
+                    MainActor.assumeIsolated { self?.check() }
+                }
+            }
         }
     }
 
     private func check() {
         checkPending = false
-        let inputs = ComposerInputs(appState)
-        guard inputs != shown else { return }
-        shown = inputs
+        let next = ComposerInputs(appState)
+        guard next != inputs else { return }
         objectWillChange.send()
+        inputs = next
     }
 }

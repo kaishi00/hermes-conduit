@@ -375,19 +375,19 @@ struct ComposerBar: View, Equatable {
                 )
             }
         }
-        .onChange(of: appState.composerPrefillToken) { _, _ in
+        .onChange(of: updates.inputs.prefillToken) { _, _ in
             applyPendingPrefill()
         }
-        .onChange(of: appState.composerQuoteRequest) { _, request in
+        .onChange(of: updates.inputs.quoteRequest) { _, request in
             applyQuoteRequest(request)
         }
-        .onChange(of: appState.composerFocusRequest) { _, request in
+        .onChange(of: updates.inputs.focusRequest) { _, request in
             applyFocusRequest(request)
         }
         .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
         }
-        .onChange(of: appState.chatTakeover?.readyToken) { _, _ in
+        .onChange(of: updates.inputs.chatTakeover?.readyToken) { _, _ in
             resendAfterChatTakeover()
         }
         .onChange(of: loadedDraftKey) { _, _ in
@@ -414,10 +414,10 @@ struct ComposerBar: View, Equatable {
             // A screenshot chat can open before this composer is on screen.
             applyFocusRequest(appState.composerFocusRequest)
         }
-        .onChange(of: activeDraftKey) { _, newKey in
+        .onChange(of: updates.inputs.draftKeyOnScreen) { _, newKey in
             handoffComposer(to: newKey)
         }
-        .onChange(of: appState.activeRoomSurface != nil) { _, roomActive in
+        .onChange(of: updates.inputs.hasRoomSurface) { _, roomActive in
             // The room surface unmounts this composer's subtree. Persist the
             // typed draft BEFORE it goes, so returning to the session
             // restores exactly what the user had typed.
@@ -425,18 +425,18 @@ struct ComposerBar: View, Equatable {
                 saveDraft(for: activeDraftKey)
             }
         }
-        .onChange(of: appState.composerTakesText) { _, takesText in
+        .onChange(of: updates.inputs.takesText) { _, takesText in
             // The sheet has no room for the composer's notices; the inline
             // composer explains why it is locked.
             if !takesText { isShowingFullEditor = false }
         }
-        .onChange(of: appState.composerIsEnabled) { _, enabled in
+        .onChange(of: updates.inputs.isEnabled) { _, enabled in
             if enabled { applyFocusRequest(appState.composerFocusRequest) }
         }
-        .onChange(of: appState.composerRestoreRequests) { _, _ in
+        .onChange(of: updates.inputs.restoreRequests) { _, _ in
             applyComposerRestoreRequests()
         }
-        .onChange(of: appState.isVoiceInUse) { _, inUse in
+        .onChange(of: updates.inputs.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
             dictation.cancel()
@@ -455,7 +455,7 @@ struct ComposerBar: View, Equatable {
         // A session resume can complete before the gateway has refreshed its
         // context accounting. Recheck once the active composer is on screen,
         // rather than making the user open the context sheet to populate it.
-        .task(id: appState.activeSessionId) {
+        .task(id: updates.inputs.activeSessionId) {
             let sessionID = appState.activeSessionId
             guard sessionID != nil else { return }
             try? await Task.sleep(for: .milliseconds(350))
