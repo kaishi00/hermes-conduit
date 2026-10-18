@@ -1204,6 +1204,63 @@
       "output": []
     },
     {
+      "name": "An empty hours or days list counts as nothing to show",
+      "input": [
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "hours": [],
+            "days": [
+              {
+                "day": "Mon",
+                "low": 80,
+                "high": 70
+              }
+            ]
+          }
+        },
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "hours": [],
+            "days": [
+              {
+                "day": "Mon",
+                "low": 60,
+                "high": 70
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "days": [
+              {
+                "day": "Mon",
+                "low": 60,
+                "high": 70
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "A comparison recommends one option at most",
       "input": [
         {

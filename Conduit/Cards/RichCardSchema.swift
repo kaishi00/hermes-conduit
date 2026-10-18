@@ -204,12 +204,11 @@ struct RichCardSchema {
         case "weather":
             var weather = card["weather"] as? [String: Any] ?? [:]
             if let days = weather["days"] as? [[String: Any]] {
-                let kept = days.filter { (($0["low"] as? NSNumber)?.doubleValue ?? 0) <= (($0["high"] as? NSNumber)?.doubleValue ?? 0) }
-                if kept.isEmpty {
-                    weather.removeValue(forKey: "days")
-                } else {
-                    weather["days"] = kept
-                }
+                weather["days"] = days.filter { (($0["low"] as? NSNumber)?.doubleValue ?? 0) <= (($0["high"] as? NSNumber)?.doubleValue ?? 0) }
+            }
+            // An empty list counts as none.
+            for key in ["hours", "days"] where (weather[key] as? [Any])?.isEmpty == true {
+                weather.removeValue(forKey: key)
             }
             card["weather"] = weather
             guard card["source"] != nil, ["now", "hours", "days"].contains(where: { weather[$0] != nil }) else { return nil }
