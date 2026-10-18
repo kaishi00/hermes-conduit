@@ -311,6 +311,82 @@ extension KanbanTests {
         XCTAssertFalse(HermesActionStatus(["running": true]).succeeded)
     }
 
+    // MARK: Switches
+
+    /// Flips one switch through `writes`, as the row does: shown at once,
+    /// put back when the outcome says so.
+    @MainActor
+    private final class SwitchHarness {
+        let writes = CapabilityToggleWrites()
+        var row: Bool
+        var sent: [Bool] = []
+        var inFlight = 0
+        var overlapped = false
+        var held: [CheckedContinuation<Void, Never>] = []
+        var outcomes: [Bool: CapabilityToggleWrites.Outcome] = [:]
+        private var running = 0
+
+        init(row: Bool) { self.row = row }
+
+        func flip(_ enabled: Bool, fails: Bool) async {
+            let current = row
+            row = enabled
+            running += 1
+            Task {
+                let outcome = await writes.send("default|skill|notes", enabled: enabled, current: current) {
+                    self.inFlight += 1
+                    self.overlapped = self.overlapped || self.inFlight > 1
+                    defer { self.inFlight -= 1 }
+                    self.sent.append(enabled)
+                    await withCheckedContinuation { self.held.append($0) }
+                    if fails { throw URLError(.timedOut) }
+                }
+                if let restore = outcome.restore { row = restore }
+                running -= 1
+            }
+            for _ in 0..<10 { await Task.yield() }
+        }
+
+        /// Hermes answers the newest write it holds first.
+        func answerAll() async {
+            while running > 0 {
+                if !held.isEmpty { held.removeLast().resume() }
+                await Task.yield()
+            }
+        }
+    }
+
+    func testCapabilitySwitchesReachHermesInOrderAndAnOldFailureDoesntUndoANewerFlip() async {
+        // On (fails), off, on: Hermes ends on, and so does the row.
+        let harness = SwitchHarness(row: false)
+        await harness.flip(true, fails: true)
+        await harness.flip(false, fails: false)
+        await harness.flip(true, fails: false)
+        await harness.answerAll()
+
+        XCTAssertFalse(harness.overlapped, "one switch reaches Hermes at a time")
+        XCTAssertEqual(harness.sent, [true, false, true], "in the order flipped")
+        XCTAssertTrue(harness.row, "the first flip's failure came last but a newer flip replaced it")
+    }
+
+    func testAFailedCapabilitySwitchGoesBackToWhatHermesLastConfirmed() async {
+        // On and off both fail: Hermes still has it off.
+        let harness = SwitchHarness(row: false)
+        await harness.flip(true, fails: true)
+        await harness.flip(false, fails: true)
+        await harness.answerAll()
+
+        XCTAssertFalse(harness.row)
+
+        // On succeeds, off fails: Hermes has it on.
+        let confirmed = SwitchHarness(row: false)
+        await confirmed.flip(true, fails: false)
+        await confirmed.flip(false, fails: true)
+        await confirmed.answerAll()
+
+        XCTAssertTrue(confirmed.row)
+    }
+
     // MARK: Store
 
     func testCapabilitiesStoreScopesReadsToTheActiveProfile() async {
