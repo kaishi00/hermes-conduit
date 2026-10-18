@@ -285,7 +285,9 @@ enum WatchVoiceWire {
         // Watch → iPhone
         /// A finished call's summary, as one JSON line for the iPhone's log.
         case report(String)
-        /// Any other Watch event, as one JSON line for the iPhone's log.
+        /// Any other Watch events, as JSON lines for the iPhone's log,
+        /// joined by newlines (WatchCallLogBatch): one line from an older
+        /// Watch.
         case note(String)
         /// A Watch call to Gemini Live wants its session. `ring`: the call
         /// from Hermes it answers (designs/hermes-calls-watch.md), so it
@@ -360,7 +362,16 @@ enum WatchVoiceMain {
     /// scrolls, and the pause would read as a link stall or a suspension.
     static func timer(every interval: TimeInterval, repeats: Bool, _ block: @escaping @Sendable (Timer) -> Void) -> Timer {
         let timer = Timer(timeInterval: interval, repeats: repeats, block: block)
+        timer.tolerance = tolerance(for: interval)
         RunLoop.main.add(timer, forMode: .common)
         return timer
+    }
+
+    /// How late a timer may fire, so the system can group its wakeups
+    /// with others': a tenth of an interval of a second or more (a call's
+    /// 1 s tick may come at 1.1 s, a 20 s ping at 22 s). A shorter one
+    /// paces the call's microphone audio and stays exact.
+    static func tolerance(for interval: TimeInterval) -> TimeInterval {
+        interval >= 1 ? interval / 10 : 0
     }
 }

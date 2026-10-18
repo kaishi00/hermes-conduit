@@ -6,10 +6,13 @@
 //  Watch and also sent to the iPhone (queued, so it arrives even when the
 //  iPhone isn't reachable right now), where Voice settings > Apple Watch
 //  can share it for a support question. Kept to its newest megabyte.
+//  Lines go to the iPhone in batches (WatchCallLogBatch), kept in a file
+//  of their own until sent, so a batch outlives the app.
 //
 
 import Foundation
 import WatchConnectivity
+import WatchKit
 
 @MainActor
 final class WatchCallLog: ObservableObject {
@@ -25,15 +28,35 @@ final class WatchCallLog: ObservableObject {
     /// Bytes written since the file was last trimmed: it is trimmed again
     /// after another eighth of its cap.
     private var bytesSinceTrim = 0
+    /// Lines on their way to the iPhone, and the send due for them.
+    private var batch: WatchCallLogBatch
+    private var batchTimer: Timer?
+    /// The batch's lines on disk until they are sent: the app can be
+    /// stopped or suspended with some waiting.
+    private let unsentURL: URL?
 
     private init() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         fileURL = directory?.appendingPathComponent("watch-call-log.jsonl")
+        unsentURL = directory?.appendingPathComponent("watch-call-log-unsent.jsonl")
+        // What a previous run didn't send: the newest of it, sent once the
+        // link is up (WatchLink).
+        let unsent = unsentURL
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            .map(WatchCallLogBatch.lines(in:)) ?? []
+        batch = WatchCallLogBatch(restoring: Array(unsent.suffix(Self.keptLines)))
         if let directory {
             // The proof of concept's log, which nothing reads any more.
             try? FileManager.default.removeItem(at: directory.appendingPathComponent("watch-probe.jsonl"))
         }
         if let fileURL { WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes) }
+        // A suspended app's timer doesn't fire: what waits goes first
+        // (and again from the app's scene phase, ConduitWatchApp).
+        NotificationCenter.default.addObserver(
+            forName: WKApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { WatchCallLog.shared.sendBatch() }
+        }
     }
 
     /// Records one event, here and in the iPhone's log.
@@ -43,7 +66,19 @@ final class WatchCallLog: ObservableObject {
         fields["side"] = "watch"
         let line = WatchVoiceStats.jsonLine(fields)
         append(line)
-        sendToPhone(.note(line))
+        let action = batch.add(line, at: ProcessInfo.processInfo.systemUptime)
+        appendUnsent(line)
+        switch action {
+        case .sendNow:
+            sendBatch()
+        case .sendAfter(let delay):
+            batchTimer?.invalidate()
+            batchTimer = WatchVoiceMain.timer(every: delay, repeats: false) { _ in
+                MainActor.assumeIsolated { WatchCallLog.shared.sendBatch() }
+            }
+        case .wait:
+            break
+        }
     }
 
     /// Records a call's summary, which the iPhone also lists.
@@ -53,11 +88,30 @@ final class WatchCallLog: ObservableObject {
         fields["side"] = "watch"
         let line = WatchVoiceStats.jsonLine(fields)
         append(line)
+        // The call is over: its lines go too, ahead of the summary, and
+        // those of its teardown right after it.
+        sendBatch()
+        batch.callEnded(at: ProcessInfo.processInfo.systemUptime)
         sendToPhone(.report(line))
     }
 
+    /// Sends the lines waiting for the iPhone, a transfer for each
+    /// message's worth. Until the link is up they keep waiting.
+    func sendBatch() {
+        batchTimer?.invalidate()
+        batchTimer = nil
+        let sent = batch.drain(deliverable: Self.canSend) { text in
+            sendToPhone(.note(text))
+        }
+        if sent { saveUnsent() }
+    }
+
+    private static var canSend: Bool {
+        WCSession.isSupported() && WCSession.default.activationState == .activated
+    }
+
     private func sendToPhone(_ message: WatchVoiceWire.Message) {
-        guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
+        guard Self.canSend else { return }
         WCSession.default.transferUserInfo(WatchVoiceWire.encode(message))
     }
 
@@ -66,6 +120,31 @@ final class WatchCallLog: ObservableObject {
         lines = []
         bytesSinceTrim = 0
         if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
+        batchTimer?.invalidate()
+        batchTimer = nil
+        batch = WatchCallLogBatch()
+        saveUnsent()
+    }
+
+    private func appendUnsent(_ line: String) {
+        guard let unsentURL, let data = (line + "\n").data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: unsentURL) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: unsentURL)
+        }
+    }
+
+    /// The unsent file holds what the batch still holds.
+    private func saveUnsent() {
+        guard let unsentURL else { return }
+        if batch.isEmpty {
+            try? FileManager.default.removeItem(at: unsentURL)
+        } else {
+            try? (batch.lines.joined(separator: "\n") + "\n").data(using: .utf8)?.write(to: unsentURL, options: .atomic)
+        }
     }
 
     private func append(_ line: String) {
