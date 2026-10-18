@@ -128,7 +128,7 @@ final class ProfilePickerUITests: XCTestCase {
         } else {
             XCTAssertFalse(
                 app.staticTexts[Identity.pickerTitle].exists,
-                "The photo picker must appear. Tree:\n\(app.debugDescription)"
+                "The photo picker must appear over the profile picker. Tree:\n\(app.debugDescription)"
             )
             dismissUnloadedPhotoPicker(app)
         }

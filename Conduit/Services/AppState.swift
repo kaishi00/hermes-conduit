@@ -10821,23 +10821,24 @@ final class AppState: ObservableObject {
         return context
     }
 
-    /// Entering Repair is an explicit user takeover of connection recovery:
-    /// outstanding automatic recovery — the scheduled reconnect timer, its
-    /// operations, and its automatic work — loses authority here, so a stale
-    /// automatic reconnect can never install a connection or select a
-    /// session over the user's explicit repair. Dismissal does not silently
-    /// restart the loop; the user is left in the stable disconnected state.
     /// Round 6: Repair Connection appears only once the connection is
     /// actually down AND a failed attempt has surfaced — through the typed
-    /// classified failure or the visible error banner — never during
-    /// normal automatic recovery, and never uninvited. Offered by the
-    /// composer and, in V2, at the top of Chats, where the app opens.
+    /// classified failure or the visible error banner — never while the
+    /// first automatic attempts are still quiet, and never uninvited. It
+    /// stays between the retries that follow a surfaced failure. Offered by
+    /// the composer and, in V2, at the top of Chats, where the app opens.
     var showsConnectionRepair: Bool {
         connection != nil
             && !isConnected
             && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
     }
 
+    /// Entering Repair is an explicit user takeover of connection recovery:
+    /// outstanding automatic recovery — the scheduled reconnect timer, its
+    /// operations, and its automatic work — loses authority here, so a stale
+    /// automatic reconnect can never install a connection or select a
+    /// session over the user's explicit repair. Dismissal does not silently
+    /// restart the loop; the user is left in the stable disconnected state.
     @discardableResult
     func beginConnectionRepair() -> ConnectionRepairContext? {
         guard let context = makeConnectionRepairContext() else { return nil }
