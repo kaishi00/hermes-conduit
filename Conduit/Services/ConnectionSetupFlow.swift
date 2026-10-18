@@ -167,9 +167,22 @@ struct ConnectionSetupFlow: Equatable {
     /// authentication-recovery credentials question and on branch and
     /// troubleshooting screens, which sit outside the numbered sequence.
     var progressLabel: String? {
+        switch progressStep {
+        case 1: return AppLocalization.string("Step 1 of 2")
+        case 2: return AppLocalization.string("Step 2 of 2")
+        default: return nil
+        }
+    }
+
+    /// How many numbered first-run questions there are.
+    static let progressStepCount = 2
+
+    /// The numbered question's position (1-based), for the header's
+    /// progress bar; `nil` wherever `progressLabel` is.
+    var progressStep: Int? {
         switch step {
-        case .dashboard: return AppLocalization.string("Step 1 of 2")
-        case .accessMethod: return AppLocalization.string("Step 2 of 2")
+        case .dashboard: return 1
+        case .accessMethod: return 2
         case .credentials, .lan, .tailscale, .reverseProxy, .connectionDetails, .loginCredentials, .connectionTest,
              .review, .tlsTroubleshooting, .cloudflareTroubleshooting:
             return nil

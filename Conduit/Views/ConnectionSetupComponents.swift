@@ -10,7 +10,7 @@
 
 import SwiftUI
 
-/// A step's header: its glyph in a gold well, the "Step N of 3" label and
+/// A step's header: its glyph in a gold well, the "Step N of 2" label and
 /// progress bar for the numbered questions, then the title and its
 /// explanation.
 struct ConnectionSetupHeader: View {
@@ -42,7 +42,7 @@ struct ConnectionSetupHeader: View {
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityIdentifier("setup.step-label")
                         if let progressStep {
-                            ConnectionSetupProgressBar(step: progressStep, count: 3)
+                            ConnectionSetupProgressBar(step: progressStep, count: ConnectionSetupFlow.progressStepCount)
                         }
                     }
                 }
@@ -64,7 +64,7 @@ struct ConnectionSetupHeader: View {
     }
 }
 
-/// Three short gold segments: the done ones filled.
+/// One short gold segment per numbered question: the done ones filled.
 private struct ConnectionSetupProgressBar: View {
     let step: Int
     let count: Int
