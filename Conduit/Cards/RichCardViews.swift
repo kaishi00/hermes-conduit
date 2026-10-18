@@ -108,7 +108,10 @@ struct RichMapCard: View {
     }
 
     private func look() async {
-        matches = await RichPlaceLookup.matches(card.places)
+        let lookups = await RichPlaceLookup.matches(card.places)
+        // A newer card's lookup owns the state now.
+        guard !Task.isCancelled else { return }
+        matches = lookups
         if let planned = card.route, let to = match(card.places[planned.to]) {
             let from = planned.from.flatMap { match(card.places[$0]) }
             if planned.from == nil || from != nil {
@@ -289,7 +292,11 @@ struct RichPlaceCard: View {
         .task(id: place) {
             // A reused card shows nothing of the place it showed before.
             travelTime = nil
-            match = await RichPlaceLookup.match(place)
+            match = nil
+            looked = false
+            let found = await RichPlaceLookup.match(place)
+            guard !Task.isCancelled else { return }
+            match = found
             looked = true
             if let match { travelTime = await RichPlaceLookup.travelTime(to: match, mode: mode) }
         }
@@ -447,7 +454,6 @@ private struct RichSourcedLine: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: symbol)
-                .accessibilityHidden(true)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
