@@ -18,6 +18,7 @@ final class ConnectionRepairUITests: XCTestCase {
         static let testRun = "setup.test.run"
         static let reconnectNow = "setup.review.reconnect-now"
         static let signInReconnect = "setup.review.sign-in-reconnect"
+        static let browserSignInCancel = "login.browser-sign-in.cancel"
         static let enterCredentials = "setup.test.enter-credentials"
     }
 
@@ -159,6 +160,42 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertFalse(app.buttons[Identity.reconnectNow].exists)
     }
 
+    func testBrowserSignInSheetCancelReturnsToReview() {
+        // The browser sign-in sheet closes with its Cancel button, not only
+        // the swipe down: the sheet goes, Review is left as it was, and Sign
+        // In to Reconnect opens the sheet again.
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-CONDUIT_UI_TEST_FAILED_CONNECTION", Identity.stubDashboardURL,
+            "-CONDUIT_UI_TEST_FAILURE_KIND", "none",
+            "-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"
+        ]
+        app.launch()
+
+        let repair = app.buttons[Identity.repairButton]
+        XCTAssertTrue(repair.waitForExistence(timeout: 10))
+        tapVisible(repair, in: app)
+        XCTAssertTrue(app.staticTexts["setup.address-preview"].waitForExistence(timeout: 5))
+        tapVisible(app.buttons[Identity.testRun], in: app)
+
+        let signIn = app.buttons[Identity.signInReconnect]
+        XCTAssertTrue(signIn.waitForExistence(timeout: 5), "Sign In to Reconnect did not appear. Tree:\n\(app.debugDescription)")
+        tapVisible(signIn, in: app)
+
+        let cancel = app.buttons[Identity.browserSignInCancel]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "The browser sign-in sheet has no Cancel. Tree:\n\(app.debugDescription)")
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 5), "Cancel belongs to the browser sign-in sheet")
+        waitUntilSettled(cancel)
+        cancel.tap()
+
+        XCTAssertTrue(cancel.waitForNonExistence(timeout: 5), "Cancel did not close the sheet")
+        XCTAssertTrue(app.webViews.firstMatch.waitForNonExistence(timeout: 5), "The sign-in page is still up")
+
+        waitUntilSettled(signIn)
+        tapVisible(signIn, in: app)
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "Sign In to Reconnect did not open the sheet again")
+    }
+
     func testFailedActivationShowsClassifiedFailureAndForcesFreshTest() {
         // A test success is not a guarantee the world is unchanged: when the
         // explicit activation fails, the classified failure is shown on
@@ -212,6 +249,20 @@ final class ConnectionRepairUITests: XCTestCase {
     }
 
     // MARK: - Walk helpers
+
+    /// Waits until the element's frame stops moving, so a tap isn't
+    /// swallowed while a sheet slides in or out (as ConnectionSetupUITests).
+    private func waitUntilSettled(_ element: XCUIElement, timeout: TimeInterval = 5) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = element.frame
+        var stablePolls = 0
+        while Date() < deadline, stablePolls < 3 {
+            Thread.sleep(forTimeInterval: 0.15)
+            let frame = element.frame
+            stablePolls = frame == last ? stablePolls + 1 : 0
+            last = frame
+        }
+    }
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))

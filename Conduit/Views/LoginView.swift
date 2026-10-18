@@ -462,3 +462,39 @@ struct AuthWebView: UIViewRepresentable {
         }
     }
 }
+
+// MARK: - Browser sign-in sheet
+
+/// The browser sign-in as a sheet: the dashboard's page under a bar with
+/// Cancel, so closing it doesn't depend on the swipe down (hard to find,
+/// and harder with VoiceOver or Switch Control). Cancel does what the swipe
+/// does: the sheet's presentation state clears and the screen underneath
+/// stays as it was.
+struct AuthWebSignInSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let webView: AuthWebView
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            webView
+                .explainingPasskeys()
+                .navigationTitle(Text("Sign in"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(AppLocalization.string("Cancel")) { dismiss() }
+                            .accessibilityIdentifier("login.browser-sign-in.cancel")
+                    }
+                }
+        }
+    }
+}
+
+extension AuthWebView {
+    /// The sign-in page as its sheet's content, with the passkey notice and
+    /// a Cancel button.
+    func asSignInSheet() -> AuthWebSignInSheet {
+        AuthWebSignInSheet(webView: self)
+    }
+}

@@ -1177,7 +1177,7 @@ struct LoginFlowPresentations: ViewModifier {
                         flow.browserFailed(classifiedFailure, detail: detail)
                     }
                 )
-                .explainingPasskeys()
+                .asSignInSheet()
             }
     }
 }
