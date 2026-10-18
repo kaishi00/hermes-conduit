@@ -1025,10 +1025,10 @@ def load_smoke_suite(path: str) -> tuple:
 def cmd_smoke(args) -> int:
     """Validate the curated smoke selection against the discovered inventory.
 
-    GitHub-hosted CI runs only these classes (docs/CI.md): the exhaustive and
-    timing-sensitive families belong to the Mac local gate. This subcommand is
-    what keeps that selection honest - a class that is renamed, deleted or moved
-    between targets fails the plan job instead of silently shrinking hosted
+    PR and main CI runs only these classes (docs/CI.md, CI v5): every other
+    class runs in the nightly workflow (`cmd_hosted`). This subcommand is what
+    keeps that selection honest - a class that is renamed, deleted or moved
+    between targets fails the plan job instead of silently shrinking PR
     coverage, and the delegated counts are printed so the split is visible on
     every run.
     """
@@ -1077,9 +1077,9 @@ def cmd_smoke(args) -> int:
     delegated_unit = len(discovery["unit"]) - len(unit)
     delegated_ui = len(discovery["ui"]) - len(ui)
     print(f"smoke selection: {len(unit)} unit + {len(ui)} UI classes")
-    print(f"not in the UI smoke set: {delegated_unit} unit + "
-          f"{delegated_ui} UI classes (unit classes run in the hosted shards; the "
-          f"full UI suite and timing families run nightly)")
+    print(f"not in the smoke set: {delegated_unit} unit + "
+          f"{delegated_ui} UI classes (they run only in the nightly workflow: "
+          f"the unit shards, the timing families and the full UI suite)")
 
     if args.out:
         payload = {
@@ -1145,12 +1145,13 @@ def split_lpt(names: list, estimates: dict, shards: int) -> list:
 
 
 def cmd_hosted(args) -> int:
-    """Split the discovered inventory for the hosted CI v4 jobs.
+    """Split the discovered inventory for the nightly workflow (CI v5).
 
-    PR runs: every unit class except the nightly-only timing families, split
-    into `unit_shards` balanced shards. Nightly runs: those families, plus the
-    whole UI suite split into `nightly_ui_shards` shards. Every discovered class
-    lands in exactly one PR or nightly list, so nothing is silently unrun.
+    Every unit class except the nightly-only timing families, split into
+    `unit_shards` balanced shards; the timing families, run with repeats; and
+    the whole UI suite split into `nightly_ui_shards` shards. Every discovered
+    class lands in exactly one of those lists, so nothing is silently unrun
+    (PR and main runs only run the smoke sample of `cmd_smoke`).
     """
     discovery = discover_test_classes(args.repo_root)
     for w in discovery["warnings"]:
@@ -1194,13 +1195,13 @@ def cmd_hosted(args) -> int:
     unit_shards = split_lpt(pr_unit, estimates, suite["unit_shards"])
     ui_shards = split_lpt(ui_names, estimates, suite["nightly_ui_shards"])
     if not unit_shards:
-        print("::error::hosted selection has no unit classes for PR runs")
+        print("::error::hosted selection has no unit classes for the nightly unit shards")
         return 1
     if not ui_shards:
         print("::error::hosted selection has no UI classes for the nightly run")
         return 1
 
-    print("hosted selection: {0} unit classes in {1} PR shards ({2}), "
+    print("hosted selection: {0} unit classes in {1} nightly unit shards ({2}), "
           "{3} nightly-only unit classes, {4} UI classes in {5} nightly shards".format(
               len(pr_unit), len(unit_shards), "/".join(str(len(s)) for s in unit_shards),
               len(nightly), len(ui_names), len(ui_shards)))

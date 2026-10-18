@@ -261,6 +261,8 @@ struct V2ChatsView: View, Equatable {
     @State private var sessionPendingRename: SessionSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
+    /// Repair Connection opened from the top of the list.
+    @State private var repairContext: ConnectionRepairContext?
     /// The last activation the reveal served (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -356,6 +358,10 @@ struct V2ChatsView: View, Equatable {
         }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
+                .environmentObject(appState)
+        }
+        .sheet(item: $repairContext) { context in
+            ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showProjectCreator) {
@@ -685,6 +691,33 @@ struct V2ChatsView: View, Equatable {
 
     // MARK: - Sessions list
 
+    private var connectionRepairCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let error = appState.errorMessage, !error.isEmpty {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                Haptics.light()
+                repairContext = appState.beginConnectionRepair()
+            } label: {
+                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
+            .accessibilityIdentifier("chats.repair-connection")
+            .accessibilityLabel("Repair Connection")
+            .accessibilityHint("Test and fix the failed connection, then reconnect")
+        }
+        .padding(14)
+        .settingsCard()
+    }
+
     private var sessionsList: some View {
         // Worked out once per render: the rows walk the whole catalog.
         let displayed = displayedSessions
@@ -704,6 +737,16 @@ struct V2ChatsView: View, Equatable {
             // After the first connection to a dashboard added here.
             if appState.showsFinishSetup && !isSearching {
                 V2FinishSetupCard()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
+            }
+
+            // A failed connection: the app opens here, not on a composer,
+            // so the composer's Repair Connection is offered here too,
+            // searching or not.
+            if appState.showsConnectionRepair {
+                connectionRepairCard
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))

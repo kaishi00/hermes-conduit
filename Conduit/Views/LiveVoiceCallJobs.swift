@@ -287,12 +287,19 @@ struct LiveVoiceScreenCardSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Hermes' own images (MEDIA: paths) load through the gateway.
-                let profile = appState.activeProfile
-                MarkdownText(source: card.markdown, gatewayMediaDataURL: { path in
-                    await appState.gatewayMediaDataURL(for: path, profile: profile)
-                })
-                .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+                VStack(alignment: .leading, spacing: 16) {
+                    if !card.cards.isEmpty {
+                        RichCardsView(cards: card.cards)
+                    }
+                    if !card.markdown.isEmpty {
+                        // Hermes' own images (MEDIA: paths) load through the gateway.
+                        let profile = appState.activeProfile
+                        MarkdownText(source: card.markdown, gatewayMediaDataURL: { path in
+                            await appState.gatewayMediaDataURL(for: path, profile: profile)
+                        })
+                        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+                    }
+                }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

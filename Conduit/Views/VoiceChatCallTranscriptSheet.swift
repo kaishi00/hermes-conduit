@@ -23,6 +23,9 @@ struct VoiceChatCallTranscriptSheet: View {
                             entry: entry,
                             label: label(for: entry)
                         )
+                        if !entry.cards.isEmpty {
+                            RichCardsView(cards: entry.cards)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)

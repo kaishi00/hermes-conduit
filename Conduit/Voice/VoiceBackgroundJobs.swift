@@ -235,13 +235,17 @@ struct VoiceJobCallAnchor: Equatable {
 }
 
 /// Something a live voice model put on the call screen (its
-/// `show_on_screen` tool): a chart, a table, steps, images, as Markdown.
+/// `show_on_screen` tool): a chart, a table, steps, images, as Markdown,
+/// and maps and places as rich cards.
 struct VoiceScreenCard: Identifiable, Equatable {
     let id: UUID
     let title: String
     let markdown: String
     let callAnchor: VoiceJobCallAnchor
     let shownAt: Date
+    var cards: [RichCard] = []
+    /// The cards as normalized JSON, which the saved call keeps.
+    var cardsJSON: Data? = nil
 }
 
 /// What the voice conversation should do with a pending job update.
@@ -429,6 +433,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A call only CarPlay shows, a minimised one, or a backgrounded app
     /// has nowhere to show it. Nil counts as up.
     var liveCallScreenIsVisible: (@MainActor () -> Bool)?
+    /// A card the live model just put on screen, for the saved call.
+    var onScreenCardShown: (@MainActor (VoiceScreenCard) -> Void)?
     /// Opens a chat a call's search found, the call going on minimised.
     /// False when Conduit can't open chats right now. Nil: no chat opens.
     var openChat: (@MainActor (_ match: VoiceChatMatch) -> Bool)?
@@ -972,18 +978,24 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Puts `markdown` on the running live call's screen. Nil when no live
     /// call is running or there is nothing to show.
+    /// `cards` are rich cards RichCardSchema has normalized; with them,
+    /// the Markdown may be empty.
     @discardableResult
-    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? {
+    func showOnScreen(title: String, markdown: String, cards: [[String: Any]] = []) -> VoiceScreenCard? {
         let body = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty, liveCallScreenIsVisible?() ?? true, let anchor = currentCallAnchor else { return nil }
+        let rich = RichCard.cards(cards)
+        guard !body.isEmpty || !rich.isEmpty, liveCallScreenIsVisible?() ?? true, let anchor = currentCallAnchor else { return nil }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let card = VoiceScreenCard(
             id: UUID(),
             title: String(trimmedTitle.prefix(Self.maximumTitleCharacters)),
-            markdown: Self.clippedScreenMarkdown(body),
+            markdown: body.isEmpty ? "" : Self.clippedScreenMarkdown(body),
             callAnchor: anchor,
-            shownAt: Date()
+            shownAt: Date(),
+            cards: rich,
+            cardsJSON: rich.isEmpty ? nil : try? JSONSerialization.data(withJSONObject: cards)
         )
+        onScreenCardShown?(card)
         screenCards.append(card)
         if screenCards.count > Self.maximumScreenCards {
             screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)

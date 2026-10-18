@@ -1170,3 +1170,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(links.chatKey(forCallIDs: ["", "st-1"], profile: "default"))
     }
 }
+
+// MARK: - Cards a live model showed
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testRecorderKeepsWhatTheLiveModelShowedWithItsCards() throws {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        let normalized: [[String: Any]] = [["type": "place", "places": [["name": "Tartine"]]]]
+        let card = VoiceScreenCard(
+            id: UUID(), title: "Breakfast", markdown: "", callAnchor: VoiceJobCallAnchor(callID: UUID(), transcriptIndex: 0),
+            shownAt: Date(), cards: RichCard.cards(normalized), cardsJSON: try JSONSerialization.data(withJSONObject: normalized)
+        )
+        recorder.screen(card)
+        let turn = try XCTUnwrap(recorder.turns.last)
+        XCTAssertEqual(turn.role, .assistant)
+        XCTAssertEqual(turn.text, "Breakfast")
+        let sent = try XCTUnwrap(turn.payload["cards"] as? [[String: Any]])
+        XCTAssertEqual((sent.first?["places"] as? [[String: Any]])?.first?["name"] as? String, "Tartine")
+
+        let table = VoiceScreenCard(id: UUID(), title: "Forecast", markdown: "| Day | High |", callAnchor: card.callAnchor, shownAt: Date())
+        recorder.screen(table)
+        XCTAssertEqual(recorder.turns.last?.text, "Forecast\n\n| Day | High |")
+        XCTAssertNil(recorder.turns.last?.payload["cards"], "Markdown alone sends no cards")
+
+        // The outbox keeps turns as Codable: the cards survive it.
+        let decoded = try JSONDecoder().decode(VoiceTranscriptTurn.self, from: JSONEncoder().encode(turn))
+        XCTAssertEqual(decoded, turn)
+    }
+}

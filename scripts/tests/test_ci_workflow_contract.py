@@ -4,19 +4,21 @@ These tests pin the workflow/script interface so it cannot silently diverge
 again (e.g. passing observation files positionally when the script requires
 --observations).
 
-CI v4 shape (docs/CI.md): GitHub-hosted CI is the merge gate. It compiles the
-app (without its Watch app and extensions unless the plan job's ui-spec says
-otherwise, incrementally from main's last build) and every test target, runs
-the cheap Linux validation, every unit class except the
-nightly-only timing families (scripts/hosted-suite.json, split into shards),
-and the curated UI smoke selection (scripts/smoke-suite.json). The timing
-families and the complete UI suite run in nightly.yml. There is NO lane
-matrix, NO timing-history job and NO native flake retry that would re-run a
-genuine assertion until it agrees.
+CI v5 shape (docs/CI.md): GitHub-hosted CI is the merge gate, and it is light.
+A PR or push to main runs the cheap Linux validation and ONE macOS `smoke` job
+that compiles the app (without its Watch app and extensions unless the plan
+job's ui-spec says otherwise, incrementally from main's last build) and every
+test target once, then runs the curated unit smoke classes and the curated UI
+smoke classes (scripts/smoke-suite.json) on that build and simulator.
+nightly.yml runs every other unit class in balanced shards
+(scripts/hosted-suite.json), the timing families with repeats and the complete
+UI suite. There is NO lane matrix, NO timing-history job and NO native flake
+retry that would re-run a genuine assertion until it agrees.
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,7 +28,90 @@ from _util import SCRIPTS_DIR
 
 REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
+NIGHTLY = os.path.join(REPO_ROOT, ".github", "workflows", "nightly.yml")
 SMOKE_SUITE = os.path.join(SCRIPTS_DIR, "smoke-suite.json")
+
+CACHE_PATH = ("          path: |\n"
+              "            ci-derived-data\n"
+              "            !ci-derived-data/Logs\n")
+
+
+def _read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _job_text(path, job_key):
+    """Extract one job's text block (stdlib-only YAML slicing). Job keys sit
+    at exactly two spaces of indentation; their bodies are deeper."""
+    lines = _read(path).splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.startswith("  ") and line.strip() == "{0}:".format(job_key):
+            start = i
+            break
+    if start is None:
+        raise AssertionError("job {0!r} not found in {1}".format(
+            job_key, os.path.basename(path)))
+    out = [lines[start]]
+    for line in lines[start + 1:]:
+        if line.startswith("  ") and line[2:3] not in ("", " ", "\t"):
+            break  # next sibling job key
+        out.append(line)
+    return "\n".join(out)
+
+
+def _step_text(job_text, step_name):
+    """One step's text block inside a job block: from its `- name:` line to
+    the next step."""
+    lines = job_text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "- name: " + step_name:
+            start = i
+            break
+    if start is None:
+        raise AssertionError("step {0!r} not found".format(step_name))
+    indent = len(lines[start]) - len(lines[start].lstrip(" "))
+    out = [lines[start]]
+    for line in lines[start + 1:]:
+        if line.strip() and len(line) - len(line.lstrip(" ")) <= indent:
+            break
+        out.append(line)
+    return "\n".join(out)
+
+
+def _job_keys(path):
+    """The workflow's job keys, in file order."""
+    lines = _read(path).splitlines()
+    start = lines.index("jobs:")
+    return [line.strip()[:-1] for line in lines[start + 1:]
+            if re.match(r"^  [A-Za-z0-9_-]+:$", line)]
+
+
+def _assert_cache_round_trip(tc, text, saver, label):
+    """A job restores the newest main build's DerivedData before building and
+    saves its own after the tests, only from main and only after a successful
+    build, with the same path list (a different list is a different cache)."""
+    tc.assertIn("uses: actions/cache/restore@v5", text, label)
+    tc.assertIn("uses: actions/cache/save@v5", text, label)
+    tc.assertEqual(2, text.count(CACHE_PATH), label)
+    tc.assertLess(text.index("actions/cache/restore@v5"),
+                  text.index("bash scripts/ci-hosted-build.sh"), label)
+    tc.assertLess(text.index("bash scripts/ci-hosted-build.sh"),
+                  text.index("actions/cache/save@v5"), label)
+    tc.assertIn("id: build", text, label)
+    tc.assertIn("steps.build.outcome == 'success'", text, label)
+    tc.assertIn("steps.cache.outputs.cache-hit != 'true'", text, label)
+    tc.assertNotIn("head_ref", text, f"{label}: a PR's build must never be saved")
+    tc.assertIn(saver, text, label)
+    tc.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, label)
+    # The key still names the image, and the image-specific prefix is tried
+    # before the any-image one.
+    tc.assertIn("key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}", text, label)
+    tc.assertIn("restore-keys: |\n"
+                "            ${{ steps.cache-key.outputs.prefix }}-\n"
+                "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", text, label)
 
 
 class WorkflowContractTests(unittest.TestCase):
@@ -35,127 +120,112 @@ class WorkflowContractTests(unittest.TestCase):
             self.skipTest("ci.yml not present")
 
     def _workflow_text(self):
-        with open(WORKFLOW, encoding="utf-8") as fh:
-            return fh.read()
+        return _read(WORKFLOW)
+
+    def _job_text(self, job_key):
+        return _job_text(WORKFLOW, job_key)
 
     def test_ci_gate_job_present_and_required_shape(self):
         text = self._workflow_text()
         self.assertIn("CI Gate", text)
         self.assertNotIn("Build & Test", text)
 
-    def _job_text(self, job_key):
-        """Extract one job's text block (stdlib-only YAML slicing). Job keys
-        sit at exactly two spaces of indentation; their bodies are deeper."""
-        lines = self._workflow_text().splitlines()
-        start = None
-        for i, line in enumerate(lines):
-            if line.startswith("  ") and line.strip() == "{0}:".format(job_key):
-                start = i
-                break
-        if start is None:
-            self.fail("job {0!r} not found in ci.yml".format(job_key))
-        out = [lines[start]]
-        for line in lines[start + 1:]:
-            if line.startswith("  ") and line[2:3] not in ("", " ", "\t"):
-                break  # next sibling job key
-            out.append(line)
-        return "\n".join(out)
+    def test_one_macos_job_per_run(self):
+        """Runner queueing (5 concurrent macOS jobs per account) was CI v4's
+        bottleneck: a PR or main run gets exactly one macOS job."""
+        jobs = _job_keys(WORKFLOW)
+        self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
+        self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
+        self.assertIn("runs-on: macos-26", self._job_text("smoke"))
+        self.assertNotIn("matrix", self._job_text("smoke"),
+                         "the smoke job must not fan out into several macOS jobs")
+        self.assertNotIn("unit-shards", self._workflow_text(),
+                         "the unit shards run in nightly.yml, not on every PR")
 
     # --- the plan job owns every test-to-run mapping -----------------------
 
-    def test_plan_job_selects_the_smoke_suite_and_the_unit_shards(self):
+    def test_plan_job_selects_the_smoke_suite_and_validates_the_nightly_partition(self):
         plan = self._job_text("plan")
         self.assertIn("plan-tests.py smoke", plan,
-                      "the plan job owns the UI smoke selection")
+                      "the plan job owns the smoke selection")
         self.assertIn("--suite scripts/smoke-suite.json", plan)
-        self.assertIn("ui-csv", plan)
-        self.assertIn("plan-tests.py hosted", plan,
-                      "the plan job owns the unit shards")
+        self.assertIn("unit-csv: \"${{ steps.smoke.outputs.unit-csv }}\"", plan)
+        self.assertIn("ui-csv: \"${{ steps.smoke.outputs.ui-csv }}\"", plan)
+        self.assertIn("echo \"unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)\"", plan)
+        self.assertIn("echo \"ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)\"", plan)
+        # A renamed nightly-only class, or a class in no list, must fail the
+        # PR that caused it, not the next night.
+        self.assertIn("plan-tests.py hosted", plan)
         self.assertIn("--suite scripts/hosted-suite.json", plan)
-        self.assertIn("unit-shards", plan)
+        self.assertIn("plan-tests.py validate", plan)
         self.assertIn("smoke-summary.py", plan)
+        self.assertIn("check-l10n-coverage.py", plan)
+        self.assertIn("check-plugin-version.py", plan)
 
-    def test_unit_job_runs_one_shard_per_matrix_entry(self):
-        unit = self._job_text("unit")
-        self.assertIn("needs: plan", unit)
-        self.assertIn("fromJSON(needs.plan.outputs.unit-shards)", unit)
-        self.assertIn("fail-fast: false", unit,
-                      "one failing shard must not cancel the other")
-        self.assertIn('UNIT_CLASSES: "${{ matrix.classes }}"', unit)
-        self.assertIn("-only-testing:ConduitTests/", unit)
-        # A genuine assertion must FAIL the run: no Xcode-native retry, and no
-        # job-level retry either.
-        self.assertNotIn("-test-iterations", unit)
-        self.assertNotIn("-retry-tests-on-failure", unit)
-        self.assertNotIn("targeted retry", unit)
-        self.assertIn("-test-timeouts-enabled YES", unit,
-                      "a hung unit test must be killed, not burn the job ceiling")
-
-    def test_test_jobs_build_while_the_simulator_boots(self):
-        """Each macOS test job builds its own products with the simulator
-        booting in the background: no shared-artifact hop, and package
-        resolution runs during the boot."""
-        for job in ("unit", "ui-smoke"):
-            text = self._job_text(job)
-            self.assertIn("bash scripts/ci-hosted-build.sh", text, job)
-            self.assertIn("needs: plan", text, job)
-            self.assertNotIn("build-products", text, job)
-        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
-            build = fh.read()
+    def test_smoke_job_builds_while_the_simulator_boots(self):
+        """The smoke job builds its own products with the simulator booting in
+        the background: no shared-artifact hop, and package resolution runs
+        during the boot."""
+        text = self._job_text("smoke")
+        self.assertIn("bash scripts/ci-hosted-build.sh", text)
+        self.assertIn("needs: plan", text)
+        self.assertNotIn("build-products", text)
+        self.assertEqual(1, text.count("bash scripts/ci-hosted-build.sh"),
+                         "both test steps run on the one build")
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"))
         self.assertIn("ci-prepare-smoke.sh", build)
         self.assertIn("&\n", build, "preparation must run in the background")
         self.assertIn("ci-build-for-testing.sh", build)
         self.assertIn('wait "$prepare_pid"', build)
         self.assertIn("XCRUN_FILE=", build)
 
-    def test_hosted_builds_need_no_simulator_device(self):
-        """The build targets a generic simulator, so it never waits on the
-        CoreSimulator service the background boot keeps busy; the tests still
-        get the pinned device from the preparation step."""
-        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
-            hosted = fh.read()
-        export = 'export BUILD_DESTINATION="${BUILD_DESTINATION:-generic/platform=iOS Simulator}"'
-        self.assertIn(export, hosted)
-        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
-        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
-            build = fh.read()
-        generic = build.index('if [ -n "${BUILD_DESTINATION:-}" ]; then')
-        self.assertLess(generic, build.index("wait_for_destination_device"),
-                        "without BUILD_DESTINATION the build still waits for its device")
-        self.assertIn("-resolvePackageDependencies", build)
-        self.assertIn("s::the step took $(( $(date +%s) - step_start ))s$outcome", hosted,
-                      "the timing notice names a failed build or preparation")
+    def test_smoke_job_runs_unit_then_ui_on_the_same_build(self):
+        text = self._job_text("smoke")
+        build = text.index("- name: Build and boot the simulator in parallel")
+        unit = text.index("- name: Run the curated unit smoke classes")
+        ui = text.index("- name: Run the curated UI smoke suite")
+        self.assertLess(build, unit)
+        self.assertLess(unit, ui)
 
-    def test_hosted_builds_wait_for_the_simulator_boot(self):
-        """Side by side on the 3-core runners, the build starved the first
-        boot, and even a package resolution stalled until after it; no
-        xcodebuild call starts before the preparation has ended."""
-        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
-            hosted = fh.read()
-        export = 'export BUILD_AFTER="$PWD/ci-lane/prepare.end"'
-        self.assertIn(export, hosted)
-        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
-        self.assertIn("date +%s > ci-lane/prepare.end", hosted,
-                      "the preparation must leave the marker whether or not it succeeds")
-        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
-            build = fh.read()
-        wait = build.index('while [ ! -e "$BUILD_AFTER" ]')
-        resolve = build.index("XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages\nfi")
-        self.assertLess(wait, resolve, "packages resolve only after the wait")
-        self.assertLess(resolve, build.index("start_sampler\n\nstarted_at"),
-                        "package resolution is timed before the build's own timeline starts")
-        self.assertEqual(build.count("resolve_packages\n"), 1, "packages resolve once")
+    def test_a_unit_smoke_failure_does_not_skip_the_ui_step(self):
+        """Both verdicts are visible on every run: the UI step runs after a
+        failed unit step (any failed step still fails the job), and only a
+        failed build or a cancelled run skips it."""
+        ui = _step_text(self._job_text("smoke"), "Run the curated UI smoke suite")
+        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' }}", ui)
+        unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
+        self.assertNotIn("if:", unit, "the unit step runs only after a good build")
+        self.assertNotIn("continue-on-error", self._job_text("smoke"),
+                         "a failed step must fail the job")
 
-    def test_test_builds_leave_out_the_watch_app_and_extensions(self):
-        """Unit shards build project-tests.yml (the app alone); UI smoke builds
-        the plan job's choice, the full app whenever a change reaches the
+    def test_unit_smoke_step_runs_the_curated_classes_once_without_retry(self):
+        unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
+        self.assertIn('UNIT_CLASSES: "${{ needs.plan.outputs.unit-csv }}"', unit)
+        self.assertIn("-only-testing:ConduitTests/", unit)
+        self.assertEqual(1, unit.count("xcodebuild test-without-building"),
+                         "the curated unit classes are ONE invocation")
+        for flag in ("-parallel-testing-enabled NO",
+                     "-collect-test-diagnostics never",
+                     "-test-timeouts-enabled YES",
+                     '-default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}"'):
+            self.assertIn(flag, unit)
+        self.assertIn('UNIT_TEST_ALLOWANCE_S: "180"', unit)
+        # A genuine assertion must FAIL the run: no Xcode-native retry, and no
+        # job-level retry either.
+        self.assertNotIn("-test-iterations", unit)
+        self.assertNotIn("-retry-tests-on-failure", unit)
+        self.assertNotIn("smoke-retry-classes.py", unit)
+        self.assertIn("::error title=unit smoke failures::", unit,
+                      "the failing cases must reach an annotation")
+
+    def test_smoke_job_builds_the_plan_jobs_project(self):
+        """The smoke job builds the plan job's choice: the app alone
+        (project-tests.yml), or the full app whenever a change reaches the
         targets the overlay drops."""
-        self.assertIn("xcodegen generate --spec project-tests.yml",
-                      self._job_text("unit"))
         self.assertIn('xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"',
-                      self._job_text("ui-smoke"))
-        with open(os.path.join(REPO_ROOT, "project-tests.yml"), encoding="utf-8") as fh:
-            overlay = fh.read()
+                      self._job_text("smoke"))
+        self.assertIn("SPEC: ${{ needs.plan.outputs.ui-spec }}", self._job_text("smoke"))
+        overlay = _read(os.path.join(REPO_ROOT, "project-tests.yml"))
         self.assertIn("- path: project.yml", overlay)
         self.assertIn("dependencies:REPLACE:", overlay)
         self.assertNotIn("- target:", overlay)
@@ -169,44 +239,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
         self.assertIn('= "$PR_HEAD" ]', plan, "the merge commit's second parent must be this PR's head")
         self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
-        with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as fh:
-            spec = fh.read()
+        spec = _read(os.path.join(REPO_ROOT, "project.yml"))
         # Every target the overlay drops must still be a dependency in the
         # real spec, or the list above is out of date.
         for target in ("ConduitWatch", "ConduitNotificationService",
                        "ConduitWidgets", "ConduitLocationPush"):
             self.assertIn(f"- target: {target}", spec)
 
-    def test_test_jobs_build_incrementally_from_main_builds(self):
-        """Each test job restores the newest main build's DerivedData before
-        building, and one job per project kind saves its own: only on pushes
-        to main, only after a successful build, with the same path list (a
+    def test_smoke_job_builds_incrementally_and_main_saves_the_full_build(self):
+        """The smoke job restores the newest main build's DerivedData before
+        building, and saves its own only on pushes to main (always the full
+        app there), after a successful build, with the same path list (a
         different list is a different cache)."""
-        cache_path = ("          path: |\n"
-                      "            ci-derived-data\n"
-                      "            !ci-derived-data/Logs\n")
-        for job, saver in (("unit", "matrix.shard == 1"),
-                           ("ui-smoke", "steps.cache-key.outputs.kind == 'full'")):
-            text = self._job_text(job)
-            self.assertIn("uses: actions/cache/restore@v5", text, job)
-            self.assertIn("uses: actions/cache/save@v5", text, job)
-            self.assertEqual(2, text.count(cache_path), job)
-            self.assertLess(text.index("actions/cache/restore@v5"),
-                            text.index("bash scripts/ci-hosted-build.sh"), job)
-            self.assertIn("id: build", text, job)
-            self.assertIn("steps.build.outcome == 'success'", text, job)
-            self.assertIn("&& github.event_name == 'push'\n", text, job)
-            self.assertNotIn("head_ref", text, f"{job}: a PR's build must never be saved")
-            self.assertIn(saver, text, job)
-            self.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, job)
-            # The key still names the image, and the image-specific prefix is
-            # tried before the any-image one.
-            self.assertIn("key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}", text, job)
-            self.assertIn("restore-keys: |\n"
-                          "            ${{ steps.cache-key.outputs.prefix }}-\n"
-                          "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", text, job)
-        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
-            build = fh.read()
+        text = self._job_text("smoke")
+        _assert_cache_round_trip(self, text, "steps.cache-key.outputs.kind == 'full'", "smoke")
+        self.assertIn("&& github.event_name == 'push'\n", text)
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
         self.assertIn("ci-normalize-mtimes.py", build)
         self.assertIn("IgnoreFileSystemDeviceInodeChanges", build)
         self.assertIn('[ "${GITHUB_ACTIONS:-}" = "true" ]', build,
@@ -220,11 +268,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertFalse(
             any(line.startswith("  ") and line.strip() == "build:"
                 for line in text.splitlines()),
-            "the shared build job is gone: each test job builds for itself")
+            "the shared build job is gone: the smoke job builds for itself")
         self.assertNotIn("upload-artifact@v4\n        with:\n          name: build-products", text)
 
-    def test_ui_smoke_job_runs_the_curated_classes(self):
-        ui = self._job_text("ui-smoke")
+    def test_ui_smoke_step_runs_the_curated_classes(self):
+        ui = _step_text(self._job_text("smoke"), "Run the curated UI smoke suite")
         self.assertIn('UI_CLASSES: "${{ needs.plan.outputs.ui-csv }}"', ui)
         self.assertIn("-only-testing:ConduitUITests/", ui)
         self.assertNotIn("-test-iterations", ui)
@@ -232,38 +280,43 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("one targeted retry", ui,
                       "UI smoke absorbs exactly one runner-level flake, visibly")
 
-    def test_test_jobs_fail_closed_on_an_empty_selection(self):
+    def test_smoke_steps_fail_closed_on_an_empty_selection(self):
         # With no -only-testing filter, xcodebuild runs the WHOLE suite.
-        for job in ("unit", "ui-smoke"):
-            self.assertIn("refusing to run unfiltered", self._job_text(job),
-                          f"{job} must refuse an empty selection")
+        smoke = self._job_text("smoke")
+        for step in ("Run the curated unit smoke classes", "Run the curated UI smoke suite"):
+            self.assertIn("refusing to run unfiltered", _step_text(smoke, step),
+                          f"{step} must refuse an empty selection")
 
     def test_every_hosted_invocation_skips_failure_diagnostics(self):
         # Xcode's on-failure default gathers a simulator payload under its own
         # 600s timeout (docs/CI.md): ten minutes of dead time per failed batch.
-        for job in ("unit", "ui-smoke"):
-            text = self._job_text(job)
+        for path in (WORKFLOW, NIGHTLY):
+            text = _read(path)
             self.assertEqual(
                 text.count("xcodebuild test-without-building"),
-                text.count("-collect-test-diagnostics never \\"), job)
+                text.count("-collect-test-diagnostics never \\"), path)
 
-    def test_unit_job_runs_in_bounded_sequential_batches(self):
-        self.assertIn("UNIT_BATCH_SIZE", self._job_text("unit"))
-
-    def test_test_jobs_pin_the_simulator_destination(self):
+    def test_smoke_job_pins_the_simulator_destination(self):
         # A name-only destination lets xcodebuild pick the first of several
         # devices with that name; the shared ci-lib.sh helpers pin the UDID.
-        with open(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh"), encoding="utf-8") as fh:
-            preparation = fh.read()
+        preparation = _read(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh"))
         for needle in ("ci-lib.sh", "wait_for_destination_device",
                        "build_destination", "shutdown_own_simulator",
                        "LOG_DIR=", "export LOG_DIR"):
             self.assertIn(needle, preparation)
-        for job in ("unit", "ui-smoke"):
-            text = self._job_text(job)
-            self.assertIn('-destination "$DESTINATION"', text, job)
-            self.assertNotIn("platform=iOS Simulator,name=", text,
-                             f"{job} must not hand xcodebuild an unpinned destination")
+        smoke = self._job_text("smoke")
+        for step in ("Run the curated unit smoke classes", "Run the curated UI smoke suite"):
+            text = _step_text(smoke, step)
+            self.assertIn('-destination "$DESTINATION"', text, step)
+        self.assertNotIn("platform=iOS Simulator,name=", smoke,
+                         "the smoke job must not hand xcodebuild an unpinned destination")
+
+    def test_smoke_diagnostics_keep_both_logs(self):
+        upload = _step_text(self._job_text("smoke"), "Upload hosted smoke diagnostics")
+        self.assertIn("if: always()", upload)
+        self.assertIn("ci-lane/unit-smoke.log", upload)
+        self.assertIn("ci-lane/ui-smoke.log", upload)
+        self.assertIn("UNIT_SMOKE_LOG: ci-lane/unit-smoke.log", self._job_text("smoke"))
 
     def test_all_self_test_groups_remain_required_and_run_after_a_failure(self):
         text = self._job_text("self-test")
@@ -273,11 +326,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("self-test]", self._job_text("ci-gate"))
         self.assertIn('--self-test "${{ needs.self-test.result }}"', self._job_text("ci-gate"))
 
-    def test_ci_gate_requires_every_test_job(self):
+    def test_ci_gate_requires_plan_smoke_and_self_test(self):
         gate = self._job_text("ci-gate")
-        self.assertIn("needs: [plan, unit, ui-smoke, self-test]", gate)
+        self.assertIn("needs: [plan, smoke, self-test]", gate)
         self.assertIn("if: always()", gate)
         self.assertIn("name: CI Gate", gate)
+        self.assertIn('--plan "${{ needs.plan.result }}"', gate)
+        self.assertIn('--smoke "${{ needs.smoke.result }}"', gate)
+        self.assertNotIn("needs.unit.", gate)
+        self.assertNotIn("needs.ui-smoke.", gate)
 
     def test_no_write_only_build_metadata_artifact(self):
         self.assertNotIn("name: build-meta", self._workflow_text(),
@@ -290,7 +347,8 @@ class WorkflowContractTests(unittest.TestCase):
         # The only cache left is the build cache (DerivedData); the
         # timing-history cache is gone with its job.
         self.assertNotIn("timing-history", text)
-        for obsolete in ("report:", "timing-history-update:", "unit-smoke:"):
+        for obsolete in ("report:", "timing-history-update:", "unit-smoke:",
+                         "unit:", "ui-smoke:"):
             self.assertFalse(
                 any(line.startswith("  ") and line.strip() == obsolete
                     for line in text.splitlines()),
@@ -298,53 +356,85 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_ci_gate_script_verdict_matches_spec_examples(self):
         spec = {
-            ("success", "success", "success", "success"): True,
+            ("success", "success", "success"): True,
             # No hosted job is ever legitimately skipped: a skip is always an
             # upstream failure cascade - and fails the gate.
-            ("success", "success", "skipped", "success"): False,
-            ("success", "failure", "success", "success"): False,
-            ("success", "success", "failure", "success"): False,
-            ("success", "timed_out", "success", "success"): False,
-            ("success", "success", "timed_out", "success"): False,
-            ("success", "success", "success", "failure"): False,
-            ("failure", "skipped", "skipped", "skipped"): False,
-            ("cancelled", "success", "success", "success"): False,
-            ("success", "cancelled", "success", "success"): False,
+            ("success", "skipped", "success"): False,
+            ("success", "failure", "success"): False,
+            ("success", "timed_out", "success"): False,
+            ("success", "cancelled", "success"): False,
+            ("success", "success", "failure"): False,
+            ("failure", "skipped", "skipped"): False,
+            ("cancelled", "success", "success"): False,
         }
-        for (plan, unit, ui, self_test), expected in spec.items():
+        for (plan, smoke, self_test), expected in spec.items():
             proc = subprocess.run(
                 [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
-                 "--plan", plan, "--unit", unit, "--ui-smoke", ui,
-                 "--self-test", self_test],
+                 "--plan", plan, "--smoke", smoke, "--self-test", self_test],
                 capture_output=True, text=True)
             self.assertEqual(
                 proc.returncode == 0, expected,
-                f"gate({plan},{unit},{ui},{self_test}) -> {proc.stdout}")
+                f"gate({plan},{smoke},{self_test}) -> {proc.stdout}")
 
 
 class NightlyWorkflowTests(unittest.TestCase):
-    NIGHTLY = os.path.join(REPO_ROOT, ".github", "workflows", "nightly.yml")
-
     def setUp(self):
-        if not os.path.exists(self.NIGHTLY):
+        if not os.path.exists(NIGHTLY):
             self.skipTest("nightly.yml not present")
-        with open(self.NIGHTLY, encoding="utf-8") as fh:
-            self.text = fh.read()
+        self.text = _read(NIGHTLY)
 
     def test_nightly_never_runs_on_pull_requests(self):
         self.assertIn("schedule:", self.text)
         self.assertIn("workflow_dispatch:", self.text)
         self.assertNotIn("pull_request", self.text)
 
-    def test_nightly_runs_the_timing_families_and_the_whole_ui_suite(self):
-        self.assertIn("plan-tests.py hosted", self.text)
-        self.assertIn("nightly_unit_csv", self.text)
-        self.assertIn("fromJSON(needs.plan.outputs.ui-shards)", self.text)
-        self.assertIn("repeat: [1, 2, 3]", self.text,
+    def test_nightly_runs_full_unit_shards_timing_and_the_whole_ui_suite(self):
+        self.assertEqual(_job_keys(NIGHTLY), ["plan", "unit", "timing", "ui"])
+        plan = _job_text(NIGHTLY, "plan")
+        self.assertIn("plan-tests.py hosted", plan)
+        self.assertIn("--suite scripts/hosted-suite.json", plan)
+        self.assertIn("nightly_unit_csv", plan)
+        for output in ("unit-shards", "timing-csv", "ui-shards"):
+            self.assertIn(f'{output}: "${{{{ steps.hosted.outputs.{output} }}}}"', plan)
+        self.assertIn("fromJSON(needs.plan.outputs.unit-shards)", _job_text(NIGHTLY, "unit"))
+        self.assertIn("fromJSON(needs.plan.outputs.ui-shards)", _job_text(NIGHTLY, "ui"))
+        self.assertIn("repeat: [1, 2, 3]", _job_text(NIGHTLY, "timing"),
                       "each timing pass is its own job, so one never outgrows its ceiling")
         self.assertIn("-collect-test-diagnostics never", self.text)
-        self.assertIn("refusing to run unfiltered", self.text)
         self.assertNotIn("-retry-tests-on-failure", self.text)
+        self.assertNotIn("-test-iterations", self.text)
+
+    def test_every_nightly_test_job_fails_closed_on_an_empty_selection(self):
+        for job in ("unit", "timing", "ui"):
+            self.assertIn("refusing to run unfiltered", _job_text(NIGHTLY, job), job)
+
+    def test_unit_shards_run_one_shard_per_matrix_entry_in_sequential_batches(self):
+        unit = _job_text(NIGHTLY, "unit")
+        self.assertIn("needs: plan", unit)
+        self.assertIn("fail-fast: false", unit,
+                      "one failing shard must not cancel the other")
+        self.assertIn('UNIT_CLASSES: "${{ matrix.classes }}"', unit)
+        self.assertIn("UNIT_BATCH_SIZE", unit)
+        self.assertIn("-only-testing:ConduitTests/", unit)
+        self.assertIn("-test-timeouts-enabled YES", unit,
+                      "a hung unit test must be killed, not burn the job ceiling")
+        self.assertIn('-destination "$DESTINATION"', unit)
+        self.assertNotIn("platform=iOS Simulator,name=", unit)
+        self.assertNotIn("targeted retry", unit)
+        self.assertIn("bash scripts/ci-hosted-build.sh", unit)
+        self.assertIn("xcodegen generate --spec project-tests.yml", unit)
+
+    def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
+        """PR smoke builds of project-tests.yml restore the slim cache, and
+        only the nightly unit shards build that kind on main now."""
+        unit = _job_text(NIGHTLY, "unit")
+        _assert_cache_round_trip(self, unit, "matrix.shard == 1", "nightly unit")
+        self.assertIn("SPEC: project-tests.yml", unit)
+        self.assertIn("&& github.ref == 'refs/heads/main'\n", unit,
+                      "only main's builds may be saved")
+
+    def test_nightly_documents_the_release_validation_path(self):
+        self.assertIn("release", self.text.split("\non:\n")[0])
 
 
 class WorkflowExpressionTests(unittest.TestCase):
@@ -353,28 +443,46 @@ class WorkflowExpressionTests(unittest.TestCase):
     which is how `strategy.job-index + 1` in a job name broke both workflows."""
 
     def test_no_arithmetic_inside_expressions(self):
-        import re
-        for name in ("ci.yml", "nightly.yml"):
-            path = os.path.join(REPO_ROOT, ".github", "workflows", name)
-            with open(path, encoding="utf-8") as fh:
-                text = fh.read()
+        for path in (WORKFLOW, NIGHTLY):
+            text = _read(path)
             for expr in re.findall(r"\$\{\{(.*?)\}\}", text):
                 self.assertNotRegex(expr, r"[+/]|\s-\s",
-                                    f"{name}: arithmetic in expression '${{{{{expr}}}}}'")
+                                    f"{path}: arithmetic in expression '${{{{{expr}}}}}'")
 
     def test_shard_matrices_carry_one_based_shard_numbers(self):
-        for name, output in (("ci.yml", "unit-shards"), ("nightly.yml", "ui-shards")):
-            path = os.path.join(REPO_ROOT, ".github", "workflows", name)
-            with open(path, encoding="utf-8") as fh:
-                text = fh.read()
+        text = _read(NIGHTLY)
+        for output in ("unit-shards", "ui-shards"):
             self.assertIn(f"include: ${{{{ fromJSON(needs.plan.outputs.{output}) }}}}", text)
-            self.assertIn("(shard ${{ matrix.shard }})", text)
-            self.assertIn("map({shard: (.key + 1), classes: .value})", text)
+        self.assertEqual(2, text.count("(shard ${{ matrix.shard }})"))
+        self.assertEqual(2, text.count("map({shard: (.key + 1), classes: .value})"))
+
+    def test_every_needs_output_is_declared_by_the_plan_job(self):
+        """A typo in needs.plan.outputs.<name> expands to an empty string,
+        which the test steps would then refuse - or a matrix that fails to
+        parse. Every output a workflow reads must be one its plan declares."""
+        for path in (WORKFLOW, NIGHTLY):
+            text = _read(path)
+            plan = _job_text(path, "plan")
+            declared = set(re.findall(r"^      ([a-z0-9-]+): \"\$\{\{ steps\.", plan, re.M))
+            used = set(re.findall(r"needs\.plan\.outputs\.([a-z0-9-]+)", text))
+            self.assertTrue(used, path)
+            self.assertLessEqual(used, declared, path)
+
+    def test_every_step_reference_names_a_step_of_the_same_job(self):
+        for path in (WORKFLOW, NIGHTLY):
+            for job in _job_keys(path):
+                text = _job_text(path, job)
+                ids = set(re.findall(r"^\s+id: ([a-z0-9-]+)$", text, re.M))
+                for ref in re.findall(r"steps\.([a-z0-9-]+)\.", text):
+                    self.assertIn(ref, ids, f"{path} job {job}: steps.{ref} has no step")
 
 
 class HostedSelectionTests(unittest.TestCase):
-    """plan-tests.py hosted: every unit class lands in exactly one PR shard or
-    the nightly list, and a stale nightly name fails the plan."""
+    """plan-tests.py hosted: every unit class lands in exactly one nightly unit
+    shard or the nightly-only timing list, every UI class in one nightly UI
+    shard, and a stale nightly name fails the plan. With the PR gate down to
+    the smoke classes, this partition is what keeps any test from dropping
+    out of both workflows."""
 
     HOSTED_SUITE = os.path.join(SCRIPTS_DIR, "hosted-suite.json")
 
@@ -407,7 +515,25 @@ class HostedSelectionTests(unittest.TestCase):
         self.assertFalse(set(shard_classes) & set(nightly))
         self.assertEqual(len(shard_classes) + len(nightly), doc["inventory_unit"])
         ui_classes = [c for csv in doc["ui_shards"] for c in csv.split(",")]
+        self.assertEqual(len(ui_classes), len(set(ui_classes)))
         self.assertEqual(len(ui_classes), doc["inventory_ui"])
+        self.assertEqual(len(doc["ui_shards"]), suite["nightly_ui_shards"])
+
+    def test_every_smoke_class_also_runs_in_a_nightly_shard(self):
+        """The smoke classes are a sample of the nightly suite, not a carve-out
+        from it: each one is also in a nightly unit or UI shard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.json")
+            proc = self._run(self.HOSTED_SUITE, out)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            with open(out, encoding="utf-8") as fh:
+                doc = json.load(fh)
+        with open(SMOKE_SUITE, encoding="utf-8") as fh:
+            smoke = json.load(fh)
+        shard_classes = {c for csv in doc["unit_shards"] for c in csv.split(",")}
+        ui_classes = {c for csv in doc["ui_shards"] for c in csv.split(",")}
+        self.assertLessEqual(set(smoke["unit"]), shard_classes)
+        self.assertLessEqual(set(smoke["ui"]), ui_classes)
 
     def test_a_stale_nightly_class_fails_the_selection(self):
         with open(self.HOSTED_SUITE, encoding="utf-8") as fh:
@@ -452,25 +578,28 @@ class SmokeSelectionTests(unittest.TestCase):
         proc = self._run_smoke(SMOKE_SUITE)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("smoke selection OK", proc.stdout)
-        self.assertIn("not in the UI smoke set", proc.stdout)
+        self.assertIn("not in the smoke set", proc.stdout)
 
-    def test_shipped_smoke_suite_never_names_a_mac_gate_family(self):
+    def test_shipped_smoke_suite_never_names_a_timing_family(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
             suite = json.load(fh)
-        # The families the Mac exhaustive gate owns (docs/CI.md): hosting them
-        # in the smoke gate would re-litigate timing-sensitive suites on a
-        # shared runner.
-        mac_gate_families = {
+        with open(os.path.join(SCRIPTS_DIR, "hosted-suite.json"), encoding="utf-8") as fh:
+            nightly_only = set(json.load(fh)["nightly_only_unit"])
+        # The timing/performance/dormancy families run with repeats in the
+        # nightly workflow (docs/CI.md): running them in the smoke job would
+        # re-litigate timing-sensitive suites on every PR's shared runner.
+        timing_families = {
             "TranscriptPerformanceFixtureTests",
             "TranscriptPerfLedgerContractTests",
             "LongContextScalingFixtureTests",
             "SettledMessageIsolationTests",
             "MarkdownRichContentHostedTests",
         }
+        self.assertLessEqual(timing_families, nightly_only)
         self.assertFalse(
-            mac_gate_families & set(suite.get("unit") or []),
-            "a Mac-gate-owned timing family must not be in the hosted smoke set")
-        self.assertFalse(mac_gate_families & set(suite.get("ui") or []))
+            nightly_only & set(suite.get("unit") or []),
+            "a nightly-only timing family must not be in the smoke set")
+        self.assertFalse(nightly_only & set(suite.get("ui") or []))
 
     def test_a_nonexistent_class_fails_the_selection(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:

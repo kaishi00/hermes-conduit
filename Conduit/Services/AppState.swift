@@ -3518,6 +3518,12 @@ final class AppState: ObservableObject {
         supervisor.openChat = { [weak self] match in
             self?.openChatFromLiveCall(match.sessionID) ?? false
         }
+        supervisor.onScreenCardShown = { [weak self] card in
+            guard let self, let recorder = self.voiceCallRecorder else { return }
+            self.captureVoiceCall()
+            recorder.screen(card)
+            self.checkpointVoiceCall(recorder)
+        }
         supervisor.onThreadTurnStarted = { [weak self] job, thread in
             guard let self, let recorder = self.voiceCallRecorder else { return }
             self.captureVoiceCall()
@@ -10819,6 +10825,18 @@ final class AppState: ObservableObject {
         guard let context = makeSavedConnectionRepairContext() else { return nil }
         cancelChatResumeTransportRecovery()
         return context
+    }
+
+    /// Round 6: Repair Connection appears only once the connection is
+    /// actually down AND a failed attempt has surfaced — through the typed
+    /// classified failure or the visible error banner — never while the
+    /// first automatic attempts are still quiet, and never uninvited. It
+    /// stays between the retries that follow a surfaced failure. Offered by
+    /// the composer and, in V2, at the top of Chats, where the app opens.
+    var showsConnectionRepair: Bool {
+        connection != nil
+            && !isConnected
+            && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
     }
 
     /// Entering Repair is an explicit user takeover of connection recovery:

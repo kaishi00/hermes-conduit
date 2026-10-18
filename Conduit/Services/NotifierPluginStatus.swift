@@ -49,7 +49,7 @@ struct NotifierPluginStatus: Equatable {
     /// The plugin version this Conduit build was made against: the least it
     /// offers, even when GitHub can't be reached for the latest
     /// (`latestVersion`).
-    static let recommendedVersion = "0.44.1"
+    static let recommendedVersion = "0.45.0"
 
     /// Where Hermes installs it from (`hermes plugins install …`).
     static let repository = "kaishi00/hermes-conduit-notifier"

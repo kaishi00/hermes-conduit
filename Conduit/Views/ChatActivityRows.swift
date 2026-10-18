@@ -299,9 +299,10 @@ struct ChatStepGroup: Equatable {
         case .reasoning:
             return !message.content.isEmpty
         case .tool:
-            // A clarify reads as its own question card (#394).
+            // A clarify reads as its own question card (#394), and cards
+            // Hermes showed are part of the reply.
             guard let tool = message.tool else { return false }
-            return tool.name.lowercased() != "clarify"
+            return tool.name.lowercased() != "clarify" && !RichCard.hasCards(message)
         default:
             return false
         }

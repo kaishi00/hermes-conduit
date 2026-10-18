@@ -1,15 +1,29 @@
 name: Nightly
 
-# The half of hosted CI that never gates a merge (docs/CI.md, CI v4):
+# The comprehensive half of hosted CI, which never gates a merge (docs/CI.md,
+# CI v5). PR and main runs (ci.yml) only build and run the curated smoke
+# classes; this workflow runs everything else:
+#   unit       EVERY unit class except the timing families, split into
+#              balanced shards from scripts/hosted-suite.json (unit_shards),
+#              each shard as sequential xcodebuild batches with no retry
 #   timing     the timing/performance/dormancy families from
 #              scripts/hosted-suite.json, three passes as three jobs (what the
 #              retired Mac gate's release mode did)
 #   ui         the COMPLETE UI suite, split into balanced shards, with no retry,
 #              so a flaky UI test shows up here instead of hiding in a PR run
+# plan-tests.py hosted puts every discovered unit class in exactly one unit
+# shard or the timing list, and every UI class in one UI shard, so no class
+# is left out of both workflows (ci.yml's plan job checks the same partition
+# on every PR).
 #
-# Runs on main every night and on demand (Actions > Nightly > Run workflow),
-# e.g. against a release branch before a TestFlight upload. A failed scheduled
-# run emails the repository owner.
+# Runs on main every night and on demand (Actions > Nightly > Run workflow).
+# A release is validated by dispatching it on the release ref before a
+# TestFlight upload. A failed scheduled run emails the repository owner.
+#
+# A run schedules 8 macOS jobs (2 unit shards + 3 timing repeats + 3 UI
+# shards) against GitHub's 5-concurrent-macOS-jobs-per-account ceiling, so
+# some queue behind the others. That is accepted at night: nothing waits on
+# these results.
 
 on:
   schedule:
@@ -26,10 +40,10 @@ permissions:
 env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
-  # Build budget for scripts/ci-hosted-build.sh. Six macOS jobs share the
-  # account's runners here, so builds run slower than in PR CI: builds of
-  # 850-890 s were common, and UI shard 3 hit 900 s on 2026-10-11. PR CI uses
-  # 1200 s too since 2026-10-13.
+  # Build budget for scripts/ci-hosted-build.sh. Up to five macOS jobs run
+  # side by side here, so builds run slower than in PR CI: builds of 850-890 s
+  # were common, and UI shard 3 hit 900 s on 2026-10-11. PR CI uses 1200 s too
+  # since 2026-10-13.
   BUILD_TIMEOUT_SECS: "1200"
 
 jobs:
@@ -38,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      unit-shards: "${{ steps.hosted.outputs.unit-shards }}"
       timing-csv: "${{ steps.hosted.outputs.timing-csv }}"
       ui-shards: "${{ steps.hosted.outputs.ui-shards }}"
     steps:
@@ -53,7 +68,256 @@ jobs:
           echo "timing-csv=$(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
           # Matrix include entries carry a 1-based shard number: expressions
           # have no arithmetic, so a job name can't compute job-index + 1.
+          echo "unit-shards=$(jq -c '.unit_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
           echo "ui-shards=$(jq -c '.ui_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Nightly selection"
+            echo
+            jq -r '.unit_shards | to_entries[] | "- unit shard \(.key + 1): \(.value | split(",") | length) classes"' ci-artifacts/hosted.json
+            echo "- timing families: $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
+            jq -r '.ui_shards | to_entries[] | "- UI shard \(.key + 1): \(.value | split(",") | length) classes"' ci-artifacts/hosted.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  unit:
+    # Moved here from ci.yml in CI v5: the whole unit suite, minus the timing
+    # families, in balanced shards.
+    name: Unit suite (shard ${{ matrix.shard }})
+    needs: plan
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.unit-shards) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Pick the build cache
+        # DerivedData from the newest main build of the same project and
+        # Xcode (the same runner image preferred), so ci-build-for-testing.sh
+        # recompiles only what changed since. A new Xcode starts clean. The
+        # slim (app-only) kind: these shards are what saves it for PR builds.
+        id: cache-key
+        env:
+          SPEC: project-tests.yml
+        run: |
+          set -euo pipefail
+          kind=full
+          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
+          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          # Same runner image first; while GitHub rolls out a new image, any
+          # build from the same Xcode (a mismatch only rebuilds more).
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        # The app without its Watch app and extensions (project-tests.yml).
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Build and boot the simulator in parallel
+        id: build
+        # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
+        # in the background while this runner compiles, so the ~2.5 min boot
+        # hides behind the build. Exports XCRUN_FILE, DESTINATION and
+        # SIMULATOR_UDID for the steps below.
+        env:
+          # Named in the build's timing notice, to explain a clean build.
+          BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
+        run: bash scripts/ci-hosted-build.sh
+
+      - name: Run this shard's unit classes
+        # The shard's classes run as SEQUENTIAL batches, each a fresh
+        # xcodebuild on the same booted simulator: the fewest batches of at
+        # most $UNIT_BATCH_SIZE classes, split evenly. Each invocation spends
+        # 40-100 s before its first test (2026-10-15), so a small leftover
+        # batch is mostly overhead. A failing batch does not stop the shard:
+        # every batch runs, the failed ones are listed, and the job fails at
+        # the end. No native flake retry - a genuine assertion must fail the
+        # run. (This step ran in PR CI as CI v4's unit shards.)
+        #
+        # -test-timeouts-enabled bounds a hung test: XCTest kills it after the
+        # allowance and reports it, instead of the job burning its ceiling.
+        # -collect-test-diagnostics never: Xcode's on-failure default gathers a
+        # simulator payload under its own 600s timeout (docs/CI.md).
+        # Accepted tradeoff: there is no wall-clock watchdog around a whole
+        # invocation, so a wedged xcodebuild or simulator (not a hung test)
+        # runs to the job ceiling and reads as "cancelled".
+        env:
+          UNIT_CLASSES: "${{ matrix.classes }}"
+          UNIT_BATCH_SIZE: "45"
+          UNIT_TEST_ALLOWANCE_S: "180"
+        run: |
+          set -euo pipefail
+          # Fail closed: an empty list would expand to no -only-testing filter,
+          # and a bare xcodebuild would run the ENTIRE suite instead of nothing.
+          if [ -z "$UNIT_CLASSES" ]; then
+            echo "::error::unit shard selection is empty - refusing to run unfiltered"
+            exit 1
+          fi
+          if [ -z "${DESTINATION:-}" ]; then
+            echo "::error::DESTINATION is empty - the build step did not pin a simulator destination"
+            exit 1
+          fi
+          IFS=',' read -r -a CLASSES <<< "$UNIT_CLASSES"
+          # Default only when UNSET: an explicitly empty value is malformed, not
+          # a request for the default.
+          UNIT_BATCH_SIZE="${UNIT_BATCH_SIZE-45}"
+          case "$UNIT_BATCH_SIZE" in
+            ''|*[!0-9]*)
+              echo "::error::UNIT_BATCH_SIZE must be a positive integer, got '$UNIT_BATCH_SIZE'"
+              exit 1
+              ;;
+          esac
+          # 10# forces base 10, so "00" and "08" are not read as octal.
+          if [ "$((10#$UNIT_BATCH_SIZE))" -lt 1 ]; then
+            echo "::error::UNIT_BATCH_SIZE must be greater than zero, got '$UNIT_BATCH_SIZE'"
+            exit 1
+          fi
+          UNIT_BATCH_SIZE=$((10#$UNIT_BATCH_SIZE))
+          batches=$(( (${#CLASSES[@]} + UNIT_BATCH_SIZE - 1) / UNIT_BATCH_SIZE ))
+          per_batch=$(( (${#CLASSES[@]} + batches - 1) / batches ))
+          echo "unit shard: ${#CLASSES[@]} classes in $batches batch(es) of at most $per_batch (cap $UNIT_BATCH_SIZE)"
+          printf '### Unit shard classes (%s)\n\n`%s`\n' "${#CLASSES[@]}" "$UNIT_CLASSES" \
+            >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+          failed_batches=()
+          # Each batch posts how long it took and how much of that ran tests:
+          # on a freshly booted simulator the first batch spent 154 s outside
+          # its tests and the second 20 s (#629), and the job log API cuts off
+          # an early batch's lines.
+          batch_timing_notice() {
+            local total executed tests wall
+            total=$(( $(date +%s) - $1 ))
+            executed=$(grep -E '^[[:space:]]*Executed [0-9]+ tests?, with' "$batch_log" | tail -n 1 || true)
+            tests=$(printf '%s\n' "$executed" | sed -nE 's/^[[:space:]]*Executed ([0-9]+) tests?.*/\1/p')
+            wall=$(printf '%s\n' "$executed" | sed -nE 's/.* \(([0-9]+)(\.[0-9]+)?\) seconds$/\1/p')
+            if [ -n "$tests" ] && [ -n "$wall" ]; then
+              echo "::notice title=unit batch $batch_no took ${total}s::$tests tests ran for ${wall}s of it"
+            else
+              echo "::notice title=unit batch $batch_no took ${total}s::its output has no test totals"
+            fi
+          }
+          run_batch() {
+            batch_no="$1"
+            shift
+            if [ "$#" -eq 0 ]; then
+              return 0
+            fi
+            batch_args=()
+            for cls in "$@"; do
+              batch_args+=("-only-testing:ConduitTests/${cls}")
+            done
+            batch_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/unit-batch-$batch_no.log"
+            batch_start=$(date +%s)
+            echo "::group::unit batch $batch_no ($# classes)"
+            if ! xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
+              "${batch_args[@]}" 2>&1 | tee "$batch_log"; then
+              echo "::endgroup::"
+              batch_timing_notice "$batch_start"
+              echo "::error::unit batch $batch_no failed: $*"
+              # The failing cases go in an annotation too: the job log API
+              # returns only a job's last 5,000 lines, which an early batch's
+              # failures do not reach. xcodebuild's own list of failing tests
+              # comes first (its first 40 lines, then a marker if it is longer),
+              # then the first messages and crashes.
+              failing_list=$(awk '/^Failing tests:/ { on = 1; print; next }
+                on && /^[[:space:]]+[^[:space:]]/ { print; next }
+                { on = 0 }' "$batch_log" \
+                | awk 'NR <= 40 { print } NR == 41 { print "\t(more failing tests in the job log)" }' || true)
+              details=$(grep -E ": error: -\[|Test Case '.*' failed|Restarting after unexpected exit|✘" "$batch_log" \
+                | head -n 20 || true)
+              failures=$(printf '%s\n%s\n' "$failing_list" "$details" | sed '/^$/d')
+              if [ -n "$failures" ]; then
+                echo "::error title=unit batch $batch_no failures::$(printf '%s\n' "$failures" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
+              fi
+              failed_batches+=("$batch_no")
+              return 0
+            fi
+            echo "::endgroup::"
+            batch_timing_notice "$batch_start"
+          }
+
+          batch=0
+          group=()
+          for cls in "${CLASSES[@]}"; do
+            group+=("$cls")
+            if [ "${#group[@]}" -ge "$per_batch" ]; then
+              batch=$((batch + 1))
+              run_batch "$batch" "${group[@]}"
+              group=()
+            fi
+          done
+          if [ "${#group[@]}" -gt 0 ]; then
+            batch=$((batch + 1))
+            run_batch "$batch" "${group[@]}"
+          fi
+          if [ "${#failed_batches[@]}" -gt 0 ]; then
+            echo "::error::unit shard: ${#failed_batches[@]} of $batch batch invocation(s) failed (batches ${failed_batches[*]})"
+            exit 1
+          fi
+          echo "unit shard: $batch batch invocation(s) completed"
+
+      - name: Save the build cache
+        # Main's builds only (PRs restore the newest of them), one job per
+        # project kind: shard 1 saves the app-only (slim) build that PR smoke
+        # runs restore when they need no Watch app or extensions; ci.yml's
+        # smoke job saves the full app on every push to main. After the tests,
+        # so a test failure still saves a good build.
+        if: >-
+          always() && steps.build.outcome == 'success'
+          && steps.cache.outputs.cache-hit != 'true'
+          && matrix.shard == 1
+          && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+
+      - name: Dump simulator state (failure diagnostics)
+        if: failure()
+        run: |
+          xcrun simctl list runtimes available || true
+          xcrun simctl list devices available
+
+      - name: Upload the unit batch logs
+        # The job log API returns only a job's last 5,000 lines, which an
+        # early batch's output does not reach; each batch's whole log is here.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-unit-shard-${{ matrix.shard }}-logs
+          path: ${{ runner.temp }}/unit-batch-*.log
+          retention-days: 7
+          if-no-files-found: ignore
 
   timing:
     # One job per repeat: a single pass of the timing families is ~15-20 min
@@ -99,7 +363,7 @@ jobs:
           done
           # Per-test allowance only, no wall-clock watchdog: a hang past the
           # allowance is killed by xcodebuild, and a wedged simulator ends at
-          # the job timeout. Same accepted tradeoff as the PR unit shards.
+          # the job timeout. Same accepted tradeoff as the unit shards.
           xcodebuild test-without-building \
             -xctestrun "$XCRUN_FILE" \
             -destination "$DESTINATION" \

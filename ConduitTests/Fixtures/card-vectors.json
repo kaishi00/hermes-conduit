@@ -1,0 +1,758 @@
+{
+  "version": 1,
+  "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
+  "cases": [
+    {
+      "name": "A map with a route keeps everything valid",
+      "input": [
+        {
+          "type": "map",
+          "title": "Dinner and the show",
+          "places": [
+            {
+              "name": "Kin Khao",
+              "address": "55 Cyril Magnin St, San Francisco",
+              "lat": 37.7853,
+              "lon": -122.4089,
+              "note": "Get the khao soi."
+            },
+            {
+              "name": "Orpheum Theatre",
+              "lat": 37.779,
+              "lon": -122.4148
+            }
+          ],
+          "route": {
+            "from": 0,
+            "to": 1,
+            "mode": "walking"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "title": "Dinner and the show",
+          "places": [
+            {
+              "name": "Kin Khao",
+              "address": "55 Cyril Magnin St, San Francisco",
+              "lat": 37.7853,
+              "lon": -122.4089,
+              "note": "Get the khao soi."
+            },
+            {
+              "name": "Orpheum Theatre",
+              "lat": 37.779,
+              "lon": -122.4148
+            }
+          ],
+          "route": {
+            "to": 1,
+            "from": 0,
+            "mode": "walking"
+          }
+        }
+      ]
+    },
+    {
+      "name": "A place card keeps only its first place",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A rating, hours, price or photo without a source is left out",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.6
+              },
+              "hours": {
+                "text": "Open until 17:00"
+              },
+              "price": {
+                "text": "$$",
+                "source": "Yelp"
+              },
+              "photo": {
+                "url": "https://example.com/t.jpg"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "price": {
+                "text": "$$",
+                "source": "Yelp"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A sourced rating keeps its count and link",
+      "input": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.6,
+                "count": 5120.0,
+                "source": "Google",
+                "url": "https://maps.google.com/?cid=1"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.6,
+                "count": 5120,
+                "source": "Google",
+                "url": "https://maps.google.com/?cid=1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Unknown keys are dropped",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "Home",
+              "lat": 1,
+              "lon": 2,
+              "phone": "+1 555",
+              "website": "https://x.test"
+            }
+          ],
+          "theme": "dark"
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "Home",
+              "lat": 1,
+              "lon": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Text is cleaned and cut",
+      "input": [
+        {
+          "type": "Places",
+          "title": "  Line\none\ttwo  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "places": [
+            {
+              "name": "\u0007Bell  "
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "places",
+          "title": "Line one two  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "places": [
+            {
+              "name": "Bell"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A card with no valid places is dropped",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "address": "no name"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": []
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "An unknown type is dropped",
+      "input": [
+        {
+          "type": "weather",
+          "places": [
+            {
+              "name": "X"
+            }
+          ]
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "Out-of-range coordinates are dropped, the place stays",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Nowhere",
+              "lat": 120,
+              "lon": -200
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Nowhere"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A bad URL or a rating out of range drops that fact",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Cafe",
+              "rating": {
+                "value": 7,
+                "source": "Yelp"
+              },
+              "hours": {
+                "text": "9-5",
+                "source": "Site",
+                "url": "javascript:alert(1)"
+              },
+              "photo": {
+                "url": "ftp://x/y.png",
+                "source": "Site"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Cafe",
+              "hours": {
+                "text": "9-5",
+                "source": "Site"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A route is dropped when a place was dropped",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "lat": 1
+            },
+            {
+              "name": "C"
+            }
+          ],
+          "route": {
+            "to": 1
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "C"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A route is dropped when it names a missing place or runs from a place to itself",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "to": 2
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "from": 1,
+            "to": 1
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A route is dropped from a non-map card; an integer must be whole",
+      "input": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "to": 1
+          }
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "to": 1.5
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A route without a start keeps starting where the user is; mode case is fixed",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            }
+          ],
+          "route": {
+            "to": 0,
+            "mode": "TRANSIT"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            }
+          ],
+          "route": {
+            "to": 0,
+            "mode": "transit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Booleans aren't numbers and non-objects are dropped",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A",
+              "lat": true,
+              "lon": false
+            }
+          ]
+        },
+        "map",
+        null,
+        3
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "At most four cards and ten places",
+      "input": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            },
+            {
+              "name": "P10"
+            },
+            {
+              "name": "P11"
+            }
+          ],
+          "route": {
+            "to": 3
+          }
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C0"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C1"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C2"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C3"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C4"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "P0"
+            },
+            {
+              "name": "P1"
+            },
+            {
+              "name": "P2"
+            },
+            {
+              "name": "P3"
+            },
+            {
+              "name": "P4"
+            },
+            {
+              "name": "P5"
+            },
+            {
+              "name": "P6"
+            },
+            {
+              "name": "P7"
+            },
+            {
+              "name": "P8"
+            },
+            {
+              "name": "P9"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C0"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C1"
+            }
+          ]
+        },
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "C2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A URL that could end a Markdown link early is dropped",
+      "input": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.5,
+                "source": "Google",
+                "url": "https://a.example/x?q=1)[click](javascript:alert(1))"
+              },
+              "hours": {
+                "text": "8–5",
+                "source": "Yelp",
+                "url": "https://yelp.example/biz/tartine"
+              },
+              "photo": {
+                "url": "https://img.example/a b.jpg",
+                "source": "Yelp"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "place",
+          "places": [
+            {
+              "name": "Tartine",
+              "rating": {
+                "value": 4.5,
+                "source": "Google"
+              },
+              "hours": {
+                "text": "8–5",
+                "source": "Yelp",
+                "url": "https://yelp.example/biz/tartine"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A title keeps its brackets and a cycling route is kept",
+      "input": [
+        {
+          "type": "map",
+          "title": "[x](https://evil.example) **bold**",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "from": 0,
+            "to": 1,
+            "mode": "cycling"
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "title": "[x](https://evil.example) **bold**",
+          "places": [
+            {
+              "name": "A"
+            },
+            {
+              "name": "B"
+            }
+          ],
+          "route": {
+            "to": 1,
+            "from": 0,
+            "mode": "cycling"
+          }
+        }
+      ]
+    }
+  ]
+}

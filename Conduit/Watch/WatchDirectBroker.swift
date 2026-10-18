@@ -1378,7 +1378,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     func lastThreadReply() async -> String? { nil }
 
     @discardableResult
-    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? { nil }
+    func showOnScreen(title: String, markdown: String, cards: [[String: Any]]) -> VoiceScreenCard? { nil }
 
     func takePendingChatContext() -> String? { nil }
 

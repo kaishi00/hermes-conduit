@@ -152,8 +152,9 @@ final class PresentedScreensSync: ObservableObject {
     static let path = "/api/plugins/conduit_push/present/exchange"
     static let capability = "present-v1"
     /// What this Conduit does with a confirmation beyond showing it, told to
-    /// the host in each exchange.
-    static let features = ["maps-navigate"]
+    /// the host in each exchange. "chat-cards": it draws conduit_show's map
+    /// and place cards in a chat, so the host offers the tool there too.
+    static let features = ["maps-navigate", "chat-cards"]
     private static let resultsKey = "conduit.presentedScreens.results.v1"
     private static let maxResults = 40
 

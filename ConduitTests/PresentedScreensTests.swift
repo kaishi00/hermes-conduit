@@ -99,7 +99,7 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "chat-cards"])
     }
 
     func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {

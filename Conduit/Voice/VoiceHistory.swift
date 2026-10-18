@@ -81,9 +81,16 @@ struct VoiceTranscriptTurn: Equatable, Codable {
     let role: Role
     let text: String
     let at: Date
+    /// Normalized cards a live model showed (JSON), kept with the turn so
+    /// the saved call draws them again.
+    var cards: Data? = nil
 
     var payload: [String: Any] {
-        ["index": index, "role": role.rawValue, "text": text, "at": at.timeIntervalSince1970]
+        var payload: [String: Any] = ["index": index, "role": role.rawValue, "text": text, "at": at.timeIntervalSince1970]
+        if let cards, let list = try? JSONSerialization.jsonObject(with: cards) as? [Any], !list.isEmpty {
+            payload["cards"] = list
+        }
+        return payload
     }
 }
 
@@ -247,7 +254,8 @@ final class VoiceHistoryClient {
                 guard let text = (turn["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
                 switch turn["role"] as? String {
                 case "user": return VoiceConversationTranscriptEntry(speaker: .user, text: text)
-                case "assistant": return VoiceConversationTranscriptEntry(speaker: .assistant, text: text)
+                case "assistant":
+                    return VoiceConversationTranscriptEntry(speaker: .assistant, text: text, cards: RichCard.cards(raw: turn["cards"]))
                 default: return nil
                 }
             }
@@ -376,10 +384,18 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text)
     }
 
-    private func append(_ role: VoiceTranscriptTurn.Role, _ text: String) {
+    /// Something the live model put on screen: its Markdown as the line,
+    /// and its cards kept with it.
+    func screen(_ card: VoiceScreenCard) {
+        let heading = card.title.isEmpty ? AppLocalization.string("On screen") : card.title
+        let text = card.markdown.isEmpty ? heading : "\(heading)\n\n\(card.markdown)"
+        append(.assistant, text, cards: card.cardsJSON)
+    }
+
+    private func append(_ role: VoiceTranscriptTurn.Role, _ text: String, cards: Data? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        turns.append(VoiceTranscriptTurn(index: turns.count, role: role, text: trimmed, at: now()))
+        turns.append(VoiceTranscriptTurn(index: turns.count, role: role, text: trimmed, at: now(), cards: cards))
     }
 
     /// Saves whatever the host doesn't have. Saves run one at a time, in

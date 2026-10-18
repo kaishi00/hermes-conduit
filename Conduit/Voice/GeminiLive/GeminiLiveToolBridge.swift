@@ -72,7 +72,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// a background job's or the attached chat's latest reply.
     func readBackText() async -> String?
     @discardableResult
-    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard?
+    func showOnScreen(title: String, markdown: String, cards: [[String: Any]]) -> VoiceScreenCard?
     /// Exchanges typed in the attached chat, for the call to keep quietly.
     func takePendingChatContext() -> String?
     /// The call's own request still open in its attached chat (#451).
@@ -315,23 +315,32 @@ final class GeminiLiveToolBridge {
 
     static let showOnScreenDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.showOnScreen.rawValue,
-        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
-        parameters: [
-            "type": "OBJECT",
-            "properties": [
-                "title": [
-                    "type": "STRING",
-                    "description": "A short heading, a few words.",
-                ],
-                "markdown": [
-                    "type": "STRING",
-                    "description": "What to show, as Markdown.",
-                ],
-            ],
-            "required": ["title", "markdown"],
-        ],
+        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (pie for shares; xychart-beta for bar and line charts, written exactly like: xychart-beta / title \"Sales\" / x-axis [\"Mon\", \"Tue\"] / y-axis \"Count\" 0 --> 20 / bar [5, 9], one statement per line; an axis range uses -->, never \"to\"), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. For places, use cards instead of Markdown: a map with pins and a route, one place in detail, or several to swipe through. The phone adds the address, phone, website and travel time from Apple Maps itself, so give names and addresses or coordinates, and only ratings, hours, prices and photos you actually found, each with its source. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
+        parameters: showOnScreenParameters(RichCardSchema.bundled),
         behavior: .blocking
     )
+
+    /// title and markdown, and cards from the shared card schema when the
+    /// app has it.
+    static func showOnScreenParameters(_ schema: RichCardSchema?) -> [String: Any] {
+        var properties: [String: Any] = [
+            "title": [
+                "type": "STRING",
+                "description": "A short heading, a few words.",
+            ],
+            "markdown": [
+                "type": "STRING",
+                "description": "What to show, as Markdown. Leave it out when cards say it all.",
+            ],
+        ]
+        guard let schema else {
+            return ["type": "OBJECT", "properties": properties, "required": ["title", "markdown"]]
+        }
+        properties["cards"] = schema.liveToolParameter(description: "Maps and places for the phone to draw, shown above the Markdown.")
+        return ["type": "OBJECT", "properties": properties, "required": ["title"]]
+    }
+
+    static let invalidCardsNote = "None of the cards could be shown: each needs a type (map, place or places) and places with names."
 
     /// call_me_when_done's scope: a job_id names one job, scope all asks
     /// about everything; anything else is the newest request.
@@ -719,8 +728,16 @@ final class GeminiLiveToolBridge {
         case .showOnScreen:
             guard !isEnding else { return [] }
             let markdown = call.arguments["markdown"] ?? ""
-            guard supervisor.showOnScreen(title: call.arguments["title"] ?? "", markdown: markdown) != nil else {
-                let reason = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // Cards arrive as their JSON text (FunctionCall keeps strings).
+            let givenCards = call.arguments["cards"].flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            let cards = RichCardSchema.bundled?.normalizeCards(givenCards) ?? []
+            let noMarkdown = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if noMarkdown, cards.isEmpty, let givenCards, !((givenCards as? [Any])?.isEmpty ?? false) {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": Self.invalidCardsNote], scheduling: nil)]
+            }
+            guard supervisor.showOnScreen(title: call.arguments["title"] ?? "", markdown: markdown, cards: cards) != nil else {
+                let reason = noMarkdown && cards.isEmpty
                     ? "markdown is required"
                     : "The screen isn't available right now; tell the user instead."
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": reason], scheduling: nil)]
