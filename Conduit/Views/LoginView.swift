@@ -248,12 +248,25 @@ struct AuthWebView: UIViewRepresentable {
     /// detail text (e.g. `payload["error"]`), so it is never rendered — the
     /// login card shows only the fixed copy for the classification.
     let onError: (ConnectionFailure, String) -> Void
+    /// The page asked for a passkey, which iOS refuses in this WebView
+    /// (AuthWebPasskeyDetector). Nil installs no detector.
+    var passkeyRequested: (() -> Void)? = nil
+
+    /// Runs `action` each time the page asks for a passkey.
+    func onPasskeyRequest(_ action: @escaping () -> Void) -> AuthWebView {
+        var copy = self
+        copy.passkeyRequested = action
+        return copy
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
         let config = WKWebViewConfiguration()
         config.websiteDataStore = DashboardCookiePersistence.webKitStore(for: websiteDataStoreIdentifier)
         config.userContentController.add(context.coordinator, contentWorld: DashboardScriptWorld.world, name: "ticket")
+        if passkeyRequested != nil {
+            AuthWebPasskeyDetector.install(into: config.userContentController, handler: context.coordinator)
+        }
         if let normalized {
             DashboardScriptWorld.installProxyHeaderScripts(
                 into: config.userContentController,
@@ -313,6 +326,7 @@ struct AuthWebView: UIViewRepresentable {
             forName: "ticket",
             contentWorld: DashboardScriptWorld.world
         )
+        AuthWebPasskeyDetector.uninstall(from: uiView.configuration.userContentController)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -370,6 +384,10 @@ struct AuthWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if AuthWebPasskeyDetector.isPasskeyRequest(name: message.name, worldName: message.world.name, body: message.body) {
+                parent.passkeyRequested?()
+                return
+            }
             guard message.name == "ticket", let rawMessage = message.body as? String,
                   message.frameInfo.isMainFrame,
                   let expectedURL,

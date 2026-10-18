@@ -271,6 +271,7 @@ struct ConnectionSetupView: View {
                         activationFailure = classifiedFailure
                     }
                 )
+                .explainingPasskeys()
             }
         } else {
             // Unreachable: the sheet is only presented with a configuration

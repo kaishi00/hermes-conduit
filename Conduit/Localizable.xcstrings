@@ -292639,6 +292639,170 @@
           }
         }
       }
+    },
+    "Passkeys don't work here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passkeys funktionieren hier nicht"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llaves de acceso no funcionan aquí"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les clés d'identification ne fonctionnent pas ici"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci sandi tidak berfungsi di sini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le passkey non funzionano qui"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここではパスキーを使用できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기에서는 패스키를 사용할 수 없어요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucze dostępu tutaj nie działają"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chaves-senha não funcionam aqui"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключи входа здесь не работают"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geçiş anahtarları burada çalışmaz"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通行密钥无法在此使用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通行密鑰無法在此使用"
+          }
+        }
+      }
+    },
+    "iOS doesn't let apps use passkeys on a sign-in page like this one. Choose another way to sign in on this page, such as with another device or a code. You can approve that sign-in in Safari on this iPhone, where your passkeys work." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS lässt Apps auf einer Anmeldeseite wie dieser keine Passkeys verwenden. Wähle auf dieser Seite eine andere Anmeldemethode, etwa mit einem anderen Gerät oder einem Code. Diese Anmeldung kannst du in Safari auf diesem iPhone bestätigen, wo deine Passkeys funktionieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS no permite que las apps usen llaves de acceso en una página de inicio de sesión como esta. Elige otra forma de iniciar sesión en esta página, como con otro dispositivo o un código. Puedes aprobar ese inicio de sesión en Safari en este iPhone, donde tus llaves de acceso funcionan."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS ne permet pas aux apps d'utiliser les clés d'identification sur une page de connexion comme celle-ci. Choisissez une autre façon de vous connecter sur cette page, par exemple avec un autre appareil ou un code. Vous pouvez approuver cette connexion dans Safari sur cet iPhone, où vos clés d'identification fonctionnent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS tidak mengizinkan app menggunakan kunci sandi di halaman masuk seperti ini. Pilih cara masuk lain di halaman ini, misalnya dengan perangkat lain atau kode. Anda dapat menyetujui proses masuk tersebut di Safari pada iPhone ini, tempat kunci sandi Anda berfungsi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS non consente alle app di usare le passkey in una pagina di accesso come questa. Scegli un altro modo per accedere in questa pagina, ad esempio con un altro dispositivo o un codice. Puoi approvare quell'accesso in Safari su questo iPhone, dove le tue passkey funzionano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOSでは、このようなサインインページでアプリがパスキーを使用することはできません。このページで別のサインイン方法（別のデバイスやコードなど）を選択してください。そのサインインは、パスキーが使えるこのiPhoneのSafariで承認できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS에서는 앱이 이런 로그인 페이지에서 패스키를 사용할 수 없어요. 이 페이지에서 다른 기기나 코드 같은 다른 로그인 방법을 선택하세요. 그 로그인은 패스키가 작동하는 이 iPhone의 Safari에서 승인할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS nie pozwala aplikacjom używać kluczy dostępu na takiej stronie logowania jak ta. Wybierz na tej stronie inny sposób logowania, na przykład innym urządzeniem lub kodem. To logowanie możesz zatwierdzić w Safari na tym iPhonie, gdzie Twoje klucze dostępu działają."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O iOS não permite que apps usem chaves-senha em uma página de login como esta. Escolha outra forma de entrar nesta página, como com outro dispositivo ou um código. Você pode aprovar esse login no Safari deste iPhone, onde suas chaves-senha funcionam."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS не разрешает приложениям использовать ключи входа на такой странице входа. Выберите на этой странице другой способ входа, например с другого устройства или по коду. Подтвердить этот вход можно в Safari на этом iPhone, где ваши ключи входа работают."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS, uygulamaların bunun gibi bir giriş sayfasında geçiş anahtarı kullanmasına izin vermez. Bu sayfada başka bir giriş yöntemi seçin, örneğin başka bir aygıtla veya bir kodla. Bu girişi, geçiş anahtarlarınızın çalıştığı bu iPhone'daki Safari'de onaylayabilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 不允许 App 在这类登录页面中使用通行密钥。请在此页面选择其他登录方式，例如使用其他设备或代码。你可以在这台 iPhone 的 Safari 中批准这次登录，通行密钥在那里可以使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 不允許 App 在這類登入頁面中使用通行密鑰。請在此頁面選擇其他登入方式，例如使用其他裝置或代碼。你可以在這部 iPhone 的 Safari 中核准這次登入，通行密鑰在那裡可以使用。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
