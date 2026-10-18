@@ -19,5 +19,7 @@ final class RedirectCompatibilityTests: XCTestCase {
     func testOtherFailuresAreNotTreatedAsUnsupported() {
         XCTAssertFalse(AppState.isUnsupportedRedirect(code: 4040, message: "session not found"))
         XCTAssertFalse(AppState.isUnsupportedRedirect(code: -32603, message: "internal error"))
+        // "Unknown method" counts only when it names session.redirect.
+        XCTAssertFalse(AppState.isUnsupportedRedirect(code: nil, message: "unknown method: prompt.submit"))
     }
 }

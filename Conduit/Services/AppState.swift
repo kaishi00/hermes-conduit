@@ -22828,7 +22828,9 @@ final class AppState: ObservableObject {
             || code == -32601
             || message.contains("does not support active-turn redirect")
             || message.contains("method not found")
-            || message.contains("unknown method")
+            // The TUI gateway's wording ("unknown method: session.redirect"):
+            // only when it names this method.
+            || (message.contains("unknown method") && message.contains("session.redirect"))
     }
 
     private func isSessionNotFound(_ error: RpcError) -> Bool {
