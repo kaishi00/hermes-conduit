@@ -7246,19 +7246,25 @@ final class AppState: ObservableObject {
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
     func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
+        await latestLiveVoiceThreadReplyMessage(thread)?.message.content
+    }
+
+    /// The same reply as its message, and whether it was read from the open
+    /// chat, so a caller can tell two replies worded alike apart.
+    func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool)? {
         // Read once, without suspending: the chat on screen can change at
         // any await.
-        if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
+        if isOpenChat(thread) { return latestReplyMessageInOpenChat(thread).map { ($0, true) } }
         guard let bridge = dashboardTicketBridge else { return nil }
         // One profile for every read: a reply from another profile's history
         // is never read out. A Bot Chat's history is in the bot's profile.
         let workspace = activeProfile
         guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
               workspace == activeProfile else { return nil }
-        return reply
+        return (reply, false)
     }
 
-    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> String? {
+    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> ChatMessage? {
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
@@ -7281,12 +7287,12 @@ final class AppState: ObservableObject {
                 guard page?.honorsTailContract == true else {
                     if let full = await read(PersistedTranscriptPagination.legacyQuery),
                        let fullRows = Self.persistedMessageRows(in: full),
-                       let reply = Self.latestAssistantReply(inMessageRows: fullRows) {
+                       let reply = Self.latestAssistantMessage(inMessageRows: fullRows) {
                         return reply
                     }
                     break
                 }
-                if let reply = Self.latestAssistantReply(inMessageRows: rows) { return reply }
+                if let reply = Self.latestAssistantMessage(inMessageRows: rows) { return reply }
                 if rows.isEmpty { break }
                 offset += rows.count
             }
@@ -7301,21 +7307,32 @@ final class AppState: ObservableObject {
     /// rows. A tail page still lists its rows oldest first, as
     /// `voiceRowMessages` relies on.
     static func latestAssistantReply(inMessageRows rows: [Any]) -> String? {
-        MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from))
-            .last { message in
-                message.role == .assistant && message.tool == nil
-                    && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            }?
-            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+        latestAssistantMessage(inMessageRows: rows)?.content
+    }
+
+    /// The same reply as its message, its text trimmed.
+    static func latestAssistantMessage(inMessageRows rows: [Any]) -> ChatMessage? {
+        Self.latestReplyMessage(in: MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)))
     }
 
     /// The open chat's latest assistant reply.
     func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
+        latestReplyMessageInOpenChat(thread)?.content
+    }
+
+    /// The same reply as its message, its text trimmed.
+    func latestReplyMessageInOpenChat(_ thread: VoiceThreadTarget) -> ChatMessage? {
         guard isOpenChat(thread) else { return nil }
-        return messages.lazy
-            .filter { $0.role == .assistant && $0.tool == nil }
-            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .last { !$0.isEmpty }
+        return Self.latestReplyMessage(in: messages)
+    }
+
+    private static func latestReplyMessage(in messages: [ChatMessage]) -> ChatMessage? {
+        guard var reply = messages.last(where: { message in
+            message.role == .assistant && message.tool == nil
+                && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return nil }
+        reply.content = reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reply
     }
 
     /// The user message a just-finished turn answered: the only one since
