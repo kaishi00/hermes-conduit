@@ -104,6 +104,7 @@ private struct OfflineChatRows: View {
                 gatewayResolver: appState.gatewayMediaResolver,
                 step: row.step
             )
+            .equatable()
         }
         .environment(\.chatRowDisclosure, disclosure)
     }

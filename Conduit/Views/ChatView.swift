@@ -387,6 +387,7 @@ struct ChatView: View {
                         gatewayResolver: appState.gatewayMediaResolver,
                         step: target.step
                     )
+                        .equatable()
                         .id(target.id)
                         .background {
                             // Measured in the stack's own coordinate space,
@@ -883,12 +884,21 @@ private struct ChatScrollRowFramesPreferenceKey: PreferenceKey {
 /// SettledAssistantMessageContent and friends) so a streaming publish —
 /// which re-creates every mounted row through this switch — cannot force
 /// settled Markdown presentation to re-evaluate.
-struct MessageBubble: View {
+///
+/// Equatable on what it is handed, and mounted with `.equatable()`: the
+/// transcript redraws on every publish and would otherwise rebuild each
+/// row. What a row shows from AppState comes through `rowState`, which
+/// redraws it on its own.
+struct MessageBubble: View, Equatable {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// A thinking or tool row's place in its turn's run of steps, which
     /// draws as one card. Nil outside the chat transcript.
     var step: ChatStepPlacement? = nil
+
+    nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
+        lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
+    }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
@@ -946,6 +956,9 @@ struct MessageBubble: View {
         case .inputPrompt:
             InputPromptCard(message: message)
         case .system:
+            // A call card finds its call through AppState: this redraws it
+            // when the links change.
+            let _ = rowState.voiceCallLinksRevision
             if message.displayKind == VoiceCallChatLink.displayKind, let link = appState.voiceCallLink(markerID: message.id) {
                 VoiceCallMarkerCard(link: link, origin: false) {
                     appState.openVoiceCallTranscript(markerID: link.markerID)

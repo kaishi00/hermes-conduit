@@ -258,6 +258,41 @@ final class SettledMessageIsolationTests: XCTestCase {
         XCTAssertGreaterThan(TranscriptPerf.composerBarBodyEvaluations, 0, "a notice changes what it shows")
     }
 
+    func testTranscriptRedrawLeavesRowsAlone() throws {
+        let appState = try makeAppState()
+        let messages = [markdownMessage(id: "first"), markdownMessage(id: "second")]
+        let host = UIHostingController(rootView: TranscriptParent(messages: messages).chatRows().environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        testWindow = window
+        XCTAssertTrue(PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0), "the mount never settled")
+
+        TranscriptPerf.reset()
+        appState.objectWillChange.send()
+        drainUntil(0.5) { false }
+        XCTAssertEqual(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "the transcript redrawing on a publish must not rebuild rows whose message is unchanged"
+        )
+    }
+
+    /// Redraws on every publish and rebuilds its rows, as ChatView's
+    /// transcript does.
+    private struct TranscriptParent: View {
+        @EnvironmentObject var appState: AppState
+        let messages: [ChatMessage]
+        var body: some View {
+            VStack {
+                Text(appState.activeProfile)
+                ForEach(messages) { message in
+                    MessageBubble(message: message, gatewayResolver: appState.gatewayMediaResolver)
+                        .equatable()
+                }
+            }
+        }
+    }
+
     /// Redraws on every publish, as ChatView does.
     private struct ComposerParent: View {
         @EnvironmentObject var appState: AppState
