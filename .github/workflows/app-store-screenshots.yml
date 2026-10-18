@@ -106,6 +106,7 @@ jobs:
             if [ "$rc" -eq 0 ]; then
               xcrun simctl io "$udid" recordVideo --codec h264 --force "shots/preview-$slug.mov" > "record-$slug.log" 2>&1 &
               recorder=$!
+              echo "RECORD_START $(python3 -c 'import time; print(time.time())')" > "shots/preview-$slug.marks"
               sleep 2
               TEST_RUNNER_CONDUIT_DEMO_URL="http://$DEMO_HOST:$DEMO_PORT" \
               TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
@@ -121,6 +122,7 @@ jobs:
               kill -INT "$recorder" || true
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
+              grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
             fi
             set -e
             grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true

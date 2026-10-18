@@ -77,6 +77,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         dismissFinishSetupCard()
         _ = app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30)
         settle(2)
+        // Wall-clock markers in the test log, so the recording can be cut
+        // to the part worth showing (scripts/app-store/cut-preview.sh).
+        print("PREVIEW_MARK start \(Date().timeIntervalSince1970)")
         let newChat = app.buttons["New Chat"]
         guard newChat.waitForExistence(timeout: 10) else {
             snap("debug-no-new-chat")
@@ -94,6 +97,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS 'trip notes'")).firstMatch
         _ = done.waitForExistence(timeout: 40)
         settle(3)
+        print("PREVIEW_MARK end \(Date().timeIntervalSince1970)")
         snap("10-preview-end")
     }
 
