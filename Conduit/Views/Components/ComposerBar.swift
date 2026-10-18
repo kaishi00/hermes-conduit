@@ -318,10 +318,12 @@ struct ComposerBar: View, Equatable {
         action == .unavailable ? Color.primary.opacity(0.025) : actionTint
     }
 
+    /// Solid, so the chat scrolling under the composer never shows
+    /// through what is being typed.
     private var composerFoundation: Color {
         colorScheme == .dark
-            ? Color(red: 0.072, green: 0.080, blue: 0.106).opacity(0.96)
-            : Color.white.opacity(0.94)
+            ? Color(red: 0.072, green: 0.080, blue: 0.106)
+            : Color.white
     }
 
     private var composerStroke: Color {

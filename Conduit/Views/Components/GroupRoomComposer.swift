@@ -79,10 +79,12 @@ struct GroupRoomComposer: View {
         return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
     }
 
+    /// Solid, so the chat scrolling under the composer never shows
+    /// through what is being typed.
     private var foundation: Color {
         colorScheme == .dark
-            ? Color(red: 0.072, green: 0.080, blue: 0.106).opacity(0.96)
-            : Color.white.opacity(0.94)
+            ? Color(red: 0.072, green: 0.080, blue: 0.106)
+            : Color.white
     }
 
     private var stroke: Color {
