@@ -66,7 +66,9 @@ struct WatchCallControls: View {
             buttons
         }
         .padding(.horizontal, 6)
-        // The page's bottom inset was empty space under the buttons.
+        // The page's bottom inset left a band of empty space under the
+        // buttons; without it they sit in the screen's rounded corners.
+        .padding(.bottom, 12)
         .ignoresSafeArea(.container, edges: .bottom)
     }
 
