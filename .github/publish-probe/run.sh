@@ -32,6 +32,14 @@ tests)
     -only-testing:ConduitTests/ComposerFullEditorTests \
     -only-testing:ConduitTests/ComposerReturnKeyTests \
     > tests.log 2>&1 || echo "tests exited $?"
+  xcodebuild test-without-building \
+    -xctestrun "$XCRUN_FILE" \
+    -destination "$DESTINATION" \
+    -parallel-testing-enabled NO \
+    -collect-test-diagnostics never \
+    -test-iterations 4 \
+    -only-testing:ConduitTests/ChatScrollHostedTests \
+    >> tests.log 2>&1 || echo "repeat exited $?"
   { grep -E "^Test Suite .*(passed|failed)|Executed [0-9]+ test" tests.log | tail -n 12
     grep -E ": error: |^Test Case .* failed" tests.log | sed -e "s|$PWD/||g" | head -n 80
   } > tests-summary.txt
@@ -45,7 +53,8 @@ probe)
   run_probe nocomposer-1 TEST_RUNNER_PROBE_CONFIG=nocomposer
   run_probe nolist-2 TEST_RUNNER_PROBE_CONFIG=nolist
   run_probe nocomposer-2 TEST_RUNNER_PROBE_CONFIG=nocomposer
-  for name in nolist-1 nocomposer-1 nolist-2 nocomposer-2; do
+  run_probe stacks TEST_RUNNER_PROBE_CONFIG=nolist TEST_RUNNER_PROBE_STACKS=1
+  for name in nolist-1 nocomposer-1 nolist-2 nocomposer-2 stacks; do
     echo "===== $name"
     grep -E "PUBLISH_PROBE|SCROLL_PROBE stacks|^Test Case .*(passed|failed)" "probe-$name.log" || tail -n 30 "probe-$name.log"
     awk '/: error: /{p=1} p{print; n++} n>=30{exit}' "probe-$name.log"

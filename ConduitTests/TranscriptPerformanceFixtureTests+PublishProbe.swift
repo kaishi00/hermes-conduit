@@ -133,15 +133,15 @@ extension TranscriptPerformanceFixtureTests {
         // Warm up once, then still and scrolling, a publish every 12 frames
         // (5 a second at 60 Hz).
         _ = frames(60, delta: 0, every: 6)
-        sampling = true
         report("still", frames(360, delta: 0, every: 12))
+        engine.userDragBegan()
+        sampling = true
+        report("scroll-up", frames(240, delta: -12, every: 12))
         sampling = false
         if let sampler {
             sampler.stop()
-            sampler.printReport(phases: [(name: "still-publish", frames: sampledPublishFrames, slowest: 0)])
+            sampler.printReport(phases: [(name: "scroll-up-publish", frames: sampledPublishFrames, slowest: 0)])
         }
-        engine.userDragBegan()
-        report("scroll-up", frames(240, delta: -12, every: 12))
         report("scroll-down", frames(240, delta: 12, every: 12))
         engine.userDragEnded()
         XCTAssertGreaterThan(scrollView.contentSize.height, 0)
