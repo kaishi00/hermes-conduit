@@ -1852,7 +1852,7 @@ final class AppState: ObservableObject {
             // Covering it (Back to the list, the drawer opening) leaves it:
             // what it showed until now was seen. The list it returns to
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
-            // RootView, where the user's own navigation covers the chat).
+            // RootView, whenever the chat is covered).
             if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating: the live text and
