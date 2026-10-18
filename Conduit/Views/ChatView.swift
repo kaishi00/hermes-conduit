@@ -1899,7 +1899,7 @@ struct AssistantBubble: View {
                 MessageReactionChips(
                     reactions: message.reactions,
                     agentName: identity.name,
-                    onTap: appState.canReact(to: message) ? { showsTapback = true } : nil
+                    onTap: rowState.canReact(to: message) ? { showsTapback = true } : nil
                 )
             }
 

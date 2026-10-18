@@ -72,6 +72,7 @@ struct ChatRowActions: Equatable {
 }
 
 private struct ChatRowStateKey: EnvironmentKey {
+    /// Outside `chatRows()` a row draws these blanks (actions crash instead).
     static let defaultValue = ChatRowState()
 }
 
