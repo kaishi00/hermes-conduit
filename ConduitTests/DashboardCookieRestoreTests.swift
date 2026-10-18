@@ -18,6 +18,31 @@ final class DashboardCookieRestoreTests: XCTestCase {
         return HTTPCookie(properties: properties)!
     }
 
+    /// A dashboard on plain http (a LAN address) sets cookies without
+    /// Secure. The Keychain mirror must give them back that way, or the
+    /// socket upgrade over ws:// leaves them out and an auth proxy in front
+    /// refuses it.
+    func testMirroredCookiesKeepTheirSecureFlag() throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let id = UUID()
+        let saved: [[String: Any]] = [
+            ["name": "_proxy", "value": "plain", "domain": "127.0.0.1", "path": "/", "isSecure": false, "isHTTPOnly": true],
+            ["name": "tls_only", "value": "secure", "domain": "127.0.0.1", "path": "/", "isSecure": true, "isHTTPOnly": true],
+        ]
+        KeychainHelper.saveDashboardCookies(try JSONSerialization.data(withJSONObject: saved), dashboardID: id)
+
+        let restored = Dictionary(uniqueKeysWithValues: DashboardCookiePersistence.mirroredCookies(dashboardID: id).map { ($0.name, $0) })
+        XCTAssertEqual(restored["_proxy"]?.isSecure, false)
+        XCTAssertEqual(restored["tls_only"]?.isSecure, true)
+        let header = DashboardRequestAuthorizer.cookieHeader(
+            for: Array(restored.values),
+            url: try XCTUnwrap(URL(string: "ws://127.0.0.1:9119/api/ws"))
+        )
+        XCTAssertEqual(header, "_proxy=plain")
+    }
+
     func testOlderSavedCopyNeverReplacesTheLiveCookie() {
         let live = cookie("_proxy", "refreshed", expiresIn: 8 * 3600)
         let saved = cookie("_proxy", "stale", expiresIn: 7 * 3600)

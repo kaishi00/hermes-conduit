@@ -52,8 +52,10 @@ enum DashboardCookiePersistence {
                 .value: value,
                 .domain: domain,
                 .path: path,
-                .secure: isSecure ? "TRUE" : "FALSE"
             ]
+            // Present at all means Secure (HTTPCookie reads "FALSE" as set),
+            // so a plain-http dashboard's cookie must leave the key out.
+            if isSecure { properties[.secure] = "TRUE" }
             if let expiresDate { properties[.expires] = expiresDate }
             if isHTTPOnly { properties[.init("HttpOnly")] = "TRUE" }
             if let sameSitePolicy { properties[.sameSitePolicy] = sameSitePolicy }
