@@ -187,6 +187,42 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(memory.isDone(key, 2))
     }
 
+    func testAStoppedStepTimerDoesNotScheduleItsNotification() async {
+        let defaults = UserDefaults(suiteName: "RichStepsTimerTests")!
+        defaults.removePersistentDomain(forName: "RichStepsTimerTests")
+        // Each start waits here, as it would on the settings call, until the test lets it on.
+        var gates: [CheckedContinuation<Bool, Never>] = []
+        var added: [String] = []
+        let notifier = RichStepsMemory.Notifier(
+            allowed: { await withCheckedContinuation { gates.append($0) } },
+            add: { added.append($0.identifier) })
+        let memory = RichStepsMemory(defaults: defaults, notifier: notifier)
+        func settle() async { for _ in 0..<50 { await Task.yield() } }
+
+        memory.startTimer("k", 1, seconds: 60, text: "Simmer.", title: nil)
+        await settle()
+        memory.stopTimer("k", 1)
+        gates.removeFirst().resume(returning: true)
+        await settle()
+        XCTAssertEqual(added, [], "stopped before the notification was added")
+
+        // Start, stop and start again: only the timer that runs gets one.
+        memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
+        await settle()
+        memory.stopTimer("k", 2)
+        memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
+        await settle()
+        XCTAssertEqual(gates.count, 2)
+        gates.removeFirst().resume(returning: true)
+        await settle()
+        XCTAssertEqual(added, [], "the stopped start adds nothing")
+        gates.removeFirst().resume(returning: true)
+        await settle()
+        XCTAssertEqual(added.count, 1, "the running timer is scheduled")
+        XCTAssertNotNil(memory.timerEnd("k", 2))
+        memory.stopTimer("k", 2)
+    }
+
     func testRichCardsComeFromConduitShowsSavedAnswer() throws {
         let answer = #"{"ok": true, "cards": [{"type": "map", "places": [{"name": "Kin Khao", "lat": 37.78, "lon": -122.4}]}], "note": "Shown."}"#
         let tool = ToolActivity(id: "t1", name: "conduit_show", input: #"{"title": "Dinner"}"#, output: answer, status: .complete)

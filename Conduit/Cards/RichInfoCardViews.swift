@@ -876,9 +876,31 @@ final class RichStepsMemory: ObservableObject {
     /// Set when a timer started without permission to notify.
     @Published private(set) var notificationsOff = false
     private let defaults: UserDefaults
+    private let notifier: Notifier
 
-    init(defaults: UserDefaults = .standard) {
+    /// Asks to notify and schedules the timer's notification.
+    struct Notifier {
+        var allowed: @MainActor () async -> Bool
+        var add: @MainActor (UNNotificationRequest) async throws -> Void
+
+        static let system = Notifier(
+            allowed: {
+                let center = UNUserNotificationCenter.current()
+                switch await center.notificationSettings().authorizationStatus {
+                case .notDetermined:
+                    return (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+                case .authorized, .provisional, .ephemeral:
+                    return true
+                default:
+                    return false
+                }
+            },
+            add: { try await UNUserNotificationCenter.current().add($0) })
+    }
+
+    init(defaults: UserDefaults = .standard, notifier: Notifier = .system) {
         self.defaults = defaults
+        self.notifier = notifier
         ticks = defaults.data(forKey: Self.defaultsKey).flatMap { try? JSONDecoder().decode([String: Ticks].self, from: $0) } ?? [:]
         let timers = defaults.data(forKey: Self.timersKey).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } ?? [:]
         self.timers = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
@@ -920,7 +942,8 @@ final class RichStepsMemory: ObservableObject {
 
     func startTimer(_ key: String, _ number: Int, seconds: Int, text: String, title: String?) {
         let id = Self.timerID(key, number)
-        timers[id] = Date.now.addingTimeInterval(TimeInterval(seconds))
+        let end = Date.now.addingTimeInterval(TimeInterval(seconds))
+        timers[id] = end
         saveTimers()
         let content = UNMutableNotificationContent()
         content.title = title ?? AppLocalization.string("Timer done")
@@ -931,22 +954,18 @@ final class RichStepsMemory: ObservableObject {
         Task { @MainActor in
             // The countdown runs on the card either way; without permission
             // the card says no notification will come.
-            let center = UNUserNotificationCenter.current()
-            let allowed: Bool
-            switch await center.notificationSettings().authorizationStatus {
-            case .notDetermined:
-                allowed = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-            case .authorized, .provisional, .ephemeral:
-                allowed = true
-            default:
-                allowed = false
-            }
+            let allowed = await notifier.allowed()
             notificationsOff = !allowed
-            guard allowed else { return }
+            // Stopped (or started again) while asking: this one isn't wanted.
+            guard allowed, timers[id] == end else { return }
             do {
-                try await center.add(request)
+                try await notifier.add(request)
             } catch {
                 notificationsOff = true
+            }
+            // Stopped while it was being added.
+            if timers[id] == nil {
+                Self.clearNotifications([id])
             }
         }
     }
