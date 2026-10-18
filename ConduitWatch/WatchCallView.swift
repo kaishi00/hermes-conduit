@@ -66,6 +66,8 @@ struct WatchCallControls: View {
             buttons
         }
         .padding(.horizontal, 6)
+        // The page's bottom inset was empty space under the buttons.
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     /// The line being said: the call's caption, or else the newest turn.
@@ -232,18 +234,26 @@ struct WatchCallCaptions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let current {
-                Text(verbatim: current)
+                Text(verbatim: Self.newestWords(of: current))
                     .font(.system(.body, weight: .semibold))
                     // Three lines leave room for the bars and buttons on
                     // the smallest Watch.
                     .lineLimit(3)
                     .layoutPriority(1)
-                    .truncationMode(.head)
                     .minimumScaleFactor(0.75)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: current)
+    }
+
+    /// About three lines' worth from the end, from a word's start. Head
+    /// truncation over several lines cuts the middle of the text instead.
+    static func newestWords(of text: String, limit: Int = 84) -> String {
+        guard text.count > limit else { return text }
+        let tail = text.suffix(limit)
+        let start = tail.firstIndex(of: " ").map { tail.index(after: $0) } ?? tail.startIndex
+        return "…" + tail[start...]
     }
 }
 
