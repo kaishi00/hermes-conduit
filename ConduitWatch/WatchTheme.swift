@@ -20,7 +20,9 @@ extension Color {
 
 /// The iPhone's accent presets (ConduitAccentChoice in Theme.swift), in
 /// their dark shades: the Watch is always dark. The iPhone shares the pick
-/// in its WatchPhoneContext; an older iPhone app shares none, which is gold.
+/// in its WatchPhoneContext as ConduitAccentChoice's raw value; an older
+/// iPhone app shares none, and a choice this Watch app doesn't know yet
+/// (a newer iPhone app's) draws gold too. A new preset goes in both lists.
 enum WatchAccent {
     static func color(_ choice: String?) -> Color {
         switch choice {
@@ -83,6 +85,20 @@ extension View {
     }
 }
 
+// MARK: - Card
+
+/// V2's card on the Watch: a soft raised panel over the backdrop.
+struct WatchCard: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.white.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+    }
+}
+
 // MARK: - Voice button
 
 /// The iPhone's V2 voice button: an accent circle with five dark bars.
@@ -113,7 +129,7 @@ struct WatchVoiceButtonFace: View {
 /// V2's call level on the Watch: thin bars in an arch over a soft glow,
 /// coloured and moving by what the call is doing. No engine feeds a common
 /// audio level, so the bars move with the phase, as on the iPhone. Nothing
-/// moves in always-on, or with Reduce Motion on.
+/// moves in always-on, with Reduce Motion on, in Low Power Mode or when hot.
 struct WatchLevelBars: View {
     enum Mood: Equatable {
         case working
@@ -152,8 +168,12 @@ struct WatchLevelBars: View {
         }
     }
 
+    /// Also still in Low Power Mode or when the Watch runs hot, as the
+    /// iPhone's bars are: a call already works the battery hard.
     private var moves: Bool {
-        motion.amplitude > 0 && !isLuminanceReduced && !reduceMotion
+        let process = ProcessInfo.processInfo
+        return motion.amplitude > 0 && !isLuminanceReduced && !reduceMotion
+            && !process.isLowPowerModeEnabled && process.thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
     }
 
     var body: some View {

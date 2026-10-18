@@ -88,6 +88,8 @@ struct WatchCallControls: View {
         } label: {
             WatchLevelBars(mood: mood)
                 .frame(height: 34)
+                // A full-size tap target around the shorter bars.
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -242,7 +244,9 @@ struct WatchCallCaptions: View {
             if let current {
                 Text(verbatim: current)
                     .font(.system(.body, weight: .semibold))
-                    .lineLimit(4)
+                    // Three lines leave room for the bars and buttons on
+                    // the smallest Watch.
+                    .lineLimit(3)
                     .truncationMode(.head)
                     .minimumScaleFactor(0.75)
             }
@@ -256,6 +260,7 @@ struct WatchCallCaptions: View {
 
 struct WatchTranscriptPage: View {
     @EnvironmentObject private var call: WatchVoiceCall
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -277,7 +282,7 @@ struct WatchTranscriptPage: View {
             }
             .onChange(of: call.transcript.count) { _, count in
                 guard count > 0 else { return }
-                withAnimation { proxy.scrollTo(count - 1, anchor: .bottom) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(count - 1, anchor: .bottom) }
             }
         }
     }

@@ -246,15 +246,3 @@ struct WatchLogView: View {
         }
     }
 }
-
-/// V2's card on the Watch: a soft raised panel over the backdrop.
-struct WatchCard: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color.white.opacity(0.10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-            )
-    }
-}
