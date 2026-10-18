@@ -1,0 +1,134 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "ABD34F4E-697F-4628-961E-B8CDD69D9C63.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "10-voice-listening_0_0D454675-0F55-4749-997A-8A43992CF238.png",
+        "timestamp" : 1792306895.192
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "A8B8FD96-407D-4F48-A2E3-1BF473690D82.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "09-voice-speaking_0_EDFBC62B-0164-40BD-BBDD-0D392F8FE591.png",
+        "timestamp" : 1792306881.022
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "3D641DA3-229E-4E03-968D-15F69E2A677C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "08-settings_0_3C69B855-A10E-4A4E-A9A6-2BB16972FA9A.png",
+        "timestamp" : 1792306862.089
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "5E87B4A9-7544-46B0-A3F2-182A710AF7BA.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "07-bots_0_20EF4E6A-A0EE-4701-9B76-575291CC34E5.png",
+        "timestamp" : 1792306856.591
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "632F8A67-B9E4-41FF-96D3-391B59B03B0F.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "06-scheduled_0_6B0AC302-1462-4F78-85F2-1E41492E7D0D.png",
+        "timestamp" : 1792306849.332
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "8B700610-7AA0-461E-93CA-4155E7A82C01.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "05-tasks_0_F91F2D80-EAD6-4201-96FE-1099D13192F7.png",
+        "timestamp" : 1792306841.567
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "44A95BBC-B6E1-4028-97E0-420FA3F2E79A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "04-chat-code_0_A814ADC1-FD94-4741-AE27-4558621E338D.png",
+        "timestamp" : 1792306768.666
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "4D526B03-1AAA-46EC-BD8C-7DB6A4144791.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "03-chat-trip_0_CF8EEA53-5328-4DB7-847D-DCDAA8185E97.png",
+        "timestamp" : 1792306757.287
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "CBB1F8D8-18D2-4670-B18E-025D584F0074.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02-chat-steps_0_9B8D61A0-C1C0-4998-813C-4AC52DF938CC.png",
+        "timestamp" : 1792306745.993
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "AFFAD317-FC4D-4199-B221-00C26A11A80A.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "01-chats_0_A06DDCCB-BCA5-475A-90C1-BB6256B8394E.png",
+        "timestamp" : 1792306734.413
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "520C58F3-4B1D-4266-8365-0119DDAC51C2.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-finish-setup_0_7756EAF3-8E9A-4BCC-ADD1-BC60434E3837.png",
+        "timestamp" : 1792306726.558
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "5623A529-1351-4521-9F44-0E723A340745.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-after-sign-in_0_E02C3EEC-0F7C-4772-9A2D-A701C193E6BE.png",
+        "timestamp" : 1792306714.811
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "9965C170-758C-4624-AE40-485C34B8BB0B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-password-step_0_1F9C4DF9-5678-4452-AD42-EE9BBFB18425.png",
+        "timestamp" : 1792306710.216
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6EEDD2B9-6E06-4333-91B6-8661FDCCBA47",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "F69C8CB7-0D79-4311-85AD-8C1AF7FABAC3.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-login-address_0_495CD495-FFFE-4839-BAEC-C3355E4858C1.png",
+        "timestamp" : 1792306704.881
+      }
+    ],
+    "testIdentifier" : "AppStoreScreenshotTests/testCaptureAppStoreScreens()",
+    "testIdentifierURL" : "test://com.apple.xcode/Conduit/ConduitScreenshots/AppStoreScreenshotTests/testCaptureAppStoreScreens"
+  }
+]

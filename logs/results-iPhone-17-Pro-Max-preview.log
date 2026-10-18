@@ -1,0 +1,373 @@
+Command line invocation:
+    /Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Conduit.xcodeproj -scheme Conduit -destination id=6EEDD2B9-6E06-4333-91B6-8661FDCCBA47 "-only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPreview" -resultBundlePath results/iPhone-17-Pro-Max-preview.xcresult -derivedDataPath dd
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  WebRTC: https://github.com/stasel/WebRTC @ 153.0.0
+
+2026-10-18 07:02:36.572 xcodebuild[30337:90524] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-17-Pro-Max-preview.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:6EEDD2B9-6E06-4333-91B6-8661FDCCBA47, OS:26.5, name:iPhone 17 Pro Max }
+{ platform:iOS Simulator, arch:x86_64, id:6EEDD2B9-6E06-4333-91B6-8661FDCCBA47, OS:26.5, name:iPhone 17 Pro Max }
+2026-10-18 07:02:51.787657+0000 ConduitScreenshots-Runner[31090:92446] [Default] Running tests...
+2026-10-18 07:02:51.915934+0000 ConduitScreenshots-Runner[31090:93947] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+    t =      nans Interface orientation changed to Portrait
+2026-10-18 07:02:52.887534+0000 ConduitScreenshots-Runner[31090:93945] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+Test Suite 'Selected tests' started at 2026-10-18 07:02:52.913.
+2026-10-18 07:02:54.138 xcodebuild[30337:90524] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-10-18 07:02:54.138 xcodebuild[30337:90524] [MT] IDELaunchParametersSnapshot: no debugger version
+Test Suite 'ConduitScreenshots.xctest' started at 2026-10-18 07:02:52.914.
+Test Suite 'AppStoreScreenshotTests' started at 2026-10-18 07:02:52.914.
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPreview]' started.
+    t =     0.00s Start Test at 2026-10-18 07:02:52.915
+    t =     0.03s Set Up
+    t =     0.04s     Open com.milim.relay
+    t =     0.04s         Launch com.milim.relay
+objc[31090]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x105a54310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x105bc4398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     4.50s             Setting up automation session
+    t =     5.93s             Wait for com.milim.relay to idle
+    t =    11.50s Waiting 15.0s for "login.server-url" TextField to exist
+    t =    12.55s     Checking `Expect predicate `existsNoRetry == 1` for object "login.server-url" TextField`
+    t =    12.55s         Checking existence of `"login.server-url" TextField`
+    t =    12.67s Tap "login.server-url" TextField
+    t =    12.67s     Wait for com.milim.relay to idle
+    t =    12.67s     Find the "login.server-url" TextField
+    t =    12.70s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    12.74s     Synthesize event
+    t =    13.08s     Wait for com.milim.relay to idle
+    t =    13.85s Type 'http://hermes.tail...' into "login.server-url" TextField
+    t =    13.88s     Wait for com.milim.relay to idle
+    t =    14.26s     Find the "login.server-url" TextField
+    t =    14.44s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    14.51s     Synthesize event
+    t =    15.30s     Wait for com.milim.relay to idle
+    t =    15.60s Added attachment named 'debug-login-address'
+    t =    15.60s Type '
+' into "login.server-url" TextField
+    t =    15.60s     Wait for com.milim.relay to idle
+    t =    15.61s     Find the "login.server-url" TextField
+    t =    15.71s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    15.87s     Synthesize event
+    t =    16.40s     Wait for com.milim.relay to idle
+    t =    16.66s Waiting 30.0s for "login.username" TextField to exist
+    t =    17.69s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    17.69s         Checking existence of `"login.username" TextField`
+    t =    18.52s Added attachment named 'debug-login-password-step'
+    t =    18.54s Tap "login.username" TextField
+    t =    18.55s     Wait for com.milim.relay to idle
+    t =    18.80s     Find the "login.username" TextField
+    t =    19.18s     Check for interrupting elements affecting "login.username" TextField
+    t =    19.30s     Synthesize event
+    t =    19.63s     Wait for com.milim.relay to idle
+    t =    19.64s Find the "login.username" TextField
+    t =    19.96s Type 'demo' into "login.username" TextField
+    t =    19.96s     Wait for com.milim.relay to idle
+    t =    20.35s     Find the "login.username" TextField
+    t =    20.42s     Check for interrupting elements affecting "login.username" TextField
+    t =    20.47s     Synthesize event
+    t =    20.74s     Wait for com.milim.relay to idle
+    t =    21.13s Tap "login.password" SecureTextField
+    t =    21.13s     Wait for com.milim.relay to idle
+    t =    21.13s     Find the "login.password" SecureTextField
+    t =    21.21s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    21.26s     Synthesize event
+    t =    21.60s     Wait for com.milim.relay to idle
+    t =    21.99s Type '<redacted>' into "login.password" SecureTextField
+    t =    21.99s     Wait for com.milim.relay to idle
+    t =    22.00s     Find the "login.password" SecureTextField
+    t =    22.05s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    22.12s     Synthesize event
+    t =    22.62s     Wait for com.milim.relay to idle
+    t =    24.91s Added attachment named 'debug-after-sign-in'
+    t =    24.93s Waiting 2.0s for "Allow" Button to exist
+    t =    26.03s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    26.03s         Checking existence of `"Allow" Button`
+    t =    26.42s         Capturing element debug description
+    t =    26.94s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    26.95s         Checking existence of `"Allow" Button`
+    t =    27.00s         Capturing element debug description
+    t =    27.00s     Checking existence of `"Allow" Button`
+    t =    27.07s Collecting debug information to assist test failure triage
+    t =    27.07s     Requesting snapshot of accessibility hierarchy for app with pid 5284
+    t =    27.19s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =    28.22s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    28.22s         Checking existence of `"Don’t Allow" Button`
+    t =    28.27s         Capturing element debug description
+    t =    29.19s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    29.20s         Checking existence of `"Don’t Allow" Button`
+    t =    29.25s         Capturing element debug description
+    t =    29.25s     Checking existence of `"Don’t Allow" Button`
+    t =    29.28s Collecting debug information to assist test failure triage
+    t =    29.28s     Requesting snapshot of accessibility hierarchy for app with pid 5284
+    t =    29.37s Waiting 2.0s for "Not Now" Button to exist
+    t =    30.43s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    30.43s         Checking existence of `"Not Now" Button`
+    t =    30.47s         Capturing element debug description
+    t =    31.37s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    31.38s         Checking existence of `"Not Now" Button`
+    t =    31.42s         Capturing element debug description
+    t =    31.42s     Checking existence of `"Not Now" Button`
+    t =    31.47s Collecting debug information to assist test failure triage
+    t =    31.47s     Requesting snapshot of accessibility hierarchy for app with pid 5284
+    t =    31.56s Waiting 2.0s for "OK" Button to exist
+    t =    32.61s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    32.61s         Checking existence of `"OK" Button`
+    t =    32.65s         Capturing element debug description
+    t =    33.56s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    33.56s         Checking existence of `"OK" Button`
+    t =    33.59s         Capturing element debug description
+    t =    33.59s     Checking existence of `"OK" Button`
+    t =    33.62s Collecting debug information to assist test failure triage
+    t =    33.62s     Requesting snapshot of accessibility hierarchy for app with pid 5284
+    t =    33.68s Waiting 10.0s for "finish-setup.not-now" Button to exist
+    t =    34.74s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    34.74s         Checking existence of `"finish-setup.not-now" Button`
+    t =    35.73s Added attachment named 'debug-finish-setup'
+    t =    35.73s Tap "finish-setup.not-now" Button
+    t =    35.73s     Wait for com.milim.relay to idle
+    t =    35.74s     Find the "finish-setup.not-now" Button
+    t =    35.87s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =    36.02s     Synthesize event
+    t =    36.39s     Wait for com.milim.relay to idle
+    t =    38.74s Waiting 30.0s for "Weekend trip to Big Sur" StaticText to exist
+    t =    39.81s     Checking `Expect predicate `existsNoRetry == 1` for object "Weekend trip to Big Sur" StaticText`
+    t =    39.81s         Checking existence of `"Weekend trip to Big Sur" StaticText`
+PREVIEW_MARK start 1792307014.8528662
+    t =    41.94s Waiting 10.0s for "New Chat" Button to exist
+    t =    42.96s     Checking `Expect predicate `existsNoRetry == 1` for object "New Chat" Button`
+    t =    42.96s         Checking existence of `"New Chat" Button`
+    t =    43.13s Tap "New Chat" Button
+    t =    43.13s     Wait for com.milim.relay to idle
+    t =    43.13s     Find the "New Chat" Button
+    t =    43.22s     Check for interrupting elements affecting "square.and.pencil" Button
+    t =    43.27s     Synthesize event
+    t =    43.57s     Wait for com.milim.relay to idle
+    t =    48.36s Checking existence of `TextView (First Match)`
+    t =    48.77s Tap TextView (First Match)
+    t =    48.77s     Wait for com.milim.relay to idle
+    t =    48.79s     Find the TextView (First Match)
+    t =    49.05s     Check for interrupting elements affecting TextView
+    t =    49.78s     Synthesize event
+    t =    50.15s     Wait for com.milim.relay to idle
+    t =    50.15s Type 'What should we pac...' into TextView at {{23.0, 807.7}, {394.0, 44.0}}
+    t =    50.15s     Wait for com.milim.relay to idle
+    t =    50.16s     Find the TextView at {{23.0, 807.7}, {394.0, 44.0}}
+    t =    51.22s     Check for interrupting elements affecting TextView
+    t =    52.33s     Synthesize event
+    t =    52.33s         Get number of matches for: Elements containing elements matching predicate 'hasKeyboardFocus == 1'
+    t =    52.56s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    52.97s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.14s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.21s         Find: Descendants matching type TextView
+    t =    53.21s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.37s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.70s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.81s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.87s         Find: Descendants matching type TextView
+    t =    53.87s         Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    53.99s         Failed: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextView, {{inf, inf}, {0.0, 0.0}}
+Element debug description:
+Attributes: TextView, 0x10672e800, {{67.0, 861.7}, {278.0, 44.0}}
+Element subtree:
+ →TextView, 0x10672e800, {{67.0, 861.7}, {278.0, 44.0}}
+    Other, 0x10672da40, {{312.0, 861.7}, {30.0, 44.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+      Other, 0x10672db80, {{339.0, 870.7}, {3.0, 32.0}}
+    Other, 0x10672dcc0, {{67.0, 880.7}, {278.0, 22.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      Other, 0x10672f980, {{70.0, 899.7}, {388.0, 3.0}}
+Path to element:
+ →Application, 0x10663f980, pid: 31851, label: 'Conduit'
+  ↳Window (Main), 0x10663ea80, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x10663dcc0, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x10663de00, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x10663e300, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x10663ebc0, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x10663ee40, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳Other, 0x106641180, {{0.0, 0.0}, {440.0, 956.0}}
+         ↳Other, 0x106640dc0, {{0.0, 0.0}, {440.0, 956.0}}
+          ↳Other, 0x106640f00, {{0.0, 0.0}, {440.0, 956.0}}
+           ↳Other, 0x106640a00, {{0.0, 0.0}, {440.0, 956.0}}
+            ↳TextView, 0x10672e800, {{67.0, 861.7}, {278.0, 44.0}}
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x113077700, pid: 31851, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type TextView
+    Output: {
+      TextView, 0x1130752c0, {{67.0, 861.7}, {278.0, 44.0}}
+    }
+    ↪︎Find: First Match
+      Output: {
+        TextView, 0x10663fac0, {{67.0, 861.7}, {278.0, 44.0}}
+      }
+
+    t =    53.99s     Wait for com.milim.relay to idle
+    t =    55.01s     Retrying `Type 'What should we pac...' into TextView at {{23.0, 807.7}, {394.0, 44.0}}` (attempt #2)
+    t =    55.01s         Wait for com.milim.relay to idle
+    t =    55.02s         Find the TextView at {{67.0, 861.7}, {278.0, 44.0}}
+    t =    55.19s         Check for interrupting elements affecting TextView
+    t =    55.28s         Synthesize event
+    t =    55.28s             Get number of matches for: Elements containing elements matching predicate 'hasKeyboardFocus == 1'
+    t =    55.40s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    56.05s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    56.15s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    56.24s             Find: Descendants matching type TextView
+    t =    56.25s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    56.45s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    56.96s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    57.05s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    57.13s             Find: Descendants matching type TextView
+    t =    57.13s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    57.34s             Failed: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextView, {{67.0, 861.7}, {278.0, 44.0}}
+Element debug description:
+Attributes: TextView, 0x102e7ee40, {{67.0, 861.7}, {278.0, 44.0}}
+Element subtree:
+ →TextView, 0x102e7ee40, {{67.0, 861.7}, {278.0, 44.0}}
+    Other, 0x10672e800, {{312.0, 861.7}, {30.0, 44.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+      Other, 0x10672dcc0, {{339.0, 870.7}, {3.0, 32.0}}
+    Other, 0x10672f980, {{67.0, 880.7}, {278.0, 22.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      Other, 0x10672da40, {{70.0, 899.7}, {388.0, 3.0}}
+Path to element:
+ →Application, 0x113223480, pid: 31851, label: 'Conduit'
+  ↳Window (Main), 0x1132235c0, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x113223200, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x113223340, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x113222f80, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x1132230c0, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x113222d00, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳Other, 0x113221e00, {{0.0, 0.0}, {440.0, 956.0}}
+         ↳Other, 0x113221680, {{0.0, 0.0}, {440.0, 956.0}}
+          ↳Other, 0x113221a40, {{0.0, 0.0}, {440.0, 956.0}}
+           ↳Other, 0x113221b80, {{0.0, 0.0}, {440.0, 956.0}}
+            ↳TextView, 0x102e7ee40, {{67.0, 861.7}, {278.0, 44.0}}
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x113077840, pid: 31851, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type TextView
+    Output: {
+      TextView, 0x1066517c0, {{67.0, 861.7}, {278.0, 44.0}}
+    }
+    ↪︎Find: First Match
+      Output: {
+        TextView, 0x1064388c0, {{67.0, 861.7}, {278.0, 44.0}}
+      }
+
+    t =    57.34s         Wait for com.milim.relay to idle
+    t =    58.36s     Retrying `Type 'What should we pac...' into TextView at {{23.0, 807.7}, {394.0, 44.0}}` (attempt #3)
+    t =    58.36s         Wait for com.milim.relay to idle
+    t =    58.36s         Find the TextView at {{67.0, 861.7}, {278.0, 44.0}}
+    t =    58.61s         Check for interrupting elements affecting TextView
+    t =    58.87s         Synthesize event
+    t =    58.87s             Get number of matches for: Elements containing elements matching predicate 'hasKeyboardFocus == 1'
+    t =    59.03s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.34s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.42s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.51s             Find: Descendants matching type TextView
+    t =    59.51s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.64s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.86s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    59.94s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    60.01s             Find: Descendants matching type TextView
+    t =    60.01s             Requesting snapshot of accessibility hierarchy for app with pid 31851
+    t =    60.13s             Failed: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextView, {{67.0, 861.7}, {278.0, 44.0}}
+Element debug description:
+Attributes: TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+Element subtree:
+ →TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+    Other, 0x10672e080, {{312.0, 861.7}, {30.0, 44.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+      Other, 0x10672e440, {{339.0, 870.7}, {3.0, 32.0}}
+    Other, 0x10672db80, {{67.0, 880.7}, {278.0, 22.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      Other, 0x10672e6c0, {{70.0, 899.7}, {388.0, 3.0}}
+Path to element:
+ →Application, 0x1130eb200, pid: 31851, label: 'Conduit'
+  ↳Window (Main), 0x1130eb480, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x1130e9cc0, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x1130e9e00, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x1130eaf80, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x1130eb0c0, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x1130ead00, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳Other, 0x1130ea580, {{0.0, 0.0}, {440.0, 956.0}}
+         ↳Other, 0x1130ea6c0, {{0.0, 0.0}, {440.0, 956.0}}
+          ↳Other, 0x1130e9a40, {{0.0, 0.0}, {440.0, 956.0}}
+           ↳Other, 0x1130e9b80, {{0.0, 0.0}, {440.0, 956.0}}
+            ↳TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x10663e580, pid: 31851, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type TextView
+    Output: {
+      TextView, 0x1130743c0, {{67.0, 861.7}, {278.0, 44.0}}
+    }
+    ↪︎Find: First Match
+      Output: {
+        TextView, 0x10643abc0, {{67.0, 861.7}, {278.0, 44.0}}
+      }
+
+    t =    60.14s         Wait for com.milim.relay to idle
+    t =    60.15s     Requesting snapshot of accessibility hierarchy for app with pid 31851
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/AppStoreScreenshotTests.swift:134: error: -[ConduitScreenshots.AppStoreScreenshotTests testRecordPreview] : Failed to synthesize event: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextView, {{67.0, 861.7}, {278.0, 44.0}}
+Element debug description:
+Attributes: TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+Element subtree:
+ →TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+    Other, 0x10672e080, {{312.0, 861.7}, {30.0, 44.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+      Other, 0x10672e440, {{339.0, 870.7}, {3.0, 32.0}}
+    Other, 0x10672db80, {{67.0, 880.7}, {278.0, 22.0}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      Other, 0x10672e6c0, {{70.0, 899.7}, {388.0, 3.0}}
+Path to element:
+ →Application, 0x1130eb200, pid: 31851, label: 'Conduit'
+  ↳Window (Main), 0x1130eb480, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x1130e9cc0, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x1130e9e00, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x1130eaf80, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x1130eb0c0, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x1130ead00, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳Other, 0x1130ea580, {{0.0, 0.0}, {440.0, 956.0}}
+         ↳Other, 0x1130ea6c0, {{0.0, 0.0}, {440.0, 956.0}}
+          ↳Other, 0x1130e9a40, {{0.0, 0.0}, {440.0, 956.0}}
+           ↳Other, 0x1130e9b80, {{0.0, 0.0}, {440.0, 956.0}}
+            ↳TextView, 0x1130e8280, {{67.0, 861.7}, {278.0, 44.0}}
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x10663e580, pid: 31851, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type TextView
+    Output: {
+      TextView, 0x1130743c0, {{67.0, 861.7}, {278.0, 44.0}}
+    }
+    ↪︎Find: First Match
+      Output: {
+        TextView, 0x10643abc0, {{67.0, 861.7}, {278.0, 44.0}}
+      }
+
+    t =    61.36s Tear Down
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPreview]' failed (61.858 seconds).
+Test Suite 'AppStoreScreenshotTests' failed at 2026-10-18 07:03:54.773.
+	 Executed 1 test, with 1 failure (0 unexpected) in 61.858 (61.859) seconds
+Test Suite 'ConduitScreenshots.xctest' failed at 2026-10-18 07:03:54.774.
+	 Executed 1 test, with 1 failure (0 unexpected) in 61.858 (61.860) seconds
+Test Suite 'Selected tests' failed at 2026-10-18 07:03:54.774.
+	 Executed 1 test, with 1 failure (0 unexpected) in 61.858 (61.861) seconds
+2026-10-18 07:04:24.968 xcodebuild[30337:90524] [MT] IDETestOperationsObserverDebug: 106.271 elapsed -- Testing started completed.
+2026-10-18 07:04:24.969 xcodebuild[30337:90524] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-18 07:04:24.969 xcodebuild[30337:90524] [MT] IDETestOperationsObserverDebug: 106.271 sec, +106.271 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-17-Pro-Max-preview.xcresult
+
+Failing tests:
+	AppStoreScreenshotTests.testRecordPreview()
+
+** TEST EXECUTE FAILED **
+
+Testing started
