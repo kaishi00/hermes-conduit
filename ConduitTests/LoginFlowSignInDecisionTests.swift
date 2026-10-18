@@ -215,6 +215,29 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         XCTAssertEqual(flow.browserRequest?.baseURL, "https://proxied.example.test")
         XCTAssertEqual(flow.address, "https://proxied.example.test", "The checked address replaces what was typed")
     }
+
+    // MARK: - Sign-in codes
+
+    /// A scanned code's password belongs to the code's dashboard. When its
+    /// address check fails and the address is then edited, Retry checks the
+    /// new address and never sends the code's password there.
+    func testEditingTheAddressAfterACodesFailedCheckNeverSendsItsPasswordElsewhere() async {
+        let transport = RecordingTransport(unreachable: ["https://code.example.test"])
+        let flow = LoginFlowModel(makeTransport: { baseURL, _ in transport.client(for: baseURL) })
+        flow.attach(makeAppState())
+        flow.address = "https://code.example.test"
+        flow.username = "code-user"
+        flow.password = "code-fixture"
+
+        await flow.signInFromLink()
+        XCTAssertEqual(flow.failurePlace, .address, "The code's dashboard didn't answer")
+
+        flow.address = "https://other.example.test"
+        await flow.retry()
+
+        XCTAssertEqual(transport.signIns, [], "No password went to the edited address")
+        XCTAssertTrue(flow.showsCredentials, "The edited address gets its own sign-in step")
+    }
 }
 
 // MARK: - Scripted transport
@@ -345,6 +368,51 @@ private final class LoginFlowDiscoveryURLProtocol: URLProtocol {
             return (200, json, #"{"providers":[]}"#)
         default:
             return nil
+        }
+    }
+}
+
+/// Discovery per address (unreachable ones fail), recording every
+/// password sign-in by address.
+private final class RecordingTransport: @unchecked Sendable {
+    private let lock = NSLock()
+    private let unreachable: Set<String>
+    private var recorded: [String] = []
+
+    init(unreachable: Set<String>) {
+        self.unreachable = unreachable
+    }
+
+    var signIns: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func client(for baseURL: String) -> any DashboardSignInTransport {
+        Client(baseURL: baseURL, owner: self)
+    }
+
+    fileprivate func record(_ baseURL: String) {
+        lock.lock()
+        recorded.append(baseURL)
+        lock.unlock()
+    }
+
+    private struct Client: DashboardSignInTransport {
+        let baseURL: String
+        let owner: RecordingTransport
+
+        func authProviderDiscovery() async throws -> AuthProviderDiscoveryResult {
+            if owner.unreachable.contains(baseURL) { throw URLError(.cannotFindHost) }
+            return .providers([["name": "basic", "supports_password": true]])
+        }
+
+        func supportsNativeOAuth() async throws -> Bool { false }
+
+        func connect(username: String, password: String) async throws -> NativeAuthConnection {
+            owner.record(baseURL)
+            throw AuthClientError.loginFailed(status: 401, detail: "scripted")
         }
     }
 }
