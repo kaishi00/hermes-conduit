@@ -1,0 +1,23 @@
+seeded: Garden watering schedule
+seeded: Japanese study plan, week 3
+seeded: Reply to the landlord
+seeded: Q3 spending summary
+seeded: Espresso machine shortlist
+seeded: Fix the flaky upload test
+seeded: Weekend trip to Big Sur
+Created job: d4ef8506df00
+  Name: Morning briefing
+  Schedule: 0 7 * * *
+  Next run: 2026-10-18T07:00:00+00:00
+Created job: 93572b996eb7
+  Name: Inbox digest
+  Schedule: every 240m
+  Next run: 2026-10-18T04:55:54.737711+00:00
+Created job: 53d2191d4663
+  Name: Weekly review
+  Schedule: 0 18 * * 0
+  Next run: 2026-10-18T18:00:00+00:00
+Created job: 74627c380357
+  Name: Flight price watch
+  Schedule: every 360m
+  Created PAUSED — resume to schedule, or explicitly run now.
