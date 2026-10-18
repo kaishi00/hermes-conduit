@@ -861,6 +861,7 @@ final class RichStepsMemory: ObservableObject {
         ticks = defaults.data(forKey: Self.defaultsKey).flatMap { try? JSONDecoder().decode([String: Ticks].self, from: $0) } ?? [:]
         let timers = defaults.data(forKey: Self.timersKey).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } ?? [:]
         self.timers = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
+        Self.clearNotifications(Array(Set(timers.keys).subtracting(self.timers.keys)))
     }
 
     /// The same steps get the same key, whichever chat or call shows them.
@@ -905,11 +906,19 @@ final class RichStepsMemory: ObservableObject {
         content.sound = .default
         let request = UNNotificationRequest(identifier: id, content: content,
                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false))
-        Task {
+        Task { @MainActor in
             // The countdown runs on the card either way; without permission
             // the card says no notification will come.
             let center = UNUserNotificationCenter.current()
-            let allowed = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            let allowed: Bool
+            switch await center.notificationSettings().authorizationStatus {
+            case .notDetermined:
+                allowed = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            case .authorized, .provisional, .ephemeral:
+                allowed = true
+            default:
+                allowed = false
+            }
             notificationsOff = !allowed
             guard allowed else { return }
             do {
@@ -924,13 +933,20 @@ final class RichStepsMemory: ObservableObject {
         let id = Self.timerID(key, number)
         timers.removeValue(forKey: id)
         saveTimers()
+        Self.clearNotifications([id])
+    }
+
+    private static func clearNotifications(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [id])
-        center.removeDeliveredNotifications(withIdentifiers: [id])
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+        center.removeDeliveredNotifications(withIdentifiers: ids)
     }
 
     private func saveTimers() {
-        timers = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
+        let kept = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
+        Self.clearNotifications(Array(Set(timers.keys).subtracting(kept.keys)))
+        timers = kept
         if let data = try? JSONEncoder().encode(timers) {
             defaults.set(data, forKey: Self.timersKey)
         }
