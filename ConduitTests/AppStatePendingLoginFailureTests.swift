@@ -166,6 +166,28 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    func testOffScreenOrWithAPushRouteASignInKeepsTheLockScreenTurns() {
+        let reported = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: [])
+        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: false, plugin: reported))
+        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: .predatesCapabilities), "No plugin to push the end")
+        XCTAssertTrue(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: .unknown))
+        XCTAssertFalse(AppState.signInEndsLockScreenTurns(screenAway: false, relayReachable: true, plugin: reported), "The plugin still ends them by push")
+        XCTAssertFalse(AppState.signInEndsLockScreenTurns(screenAway: true, relayReachable: false, plugin: .predatesCapabilities), "Off screen the refusal is retried on screen")
+    }
+
+    func testEveryLiveRegistrySnapshotSettlesTheLockScreenTurns() {
+        let appState = makeAppState()
+        var snapshots: [(Set<String>, String)] = []
+        appState.liveTurnActivitiesRegistrySnapshot = { ids, profile, _ in snapshots.append((ids, profile)) }
+        appState.recordActiveListEvidence([
+            LiveSessionStatus(runtimeSessionId: "rt", storedSessionId: "stored", status: "working"),
+            LiveSessionStatus(runtimeSessionId: "done", storedSessionId: "done-stored", status: "idle"),
+        ], profile: "work")
+        XCTAssertEqual(snapshots.count, 1)
+        XCTAssertEqual(snapshots.first?.0, ["rt", "stored"])
+        XCTAssertEqual(snapshots.first?.1, "work", "Settled against the snapshot's own profile")
+    }
+
     func testRequireSignInMessageOverloadWrapsHumanAuthoredStringsAsNotice() {
         let appState = makeAppState()
         appState.requireSignIn(message: "Your dashboard session ended.")

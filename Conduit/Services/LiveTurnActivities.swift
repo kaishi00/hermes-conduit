@@ -76,6 +76,29 @@ enum LiveTurnProgress {
         return Array(events[start...])
     }
 
+    /// Whether a running turn's activity is over by the gateway's live
+    /// registry (`session.active_list`): none of the chat's ids is among the
+    /// sessions still working, waiting on the user or starting. Only for the
+    /// snapshot's own dashboard and profile (an activity that names neither
+    /// is from an older build, and goes by its chat ids), and never within
+    /// `grace` of the turn's start, which a snapshot read just before the
+    /// prompt landed could miss.
+    static func isOver(
+        attributes: HermesTurnAttributes,
+        state: HermesTurnAttributes.ContentState,
+        liveSessionIDs: Set<String>,
+        profile: String,
+        dashboardID: String?,
+        now: Date,
+        grace: TimeInterval
+    ) -> Bool {
+        guard !state.turnPhase.isFinished,
+              now.timeIntervalSince(attributes.startedAt) >= grace else { return false }
+        if let own = attributes.dashboardID, own != dashboardID { return false }
+        if case .session(_, let own?)? = ConduitAppLink(url: attributes.link), own != profile { return false }
+        return Set(attributes.sessionIDs).isDisjoint(with: liveSessionIDs)
+    }
+
     static func finished(
         _ state: HermesTurnAttributes.ContentState,
         _ phase: HermesTurnPhase,
@@ -120,6 +143,9 @@ final class LiveTurnActivities {
     /// How long after a turn starts an idle `session.busy` / `session.info`
     /// is not taken as its end.
     static let idleSignalGrace: TimeInterval = 5
+    /// How long after a turn starts the live registry's word that its chat
+    /// isn't running is not taken as its end.
+    static let registryGrace: TimeInterval = 30
 
     private var running: [String: Running] = [:]
     private var adopted = false
@@ -151,7 +177,7 @@ final class LiveTurnActivities {
 
     /// A prompt Conduit sent was accepted: the turn gets an activity, and an
     /// older one for the same chat ends.
-    func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil) {
+    func turnStarted(sessionIDs: Set<String>, primaryID: String, title: String, profile: String?, profileName: String? = nil, glowHex: String? = nil, dashboardID: String? = nil) {
         adoptExisting()
         let held = early.first { !$0.sessionIDs.isDisjoint(with: sessionIDs) }
             .map { LiveTurnProgress.newTurnEvents($0.events) } ?? []
@@ -167,7 +193,8 @@ final class LiveTurnActivities {
             link: ConduitAppLink.session(id: primaryID, profile: profile).url,
             sessionIDs: Array(sessionIDs).sorted(),
             profileName: profileName,
-            glowHex: glowHex
+            glowHex: glowHex,
+            dashboardID: dashboardID
         )
         let state = HermesTurnAttributes.ContentState(phase: .thinking)
         do {
@@ -219,6 +246,40 @@ final class LiveTurnActivities {
                     await entry.activity.update(content)
                 }
             }
+        }
+    }
+
+    /// A full `session.active_list` snapshot of `profile` on `dashboardID`:
+    /// a turn whose chat is no longer running there ended without Conduit
+    /// seeing it (it finished while Conduit was closed, or in a chat not on
+    /// screen, with no relay to end it), so its activity ends as done
+    /// instead of counting up for hours. `liveSessionIDs` are the ids of
+    /// the rows still working, waiting or starting.
+    func reconcile(liveSessionIDs: Set<String>, profile: String, dashboardID: String?, now: Date = Date()) {
+        guard !running.isEmpty else { return }
+        for (id, entry) in running where LiveTurnProgress.isOver(
+            attributes: entry.activity.attributes,
+            state: entry.state,
+            liveSessionIDs: liveSessionIDs,
+            profile: profile,
+            dashboardID: dashboardID,
+            now: now,
+            grace: Self.registryGrace
+        ) {
+            // When it ended is unknown: no time shows rather than a wrong one.
+            finish(id, phase: .done, dismissal: .after(now.addingTimeInterval(Self.dismissAfterEnd)), endKnown: false)
+        }
+    }
+
+    /// Conduit stops following `dashboardID`'s turns (its sign-in expired
+    /// with no push route to end them, or the user disconnected or signed
+    /// out): their activities go now rather than counting up on a turn
+    /// nothing will end. Another dashboard's stay.
+    func endTurns(ofDashboard dashboardID: String?) {
+        adoptExisting()
+        for (id, entry) in running {
+            if let own = entry.activity.attributes.dashboardID, own != dashboardID { continue }
+            finish(id, phase: .stopped, dismissal: .immediate)
         }
     }
 
@@ -317,13 +378,14 @@ final class LiveTurnActivities {
         await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
     }
 
-    private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy) {
+    private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()
-        let lastState = entry.state.turnPhase.isFinished
+        var lastState = entry.state.turnPhase.isFinished
             ? entry.state
             : LiveTurnProgress.finished(entry.state, phase, now: Date())
+        if !endKnown, !entry.state.turnPhase.isFinished { lastState.endedAt = nil }
         let pendingUpdate = entry.updateTask
         Task {
             await pendingUpdate?.value

@@ -53,6 +53,10 @@ struct HermesTurnAttributes: ActivityAttributes {
     /// build decode without them.
     var profileName: String? = nil
     var glowHex: String? = nil
+    /// The saved dashboard the turn ran on (`SavedDashboard.id`), so a
+    /// relaunched Conduit settles it only against that dashboard's live
+    /// sessions. Optional: activities started by an older build have none.
+    var dashboardID: String? = nil
 
     /// The glow color (`#rrggbb` only, as `ProfileGlowRGB.hex` writes it),
     /// nil when there is none or it doesn't parse.

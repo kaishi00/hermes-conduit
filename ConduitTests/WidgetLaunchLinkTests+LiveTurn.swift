@@ -120,4 +120,41 @@ extension WidgetLaunchLinkTests {
         XCTAssertNil(older.profileName)
         XCTAssertNil(older.glowColor)
     }
+
+    /// A turn that ended while Conduit was closed (or in a chat not on
+    /// screen, with no relay to end it) ends once the live registry shows
+    /// its chat isn't running, but only on its own dashboard and profile,
+    /// and not in the first moments of the turn.
+    func testLiveTurnEndsWhenTheRegistryNoLongerRunsItsChat() throws {
+        let start = now
+        let link = try XCTUnwrap(URL(string: "conduit://session/rt?profile=default"))
+        let attributes = HermesTurnAttributes(chatTitle: "Chat", startedAt: start, language: "system", link: link, sessionIDs: ["rt", "stored"], dashboardID: "D1")
+        let running = HermesTurnAttributes.ContentState(phase: .thinking)
+        func over(_ live: Set<String>, profile: String = "default", dashboard: String? = "D1", after seconds: TimeInterval = 120, state: HermesTurnAttributes.ContentState? = nil, attributes a: HermesTurnAttributes? = nil) -> Bool {
+            LiveTurnProgress.isOver(attributes: a ?? attributes, state: state ?? running, liveSessionIDs: live, profile: profile, dashboardID: dashboard, now: start.addingTimeInterval(seconds), grace: LiveTurnActivities.registryGrace)
+        }
+        XCTAssertTrue(over([]), "Its chat isn't running any more")
+        XCTAssertTrue(over(["other"]))
+        XCTAssertFalse(over(["stored"]), "Still running under its stored id")
+        XCTAssertFalse(over([], after: 10), "A snapshot right after the prompt can predate the turn")
+        XCTAssertFalse(over([], profile: "work"), "Another profile's snapshot says nothing about it")
+        XCTAssertFalse(over([], dashboard: "D2"), "Another dashboard's snapshot says nothing about it")
+        XCTAssertFalse(over([], state: LiveTurnProgress.finished(running, .done, now: start)), "Already ended")
+
+        var older = attributes
+        older.dashboardID = nil
+        XCTAssertTrue(over([], dashboard: "D2", attributes: older), "An older build's activity goes by its chat ids")
+
+        let rows = [
+            LiveSessionStatus(runtimeSessionId: "a", storedSessionId: "a-stored", status: "working"),
+            LiveSessionStatus(runtimeSessionId: "b", storedSessionId: "", status: "waiting"),
+            LiveSessionStatus(runtimeSessionId: "c", storedSessionId: "c-stored", status: "starting"),
+            LiveSessionStatus(runtimeSessionId: "d", storedSessionId: "d-stored", status: "idle"),
+        ]
+        XCTAssertEqual(AppState.liveTurnSessionIDs(rows), ["a", "a-stored", "b", "c", "c-stored"], "Idle sessions have no turn")
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(attributes)) as? [String: Any])
+        object["dashboardID"] = nil
+        XCTAssertNil(try JSONDecoder().decode(HermesTurnAttributes.self, from: JSONSerialization.data(withJSONObject: object)).dashboardID, "An older build's activity decodes")
+    }
 }

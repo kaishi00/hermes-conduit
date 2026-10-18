@@ -942,6 +942,13 @@ final class PushNotificationService: ObservableObject {
     /// route; pairing with another relay tries again.
     private var liveActivitiesUnsupportedInstallation: String?
 
+    /// Whether the relay takes this iPhone's Live Activity tokens, so the
+    /// Conduit plugin can update and end them by push.
+    var liveActivitiesReachRelay: Bool {
+        guard let registration else { return false }
+        return liveActivitiesUnsupportedInstallation != registration.installationID
+    }
+
     /// Registers the push token of the Live Activity Conduit started for a
     /// chat, under the ids the chat is known by (at most 6, the relay's
     /// limit), so the host's progress reports reach it. Best effort: without
