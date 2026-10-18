@@ -65,6 +65,7 @@ extension VoiceCallEngine {
         switch engine {
         case WatchAudioBridgeWire.gptLive: return .gptLive
         case WatchAudioBridgeWire.grok: return .grokLive
+        case WatchAudioBridgeWire.localLive: return .localLive
         default: return nil
         }
     }

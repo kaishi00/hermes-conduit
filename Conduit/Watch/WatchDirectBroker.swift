@@ -196,6 +196,25 @@ final class WatchDirectBroker {
                 if self.preparing?.callID == id { self.preparing = nil }
                 end()
             }
+        case .localLiveStart(let id, let version):
+            guard version == WatchVoiceWire.version else {
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
+                return
+            }
+            let end = Self.beginBackgroundTask("conduit.watchLocalLive.start")
+            let task: Task<WatchVoiceWire.Message, Never>
+            if let preparing, preparing.callID == id {
+                task = preparing.task
+            } else {
+                task = Task { await self.prepareLocalLive(id) }
+                preparing = (id, task)
+            }
+            Task {
+                let message = await task.value
+                answer(message)
+                if self.preparing?.callID == id { self.preparing = nil }
+                end()
+            }
         case .directToken(let id):
             heard(id)
             guard onCallsConnection(id) else {
@@ -547,6 +566,82 @@ final class WatchDirectBroker {
         } catch {
             let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
             link.log.note("watchGrokPrepareFailed", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "error": reason,
+                "appState": WatchVoiceLink.appStateName,
+            ])
+            if callID == id { endCall() }
+            return .callRefused(callID: id, reason: reason)
+        }
+    }
+
+    // MARK: Start for Local Live
+
+    /// A Local Live call on the Watch: a grant that opens the host's audio
+    /// bridge, where the host relays the Watch's session to the profile's
+    /// speech server and runs the server's turns in a Hermes chat, as the
+    /// phone's Local Live call runs them. The grant needs a tool; the call
+    /// never uses it.
+    private func prepareLocalLive(_ id: UInt32) async -> WatchVoiceWire.Message {
+        let appState = self.appState
+        if let active = callID, active != id { endCall() }
+        callID = id
+        bridge = nil
+        lateOutgoing = []
+        lastHeardAt = Date()
+        appState.setWatchVoiceCallActive(true)
+        let startedAt = Date()
+        link.log.note("watchLocalLiveStart", [
+            "callID": Int(id),
+            "appState": WatchVoiceLink.appStateName,
+            "phoneScreen": PhoneScenePresence.isInForeground,
+            "connected": appState.isConnected,
+        ])
+        do {
+            let plan = try await appState.prepareWatchLocalLiveCall()
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            connection = plan.connection
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            grantTools = grantable([WatchToolAnswer.webSearch])
+            grantMaxJobs = 0
+            grantJobTools = []
+            grantJobOptions = [:]
+            grantJobProfiles = []
+            grantVoiceApprovals = false
+            grantLiveToken = false
+            grantAudio = true
+            lastGrantError = nil
+            let grant = await requestGrant(id, profile: plan.connection.profile)
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            ledger.setGrant(grantScope, for: id)
+            guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.localLive) else {
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
+                    ?? AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."))
+            }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            let reply = WatchVoiceWire.Message.localLiveSession(callID: id, call: .init(
+                grant: grant,
+                greeting: plan.greeting,
+                endPhrases: plan.endPhrases
+            ))
+            link.log.note("watchLocalLivePrepared", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "greeting": plan.greeting != nil,
+                "engines": audio.engines,
+                "appState": WatchVoiceLink.appStateName,
+            ])
+            endWhenGrantDoes(id, expiresAt: grant.expiresAt)
+            return reply
+        } catch {
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            link.log.note("watchLocalLivePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
                 "error": reason,

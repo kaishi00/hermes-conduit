@@ -1040,6 +1040,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceCallEngine.watchBridge(WatchAudioBridgeWire.grok), .grokLive)
     }
 
+    /// Local Live on the Watch: the start asks for the grant only, the
+    /// answer carries the grant, greeting and end phrases, and the bridge's
+    /// start names a rejoining call's Hermes chat, which "started" gave.
+    func testWatchLocalLiveMessagesAndTheBridgesChat() throws {
+        var grant = Self.watchToolGrant
+        grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.localLive])
+        let messages: [WatchVoiceWire.Message] = [
+            .localLiveStart(callID: 4, version: WatchVoiceWire.version),
+            .localLiveSession(callID: 4, call: .init(grant: grant, greeting: "Hi, I'm listening.", endPhrases: ["bye"])),
+            .localLiveSession(callID: 4, call: .init(grant: grant, greeting: nil)),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+        XCTAssertEqual(VoiceCallEngine.watchBridge(WatchAudioBridgeWire.localLive), .localLive)
+
+        let first = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: WatchAudioBridgeWire.localLive, voice: nil, briefing: nil, greeting: nil, history: []
+        )) as? [String: Any])
+        XCTAssertEqual(Set(first.keys), ["type", "engine"])
+        XCTAssertEqual(first["engine"] as? String, "local_live")
+        let rejoin = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: WatchAudioBridgeWire.localLive, voice: nil, briefing: nil, greeting: nil, history: [], resumeSessionID: "chat-1"
+        )) as? [String: Any])
+        XCTAssertEqual(rejoin["resume_session_id"] as? String, "chat-1")
+        XCTAssertEqual(
+            WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"local_live","voice":null,"input_rate":24000,"output_rate":24000,"session_id":"chat-1","resumed":false}"#.utf8)),
+            .started(.init(engine: "local_live", voice: nil, inputRate: 24_000, outputRate: 24_000, briefingApplied: false, greetingApplied: false, sessionID: "chat-1"))
+        )
+        guard case .started(let grok)? = WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"grok","input_rate":24000,"output_rate":24000}"#.utf8)) else {
+            return XCTFail("Grok's started")
+        }
+        XCTAssertNil(grok.sessionID)
+    }
+
     /// A Watch call ends on the same spoken goodbye as the phone's call:
     /// the matcher it shares with the phone.
     func testWatchCallsEndOnTheProfilesGoodbye() {

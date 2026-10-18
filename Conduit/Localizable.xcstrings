@@ -293787,6 +293787,170 @@
           }
         }
       }
+    },
+    "Hermes couldn't open Local Live for the Watch: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte Local Live für die Watch nicht öffnen: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo abrir Local Live para el Apple Watch: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas pu ouvrir Local Live pour l'Apple Watch : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat membuka Local Live untuk Watch: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito ad aprire Local Live per Apple Watch: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Local Live を開けませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 Watch용 Local Live를 열 수 없었어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł otworzyć Local Live dla zegarka: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu abrir o Local Live para o Watch: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не удалось открыть Local Live для часов: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Watch için Local Live'ı açamadı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Local Live：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法為 Apple Watch 啟動 Local Live：%@"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte Local Live für die Watch nicht öffnen. Aktualisiere das Conduit-Notifier-Plug-in und das Push-Relay."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo abrir Local Live para el Apple Watch. Actualiza el plugin de notificaciones de Conduit y el relay push."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas pu ouvrir Local Live pour l'Apple Watch. Mettez à jour le plugin de notification Conduit et le relais push."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat membuka Local Live untuk Watch. Perbarui plugin notifier Conduit dan relai push."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito ad aprire Local Live per Apple Watch. Aggiorna il plugin di notifica di Conduit e il relay push."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Local Live を開けませんでした。Conduit 通知プラグインとプッシュリレーをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 Watch용 Local Live를 열 수 없었어요. Conduit 알림 플러그인과 푸시 릴레이를 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł otworzyć Local Live dla zegarka. Zaktualizuj wtyczkę powiadomień Conduit i przekaźnik push."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu abrir o Local Live para o Watch. Atualize o plugin notificador do Conduit e a retransmissão de push."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не удалось открыть Local Live для часов. Обновите плагин уведомлений Conduit и push-ретранслятор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Watch için Local Live'ı açamadı. Conduit bildirim eklentisini ve bildirim aktarıcısını güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Local Live。请更新 Conduit 通知插件和推送中继。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法為 Apple Watch 啟動 Local Live。請更新 Conduit 通知外掛程式和推播中繼。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

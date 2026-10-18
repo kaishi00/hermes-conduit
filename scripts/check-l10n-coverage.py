@@ -1137,6 +1137,7 @@ INFO_PLIST_CATALOGS = (
 WATCH_SHARED_SOURCES = (
     "Shared/GeminiLive",
     "Shared/GrokLive",
+    "Shared/LocalLive",
     "Shared/WatchVoice",
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
 )

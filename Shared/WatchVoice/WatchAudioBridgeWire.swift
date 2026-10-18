@@ -30,6 +30,10 @@ enum WatchAudioBridgeWire {
     /// The engines the bridge runs. Gemini stays direct.
     static let gptLive = "gpt_live"
     static let grok = "grok"
+    /// The user's own speech server, as the iPhone's Local Live call: the
+    /// host relays the Watch's session to it and answers its turns in a
+    /// Hermes chat (plugin 0.48).
+    static let localLive = "local_live"
     /// The relay's bound on one message.
     static let maxMessageBytes = 64 * 1024
     /// What fits in one sealed message: the type, counter and tag go
@@ -167,8 +171,11 @@ enum WatchAudioBridgeWire {
     /// memory (GPT-Live puts it in the instructions); `greeting` asks for
     /// a first line; `callOpening` makes the model open a call Hermes
     /// placed (#544), sent without a greeting (the host lets it win); `history` seeds a rejoined call's conversation.
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]]) -> Data {
+    /// `resumeSessionID`: the Hermes chat a rejoining Local Live call
+    /// carries on in (`Started.sessionID`).
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
+        if let resumeSessionID, !resumeSessionID.isEmpty { message["resume_session_id"] = resumeSessionID }
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
@@ -188,6 +195,9 @@ enum WatchAudioBridgeWire {
         /// The host made the model speak first: a greeting or a call
         /// Hermes placed (`call_opening`).
         var greetingApplied: Bool
+        /// Local Live: the Hermes chat the call's turns run in, which a
+        /// rejoin names to carry on there.
+        var sessionID: String? = nil
     }
 
     /// Whether the Watch sends a call Hermes placed its own opening turn:
@@ -219,7 +229,8 @@ enum WatchAudioBridgeWire {
                 inputRate: object["input_rate"] as? Int ?? 16_000,
                 outputRate: object["output_rate"] as? Int ?? 24_000,
                 briefingApplied: object["briefing_applied"] as? Bool ?? false,
-                greetingApplied: object["greeting_applied"] as? Bool ?? false
+                greetingApplied: object["greeting_applied"] as? Bool ?? false,
+                sessionID: (object["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ))
         case "ended":
             return .ended(reason: object["reason"] as? String)

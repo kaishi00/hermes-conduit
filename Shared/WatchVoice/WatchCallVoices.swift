@@ -20,6 +20,9 @@ struct WatchCallVoices: Codable, Equatable {
         case geminiLive
         case gptLive
         case grokLive
+        /// The user's own speech server through the host (plugin 0.48).
+        /// Calls from Hermes don't ring a Watch on it: they ring the iPhone.
+        case localLive
     }
 
     /// The dashboard and profile the checks were for.
@@ -32,6 +35,9 @@ struct WatchCallVoices: Codable, Equatable {
     /// checked yet isn't known: both ring, as before.
     func rings(engine: String?) -> Bool {
         guard let engine else { return true }
+        // The host runs a Watch call's Local Live turns in a chat of its
+        // own, not the call's: answering on the iPhone keeps them together.
+        if engine == Voice.localLive.rawValue { return false }
         return ready[engine] ?? true
     }
 

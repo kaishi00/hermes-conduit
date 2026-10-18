@@ -101,6 +101,9 @@ targets:
       # The iPhone's Grok Live session, which a Watch call to Grok runs
       # through the host's audio bridge.
       - path: Shared/GrokLive
+      # The iPhone's Local Live session, which a Watch call to the user's
+      # own speech server runs through the host's audio bridge.
+      - path: Shared/LocalLive
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
@@ -162,12 +165,13 @@ targets:
     sources:
       - path: ConduitNotificationService
       - path: Shared
-        # The Watch app's code, Gemini Live, Grok Live and location
-        # sharing, which the extension never uses.
+        # The Watch app's code, Gemini Live, Grok Live, Local Live and
+        # location sharing, which the extension never uses.
         excludes:
           - "WatchVoice/**"
           - "GeminiLive/**"
           - "GrokLive/**"
+          - "LocalLive/**"
           - "Widgets/**"
           - "Location/**"
     settings:
@@ -196,6 +200,7 @@ targets:
           - "WatchVoice/**"
           - "GeminiLive/**"
           - "GrokLive/**"
+          - "LocalLive/**"
           - "Widgets/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).

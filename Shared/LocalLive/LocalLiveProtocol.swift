@@ -1,6 +1,6 @@
 //
 //  LocalLiveProtocol.swift
-//  Conduit
+//  Conduit and the Conduit Watch app
 //
 //  Wire format for Local Live: a live call through the user's own speech
 //  server (Hugging Face speech-to-speech), relayed by the notifier's
@@ -11,14 +11,16 @@
 //  adds on the same socket. When the server asks its model address for an
 //  answer, the plugin sends `conduit.turn`; Conduit runs it as a Hermes chat
 //  turn and streams the reply back as `conduit.turn.delta`, then
-//  `conduit.turn.done`.
+//  `conduit.turn.done`. A Watch call runs the same session through the
+//  host's audio bridge, where the host answers the turns itself.
 //
 
 import Foundation
 
 enum LocalLiveProtocol {
-    static let socketPath = SpeechServerSpeechStream.socketPath
-    static let statusPath = SpeechServerSpeechStream.statusPath
+    /// SpeechServerSpeechStream's too: one relay serves both.
+    static let socketPath = "/api/plugins/conduit_push/local-live/socket"
+    static let statusPath = "/api/plugins/conduit_push/local-live/status"
     /// The OpenAI Realtime PCM rate, both ways. The 16 kHz microphone
     /// stream is upsampled to it, as for Grok Live.
     static let sampleRate: Double = 24_000

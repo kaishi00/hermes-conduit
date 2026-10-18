@@ -26,13 +26,6 @@ enum LocalLiveClientError: LocalizedError, Equatable {
 }
 
 @MainActor
-protocol LocalLiveConnecting: AnyObject {
-    /// The upgrade request for one relay connection, with a fresh
-    /// single-use ticket: call once per WebSocket.
-    func socketRequest() async throws -> URLRequest
-}
-
-@MainActor
 final class LocalLiveClient: LocalLiveConnecting {
     typealias Request = GrokLiveClient.Request
     typealias SocketRequest = GrokLiveClient.SocketRequest

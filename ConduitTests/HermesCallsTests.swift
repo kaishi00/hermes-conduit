@@ -1422,20 +1422,40 @@ extension VoiceConversationControllerTests {
         // isn't set up, whatever an earlier check found.
         let older = NotifierPluginStatus.State.reported(version: "0.8.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "memory"])
         let shared = AppState.watchContextVoices(voices, scope: "d|default", plugin: older)
-        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false])
+        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false, "localLive": false])
         let context = WatchPhoneContext(voices: shared, callsRing: false)
         XCTAssertFalse(context.notSetUp(.geminiLive), "Its route is there: the voice may start")
         XCTAssertTrue(context.notSetUp(.gptLive))
         XCTAssertTrue(context.notSetUp(.grokLive), "No audio bridge: a stale ready check doesn't count")
         XCTAssertEqual(
             AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: older),
-            ["gptLive": false, "grokLive": false],
+            ["gptLive": false, "grokLive": false, "localLive": false],
             "Gemini not checked, but served: nothing to say"
         )
 
-        // 0.9-0.12 serves every Watch voice without hermes-calls: only the
-        // checks are missing, so nothing is marked.
+        // 0.9-0.12 serves every Watch voice of its time without
+        // hermes-calls: only the checks are missing, so nothing else is
+        // marked. Local Live on the Watch came with 0.48.
         let bridged = NotifierPluginStatus.State.reported(version: "0.10.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "watch-audio"])
-        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), [:])
+        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), ["localLive": false])
+    }
+
+    func testLocalLiveOnTheWatchNeedsTheBridgesLocalLiveEngine() {
+        XCTAssertEqual(AppState.watchVoiceCapabilities(.localLive), ["local-live", "watch-audio", "watch-local-live"])
+        var voices = WatchCallVoices()
+        voices.note(.localLive, ready: true, scope: "d|default")
+        // Local Live on the phone (0.42), before the Watch could use it.
+        let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["local-live", "watch-audio", "hermes-calls"])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: phoneOnly), ["localLive": false])
+        let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["local-live", "watch-audio", "watch-local-live", "hermes-calls"])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["localLive": true])
+    }
+
+    func testCallsFromHermesNeverRingAWatchOnLocalLive() {
+        var voices = WatchCallVoices()
+        voices.note(.localLive, ready: true, scope: "d|default")
+        XCTAssertFalse(voices.rings(engine: WatchCallVoices.Voice.localLive.rawValue),
+                       "The host runs its turns in a chat of its own: the iPhone answers instead")
+        XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.geminiLive.rawValue), "Not checked yet: rings, as before")
     }
 }

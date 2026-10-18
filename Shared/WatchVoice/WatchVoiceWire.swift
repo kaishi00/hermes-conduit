@@ -148,6 +148,21 @@ enum WatchVoiceWire {
         var endPhrases: [String]? = nil
     }
 
+    /// Everything a Watch call to Local Live needs, built on the iPhone: the
+    /// grant that opens the host's audio bridge, where the host relays the
+    /// Watch's session to the user's speech server and answers its turns in
+    /// a Hermes chat. No setup: the speech server's model is Hermes.
+    struct LocalLiveCall: Codable, Equatable {
+        var grant: DirectToolGrant
+        /// What the speech server says once the call is ready, resolved
+        /// from the greeting setting as the iPhone's call does; nil says
+        /// nothing.
+        var greeting: String?
+        /// The profile's spoken end phrases: the user saying one ends the
+        /// call, as on the iPhone.
+        var endPhrases: [String]? = nil
+    }
+
     /// The setup's long part. Function declarations travel as their JSON:
     /// their parameter schemas aren't Codable.
     struct DirectSetup: Codable, Equatable {
@@ -310,6 +325,9 @@ enum WatchVoiceWire {
         /// A Watch call to Grok wants its setup and the grant that opens
         /// the host's audio bridge.
         case grokStart(callID: UInt32, version: Int, ring: String? = nil)
+        /// A Watch call to Local Live wants the grant that opens the host's
+        /// audio bridge. Calls from Hermes don't ring a Watch on Local Live.
+        case localLiveStart(callID: UInt32, version: Int)
         /// The Watch's own PushKit token, which calls from Hermes ring on
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
         /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,
@@ -334,6 +352,8 @@ enum WatchVoiceWire {
         case bridgeSession(callID: UInt32, session: BridgeSession)
         /// The answer to `grokStart`; a refusal comes as `callRefused`.
         case grokSession(callID: UInt32, session: GrokSession)
+        /// The answer to `localLiveStart`; a refusal comes as `callRefused`.
+        case localLiveSession(callID: UInt32, call: LocalLiveCall)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

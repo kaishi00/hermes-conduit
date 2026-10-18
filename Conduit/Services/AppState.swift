@@ -29630,6 +29630,46 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// What a Watch call to Local Live starts with. The host relays the
+    /// Watch's session to the profile's speech server and runs its turns in
+    /// a Hermes chat, so only what the speech server says first, the
+    /// profile's end phrases and the saving choice come from here.
+    struct WatchLocalLivePlan {
+        let greeting: String?
+        let connection: WatchDirectConnection
+        let saveCalls: Bool
+        let endPhrases: [String]
+    }
+
+    /// Checks Local Live as the phone's call does, and resolves the
+    /// greeting setting as `localLiveController` does.
+    func prepareWatchLocalLiveCall() async throws -> WatchLocalLivePlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let status = try await localLiveClient.status()
+        noteWatchCallVoice(.localLive, ready: status.available)
+        if let reason = LocalLiveClient.unavailableReason(status) {
+            throw WatchDirectPrepareError(reason)
+        }
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        let greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        return WatchLocalLivePlan(
+            greeting: greeting,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases
+        )
+    }
+
     /// What a Watch call that answers a call from Hermes opens with
     /// (designs/hermes-calls-watch.md): the news the phone's own answer
     /// gives, with the reply read from the call's chat. Nil for any other

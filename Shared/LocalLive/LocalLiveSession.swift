@@ -1,6 +1,6 @@
 //
 //  LocalLiveSession.swift
-//  Conduit
+//  Conduit and the Conduit Watch app
 //
 //  One Local Live call through the Hermes host's relay to the user's speech
 //  server. The first frame is the session.update. Once the server confirms
@@ -15,13 +15,21 @@
 //
 //  It speaks the same seam as Gemini Live's session, so the shared
 //  conversation controller (phases, transcript, the speaker echo guard,
-//  hands-free end) drives Local Live unchanged.
+//  hands-free end) drives Local Live unchanged. The Watch runs it too,
+//  over the call grant's audio bridge (WatchGrokBridgeSocket).
 //
 
 import Foundation
 import OSLog
 
 private let localLiveLogger = Logger(subsystem: "com.milim.relay", category: "LocalLive")
+
+@MainActor
+protocol LocalLiveConnecting: AnyObject {
+    /// The upgrade request for one relay connection, with a fresh
+    /// single-use ticket: call once per WebSocket.
+    func socketRequest() async throws -> URLRequest
+}
 
 @MainActor
 final class LocalLiveSession: GeminiLiveSessionControlling {

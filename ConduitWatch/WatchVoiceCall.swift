@@ -31,6 +31,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
     case geminiLive
     case gptLive
     case grokLive
+    case localLive
 
     static let storageKey = "watchVoice.engine"
 
@@ -41,6 +42,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
         case .geminiLive: return String(localized: "Gemini Live")
         case .gptLive: return String(localized: "GPT-Live")
         case .grokLive: return String(localized: "Grok")
+        case .localLive: return String(localized: "Local Live")
         }
     }
 
@@ -48,6 +50,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
         switch self {
         case .geminiLive: return String(localized: "Runs on your Watch")
         case .gptLive, .grokLive: return String(localized: "Runs on your Hermes host")
+        case .localLive: return String(localized: "Your own speech server")
         }
     }
 
@@ -57,6 +60,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
         case .geminiLive: return .geminiLive
         case .gptLive: return .gptLive
         case .grokLive: return .grokLive
+        case .localLive: return .localLive
         }
     }
 
@@ -65,6 +69,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
         case .geminiLive: return "sparkles"
         case .gptLive: return "waveform.path.ecg"
         case .grokLive: return "bolt.fill"
+        case .localLive: return "house.fill"
         }
     }
 }
@@ -184,6 +189,8 @@ final class WatchVoiceCall: ObservableObject {
         switch callEngine {
         case .geminiLive: Task { await direct.start(engine: .gemini, ring: ring, answer: answer) }
         case .grokLive: Task { await direct.start(engine: .grok, ring: ring, answer: answer) }
+        // Calls from Hermes don't ring a Watch on Local Live (WatchCallVoices).
+        case .localLive: Task { await direct.start(engine: .localLive) }
         case .gptLive: Task { await bridge.start(ring: ring, answer: answer) }
         }
     }
@@ -194,13 +201,14 @@ final class WatchVoiceCall: ObservableObject {
         switch engine {
         case .geminiLive: return WatchDirectCallModel.startRequest(engine: .gemini, callID: callID, ring: ring)
         case .grokLive: return WatchDirectCallModel.startRequest(engine: .grok, callID: callID, ring: ring)
+        case .localLive: return WatchDirectCallModel.startRequest(engine: .localLive, callID: callID, ring: ring)
         case .gptLive: return WatchBridgeCallModel.startRequest(callID: callID, ring: ring)
         }
     }
 
     func end() {
         switch callEngine {
-        case .geminiLive, .grokLive: direct.end()
+        case .geminiLive, .grokLive, .localLive: direct.end()
         case .gptLive: bridge.end()
         }
     }
@@ -209,14 +217,14 @@ final class WatchVoiceCall: ObservableObject {
     /// Siri or an alarm.
     func tap() {
         switch callEngine {
-        case .geminiLive, .grokLive: direct.tapOrb()
+        case .geminiLive, .grokLive, .localLive: direct.tapOrb()
         case .gptLive: bridge.tapOrb()
         }
     }
 
     func toggleMute() {
         switch callEngine {
-        case .geminiLive, .grokLive: direct.toggleMute()
+        case .geminiLive, .grokLive, .localLive: direct.toggleMute()
         case .gptLive: bridge.toggleMute()
         }
     }
@@ -224,7 +232,7 @@ final class WatchVoiceCall: ObservableObject {
     /// Answers the approval the card showed, never one queued behind it.
     func answerApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
         switch callEngine {
-        case .geminiLive, .grokLive: direct.answerApproval(approval, approve: approve)
+        case .geminiLive, .grokLive, .localLive: direct.answerApproval(approval, approve: approve)
         case .gptLive: bridge.answerApproval(approval, approve: approve)
         }
     }
@@ -375,7 +383,7 @@ final class WatchVoiceCall: ObservableObject {
         guard !summaryDismissed, !isScreenshotFixture else { return }
         let next: Phase
         switch callEngine {
-        case .geminiLive, .grokLive: next = Self.phase(direct.phase)
+        case .geminiLive, .grokLive, .localLive: next = Self.phase(direct.phase)
         case .gptLive: next = Self.phase(bridge.phase)
         }
         // Only a dismissed summary goes back to the home screen: a model
@@ -387,7 +395,7 @@ final class WatchVoiceCall: ObservableObject {
             previousModelCall = nil
         }
         switch callEngine {
-        case .geminiLive, .grokLive:
+        case .geminiLive, .grokLive, .localLive:
             caption = direct.caption
             transcript = direct.transcript
             isMuted = direct.isMuted
@@ -413,7 +421,7 @@ final class WatchVoiceCall: ObservableObject {
 
     private var modelCallID: UInt32 {
         switch callEngine {
-        case .geminiLive, .grokLive: return direct.callID
+        case .geminiLive, .grokLive, .localLive: return direct.callID
         case .gptLive: return bridge.callID
         }
     }

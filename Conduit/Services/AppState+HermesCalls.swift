@@ -150,7 +150,10 @@ extension AppState {
         async let gemini = watchCallVoiceCheck(.geminiLive)
         async let gpt = watchCallVoiceCheck(.gptLive)
         async let grok = watchCallVoiceCheck(.grokLive)
-        let checks: [(WatchCallVoices.Voice, Bool?)] = [(.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok)]
+        async let localLive = watchCallVoiceCheck(.localLive)
+        let checks: [(WatchCallVoices.Voice, Bool?)] = [
+            (.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok), (.localLive, await localLive),
+        ]
         // Another server or profile by now: these say nothing about it.
         guard scope == hermesCallsKey(profile: activeProfile) else { return }
         var voices = PushNotificationService.shared.watchCallVoices
@@ -196,6 +199,8 @@ extension AppState {
         // The Watch's GPT-Live is the subscription's, whatever the phone uses.
         case .gptLive: return (try? await gptLiveClient.availability(billing: .subscription))?.isAvailable
         case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
+        // The phone's Local Live check: the host's speech server and key.
+        case .localLive: return (try? await localLiveClient.status())?.available
         }
     }
 
@@ -252,12 +257,14 @@ extension AppState {
     /// The plugin capabilities a Watch voice needs. Gemini Live runs on the
     /// Watch with its own route's token; GPT-Live and Grok also need the
     /// Watch audio bridge (plugin 0.9), which WatchDirectBroker's grant
-    /// carries.
+    /// carries. Local Live on the Watch needs the bridge's local_live
+    /// engine (plugin 0.48).
     nonisolated static func watchVoiceCapabilities(_ voice: WatchCallVoices.Voice) -> [String] {
         switch voice {
         case .geminiLive: return ["gemini-live"]
         case .gptLive: return ["gpt-live", "watch-audio"]
         case .grokLive: return ["grok-live", "watch-audio"]
+        case .localLive: return ["local-live", "watch-audio", "watch-local-live"]
         }
     }
 
