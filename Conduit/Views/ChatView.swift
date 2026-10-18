@@ -1433,6 +1433,8 @@ private struct UserImageAttachmentPreview: View {
                 // The server file, else the copy Hermes stored inside the
                 // message: Hermes clears the files that came in through chat
                 // platforms after a day.
+                // Read first: a sign-out during the fetch keeps it off the phone.
+                let generation = TranscriptImageCache.generation
                 var dataURL: String?
                 if isGatewayImage {
                     dataURL = await gatewayResolver.dataURL(for: attachment.uri)
@@ -1441,7 +1443,7 @@ private struct UserImageAttachmentPreview: View {
                     dataURL = await gatewayResolver.inlineImageDataURL(ref)
                 }
                 guard !Task.isCancelled else { return }
-                guard let dataURL, let image = await Self.keep(dataURL, as: cacheKey) else {
+                guard let dataURL, let image = await Self.keep(dataURL, as: cacheKey, generation: generation) else {
                     gatewayLoadFailed = true
                     return
                 }
@@ -1478,9 +1480,9 @@ private struct UserImageAttachmentPreview: View {
 
     /// Keeps the picture in `dataURL` on the phone and decodes it at
     /// preview size, both off the MainActor. A failed write still shows it.
-    private static func keep(_ dataURL: String, as key: String) async -> UIImage? {
+    private static func keep(_ dataURL: String, as key: String, generation: Int) async -> UIImage? {
         await Task.detached(priority: .userInitiated) { () -> UIImage? in
-            if let file = TranscriptImageCache.store(dataURL: dataURL, for: key) {
+            if let file = TranscriptImageCache.store(dataURL: dataURL, for: key, generation: generation) {
                 return Self.downsampledPreview(url: file)
             }
             return DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/").flatMap { UIImage(data: $0) }

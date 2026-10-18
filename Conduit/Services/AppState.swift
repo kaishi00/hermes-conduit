@@ -4824,7 +4824,7 @@ final class AppState: ObservableObject {
         }
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
-        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        TranscriptImageCache.purge()
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -4858,7 +4858,7 @@ final class AppState: ObservableObject {
         // on other dashboards. Keep their files rather than rewriting only
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
-        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        TranscriptImageCache.purge()
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
             // the app and its Retry up: it stays, with nothing saved in it.
