@@ -135,7 +135,12 @@ extension AppState {
     /// connect and profile switch, and when the Watch first sends its call
     /// token.
     func refreshWatchCallVoices() async {
-        guard PushNotificationService.shared.watchVoIPToken != nil else { return }
+        // Without a call token the Watch still hears whether this host has
+        // the Conduit plugin its voices all need (watchContextVoices).
+        guard PushNotificationService.shared.watchVoIPToken != nil else {
+            shareWatchCallVoices()
+            return
+        }
         let scope = hermesCallsKey(profile: activeProfile)
         rescopeWatchCallVoices()
         guard supportsHermesCalls else {
@@ -199,13 +204,32 @@ extension AppState {
     /// Also how a call ringing on the Watch names the main profile.
     func shareWatchCallVoices() {
         let notifications = PushNotificationService.shared
-        let voices = notifications.watchCallVoices
         WatchVoiceLink.shared.share(WatchPhoneContext(
-            voices: voices.scope == hermesCallsKey(profile: activeProfile) ? voices.ready : [:],
+            voices: Self.watchContextVoices(
+                notifications.watchCallVoices,
+                scope: hermesCallsKey(profile: activeProfile),
+                plugin: notifierPlugin.state
+            ),
             callsRing: supportsHermesCalls && notifications.voipToken != nil,
             mainProfileNames: mainProfileNamesByDashboard,
             activeDashboardID: activeDashboardID?.uuidString
         ))
+    }
+
+    /// The Watch voices' readiness the Watch app is told: this profile's
+    /// checks. Every Watch voice runs through the Conduit plugin, so on a
+    /// host without it (or one too old to report what it serves) a voice
+    /// not checked yet counts as not set up, and the Watch says so before
+    /// the first call instead of offering a voice that can't start.
+    nonisolated static func watchContextVoices(
+        _ voices: WatchCallVoices,
+        scope: String,
+        plugin: NotifierPluginStatus.State
+    ) -> [String: Bool] {
+        let checked = voices.scope == scope ? voices.ready : [:]
+        guard case .predatesCapabilities = plugin else { return checked }
+        let unavailable = Dictionary(uniqueKeysWithValues: WatchCallVoices.Voice.allCases.map { ($0.rawValue, false) })
+        return unavailable.merging(checked) { _, checked in checked }
     }
 
     /// How GPT-Live asks for a call, when the host takes call watches.

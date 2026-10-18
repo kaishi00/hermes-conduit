@@ -1363,4 +1363,24 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(context.notSetUp(.grokLive), "Not checked: nothing to say")
         XCTAssertNil(WatchPhoneContext.decode([:]), "An older iPhone app shares nothing")
     }
+
+    func testAHostWithoutTheConduitPluginTellsTheWatchNoVoiceIsSetUp() {
+        let none = AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: .predatesCapabilities)
+        XCTAssertEqual(none, ["geminiLive": false, "gptLive": false, "grokLive": false], "Every Watch voice needs the plugin")
+        let context = WatchPhoneContext(voices: none, callsRing: false)
+        XCTAssertTrue(WatchCallVoices.Voice.allCases.allSatisfy { context.notSetUp($0) })
+
+        var voices = WatchCallVoices()
+        voices.note(.geminiLive, ready: true, scope: "d|default")
+        XCTAssertEqual(
+            AppState.watchContextVoices(voices, scope: "d|default", plugin: .predatesCapabilities),
+            ["geminiLive": true, "gptLive": false, "grokLive": false],
+            "A voice checked ready on an old plugin stays ready"
+        )
+
+        let reported = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: ["gemini-live"])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: reported), ["geminiLive": true])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|work", plugin: reported), [:], "Another profile's checks say nothing")
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: .unknown), ["geminiLive": true], "Not asked yet: nothing new to say")
+    }
 }
