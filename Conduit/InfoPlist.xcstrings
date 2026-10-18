@@ -980,6 +980,95 @@
         }
       }
     },
+    "NSLocalNetworkUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit verbindet sich mit deinem eigenen Hermes-Server, wenn er in deinem Heim- oder lokalen Netzwerk ist. Nichts davon geht an den Entwickler von Conduit."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit connects to your own Hermes server when it is on your home or local network. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit se conecta a tu propio servidor de Hermes cuando está en tu red doméstica o local. Nada se envía al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit se connecte à votre propre serveur Hermes lorsqu'il est sur votre réseau domestique ou local. Rien n'est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit terhubung ke server Hermes Anda sendiri saat server itu berada di jaringan rumah atau lokal Anda. Tidak ada yang dikirim ke developer Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit si connette al tuo server Hermes quando è sulla tua rete domestica o locale. Nulla viene inviato allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは、あなた自身のHermesサーバが家庭内ネットワークまたはローカルネットワーク上にある場合、そのサーバに接続します。Conduitの開発者には何も送信されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자의 Hermes 서버가 가정 또는 로컬 네트워크에 있으면 Conduit이 그 서버에 연결해요. Conduit 개발자에게는 아무것도 전송되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit łączy się z Twoim własnym serwerem Hermes, gdy jest on w Twojej sieci domowej lub lokalnej. Nic nie trafia do dewelopera Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit se conecta ao seu próprio servidor Hermes quando ele está na sua rede doméstica ou local. Nada é enviado ao desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit подключается к вашему собственному серверу Hermes, когда он находится в вашей домашней или локальной сети. Разработчику Conduit ничего не передаётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, kendi Hermes sunucunuz ev veya yerel ağınızda olduğunda ona bağlanır. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你自己的 Hermes 服务器位于家庭或本地网络中时，Conduit 会连接它。不会向 Conduit 的开发者发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你自己的 Hermes 伺服器位於家用或區域網路中時，Conduit 會連線到它。不會傳送任何內容給 Conduit 的開發者。"
+          }
+        }
+      }
+    },
     "NSLocationAlwaysAndWhenInUseUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {
