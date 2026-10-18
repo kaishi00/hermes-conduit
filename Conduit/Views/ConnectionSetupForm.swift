@@ -255,7 +255,7 @@ struct ConnectionSetupForm: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.test.credentials-required")
-            Button("Enter Credentials") {
+            Button(AppLocalization.string("Enter Credentials")) {
                 flow.editAfterFailedTest(.loginCredentials)
             }
             .buttonStyle(.settingsPrimary)
@@ -266,7 +266,7 @@ struct ConnectionSetupForm: View {
     /// The sign-in-choice outcome's password path: test a username and
     /// password now instead of choosing on the login screen.
     private var signInChoiceEnterCredentialsButton: some View {
-        Button("Enter Credentials") { flow.enterCredentialsForSignInChoice() }
+        Button(AppLocalization.string("Enter Credentials")) { flow.enterCredentialsForSignInChoice() }
             .buttonStyle(.settings)
             .accessibilityIdentifier("setup.test.choice-enter-credentials")
     }
@@ -296,7 +296,7 @@ struct ConnectionSetupForm: View {
                     plan.remediationStep == .connectionDetails ? "setup.test.edit-details" : "setup.test.edit-credentials"
                 )
                 if plan.offersRetry {
-                    Button("Try Again") { onStartTest() }
+                    Button(AppLocalization.string("Try Again")) { onStartTest() }
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.test.retry")
                 }
@@ -396,7 +396,7 @@ struct ConnectionSetupForm: View {
                 LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")
                 if repair.offersPasswordSignIn {
-                    Button("Enter Credentials") { repair.enterCredentials() }
+                    Button(AppLocalization.string("Enter Credentials")) { repair.enterCredentials() }
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.review.enter-credentials")
                 }
