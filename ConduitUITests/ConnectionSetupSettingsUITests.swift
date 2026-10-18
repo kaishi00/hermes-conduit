@@ -93,6 +93,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             gatewayRow.label.contains(Identity.stubDashboardHost),
             "The Gateway row still shows the current dashboard, got: \(gatewayRow.label)"
         )
+        XCTAssertFalse(gatewayRow.label.contains("https://"), "V2 shows the host, not the address, got: \(gatewayRow.label)")
     }
 
     func testInteractiveSignInOutcomeFromSettingsOffersDoneAndDismissesSafely() {

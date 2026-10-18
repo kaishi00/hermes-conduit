@@ -706,7 +706,7 @@ struct V2ChatsView: View, Equatable {
                 Label("Repair Connection", systemImage: "wrench.and.screwdriver")
                     .font(.footnote.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6).frame(minHeight: 34)
+                    .frame(minHeight: 44)
             }
             .buttonStyle(.bordered)
             .tint(.conduitAccent)

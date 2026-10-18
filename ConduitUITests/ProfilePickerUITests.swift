@@ -283,6 +283,7 @@ final class ProfilePickerUITests: XCTestCase {
             start.press(forDuration: 0.1, thenDragTo: end)
             if title.waitForExistence(timeout: 5) { return }
         }
+        XCTFail("Three drags did not put the unloaded photo picker away. Tree:\n\(app.debugDescription)")
     }
 
     private func allowPhotoAccessIfAsked(_ app: XCUIApplication) {
