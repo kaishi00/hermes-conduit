@@ -359,6 +359,69 @@ extension KanbanTests {
         XCTAssertTrue(store.pluginBusy.isEmpty)
     }
 
+    func testAnOlderCapabilityLoadNeverOverwritesANewerOne() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/dashboard/plugins/hub", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+
+        // A refresh leaves, then a newer one reads the list after a change.
+        let older = Task { await store.loadPlugins() }
+        while held == nil { await Task.yield() }
+        requester.responses["/api/dashboard/plugins/hub"] = ["plugins": [
+            ["name": "Weather", "source": "git", "runtime_status": "enabled"],
+            ["name": "Maps", "source": "git", "runtime_status": "enabled"],
+        ]]
+        await store.loadPlugins()
+        held?.resume()
+        await older.value
+
+        XCTAssertEqual(Set(store.plugins.map(\.name)), ["Weather", "Maps"], "the older answer arrived last but is older")
+        XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
+    }
+
+    func testARefreshOnItsWayDoesntUndoASwitchFlippedMeanwhile() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [[String: Any]]()],
+            "/api/dashboard/agent-plugins/Weather/enable": ["ok": true],
+            "/api/mcp/servers": ["servers": [["name": "linear", "transport": "http", "url": "https://l", "enabled": false]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+            "/api/mcp/servers/linear/enabled": ["ok": true],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadPlugins()
+        await store.loadConnectors()
+        var held: [CheckedContinuation<Void, Never>] = []
+        var holding: Set<String> = ["/api/dashboard/plugins/hub", "/api/mcp/servers"]
+        requester.beforeAnswering = { path in
+            guard holding.remove(path) != nil else { return }
+            await withCheckedContinuation { held.append($0) }
+        }
+
+        // Pull to refresh, then flip each switch before the refresh answers.
+        let plugins = Task { await store.loadPlugins() }
+        let connectors = Task { await store.loadConnectors() }
+        while held.count < 2 { await Task.yield() }
+        try await store.setPluginEnabled(store.plugins[0], enabled: true)
+        try await store.setServerEnabled("linear", enabled: true)
+        held.forEach { $0.resume() }
+        await plugins.value
+        await connectors.value
+
+        XCTAssertTrue(store.plugins[0].isEnabled, "the refresh read the plugin before it was turned on")
+        XCTAssertEqual(store.servers.first?.enabled, true, "the refresh read the server before it was turned on")
+    }
+
     func testCapabilitiesStoreChangesPluginsOnlyFromTheDefaultProfile() async {
         let requester = CapabilityMockRequester(responses: [
             "/api/dashboard/agent-plugins/Weather/enable": ["ok": true],
@@ -394,6 +457,9 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
 
     var responses: [String: [String: Any]]
     var calls: [Call] = []
+    /// Runs before each answer, which is read when the request is made: a
+    /// test can hold a request here.
+    var beforeAnswering: (@MainActor (_ path: String) async -> Void)?
 
     init(responses: [String: [String: Any]]) {
         self.responses = responses
@@ -408,7 +474,9 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
     ) async throws -> [String: Any] {
         calls.append(Call(path: path, method: method))
         let bare = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
-        guard let response = responses[bare] else {
+        let response = responses[bare]
+        await beforeAnswering?(bare)
+        guard let response else {
             throw URLError(.fileDoesNotExist)
         }
         return response
