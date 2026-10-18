@@ -1,0 +1,218 @@
+Command line invocation:
+    /Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Conduit.xcodeproj -scheme Conduit -destination id=6EEDD2B9-6E06-4333-91B6-8661FDCCBA47 "-only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPreview" -resultBundlePath results/iPhone-17-Pro-Max-preview.xcresult -derivedDataPath dd
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  WebRTC: https://github.com/stasel/WebRTC @ 153.0.0
+
+2026-10-18 11:45:45.314 xcodebuild[38214:108224] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-17-Pro-Max-preview.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:6EEDD2B9-6E06-4333-91B6-8661FDCCBA47, OS:26.5, name:iPhone 17 Pro Max }
+{ platform:iOS Simulator, arch:x86_64, id:6EEDD2B9-6E06-4333-91B6-8661FDCCBA47, OS:26.5, name:iPhone 17 Pro Max }
+2026-10-18 11:46:02.383594+0000 ConduitScreenshots-Runner[39016:110279] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-10-18 11:46:05.266.
+Test Suite 'ConduitScreenshots.xctest' started at 2026-10-18 11:46:05.266.
+Test Suite 'AppStoreScreenshotTests' started at 2026-10-18 11:46:05.267.
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPreview]' started.
+    t =     0.00s Start Test at 2026-10-18 11:46:05.268
+    t =     0.04s Set Up
+    t =     0.05s     Open com.milim.relay
+    t =     0.05s         Launch com.milim.relay
+2026-10-18 11:46:05.959 xcodebuild[38214:108224] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-10-18 11:46:05.960 xcodebuild[38214:108224] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[39016]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10a448310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a4d0398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     5.25s             Setting up automation session
+    t =     8.13s             Wait for com.milim.relay to idle
+    t =    12.56s Waiting 15.0s for "login.server-url" TextField to exist
+    t =    13.64s     Checking `Expect predicate `existsNoRetry == 1` for object "login.server-url" TextField`
+    t =    13.64s         Checking existence of `"login.server-url" TextField`
+    t =    13.78s Tap "login.server-url" TextField
+    t =    13.78s     Wait for com.milim.relay to idle
+    t =    13.78s     Find the "login.server-url" TextField
+    t =    13.82s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    13.87s     Synthesize event
+    t =    14.19s     Wait for com.milim.relay to idle
+    t =    14.77s Type 'http://hermes.tail...' into "login.server-url" TextField
+    t =    14.77s     Wait for com.milim.relay to idle
+    t =    15.14s     Find the "login.server-url" TextField
+    t =    15.35s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    15.45s     Synthesize event
+    t =    16.24s     Wait for com.milim.relay to idle
+    t =    16.47s Added attachment named 'debug-login-address'
+    t =    16.47s Type '
+' into "login.server-url" TextField
+    t =    16.47s     Wait for com.milim.relay to idle
+    t =    16.48s     Find the "login.server-url" TextField
+    t =    16.51s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    16.56s     Synthesize event
+    t =    16.92s     Wait for com.milim.relay to idle
+    t =    17.15s Waiting 30.0s for "login.username" TextField to exist
+    t =    18.20s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    18.20s         Checking existence of `"login.username" TextField`
+    t =    25.26s Added attachment named 'debug-login-password-step'
+    t =    25.26s Tap "login.username" TextField
+    t =    25.26s     Wait for com.milim.relay to idle
+    t =    25.27s     Find the "login.username" TextField
+    t =    25.37s     Check for interrupting elements affecting "login.username" TextField
+    t =    25.43s     Synthesize event
+    t =    25.72s     Wait for com.milim.relay to idle
+    t =    25.73s Find the "login.username" TextField
+    t =    25.93s Type 'demo' into "login.username" TextField
+    t =    25.93s     Wait for com.milim.relay to idle
+    t =    26.28s     Find the "login.username" TextField
+    t =    26.37s     Check for interrupting elements affecting "login.username" TextField
+    t =    26.44s     Synthesize event
+    t =    26.71s     Wait for com.milim.relay to idle
+    t =    26.96s Tap "login.password" SecureTextField
+    t =    26.96s     Wait for com.milim.relay to idle
+    t =    26.97s     Find the "login.password" SecureTextField
+    t =    27.02s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    27.07s     Synthesize event
+    t =    27.38s     Wait for com.milim.relay to idle
+    t =    27.80s Type '<redacted>' into "login.password" SecureTextField
+    t =    27.80s     Wait for com.milim.relay to idle
+    t =    27.80s     Find the "login.password" SecureTextField
+    t =    27.89s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    27.95s     Synthesize event
+    t =    28.46s     Wait for com.milim.relay to idle
+    t =    31.05s Added attachment named 'debug-after-sign-in'
+    t =    31.20s Waiting 2.0s for "Allow" Button to exist
+    t =    32.21s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    32.21s         Checking existence of `"Allow" Button`
+    t =    32.33s         Capturing element debug description
+    t =    33.21s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    33.21s         Checking existence of `"Allow" Button`
+    t =    33.28s         Capturing element debug description
+    t =    33.28s     Checking existence of `"Allow" Button`
+    t =    33.36s Collecting debug information to assist test failure triage
+    t =    33.36s     Requesting snapshot of accessibility hierarchy for app with pid 6140
+    t =    33.56s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =    34.64s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    34.64s         Checking existence of `"Don’t Allow" Button`
+    t =    34.69s         Capturing element debug description
+    t =    35.57s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    35.57s         Checking existence of `"Don’t Allow" Button`
+    t =    35.61s         Capturing element debug description
+    t =    35.61s     Checking existence of `"Don’t Allow" Button`
+    t =    35.64s Collecting debug information to assist test failure triage
+    t =    35.64s     Requesting snapshot of accessibility hierarchy for app with pid 6140
+    t =    35.72s Waiting 2.0s for "Not Now" Button to exist
+    t =    36.77s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    36.77s         Checking existence of `"Not Now" Button`
+    t =    36.81s         Capturing element debug description
+    t =    37.72s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    37.72s         Checking existence of `"Not Now" Button`
+    t =    37.75s         Capturing element debug description
+    t =    37.75s     Checking existence of `"Not Now" Button`
+    t =    37.78s Collecting debug information to assist test failure triage
+    t =    37.78s     Requesting snapshot of accessibility hierarchy for app with pid 6140
+    t =    37.83s Waiting 2.0s for "OK" Button to exist
+    t =    38.87s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    38.87s         Checking existence of `"OK" Button`
+    t =    38.90s         Capturing element debug description
+    t =    39.84s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    39.84s         Checking existence of `"OK" Button`
+    t =    39.88s         Capturing element debug description
+    t =    39.88s     Checking existence of `"OK" Button`
+    t =    39.91s Collecting debug information to assist test failure triage
+    t =    39.91s     Requesting snapshot of accessibility hierarchy for app with pid 6140
+    t =    39.97s Waiting 10.0s for "finish-setup.not-now" Button to exist
+    t =    41.02s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    41.02s         Checking existence of `"finish-setup.not-now" Button`
+    t =    42.02s Added attachment named 'debug-finish-setup'
+    t =    42.02s Tap "finish-setup.not-now" Button
+    t =    42.02s     Wait for com.milim.relay to idle
+    t =    42.03s     Find the "finish-setup.not-now" Button
+    t =    42.09s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =    42.19s     Synthesize event
+    t =    42.50s     Wait for com.milim.relay to idle
+    t =    44.83s Waiting 30.0s for "Weekend trip to Big Sur" StaticText to exist
+    t =    45.89s     Checking `Expect predicate `existsNoRetry == 1` for object "Weekend trip to Big Sur" StaticText`
+    t =    45.89s         Checking existence of `"Weekend trip to Big Sur" StaticText`
+PREVIEW_MARK start 1792324013.348923
+    t =    48.08s Waiting 10.0s for "New Chat" Button to exist
+    t =    49.15s     Checking `Expect predicate `existsNoRetry == 1` for object "New Chat" Button`
+    t =    49.15s         Checking existence of `"New Chat" Button`
+    t =    49.25s Tap "New Chat" Button
+    t =    49.25s     Wait for com.milim.relay to idle
+    t =    49.25s     Find the "New Chat" Button
+    t =    49.34s     Check for interrupting elements affecting "square.and.pencil" Button
+    t =    49.42s     Synthesize event
+    t =    49.73s     Wait for com.milim.relay to idle
+    t =    53.02s Checking existence of `TextView (First Match)`
+    t =    53.66s Tap TextView (First Match)
+    t =    53.67s     Wait for com.milim.relay to idle
+    t =    53.83s     Find the TextView (First Match)
+    t =    54.12s     Check for interrupting elements affecting TextView
+    t =    54.24s     Synthesize event
+    t =    54.58s     Wait for com.milim.relay to idle
+    t =    55.64s Waiting 3.0s for Keyboard (First Match) to exist
+    t =    56.68s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    56.68s         Checking existence of `Keyboard (First Match)`
+    t =    56.90s Type 'What should we pac...' into TextView at {{67.0, 861.7}, {278.0, 44.0}}
+    t =    56.90s     Wait for com.milim.relay to idle
+    t =    56.90s     Find the TextView at {{67.0, 861.7}, {278.0, 44.0}}
+    t =    57.35s     Check for interrupting elements affecting TextView
+    t =    57.58s     Synthesize event
+    t =    58.16s     Wait for com.milim.relay to idle
+    t =    59.38s Tap "Send message" Button
+    t =    59.38s     Wait for com.milim.relay to idle
+    t =    59.38s     Find the "Send message" Button
+    t =    59.60s     Check for interrupting elements affecting "arrow.up" Button
+    t =    59.71s     Synthesize event
+    t =    60.06s     Wait for com.milim.relay to idle
+    t =    63.56s Waiting 40.0s for Any (First Match) to exist
+    t =    64.64s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    64.64s         Checking existence of `Any (First Match)`
+    t =    65.38s         Capturing element debug description
+    t =    65.59s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    65.59s         Checking existence of `Any (First Match)`
+    t =    65.76s         Capturing element debug description
+    t =    66.58s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    66.59s         Checking existence of `Any (First Match)`
+    t =    66.76s         Capturing element debug description
+    t =    67.60s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    67.60s         Checking existence of `Any (First Match)`
+    t =    67.74s         Capturing element debug description
+    t =    68.59s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    68.60s         Checking existence of `Any (First Match)`
+    t =    69.02s         Capturing element debug description
+    t =    69.66s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    69.66s         Checking existence of `Any (First Match)`
+    t =    69.97s         Capturing element debug description
+    t =    70.61s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    70.62s         Checking existence of `Any (First Match)`
+    t =    71.06s         Capturing element debug description
+    t =    71.58s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    71.59s         Checking existence of `Any (First Match)`
+    t =    72.00s         Capturing element debug description
+    t =    72.63s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =    72.63s         Checking existence of `Any (First Match)`
+PREVIEW_MARK end 1792324041.1591601
+    t =    76.13s Added attachment named '10-preview-end'
+    t =    76.14s Terminate com.milim.relay:39739
+PREVIEW_MARK stop 1792324042.414548
+    t =    77.15s Tear Down
+Test Case '-[ConduitScreenshots.AppStoreScreenshotTests testRecordPreview]' passed (77.445 seconds).
+Test Suite 'AppStoreScreenshotTests' passed at 2026-10-18 11:47:22.715.
+	 Executed 1 test, with 0 failures (0 unexpected) in 77.445 (77.448) seconds
+Test Suite 'ConduitScreenshots.xctest' passed at 2026-10-18 11:47:22.716.
+	 Executed 1 test, with 0 failures (0 unexpected) in 77.445 (77.450) seconds
+Test Suite 'Selected tests' passed at 2026-10-18 11:47:22.717.
+	 Executed 1 test, with 0 failures (0 unexpected) in 77.445 (77.451) seconds
+2026-10-18 11:47:46.530 xcodebuild[38214:108224] [MT] IDETestOperationsObserverDebug: 117.894 elapsed -- Testing started completed.
+2026-10-18 11:47:46.531 xcodebuild[38214:108224] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-18 11:47:46.531 xcodebuild[38214:108224] [MT] IDETestOperationsObserverDebug: 117.894 sec, +117.894 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-17-Pro-Max-preview.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
