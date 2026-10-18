@@ -243,6 +243,8 @@ struct WatchCallCaptions: View {
                     // Three lines leave room for the bars and buttons on
                     // the smallest Watch.
                     .lineLimit(3)
+                    // Past the budget (the largest text), the oldest words go.
+                    .truncationMode(.head)
                     .layoutPriority(1)
                     // Three lines of it still leave the controls on screen.
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
@@ -256,6 +258,7 @@ struct WatchCallCaptions: View {
     /// About three lines' worth from the end, from a word's start. Head
     /// truncation over several lines cuts the middle of the text instead.
     static func newestWords(of text: String, limit: Int = 84) -> String {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.count > limit else { return text }
         let tail = text.suffix(limit)
         let start = tail.firstIndex(where: \.isWhitespace).map { tail.index(after: $0) } ?? tail.startIndex
