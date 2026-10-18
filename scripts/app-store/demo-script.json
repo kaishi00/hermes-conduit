@@ -152,7 +152,7 @@
       "turns": [
         {
           "match": "what should we pack",
-          "prompt": "What should we pack for the Big Sur trip?",
+          "prompt": "What should we pack?",
           "steps": [
             {
               "delay": 0.06,

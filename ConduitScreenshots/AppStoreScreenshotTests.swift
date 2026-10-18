@@ -131,7 +131,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         settle(1.5)
         let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
         composer.tap()
-        composer.typeText("What should we pack for the Big Sur trip?")
+        composer.typeText("What should we pack?")
         settle(0.5)
         app.buttons["Send message"].tap()
         // The scripted answer streams for about 15 s.

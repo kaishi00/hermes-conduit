@@ -123,6 +123,9 @@ jobs:
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
               grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
+              # The next device's screenshots must not show this chat.
+              HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions prune \
+                --title "Packing list" --yes --force || echo "::warning::preview chat not removed"
             fi
             set -e
             grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true
