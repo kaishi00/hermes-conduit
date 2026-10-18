@@ -20,6 +20,12 @@
 //  The sealing mirrors conduit_push's dashboard/plugin_api.py ("Watch
 //  audio"), checked by shared test vectors.
 //
+//  Hermes Voice (`speech_server`, plugin 0.48) runs on the same bridge
+//  with no cloud model: the host's own speech server listens and speaks,
+//  and each turn runs in a Hermes chat of the call's own. Its start names
+//  no briefing; a rejoin names the chat the host's "started" gave
+//  (`resume_session_id`) and carries on in it.
+//
 
 import CryptoKit
 import Foundation
@@ -30,6 +36,7 @@ enum WatchAudioBridgeWire {
     /// The engines the bridge runs. Gemini stays direct.
     static let gptLive = "gpt_live"
     static let grok = "grok"
+    static let speechServer = "speech_server"
     /// The relay's bound on one message.
     static let maxMessageBytes = 64 * 1024
     /// What fits in one sealed message: the type, counter and tag go
@@ -167,13 +174,15 @@ enum WatchAudioBridgeWire {
     /// memory (GPT-Live puts it in the instructions); `greeting` asks for
     /// a first line; `callOpening` makes the model open a call Hermes
     /// placed (#544), sent without a greeting (the host lets it win); `history` seeds a rejoined call's conversation.
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]]) -> Data {
+    /// `resumeSessionID`: Hermes Voice's chat, on a rejoin.
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
         if callOpening { message["call_opening"] = true }
         if !history.isEmpty { message["history"] = history }
+        if let resumeSessionID, !resumeSessionID.isEmpty { message["resume_session_id"] = resumeSessionID }
         return (try? WatchToolSeal.json(message)) ?? Data()
     }
 
@@ -188,6 +197,10 @@ enum WatchAudioBridgeWire {
         /// The host made the model speak first: a greeting or a call
         /// Hermes placed (`call_opening`).
         var greetingApplied: Bool
+        /// Hermes Voice: the call's chat, which a rejoin names to carry on
+        /// in it, and whether this start carried on in it.
+        var sessionID: String? = nil
+        var resumed = false
     }
 
     /// Whether the Watch sends a call Hermes placed its own opening turn:
@@ -219,7 +232,9 @@ enum WatchAudioBridgeWire {
                 inputRate: object["input_rate"] as? Int ?? 16_000,
                 outputRate: object["output_rate"] as? Int ?? 24_000,
                 briefingApplied: object["briefing_applied"] as? Bool ?? false,
-                greetingApplied: object["greeting_applied"] as? Bool ?? false
+                greetingApplied: object["greeting_applied"] as? Bool ?? false,
+                sessionID: (object["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                resumed: object["resumed"] as? Bool ?? false
             ))
         case "ended":
             return .ended(reason: object["reason"] as? String)

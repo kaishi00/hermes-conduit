@@ -150,7 +150,9 @@ extension AppState {
         async let gemini = watchCallVoiceCheck(.geminiLive)
         async let gpt = watchCallVoiceCheck(.gptLive)
         async let grok = watchCallVoiceCheck(.grokLive)
-        let checks: [(WatchCallVoices.Voice, Bool?)] = [(.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok)]
+        async let hermesVoice = watchCallVoiceCheck(.hermesVoice)
+        let checks: [(WatchCallVoices.Voice, Bool?)] = [(.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok),
+                                                       (.hermesVoice, await hermesVoice)]
         // Another server or profile by now: these say nothing about it.
         guard scope == hermesCallsKey(profile: activeProfile) else { return }
         var voices = PushNotificationService.shared.watchCallVoices
@@ -196,6 +198,13 @@ extension AppState {
         // The Watch's GPT-Live is the subscription's, whatever the phone uses.
         case .gptLive: return (try? await gptLiveClient.availability(billing: .subscription))?.isAvailable
         case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
+        // The profile's speech server and Hermes' chats in the dashboard.
+        case .hermesVoice:
+            // An older plugin can't: watchContextVoices says so without asking.
+            guard watchVoicePluginCanServe(.hermesVoice) else { return false }
+            let status = try? await WatchToolGrantClient.activeDashboard()
+                .audioStatus(profile: activeProfile, engine: WatchAudioBridgeWire.speechServer)
+            return status.map { $0.runtime == "ready" }
         }
     }
 
@@ -239,6 +248,11 @@ extension AppState {
         return context
     }
 
+    /// Whether this host's plugin, as last reported, can serve `voice`.
+    func watchVoicePluginCanServe(_ voice: WatchCallVoices.Voice) -> Bool {
+        Self.pluginCanServe(voice, plugin: notifierPlugin.state)
+    }
+
     /// Whether the plugin state leaves room for the voice's route: not asked
     /// yet says nothing, a missing or pre-0.4 plugin serves none.
     nonisolated private static func pluginCanServe(_ voice: WatchCallVoices.Voice, plugin: NotifierPluginStatus.State) -> Bool {
@@ -258,6 +272,7 @@ extension AppState {
         case .geminiLive: return ["gemini-live"]
         case .gptLive: return ["gpt-live", "watch-audio"]
         case .grokLive: return ["grok-live", "watch-audio"]
+        case .hermesVoice: return ["watch-speech-server", "watch-audio"]
         }
     }
 

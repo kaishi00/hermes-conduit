@@ -159,7 +159,7 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
-            guard engine == WatchAudioBridgeWire.gptLive else {
+            guard Self.bridgeEngines.contains(engine) else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
@@ -354,10 +354,16 @@ final class WatchDirectBroker {
     /// shortly", and the next start finds it ready.
     static let runtimeWait: TimeInterval = 8
 
+    /// The engines a Watch starts through the host's audio bridge with a
+    /// bridge start: GPT-Live, and Hermes Voice on the host's own speech
+    /// server. (Grok has a start of its own.)
+    static let bridgeEngines: Set<String> = [WatchAudioBridgeWire.gptLive, WatchAudioBridgeWire.speechServer]
+
     /// A GPT-Live call on the Watch: the phone's briefing, and a grant that
     /// opens the host's audio bridge, with jobs for GPT-Live's delegations
     /// as the user allows and web_search for when they don't. Nothing else
-    /// runs here until the call ends.
+    /// runs here until the call ends. A Hermes Voice call: the grant and its
+    /// audio bridge alone, since Hermes answers with its own tools.
     private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
@@ -375,19 +381,41 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        let hermesVoice = engine == WatchAudioBridgeWire.speechServer
         do {
-            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            if hermesVoice {
+                // An older plugin: said before a grant is opened for nothing.
+                guard appState.watchVoicePluginCanServe(.hermesVoice) else {
+                    appState.noteWatchCallVoice(.hermesVoice, ready: false)
+                    throw WatchDirectPrepareError(Self.hermesVoiceUnavailable(reason: nil))
+                }
+                // Calls from Hermes don't ring a Watch on Hermes Voice
+                // (WatchCallVoices.rings), but one answered there anyway
+                // still arms the iPhone's backstop for its ring.
+                if let ring { _ = HermesNativeCalls.shared.answeredOnWatch(ringID: ring) }
+            }
+            let plan = hermesVoice
+                ? try await appState.prepareWatchHermesVoiceCall()
+                : try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
             ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
-            // GPT-Live delegates its lookups and chats to the Watch, which
-            // runs them all through the grant.
-            grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
-            grantMaxJobs = WatchJobSettings.jobsPerCall
-            grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
+            if hermesVoice {
+                // Hermes itself answers, with its own tools: the grant
+                // carries only the audio (a grant names at least one tool).
+                grantTools = grantable([WatchToolAnswer.webSearch])
+                grantMaxJobs = 0
+                grantJobTools = []
+            } else {
+                // GPT-Live delegates its lookups and chats to the Watch, which
+                // runs them all through the grant.
+                grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
+                grantMaxJobs = WatchJobSettings.jobsPerCall
+                grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
+            }
             grantJobOptions = plan.jobOptions
             grantJobProfiles = plan.jobProfiles
             // GPT-Live never answers a job's approval: the user taps it.
@@ -399,10 +427,28 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio else {
+                if hermesVoice {
+                    throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Hermes Voice for the Watch: \($0)") }
+                        ?? AppLocalization.string("Hermes couldn't open Hermes Voice for the Watch. Update the Conduit notifier plugin and the push relay."))
+                }
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)") }
                     ?? AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."))
             }
+            if hermesVoice, audio.engines.contains(engine) {
+                appState.noteWatchCallVoice(.hermesVoice, ready: true)
+            }
             if !audio.engines.contains(engine) {
+                if hermesVoice {
+                    do {
+                        let status = try await grantClient.audioStatus(profile: plan.connection.profile, engine: engine)
+                        appState.noteWatchCallVoice(.hermesVoice, ready: false)
+                        throw WatchDirectPrepareError(Self.hermesVoiceUnavailable(reason: status.reason))
+                    } catch let error as WatchDirectPrepareError {
+                        throw error
+                    } catch {
+                        throw WatchDirectPrepareError(AppLocalization.string("Hermes couldn't open Hermes Voice for the Watch: \(UserFacingError.message(for: error))"))
+                    }
+                }
                 try await prepareRuntime(id, profile: plan.connection.profile)
                 guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             }
@@ -571,6 +617,15 @@ final class WatchDirectBroker {
             self.link.log.note("watchBridgeOutlivedGrant", ["callID": Int(id)])
             self.endCall()
         }
+    }
+
+    /// Why a Watch call on Hermes Voice can't start: the host's reason (no
+    /// speech server set for the profile, say), or an older plugin.
+    static func hermesVoiceUnavailable(reason: String?) -> String {
+        guard let reason, !reason.isEmpty else {
+            return AppLocalization.string("This Hermes host doesn't offer Hermes Voice for the Watch. Update the Conduit notifier plugin.")
+        }
+        return AppLocalization.string("Hermes Voice isn't ready on this Hermes host: \(reason)")
     }
 
     /// Asks Hermes to make GPT-Live's WebRTC runtime (the plugin's own

@@ -29528,6 +29528,36 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// What a Watch call on Hermes Voice starts with. The host's own speech
+    /// server listens and speaks, and each turn runs in a Hermes chat of the
+    /// call's own (conduit_push's speech_server engine), with the profile's
+    /// model, tools, memory and persona: no briefing, greeting or voice to
+    /// send. Not saved to voice history: the call is that chat.
+    func prepareWatchHermesVoiceCall() async throws -> WatchBridgePlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        return WatchBridgePlan(
+            briefing: "",
+            greeting: nil,
+            voice: nil,
+            connection: connection,
+            saveCalls: false,
+            memoryIncluded: false,
+            personalityIncluded: false,
+            jobOptions: [:],
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
+            jobProfiles: []
+        )
+    }
+
     /// What a Watch call to Grok starts with: the setup this profile's
     /// Grok Live call gets on the phone. Unlike Gemini there's no token:
     /// the Hermes host holds xAI's session, on its own xAI sign-in, and the

@@ -293377,6 +293377,334 @@
           }
         }
       }
+    },
+    "Hermes couldn't open Hermes Voice for the Watch: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte Hermes Voice für die Watch nicht öffnen: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo abrir Hermes Voice para el Apple Watch: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas pu ouvrir Hermes Voice pour l'Apple Watch : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat membuka Hermes Voice untuk Watch: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito ad aprire Hermes Voice per Apple Watch: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Hermes Voice を開けませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 Watch용 Hermes Voice를 열 수 없었어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł otworzyć Hermes Voice dla zegarka: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu abrir o Hermes Voice para o Watch: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не удалось открыть Hermes Voice для часов: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Watch için Hermes Voice'u açamadı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Hermes Voice：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法為 Apple Watch 啟動 Hermes Voice：%@"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open Hermes Voice for the Watch. Update the Conduit notifier plugin and the push relay." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte Hermes Voice für die Watch nicht öffnen. Aktualisiere das Conduit-Notifier-Plug-in und das Push-Relay."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo abrir Hermes Voice para el Apple Watch. Actualiza el plugin de notificaciones de Conduit y el relé push."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas pu ouvrir Hermes Voice pour l'Apple Watch. Mettez à jour le plugin de notification Conduit et le relais push."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat membuka Hermes Voice untuk Watch. Perbarui plugin notifikasi Conduit dan relai push."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito ad aprire Hermes Voice per Apple Watch. Aggiorna il plugin di notifica di Conduit e il relay push."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Hermes Voice を開けませんでした。Conduit 通知プラグインとプッシュリレーをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 Watch용 Hermes Voice를 열 수 없었어요. Conduit 알림 플러그인과 푸시 릴레이를 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł otworzyć Hermes Voice dla zegarka. Zaktualizuj wtyczkę powiadomień Conduit i przekaźnik push."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu abrir o Hermes Voice para o Watch. Atualize o plugin de notificações do Conduit e o relay de push."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не удалось открыть Hermes Voice для часов. Обновите плагин уведомлений Conduit и push-ретранслятор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Watch için Hermes Voice'u açamadı. Conduit bildirim eklentisini ve anlık bildirim aktarıcısını güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Hermes Voice。请更新 Conduit 通知插件和推送中继。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法為 Apple Watch 啟動 Hermes Voice。請更新 Conduit 通知外掛程式和推播中繼。"
+          }
+        }
+      }
+    },
+    "This Hermes host doesn't offer Hermes Voice for the Watch. Update the Conduit notifier plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Hermes-Host bietet Hermes Voice für die Watch nicht an. Aktualisiere das Conduit-Notifier-Plug-in."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor de Hermes no ofrece Hermes Voice para el Apple Watch. Actualiza el plugin de notificaciones de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet hôte Hermes ne propose pas Hermes Voice pour l'Apple Watch. Mettez à jour le plugin de notification Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host Hermes ini tidak menyediakan Hermes Voice untuk Watch. Perbarui plugin notifikasi Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo host Hermes non offre Hermes Voice per Apple Watch. Aggiorna il plugin di notifica di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes ホストは Watch 用の Hermes Voice に対応していません。Conduit 通知プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 호스트는 Watch용 Hermes Voice를 제공하지 않아요. Conduit 알림 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten host Hermes nie oferuje Hermes Voice dla zegarka. Zaktualizuj wtyczkę powiadomień Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este host do Hermes não oferece o Hermes Voice para o Watch. Atualize o plugin de notificações do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот хост Hermes не поддерживает Hermes Voice для часов. Обновите плагин уведомлений Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes sunucusu Watch için Hermes Voice sunmuyor. Conduit bildirim eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 主机不提供 Watch 的 Hermes Voice。请更新 Conduit 通知插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 主機未提供 Apple Watch 的 Hermes Voice。請更新 Conduit 通知外掛程式。"
+          }
+        }
+      }
+    },
+    "Hermes Voice isn't ready on this Hermes host: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice ist auf diesem Hermes-Host nicht bereit: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice no está listo en este servidor de Hermes: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice n'est pas prêt sur cet hôte Hermes : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice belum siap di host Hermes ini: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice non è pronto su questo host Hermes: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes ホストでは Hermes Voice の準備ができていません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 호스트에서 Hermes Voice가 준비되지 않았어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice nie jest gotowy na tym hoście Hermes: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes Voice não está pronto neste host do Hermes: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice не готов на этом хосте Hermes: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Voice bu Hermes sunucusunda hazır değil: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 主机上的 Hermes Voice 尚未就绪：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 主機上的 Hermes Voice 尚未就緒：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

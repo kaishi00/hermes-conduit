@@ -1422,20 +1422,23 @@ extension VoiceConversationControllerTests {
         // isn't set up, whatever an earlier check found.
         let older = NotifierPluginStatus.State.reported(version: "0.8.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "memory"])
         let shared = AppState.watchContextVoices(voices, scope: "d|default", plugin: older)
-        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false])
+        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false, "hermesVoice": false])
         let context = WatchPhoneContext(voices: shared, callsRing: false)
         XCTAssertFalse(context.notSetUp(.geminiLive), "Its route is there: the voice may start")
         XCTAssertTrue(context.notSetUp(.gptLive))
         XCTAssertTrue(context.notSetUp(.grokLive), "No audio bridge: a stale ready check doesn't count")
         XCTAssertEqual(
             AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: older),
-            ["gptLive": false, "grokLive": false],
+            ["gptLive": false, "grokLive": false, "hermesVoice": false],
             "Gemini not checked, but served: nothing to say"
         )
 
-        // 0.9-0.12 serves every Watch voice without hermes-calls: only the
-        // checks are missing, so nothing is marked.
+        // 0.9-0.12 serves every cloud Watch voice without hermes-calls:
+        // only the checks are missing, so nothing else is marked. Hermes
+        // Voice came with 0.48.
         let bridged = NotifierPluginStatus.State.reported(version: "0.10.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "watch-audio"])
-        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), [:])
+        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), ["hermesVoice": false])
+        let hermesVoice = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "watch-audio", "watch-speech-server"])
+        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: hermesVoice), [:])
     }
 }

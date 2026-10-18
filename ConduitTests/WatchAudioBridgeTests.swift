@@ -133,6 +133,68 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(WatchAudioBridgeWire.control(Data("not json".utf8)))
     }
 
+    /// Hermes Voice (conduit_push's speech_server engine, 0.48): the start
+    /// names no briefing, a rejoin names the call's chat, and the host's
+    /// "started" carries that chat.
+    func testHermesVoiceStartsWithoutABriefingAndRejoinsItsChat() throws {
+        XCTAssertEqual(WatchAudioBridgeWire.speechServer, "speech_server")
+        let first = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: WatchAudioBridgeWire.speechServer, voice: nil, briefing: "", greeting: nil, history: []
+        )) as? [String: Any])
+        XCTAssertEqual(Set(first.keys), ["type", "engine"])
+        let rejoin = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: WatchAudioBridgeWire.speechServer, voice: nil, briefing: nil, greeting: nil, history: [],
+            resumeSessionID: "20261018_142233_ab12cd"
+        )) as? [String: Any])
+        XCTAssertEqual(rejoin["resume_session_id"] as? String, "20261018_142233_ab12cd")
+        let empty = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: WatchAudioBridgeWire.speechServer, voice: nil, briefing: nil, greeting: nil, history: [], resumeSessionID: ""
+        )) as? [String: Any])
+        XCTAssertNil(empty["resume_session_id"])
+
+        guard case .started(let started)? = WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"speech_server","voice":null,"input_rate":16000,"output_rate":24000,"session_id":"20261018_142233_ab12cd","resumed":true,"briefing_applied":false,"greeting_applied":false}"#.utf8)) else {
+            return XCTFail("started didn't parse")
+        }
+        XCTAssertEqual(started.engine, "speech_server")
+        XCTAssertEqual(started.sessionID, "20261018_142233_ab12cd")
+        XCTAssertTrue(started.resumed)
+        XCTAssertEqual(started.inputRate, 16_000)
+        XCTAssertEqual(started.outputRate, 24_000)
+        // GPT-Live's "started" names no chat.
+        guard case .started(let gpt)? = WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"gpt_live","session_id":""}"#.utf8)) else {
+            return XCTFail("started didn't parse")
+        }
+        XCTAssertNil(gpt.sessionID)
+        XCTAssertFalse(gpt.resumed)
+    }
+
+    /// The iPhone starts Hermes Voice through the bridge like GPT-Live, and
+    /// reads its readiness from the host's watch-audio status.
+    @MainActor
+    func testTheIPhoneTakesAHermesVoiceStartAndReadsItsReadiness() {
+        XCTAssertEqual(WatchDirectBroker.bridgeEngines, [WatchAudioBridgeWire.gptLive, WatchAudioBridgeWire.speechServer])
+        let status: [String: Any] = ["ok": true, "version": 1, "engines": [
+            "gpt_live": ["runtime": "missing", "reason": "GPT-Live needs its runtime"],
+            "grok": ["runtime": "ready"],
+            "speech_server": ["runtime": "missing", "reason": "No speech server is set for this profile (voice.speech_server.url)."],
+        ]]
+        XCTAssertEqual(WatchToolGrantClient.audioRuntime(from: status, engine: WatchAudioBridgeWire.speechServer),
+                       .init(runtime: "missing", reason: "No speech server is set for this profile (voice.speech_server.url)."))
+        XCTAssertEqual(WatchToolGrantClient.audioRuntime(from: status).runtime, "missing", "GPT-Live's by default")
+        // A plugin from before Hermes Voice doesn't list it.
+        let older: [String: Any] = ["ok": true, "engines": ["gpt_live": ["runtime": "ready"]]]
+        XCTAssertEqual(WatchToolGrantClient.audioRuntime(from: older, engine: WatchAudioBridgeWire.speechServer), .init(runtime: "missing", reason: nil))
+        XCTAssertTrue(WatchDirectBroker.hermesVoiceUnavailable(reason: "No speech server is set").hasSuffix("No speech server is set"))
+        XCTAssertTrue(WatchDirectBroker.hermesVoiceUnavailable(reason: nil).contains("Update the Conduit notifier plugin"))
+        XCTAssertEqual(AppState.watchVoiceCapabilities(.hermesVoice), ["watch-speech-server", "watch-audio"])
+        // Calls from Hermes ring the iPhone, not a Watch on Hermes Voice:
+        // its call is a new chat, not the one the call is about.
+        var voices = WatchCallVoices()
+        voices.note(.hermesVoice, ready: true, scope: "d|default")
+        XCTAssertFalse(voices.rings(engine: WatchCallVoices.Voice.hermesVoice.rawValue))
+        XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.gptLive.rawValue))
+    }
+
     /// What the iPhone hands the Watch: the grant with its audio bridge
     /// and the briefing, through the message dictionary.
     @MainActor

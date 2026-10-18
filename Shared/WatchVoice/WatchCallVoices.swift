@@ -20,6 +20,8 @@ struct WatchCallVoices: Codable, Equatable {
         case geminiLive
         case gptLive
         case grokLive
+        /// The host's own speech server, with Hermes answering.
+        case hermesVoice
     }
 
     /// The dashboard and profile the checks were for.
@@ -32,6 +34,9 @@ struct WatchCallVoices: Codable, Equatable {
     /// checked yet isn't known: both ring, as before.
     func rings(engine: String?) -> Bool {
         guard let engine else { return true }
+        // Hermes Voice opens a new chat for each call, so it can't carry on
+        // the chat a call from Hermes is about: those ring the iPhone.
+        if engine == Voice.hermesVoice.rawValue { return false }
         return ready[engine] ?? true
     }
 

@@ -90,15 +90,18 @@ final class WatchToolGrantClient {
         return Self.audioRuntime(from: response)
     }
 
-    func audioStatus(profile: String) async throws -> AudioRuntime {
+    /// `engine`'s readiness on the host: GPT-Live's runtime, or Hermes
+    /// Voice's speech server (per profile).
+    func audioStatus(profile: String, engine: String = WatchAudioBridgeWire.gptLive) async throws -> AudioRuntime {
         let response = try await request(DashboardPath.withProfile(Self.audioStatusPath, profile: profile), "GET", nil, Self.timeoutMilliseconds)
-        return Self.audioRuntime(from: response)
+        return Self.audioRuntime(from: response, engine: engine)
     }
 
-    static func audioRuntime(from response: [String: Any]) -> AudioRuntime {
+    /// A plugin from before an engine doesn't list it: missing, with no reason.
+    static func audioRuntime(from response: [String: Any], engine: String = WatchAudioBridgeWire.gptLive) -> AudioRuntime {
         let engines = response["engines"] as? [String: Any]
-        let gptLive = engines?[WatchAudioBridgeWire.gptLive] as? [String: Any]
-        return AudioRuntime(runtime: gptLive?["runtime"] as? String ?? "missing", reason: gptLive?["reason"] as? String)
+        let status = engines?[engine] as? [String: Any]
+        return AudioRuntime(runtime: status?["runtime"] as? String ?? "missing", reason: status?["reason"] as? String)
     }
 
     static func grant(from response: [String: Any]) -> WatchVoiceWire.DirectToolGrant? {
