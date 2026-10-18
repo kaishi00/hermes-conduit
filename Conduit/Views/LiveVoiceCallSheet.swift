@@ -351,12 +351,15 @@ struct LiveVoiceCallSheet: View {
         transcript.suffix(2).map(captionLine)
     }
 
-    /// A reply's Markdown marks aren't said, so the caption drops them too:
-    /// "**Québec**" reads "Québec". What the user said shows as heard.
+    /// A reply as its caption shows it: Hermes' `@session:<id>` chat links
+    /// read as the chat's name, and Markdown marks drop ("**Québec**" reads
+    /// "Québec").
+    /// The links go first, so one written as inline code stays as written.
+    /// What the user said shows as heard.
     static func captionLine(_ entry: VoiceConversationTranscriptEntry) -> VoiceConversationTranscriptEntry {
         guard entry.speaker == .assistant else { return entry }
         var line = entry
-        line.text = PreviewText.plain(entry.text)
+        line.text = PreviewText.plain(HermesSessionReference.plain(entry.text))
         return line
     }
 

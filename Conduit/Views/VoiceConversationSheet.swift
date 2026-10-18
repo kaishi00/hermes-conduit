@@ -480,20 +480,9 @@ extension VoiceConversationSheet {
         .padding(.top, 14)
     }
 
+    /// The last two lines said, as the live calls caption them.
     private var v2CaptionLines: [VoiceConversationTranscriptEntry] {
-        Self.captionLines(from: controller.conversationTranscript)
-    }
-
-    /// The last two lines said. In a reply, Hermes' `@session:<id>` chat
-    /// links read as the chat's name (as the transcript bubbles show them)
-    /// and Markdown marks drop, as in the live calls' captions.
-    static func captionLines(from transcript: [VoiceConversationTranscriptEntry]) -> [VoiceConversationTranscriptEntry] {
-        transcript.suffix(2).map { entry in
-            guard entry.speaker == .assistant else { return entry }
-            var line = entry
-            line.text = HermesSessionReference.plain(entry.text)
-            return LiveVoiceCallSheet.captionLine(line)
-        }
+        LiveVoiceCallSheet.captionLines(from: controller.conversationTranscript)
     }
 
     private func v2Label(for entry: VoiceConversationTranscriptEntry) -> String {
