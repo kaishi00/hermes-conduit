@@ -41,17 +41,16 @@ enum DashboardSignInRedirect {
         return isSignIn(target, forDashboard: dashboardURL)
     }
 
-    /// A sign-in page's path on the dashboard's own origin: Hermes' /login
-    /// (and any path containing it, as before), a sign-in path segment
-    /// (`/signin`, `/sign_in`, `/sign-in`), or an auth proxy's start
-    /// endpoint (`/oauth2/start`, `/oauth2/sign_in`).
+    /// A sign-in page's path on the dashboard's own origin: a sign-in path
+    /// segment (Hermes' `/login`, `/signin`, `/sign_in`, `/sign-in`, under
+    /// any base path), or an auth proxy's start endpoint (`/oauth2/start`,
+    /// `/oauth2/sign_in`). Whole segments only: an ordinary page whose path
+    /// merely contains "login" (`/docs/login-guide`) is not sign-in.
     static func isSignInPath(_ path: String) -> Bool {
-        let lowered = path.lowercased()
-        if lowered.contains("/login") { return true }
-        let segments = lowered.split(separator: "/").map(String.init)
+        let segments = path.lowercased().split(separator: "/").map(String.init)
         if segments.contains(where: { signInSegments.contains($0) }) { return true }
         return zip(segments, segments.dropFirst()).contains { $0 == "oauth2" && $1 == "start" }
     }
 
-    private static let signInSegments: Set<String> = ["signin", "sign_in", "sign-in"]
+    private static let signInSegments: Set<String> = ["login", "signin", "sign_in", "sign-in"]
 }

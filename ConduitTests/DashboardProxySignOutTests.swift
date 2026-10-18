@@ -42,6 +42,7 @@ final class DashboardProxySignOutTests: XCTestCase {
             "https://dashboard.example.test/oauth2/start?rd=%2Fapi%2Fstatus",
             "https://dashboard.example.test/oauth2/sign_in",
             "https://dashboard.example.test/hermes/signin",
+            "https://dashboard.example.test/hermes/login",
         ] {
             XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: target), forDashboard: dashboardURL), target)
         }
@@ -53,6 +54,8 @@ final class DashboardProxySignOutTests: XCTestCase {
             "https://dashboard.example.test/api/status/",
             "https://dashboard.example.test/chat",
             "https://dashboard.example.test/oauth2/callback-docs",
+            "https://dashboard.example.test/docs/login-guide",
+            "https://dashboard.example.test/api/login-history",
             "https://dashboard.example.test/",
         ] {
             XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: target), forDashboard: dashboardURL), target)
