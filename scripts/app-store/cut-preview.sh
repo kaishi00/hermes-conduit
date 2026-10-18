@@ -12,6 +12,7 @@ raw="$1"; marks="$2"; out="$3"; size="$4"; lead="${5:-2}"
 record=$(awk '$1 == "RECORD_START" {print $2}' "$marks")
 start=$(awk '$2 == "start" {print $3}' "$marks")
 end=$(awk '$2 == "end" {print $3}' "$marks")
+[ -n "$record" ] && [ -n "$start" ] && [ -n "$end" ] || { echo "$marks lacks a RECORD_START, start or end mark" >&2; exit 1; }
 from=$(python3 -c "print(max(0.0, $start - $record - $lead, $end - $record - 30.0))")
 length=$(python3 -c "print(min(30.0, $end - $record - $from))")
 w=${size%x*}; h=${size#*x}

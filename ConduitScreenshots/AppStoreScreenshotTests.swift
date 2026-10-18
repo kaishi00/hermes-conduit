@@ -130,7 +130,11 @@ final class AppStoreScreenshotTests: XCTestCase {
         newChat.tap()
         settle(1.5)
         let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
-        composer.tap()
+        // The composer can miss its first tap while the new chat settles.
+        for _ in 0..<3 {
+            composer.tap()
+            if app.keyboards.firstMatch.waitForExistence(timeout: 3) { break }
+        }
         composer.typeText("What should we pack?")
         settle(0.5)
         app.buttons["Send message"].tap()
