@@ -128,6 +128,20 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertTrue(snapshot.capability.supportsSpeech)
     }
 
+    /// The other way round: the active row decides even when an inactive
+    /// row for the same provider reads ready.
+    func testTheActiveRowSpeaksEvenWhenAnotherRowReadsReady() {
+        let snapshot = setupSnapshot(
+            selectedTTS: "speechbox",
+            ttsRows: [
+                ["name": "Speechbox", "tts_provider": "speechbox", "status": "ready", "is_active": false],
+                ["name": "Speechbox (plugin)", "tts_provider": "speechbox", "status": "needs_keys", "is_active": true],
+            ]
+        )
+
+        XCTAssertFalse(snapshot.capability.supportsSpeech)
+    }
+
     func testSetupDefaultsEdgeHasAReadableName() {
         XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "edge", kind: .tts)?.displayName, "Edge TTS")
     }
