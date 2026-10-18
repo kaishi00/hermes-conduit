@@ -377,17 +377,17 @@ struct V2Shell: View {
                         // The opened tab pushes the one left off its side of
                         // the bar, like a pager. Only offsets move: fading
                         // two full screens of glass and backdrop into each
-                        // other dropped frames, and a 28 pt nudge under a
-                        // fade still read as a fade. A hidden tab waits a
-                        // width away on its own side, so the slide needs no
-                        // start state; the others jump while hidden.
-                        .animation(moves ? ConduitMotion.tabSlide : nil) {
-                            $0.offset(x: tabOffset(tab, from: selectedTab))
-                        }
+                        // other dropped frames. A hidden tab waits a width
+                        // away on its own side, so the slide needs no start
+                        // state; the others jump while hidden. Keyed on the
+                        // selection, as the Tasks pager is: a body-scoped
+                        // `.animation(_:body:)` animated the opacity but left
+                        // the offset jumping after a first visit.
+                        .offset(x: tabOffset(tab, from: selectedTab))
+                        .animation(moves ? ConduitMotion.tabSlide : nil, value: selectedTab)
                         // Reduce Motion: the opened tab fades in instead.
-                        .animation(isSelected && reduceMotion ? ConduitMotion.tabFadeIn : nil) {
-                            $0.opacity(moves ? 1 : 0)
-                        }
+                        .opacity(moves ? 1 : 0)
+                        .animation(isSelected && reduceMotion ? ConduitMotion.tabFadeIn : nil, value: selectedTab)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
                         // A tab's first visit inserts it already selected:
