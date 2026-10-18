@@ -10,6 +10,13 @@
 set -euo pipefail
 raw="$1"; marks="$2"; out="$3"; size="$4"; lead="${5:-2}"
 record=$(awk '$1 == "RECORD_START" {print $2}' "$marks")
+# The video's first frame comes seconds after recordVideo starts; its last
+# frame is when the recorder was stopped, so date the video from its end.
+stop=$(awk '$1 == "RECORD_END" {print $2}' "$marks")
+if [ -n "$stop" ]; then
+  duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$raw")
+  record=$(python3 -c "print($stop - $duration)")
+fi
 start=$(awk '$2 == "start" {print $3}' "$marks")
 end=$(awk '$2 == "end" {print $3}' "$marks")
 [ -n "$record" ] && [ -n "$start" ] && [ -n "$end" ] || { echo "$marks lacks a RECORD_START, start or end mark" >&2; exit 1; }

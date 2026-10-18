@@ -119,6 +119,7 @@ jobs:
                 -resultBundlePath "results/$slug-preview.xcresult" \
                 -derivedDataPath dd \
                 > "results-$slug-preview.log" 2>&1
+              echo "RECORD_END $(python3 -c 'import time; print(time.time())')" >> "shots/preview-$slug.marks"
               kill -INT "$recorder" || true
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
