@@ -65,6 +65,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             let button = app.buttons[tab]
             guard button.waitForExistence(timeout: 5) else { continue }
             button.tap()
+            if tab == "Tasks" { showBoardWork() }
             settle(3)
             snap(String(format: "%02d-%@", number, tab.lowercased()))
             if tab == "Tasks" {
@@ -89,6 +90,21 @@ final class AppStoreScreenshotTests: XCTestCase {
             app.launch()
             settle(5)
             snap(String(format: "%02d-voice-%@", number, state))
+        }
+    }
+
+    /// Waits for the board, then scrolls it until the Ready column (the
+    /// first with several cards) is on screen; empty Triage leads otherwise.
+    private func showBoardWork() {
+        let card = app.staticTexts["Book campsite for Big Sur"]
+        _ = card.waitForExistence(timeout: 30)
+        let window = app.windows.firstMatch.frame
+        for _ in 0..<5 {
+            if card.exists, window.contains(card.frame) { return }
+            let board = app.windows.firstMatch
+            board.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55))
+                .press(forDuration: 0.05, thenDragTo: board.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.55)))
+            settle(1)
         }
     }
 

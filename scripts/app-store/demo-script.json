@@ -140,7 +140,7 @@
           "prompt": "Yes please, and find somewhere good for dinner Saturday.",
           "steps": [
             {
-              "content": "Pfeiffer Big Sur has **two sites left for Saturday**, both in the redwood loop (#112 and #148, $45 a night). Book soon, they go fast on fall weekends.\n\nFor dinner, **Big Sur Roadhouse** is 5 minutes from the campground and does a great wood-fired chicken. If you'd rather watch the sunset, **Sierra Mar** at Post Ranch has the view, but book ahead and budget about $150 each.\n\nI've added both to your trip notes."
+              "content": "Good news: Pfeiffer Big Sur has two sites left for Saturday, both in the redwood loop (#112 and #148, $45 a night). Book soon, they go fast on fall weekends.\n\nFor dinner, **Big Sur Roadhouse** is 5 minutes from the campground and does a great wood-fired chicken. If you'd rather watch the sunset, **Sierra Mar** at Post Ranch has the view, but book ahead and budget about $150 each.\n\nI've added both to your trip notes."
             }
           ]
         }
@@ -200,7 +200,7 @@
           "prompt": "Plan three easy dinners this week. We have chicken, spinach and a lot of lemons.",
           "steps": [
             {
-              "content": "Three quick ones that use it all up:\n\n- **Mon** Lemon garlic chicken with spinach orzo\n- **Wed** Chicken and spinach quesadillas\n- **Fri** Lemon pasta with crispy chicken thighs\n\nI added parmesan and tortillas to your shopping list."
+              "content": "Three quick ones that use it all up.\n\n- **Mon** Lemon garlic chicken with spinach orzo\n- **Wed** Chicken and spinach quesadillas\n- **Fri** Lemon pasta with crispy chicken thighs\n\nI added parmesan and tortillas to your shopping list."
             }
           ]
         }
@@ -294,5 +294,9 @@
       "status": "done",
       "result": "Test now waits on the upload event; 50 runs pass."
     }
-  ]
+  ],
+  "default_bot": {
+    "title": "Hermes",
+    "color": "purple"
+  }
 }

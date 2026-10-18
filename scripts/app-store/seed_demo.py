@@ -72,6 +72,8 @@ async def seed(script_path, base, user, password):
                 await asyncio.sleep(2)
 
         await rpc("client.capabilities", {"server_requests": True})
+        if script.get("default_bot"):
+            await rpc("profiles.configure", {"name": "default", "ui_meta": {"hermes-bots": script["default_bot"]}})
         # Bots first, so the chats seeded after them are the newest rows.
         for bot in script.get("bots", []):
             name = bot["name"]
