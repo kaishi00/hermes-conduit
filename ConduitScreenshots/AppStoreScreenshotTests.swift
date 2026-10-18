@@ -45,7 +45,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         signInIfNeeded()
         dismissFinishSetupCard()
         // The list fills from the dashboard; wait for the newest chat.
-        _ = app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30)
+        if !app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) {
+            XCTFail("The seeded chats never showed in the Chats list")
+        }
         settle()
         snap("01-chats")
 
@@ -73,10 +75,14 @@ final class AppStoreScreenshotTests: XCTestCase {
                 let scheduled = app.buttons["Scheduled"]
                 if scheduled.waitForExistence(timeout: 5) {
                     scheduled.tap()
-                    _ = app.staticTexts["Morning briefing"].waitForExistence(timeout: 10)
+                    if !app.staticTexts["Morning briefing"].waitForExistence(timeout: 10) {
+                        XCTFail("The seeded scheduled jobs never showed")
+                    }
                     settle(2)
                     snap("06-scheduled")
                     app.buttons["Board"].tap()
+                } else {
+                    XCTFail("No Scheduled button on the Tasks tab, so no scheduled screenshot")
                 }
             }
         }
@@ -96,16 +102,21 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// Waits for the board, then scrolls it past the empty Triage column:
     /// to Ready on a phone, to Ready and Running on an iPad.
     private func showBoardWork() {
-        _ = app.staticTexts["Book campsite for Big Sur"].waitForExistence(timeout: 30)
+        guard app.staticTexts["Book campsite for Big Sur"].waitForExistence(timeout: 30) else {
+            XCTFail("The seeded board never loaded")
+            return
+        }
         let window = app.windows.firstMatch.frame
-        let card = app.staticTexts[window.width > 700 ? "Compare flights to Tokyo" : "Book campsite for Big Sur"]
-        for _ in 0..<5 {
+        let target = window.width > 700 ? "Compare flights to Tokyo" : "Book campsite for Big Sur"
+        let card = app.staticTexts[target]
+        for _ in 0...5 {
             if card.exists, window.contains(card.frame) { return }
             let board = app.windows.firstMatch
             board.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55))
                 .press(forDuration: 0.05, thenDragTo: board.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.55)))
             settle(1)
         }
+        XCTFail("Could not scroll the board to \(target)")
     }
 
     /// The App Preview: the workflow records the screen while this runs.
@@ -117,7 +128,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
         signInIfNeeded()
         dismissFinishSetupCard()
-        _ = app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30)
+        guard app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) else {
+            XCTFail("The seeded chats never showed, so the preview would start on an empty list")
+            return
+        }
         settle(2)
         // Wall-clock markers in the test log, so the recording can be cut
         // to the part worth showing (scripts/app-store/cut-preview.sh).

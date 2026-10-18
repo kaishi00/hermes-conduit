@@ -114,6 +114,8 @@ jobs:
                 -resultBundlePath "results/$slug-preview.xcresult" \
                 -derivedDataPath dd \
                 > "results-$slug-preview.log" 2>&1
+              prc=$?
+              if [ "$prc" -ne 0 ]; then echo "$name preview recording exited $prc" >> failures.txt; fi
               kill -INT "$recorder" || true
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
@@ -145,7 +147,7 @@ jobs:
           PY
             fi
             xcrun simctl shutdown "$udid" || true
-            if [ "$rc" -ne 0 ]; then echo "::warning::$name capture exited $rc"; fi
+            if [ "$rc" -ne 0 ]; then echo "$name capture exited $rc" >> failures.txt; fi
           done
           ls -lR shots
 
@@ -162,7 +164,7 @@ jobs:
             raw="${marks%.marks}.mov"
             case "$marks" in *iPad*) size=1200x1600 ;; *) size=886x1920 ;; esac
             scripts/app-store/cut-preview.sh "$raw" "$marks" "${marks%.marks}.mp4" "$size" \
-              || echo "::warning::could not cut $raw"
+              || echo "could not cut $raw" >> failures.txt
           done
 
       - name: Publish to a git ref
@@ -206,6 +208,15 @@ jobs:
             results-*.log
             results/
           if-no-files-found: ignore
+
+      - name: Fail on missing screens
+        # Last, so a failed capture still publishes what it has.
+        if: always()
+        run: |
+          if [ -s failures.txt ]; then
+            while read -r line; do echo "::error::$line"; done < failures.txt
+            exit 1
+          fi
 
   watch:
     # The Watch app needs no dashboard: its screens come from the

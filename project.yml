@@ -272,7 +272,6 @@ targets:
     platform: iOS
     sources:
       - path: ConduitScreenshots
-      - path: ConduitUITests/V2NavigationHelpers.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

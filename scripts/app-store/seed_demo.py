@@ -35,7 +35,9 @@ async def seed(script_path, base, user, password):
             async for raw in ws:
                 frame = json.loads(raw)
                 if "method" not in frame and frame.get("id") in pending:
-                    pending.pop(frame["id"]).set_result(frame)
+                    fut = pending.pop(frame["id"])
+                    if not fut.done():  # a reply after its timeout
+                        fut.set_result(frame)
                 elif "method" in frame:
                     if "id" in frame:
                         # Nothing here answers the gateway's own requests.
