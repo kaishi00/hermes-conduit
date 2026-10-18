@@ -780,6 +780,7 @@ struct SettingsView: View {
                         pendingCount: appState.pendingVoiceCallSaves,
                         blocked: appState.voiceCallSavesBlocked,
                         isSaving: appState.isSavingQueuedVoiceCalls,
+                        lastResult: appState.voiceCallSaveNowResult,
                         isWaitingOnCall: appState.isLiveVoiceCallActive,
                         saveNow: { await appState.saveQueuedVoiceCallsNow() }
                     ),

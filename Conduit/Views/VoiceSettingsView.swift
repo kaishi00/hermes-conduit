@@ -2065,6 +2065,8 @@ struct VoiceCallSaveStatusModel {
     /// The host answered that it can't store voice calls.
     var blocked: Bool
     var isSaving: Bool
+    /// What the last Save Now did, when calls are still waiting after it.
+    var lastResult: String? = nil
     /// Saves wait while a live call runs: a save would stall it.
     var isWaitingOnCall: Bool = false
     var saveNow: () async -> Void
@@ -2091,6 +2093,15 @@ struct VoiceCallSaveStatusSection: View {
             }
             .disabled(model.isSaving || model.isWaitingOnCall)
             .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.14))
+            if model.isWaitingOnCall {
+                Text(AppLocalization.string("Calls save once the live call ends."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let result = model.lastResult, !model.isSaving {
+                Text(result)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+            }
         }
     }
 }
