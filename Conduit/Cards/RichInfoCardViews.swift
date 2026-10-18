@@ -767,7 +767,7 @@ private struct RichStepTimer: View {
     var body: some View {
         let end = memory.timerEnd(key, number)
         Button {
-            if end != nil {
+            if memory.timerEnd(key, number) != nil {
                 memory.stopTimer(key, number)
             } else {
                 memory.startTimer(key, number, seconds: seconds, text: text, title: title)
@@ -782,6 +782,14 @@ private struct RichStepTimer: View {
                                 Text(verbatim: Self.clock(left))
                             } icon: {
                                 Image(systemName: "stop.fill")
+                            }
+                            .accessibilityValue(Text(verbatim: Self.clock(left)))
+                        } else if left <= -RichStepsMemory.doneShown {
+                            // Done has shown long enough; a tap starts it again.
+                            Label {
+                                Text(verbatim: Self.clock(TimeInterval(seconds)))
+                            } icon: {
+                                Image(systemName: "timer")
                             }
                         } else {
                             Label {
@@ -820,14 +828,17 @@ private struct RichStepTimer: View {
 
     /// Like 6 minutes, 30 seconds, in the app's language.
     static func spoken(_ seconds: Int) -> String {
+        spokenFormatter.calendar?.locale = AppLocalization.formattingLocale
+        return spokenFormatter.string(from: TimeInterval(seconds)) ?? "\(seconds)"
+    }
+
+    private static let spokenFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .full
         formatter.allowedUnits = [.hour, .minute, .second]
-        var calendar = Calendar.current
-        calendar.locale = AppLocalization.formattingLocale
-        formatter.calendar = calendar
-        return formatter.string(from: TimeInterval(seconds)) ?? "\(seconds)"
-    }
+        formatter.calendar = Calendar.current
+        return formatter
+    }()
 }
 
 /// Which steps the user ticked off and the timers they started, both kept
@@ -841,7 +852,7 @@ final class RichStepsMemory: ObservableObject {
     private static let defaultsKey = "richCards.stepsDone"
     private static let timersKey = "richCards.stepTimers"
     /// How long a finished timer still shows Done.
-    private static let doneShown: TimeInterval = 10 * 60
+    static let doneShown: TimeInterval = 10 * 60
     /// Cards whose ticks are kept; the oldest go first.
     private static let keptCards = 200
 
@@ -866,7 +877,8 @@ final class RichStepsMemory: ObservableObject {
 
     /// The same steps get the same key, whichever chat or call shows them.
     static func key(for card: RichCard) -> String {
-        let text = ([card.title ?? ""] + card.needs + ["\u{1E}"] + card.steps.map(\.text)).joined(separator: "\u{1F}")
+        let steps = card.steps.map { step in step.timer.map { "\(step.text)\u{1D}\($0)" } ?? step.text }
+        let text = ([card.title ?? ""] + card.needs + ["\u{1E}"] + steps).joined(separator: "\u{1F}")
         return SHA256.hash(data: Data(text.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
