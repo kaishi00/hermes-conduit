@@ -14596,8 +14596,10 @@ final class AppState: ObservableObject {
         // The dashboard already said sign-in is required and automatic
         // recovery stopped: another reconnect would only be refused again,
         // which looks like Reconnect doing nothing. It opens sign-in.
+        // A refusal is never a sign-out, so the native grant stays, as on
+        // the refused-socket path that stopped recovery.
         if signInRequiredForReconnect {
-            requireSignIn(failure: .signInExpired)
+            performSignInRequired(pendingFailure: .signInExpired, keepingNativeGrant: true)
             return
         }
         cancelChatResumeTransportRecovery()

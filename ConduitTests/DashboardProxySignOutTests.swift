@@ -476,12 +476,17 @@ final class DashboardProxySignOutTests: XCTestCase {
         appState.showLogin = false
         appState.lastConnectionFailure = .loginRequired
         XCTAssertTrue(appState.signInRequiredForReconnect)
+        // An app sign-in's grant, kept when the refused socket stopped
+        // recovery, survives the tap too.
+        let id = try XCTUnwrap(appState.activeDashboardID)
+        KeychainHelper.saveNativeOAuthTokens(DashboardSocketFixture.tokens(access: "kept"), dashboardID: id)
 
         await appState.reconnect()
 
         XCTAssertEqual(mints, 0, "No reconnect the dashboard would refuse")
         XCTAssertTrue(appState.showLogin)
         XCTAssertEqual(appState.pendingLoginFailure, .signInExpired)
+        XCTAssertNotNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: id), "Reconnect never deletes the native grant")
     }
 
     func testReconnectAfterAnOrdinaryFailureStillReconnects() async throws {
