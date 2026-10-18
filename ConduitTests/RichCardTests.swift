@@ -86,6 +86,58 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(driving.route?.mode, .driving)
     }
 
+    func testRichInformationCardsReadTheirOwnParts() throws {
+        let stat: [String: Any] = ["label": "Steps", "value": "8,412", "change": "+12%", "trend": "up", "tone": "good", "spark": [1, 2, 3]]
+        let series: [[String: Any]] = [["name": "Sales", "values": [5, 9.5]], ["values": [1]]]
+        let chart: [String: Any] = ["kind": "bar", "unit": "USD", "labels": ["Mon", "Tue"], "series": series]
+        let now: [String: Any] = ["temp": 18.5, "condition": "partly_cloudy"]
+        let day: [String: Any] = ["day": "Tue", "low": 12, "high": 21, "condition": "rain", "precip": 60]
+        let weather: [String: Any] = ["unit": "C", "now": now, "days": [day]]
+        let steps: [[String: Any]] = [["text": "Boil water."], ["text": "Simmer.", "timer": 390]]
+        let raw: [[String: Any]] = [
+            ["type": "stats", "title": "Today", "source": ["name": "Health", "url": "https://h.test/s"], "stats": [stat]],
+            ["type": "chart", "chart": chart],
+            ["type": "weather", "source": ["name": "Open-Meteo"], "weather": weather],
+            ["type": "steps", "needs": ["2 eggs"], "steps": steps],
+        ]
+        let cards = RichCard.cards(raw: raw)
+        XCTAssertEqual(cards.map(\.kind), [.stats, .chart, .weather, .steps])
+        XCTAssertEqual(cards[0].source, RichCardSource(json: ["name": "Health", "url": "https://h.test/s"]))
+        XCTAssertEqual(cards[0].stats.first?.trend, .up)
+        XCTAssertEqual(cards[0].stats.first?.spark, [1, 2, 3])
+        XCTAssertEqual(cards[1].chart?.series.map(\.values), [[5, 9.5]], "a series that misses labels is left out")
+        XCTAssertEqual(cards[2].weather?.now?.condition, .partlyCloudy)
+        XCTAssertEqual(cards[2].weather?.days.first?.precip, 60)
+        XCTAssertEqual(cards[3].needs, ["2 eggs"])
+        XCTAssertEqual(cards[3].steps.map(\.timer), [nil, 390])
+        XCTAssertTrue(cards.allSatisfy(\.places.isEmpty))
+
+        let clear: [String: Any] = ["unit": "C", "now": ["temp": 18, "condition": "clear"] as [String: Any]]
+        let unsourced: [[String: Any]] = [["type": "weather", "weather": clear]]
+        XCTAssertTrue(RichCard.cards(raw: unsourced).isEmpty, "a forecast needs its source")
+        let options: [[String: Any]] = [["name": "A", "recommended": true], ["name": "B", "recommended": true]]
+        let comparison: [[String: Any]] = [["type": "comparison", "options": options]]
+        XCTAssertEqual(RichCard.cards(raw: comparison).first?.options.map(\.recommended), [true, false])
+    }
+
+    func testRichStepsKeepTheirTicksByContent() {
+        let defaults = UserDefaults(suiteName: "RichStepsMemoryTests")!
+        defaults.removePersistentDomain(forName: "RichStepsMemoryTests")
+        let steps: [[String: Any]] = [["text": "Boil water."], ["text": "Simmer."]]
+        let raw: [[String: Any]] = [["type": "steps", "title": "Eggs", "steps": steps]]
+        let card = RichCard.cards(raw: raw)[0]
+        let key = RichStepsMemory.key(for: card)
+        XCTAssertEqual(key, RichStepsMemory.key(for: RichCard.cards(raw: raw)[0]), "the same steps get the same key")
+        let other: [[String: Any]] = [["type": "steps", "title": "Eggs", "needs": ["Eggs"], "steps": steps]]
+        XCTAssertNotEqual(key, RichStepsMemory.key(for: RichCard.cards(raw: other)[0]), "different needs, different card")
+        let memory = RichStepsMemory(defaults: defaults)
+        memory.toggle(key, 2)
+        XCTAssertTrue(memory.isDone(key, 2))
+        XCTAssertTrue(RichStepsMemory(defaults: defaults).isDone(key, 2), "ticks are kept")
+        memory.toggle(key, 2)
+        XCTAssertFalse(memory.isDone(key, 2))
+    }
+
     func testRichCardsComeFromConduitShowsSavedAnswer() throws {
         let answer = #"{"ok": true, "cards": [{"type": "map", "places": [{"name": "Kin Khao", "lat": 37.78, "lon": -122.4}]}], "note": "Shown."}"#
         let tool = ToolActivity(id: "t1", name: "conduit_show", input: #"{"title": "Dinner"}"#, output: answer, status: .complete)

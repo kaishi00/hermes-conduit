@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -751,6 +751,721 @@
             "from": 0,
             "mode": "cycling"
           }
+        }
+      ]
+    },
+    {
+      "name": "A stats card keeps its numbers and source, and nothing of a map",
+      "input": [
+        {
+          "type": "stats",
+          "title": "This week",
+          "source": {
+            "name": "Health",
+            "url": "https://example.com/health",
+            "extra": 1
+          },
+          "stats": [
+            {
+              "label": "Steps",
+              "value": "58,204",
+              "detail": "daily average 8,315",
+              "change": "+12%",
+              "trend": "Up",
+              "tone": "good",
+              "spark": [
+                7012,
+                8120,
+                9433,
+                6022,
+                8811,
+                9302,
+                9504
+              ]
+            },
+            {
+              "label": "Sleep",
+              "value": "7 h 05 min",
+              "trend": "flat"
+            }
+          ],
+          "places": [
+            {
+              "name": "Gym"
+            }
+          ],
+          "route": {
+            "to": 0
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "stats",
+          "title": "This week",
+          "source": {
+            "name": "Health",
+            "url": "https://example.com/health"
+          },
+          "stats": [
+            {
+              "label": "Steps",
+              "value": "58,204",
+              "detail": "daily average 8,315",
+              "change": "+12%",
+              "trend": "up",
+              "tone": "good",
+              "spark": [
+                7012,
+                8120,
+                9433,
+                6022,
+                8811,
+                9302,
+                9504
+              ]
+            },
+            {
+              "label": "Sleep",
+              "value": "7 h 05 min",
+              "trend": "flat"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A stats card without stats is dropped; a one-value spark and an unknown trend are left out",
+      "input": [
+        {
+          "type": "stats",
+          "title": "Nothing"
+        },
+        {
+          "type": "stats",
+          "stats": [
+            {
+              "label": "Portfolio",
+              "value": "$12.4k",
+              "spark": [
+                3
+              ],
+              "trend": "sideways",
+              "tone": "great"
+            },
+            {
+              "label": "No value"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "stats",
+          "stats": [
+            {
+              "label": "Portfolio",
+              "value": "$12.4k"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A chart keeps the series that have one value per label",
+      "input": [
+        {
+          "type": "chart",
+          "title": "Sales",
+          "source": {
+            "name": "Shopify"
+          },
+          "chart": {
+            "kind": "BAR",
+            "unit": "USD",
+            "labels": [
+              "Mon",
+              "Tue",
+              "Wed"
+            ],
+            "series": [
+              {
+                "name": "This week",
+                "values": [
+                  120,
+                  95.5,
+                  140
+                ]
+              },
+              {
+                "name": "Short",
+                "values": [
+                  1,
+                  2
+                ]
+              },
+              {
+                "name": "Last week",
+                "values": [
+                  100,
+                  110,
+                  90
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "chart",
+          "title": "Sales",
+          "source": {
+            "name": "Shopify"
+          },
+          "chart": {
+            "kind": "bar",
+            "labels": [
+              "Mon",
+              "Tue",
+              "Wed"
+            ],
+            "series": [
+              {
+                "name": "This week",
+                "values": [
+                  120,
+                  95.5,
+                  140
+                ]
+              },
+              {
+                "name": "Last week",
+                "values": [
+                  100,
+                  110,
+                  90
+                ]
+              }
+            ],
+            "unit": "USD"
+          }
+        }
+      ]
+    },
+    {
+      "name": "A pie keeps its first series, and a negative slice drops it",
+      "input": [
+        {
+          "type": "chart",
+          "chart": {
+            "kind": "pie",
+            "labels": [
+              "Rent",
+              "Food"
+            ],
+            "series": [
+              {
+                "name": "Spending",
+                "values": [
+                  1200,
+                  450
+                ]
+              },
+              {
+                "values": [
+                  1,
+                  1
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "chart",
+          "chart": {
+            "kind": "pie",
+            "labels": [
+              "A",
+              "B"
+            ],
+            "series": [
+              {
+                "values": [
+                  5,
+                  -1
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "chart",
+          "chart": {
+            "kind": "pie",
+            "labels": [
+              "Rent",
+              "Food"
+            ],
+            "series": [
+              {
+                "name": "Spending",
+                "values": [
+                  1200,
+                  450
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A chart whose series all miss labels is dropped",
+      "input": [
+        {
+          "type": "chart",
+          "chart": {
+            "kind": "line",
+            "labels": [
+              "Jan",
+              "Feb"
+            ],
+            "series": [
+              {
+                "values": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "A forecast keeps what it was given, with its source",
+      "input": [
+        {
+          "type": "weather",
+          "title": "Berlin today",
+          "source": {
+            "name": "Open-Meteo",
+            "url": "https://open-meteo.com/"
+          },
+          "weather": {
+            "place": "Berlin",
+            "unit": "c",
+            "now": {
+              "temp": 18.5,
+              "condition": "Partly_Cloudy",
+              "text": "Feels like 17"
+            },
+            "hours": [
+              {
+                "time": "14:00",
+                "temp": 19,
+                "condition": "cloudy",
+                "precip": 20
+              },
+              {
+                "time": "15:00",
+                "temp": 20,
+                "precip": 35.5
+              }
+            ],
+            "days": [
+              {
+                "day": "Today",
+                "low": 12,
+                "high": 21,
+                "condition": "rain",
+                "precip": 60
+              },
+              {
+                "day": "Tue",
+                "low": 25,
+                "high": 20,
+                "condition": "clear"
+              },
+              {
+                "day": "Wed",
+                "low": 10,
+                "high": 16,
+                "condition": "tornado"
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "weather",
+          "title": "Berlin today",
+          "source": {
+            "name": "Open-Meteo",
+            "url": "https://open-meteo.com/"
+          },
+          "weather": {
+            "place": "Berlin",
+            "unit": "C",
+            "now": {
+              "temp": 18.5,
+              "condition": "partly_cloudy",
+              "text": "Feels like 17"
+            },
+            "hours": [
+              {
+                "time": "14:00",
+                "temp": 19,
+                "condition": "cloudy",
+                "precip": 20
+              },
+              {
+                "time": "15:00",
+                "temp": 20
+              }
+            ],
+            "days": [
+              {
+                "day": "Today",
+                "low": 12,
+                "high": 21,
+                "condition": "rain",
+                "precip": 60
+              },
+              {
+                "day": "Wed",
+                "low": 10,
+                "high": 16
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A forecast without a source or anything to show is dropped",
+      "input": [
+        {
+          "type": "weather",
+          "weather": {
+            "unit": "F",
+            "now": {
+              "temp": 70,
+              "condition": "clear"
+            }
+          }
+        },
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "place": "Austin"
+          }
+        },
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "days": [
+              {
+                "day": "Mon",
+                "low": 80,
+                "high": 70
+              }
+            ]
+          }
+        },
+        {
+          "type": "weather",
+          "source": {
+            "url": "https://weather.gov"
+          },
+          "weather": {
+            "unit": "F",
+            "now": {
+              "temp": 70,
+              "condition": "clear"
+            }
+          }
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "An empty hours or days list counts as nothing to show",
+      "input": [
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "hours": [],
+            "days": [
+              {
+                "day": "Mon",
+                "low": 80,
+                "high": 70
+              }
+            ]
+          }
+        },
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "hours": [],
+            "days": [
+              {
+                "day": "Mon",
+                "low": 60,
+                "high": 70
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "weather",
+          "source": {
+            "name": "NWS"
+          },
+          "weather": {
+            "unit": "F",
+            "days": [
+              {
+                "day": "Mon",
+                "low": 60,
+                "high": 70
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A comparison recommends one option at most",
+      "input": [
+        {
+          "type": "comparison",
+          "title": "Which phone",
+          "source": {
+            "name": "Apple"
+          },
+          "options": [
+            {
+              "name": "iPhone 17",
+              "summary": "The sensible pick.",
+              "facts": [
+                {
+                  "label": "Price",
+                  "value": "$799"
+                },
+                {
+                  "label": "Battery"
+                }
+              ],
+              "pros": [
+                "Great value",
+                ""
+              ],
+              "cons": [
+                "60 Hz"
+              ],
+              "recommended": true
+            },
+            {
+              "name": "iPhone 17 Pro",
+              "facts": [
+                {
+                  "label": "Price",
+                  "value": "$1,099"
+                }
+              ],
+              "recommended": true
+            },
+            {
+              "name": "iPhone Air",
+              "recommended": false
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "comparison",
+          "title": "Which phone",
+          "source": {
+            "name": "Apple"
+          },
+          "options": [
+            {
+              "name": "iPhone 17",
+              "summary": "The sensible pick.",
+              "facts": [
+                {
+                  "label": "Price",
+                  "value": "$799"
+                }
+              ],
+              "pros": [
+                "Great value"
+              ],
+              "cons": [
+                "60 Hz"
+              ],
+              "recommended": true
+            },
+            {
+              "name": "iPhone 17 Pro",
+              "facts": [
+                {
+                  "label": "Price",
+                  "value": "$1,099"
+                }
+              ]
+            },
+            {
+              "name": "iPhone Air",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A comparison needs two options",
+      "input": [
+        {
+          "type": "comparison",
+          "options": [
+            {
+              "name": "Only one"
+            },
+            {
+              "summary": "no name"
+            }
+          ]
+        }
+      ],
+      "output": []
+    },
+    {
+      "name": "Steps keep what's needed and their timers",
+      "input": [
+        {
+          "type": "steps",
+          "title": "Soft-boiled eggs",
+          "needs": [
+            "2 eggs",
+            "A small pot",
+            ""
+          ],
+          "steps": [
+            {
+              "text": "Bring water to a boil."
+            },
+            {
+              "text": "Lower the eggs in and simmer.",
+              "timer": 390
+            },
+            {
+              "text": "Cool them in cold water.",
+              "timer": 0
+            },
+            {
+              "text": "Wait a day",
+              "timer": 86401
+            },
+            {
+              "timer": 60
+            }
+          ],
+          "options": [
+            {
+              "name": "x"
+            },
+            {
+              "name": "y"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "steps",
+          "title": "Soft-boiled eggs",
+          "needs": [
+            "2 eggs",
+            "A small pot"
+          ],
+          "steps": [
+            {
+              "text": "Bring water to a boil."
+            },
+            {
+              "text": "Lower the eggs in and simmer.",
+              "timer": 390
+            },
+            {
+              "text": "Cool them in cold water."
+            },
+            {
+              "text": "Wait a day"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Needs and a source stay off a map; steps need steps",
+      "input": [
+        {
+          "type": "map",
+          "source": {
+            "name": "Hermes"
+          },
+          "needs": [
+            "x"
+          ],
+          "places": [
+            {
+              "name": "A"
+            }
+          ]
+        },
+        {
+          "type": "steps",
+          "needs": [
+            "flour"
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "map",
+          "places": [
+            {
+              "name": "A"
+            }
+          ]
         }
       ]
     }

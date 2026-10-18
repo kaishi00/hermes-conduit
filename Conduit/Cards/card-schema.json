@@ -1,24 +1,37 @@
 {
-  "version": 1,
+  "version": 2,
   "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri) that goes into the tool definitions as is. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Then the rules in 'rules' apply. cards/card-vectors.json holds the shared examples both test suites run.",
   "max_cards": 4,
   "rules": [
+    "A card keeps only its own type's field (places for map, place and places; stats, chart, weather, options or steps for the others), plus title, source on stats, chart, weather, comparison and steps, and needs on steps; a card without its type's field is dropped.",
     "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
-    "A place card keeps only its first place."
+    "A place card keeps only its first place.",
+    "A chart keeps only the series with one value per label; a pie keeps only its first series, and no value of a pie may be negative. A chart with no series left is dropped.",
+    "A weather card needs a source and at least one of now, hours or days (an empty list counts as none); a day whose low is above its high is dropped.",
+    "A comparison keeps only its first recommended option."
   ],
   "card": {
     "type": "object",
-    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through.",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers.",
     "properties": {
       "type": {
         "type": "string",
-        "enum": ["map", "place", "places"],
-        "description": "map, place or places."
+        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps"],
+        "description": "The kind of card; fill in its field: places for map, place and places, otherwise the field named like the type (options for comparison)."
       },
       "title": {
         "type": "string",
         "maxLength": 80,
         "description": "A short heading, a few words."
+      },
+      "source": {
+        "type": "object",
+        "description": "stats, chart, weather, comparison and steps: where the information is from, when it's from a tool, a site or a service rather than your own knowledge. Required for weather. Shown on the card.",
+        "properties": {
+          "name": {"type": "string", "maxLength": 40, "description": "Like Open-Meteo, Yahoo Finance or the user's Health data."},
+          "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's from."}
+        },
+        "required": ["name"]
       },
       "places": {
         "type": "array",
@@ -88,8 +101,169 @@
           "mode": {"type": "string", "enum": ["driving", "walking", "transit", "cycling"], "description": "How to travel; driving if left out."}
         },
         "required": ["to"]
+      },
+      "stats": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 6,
+        "description": "stats only: big numbers with labels, most important first.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {"type": "string", "maxLength": 40, "description": "What it is, like Steps or Portfolio."},
+            "value": {"type": "string", "maxLength": 24, "description": "The number as it should read, with its unit, like 8,412 or $12.4k."},
+            "detail": {"type": "string", "maxLength": 60, "description": "A few words under it, like of 10,000 or last 30 days."},
+            "change": {"type": "string", "maxLength": 16, "description": "How it changed, like +3.2% or -40."},
+            "trend": {"type": "string", "enum": ["up", "down", "flat"], "description": "Which way it moved."},
+            "tone": {"type": "string", "enum": ["good", "bad", "neutral"], "description": "Whether the change is good news; neutral if left out."},
+            "spark": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 30,
+              "description": "Recent values, oldest first, drawn as a small line.",
+              "items": {"type": "number", "minimum": -1000000000000, "maximum": 1000000000000}
+            }
+          },
+          "required": ["label", "value"]
+        }
+      },
+      "chart": {
+        "type": "object",
+        "description": "chart only: the data, drawn as a native chart.",
+        "properties": {
+          "kind": {"type": "string", "enum": ["line", "bar", "area", "pie"], "description": "line or area for change over time, bar to compare, pie for shares of a whole."},
+          "labels": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 24,
+            "description": "The x-axis labels in order, or a pie's slice names.",
+            "items": {"type": "string", "maxLength": 24}
+          },
+          "series": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "description": "One or more series, each with one value per label. A pie has one.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string", "maxLength": 40, "description": "Shown in the legend."},
+                "values": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 24,
+                  "description": "One value per label, in order.",
+                  "items": {"type": "number", "minimum": -1000000000000, "maximum": 1000000000000}
+                }
+              },
+              "required": ["values"]
+            }
+          },
+          "unit": {"type": "string", "maxLength": 16, "description": "The values' unit, like %, kg or USD."}
+        },
+        "required": ["kind", "labels", "series"]
+      },
+      "weather": {
+        "type": "object",
+        "description": "weather only: a forecast you got from a weather tool or site, never guessed. Give the card's source.",
+        "properties": {
+          "place": {"type": "string", "maxLength": 80, "description": "Where it's for."},
+          "unit": {"type": "string", "enum": ["C", "F"], "description": "The temperatures' unit."},
+          "now": {
+            "type": "object",
+            "description": "Right now.",
+            "properties": {
+              "temp": {"type": "number", "minimum": -100, "maximum": 150},
+              "condition": {"type": "string", "enum": ["clear", "partly_cloudy", "cloudy", "fog", "drizzle", "rain", "heavy_rain", "thunderstorm", "snow", "sleet", "wind"]},
+              "text": {"type": "string", "maxLength": 60, "description": "A few words, like Feels like 21 or Windy later."}
+            },
+            "required": ["temp", "condition"]
+          },
+          "hours": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "The next hours, in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "time": {"type": "string", "maxLength": 12, "description": "Like 14:00."},
+                "temp": {"type": "number", "minimum": -100, "maximum": 150},
+                "condition": {"type": "string", "enum": ["clear", "partly_cloudy", "cloudy", "fog", "drizzle", "rain", "heavy_rain", "thunderstorm", "snow", "sleet", "wind"]},
+                "precip": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Chance of rain or snow, in percent."}
+              },
+              "required": ["time", "temp"]
+            }
+          },
+          "days": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "The next days, in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "day": {"type": "string", "maxLength": 12, "description": "Like Today or Tue."},
+                "low": {"type": "number", "minimum": -100, "maximum": 150},
+                "high": {"type": "number", "minimum": -100, "maximum": 150},
+                "condition": {"type": "string", "enum": ["clear", "partly_cloudy", "cloudy", "fog", "drizzle", "rain", "heavy_rain", "thunderstorm", "snow", "sleet", "wind"]},
+                "precip": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Chance of rain or snow, in percent."}
+              },
+              "required": ["day", "low", "high"]
+            }
+          }
+        },
+        "required": ["unit"]
+      },
+      "options": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 4,
+        "description": "comparison only: the options, side by side.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string", "maxLength": 60, "description": "The option's name."},
+            "summary": {"type": "string", "maxLength": 160, "description": "A sentence on it."},
+            "facts": {
+              "type": "array",
+              "maxItems": 6,
+              "description": "Facts to compare, with the same labels in the same order for every option.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {"type": "string", "maxLength": 30, "description": "Like Price or Battery."},
+                  "value": {"type": "string", "maxLength": 60, "description": "This option's value."}
+                },
+                "required": ["label", "value"]
+              }
+            },
+            "pros": {"type": "array", "maxItems": 4, "description": "What's good about it, a few words each.", "items": {"type": "string", "maxLength": 80}},
+            "cons": {"type": "array", "maxItems": 4, "description": "What's not, a few words each.", "items": {"type": "string", "maxLength": 80}},
+            "recommended": {"type": "boolean", "description": "true on the one you recommend, if any."}
+          },
+          "required": ["name"]
+        }
+      },
+      "needs": {
+        "type": "array",
+        "maxItems": 30,
+        "description": "steps only: what to have ready first, like ingredients or tools.",
+        "items": {"type": "string", "maxLength": 120}
+      },
+      "steps": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "description": "steps only: the steps in order. The user can tick them off.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {"type": "string", "maxLength": 300, "description": "What to do."},
+            "timer": {"type": "integer", "minimum": 1, "maximum": 86400, "description": "Seconds, when the step waits a set time (simmer 10 minutes is 600): the user can start a timer from it."}
+          },
+          "required": ["text"]
+        }
       }
     },
-    "required": ["type", "places"]
+    "required": ["type"]
   }
 }
