@@ -125,15 +125,24 @@ final class ComposerUpdates: ObservableObject {
     init(_ appState: AppState) {
         self.appState = appState
         inputs = ComposerInputs(appState)
-        // AppState is main-actor isolated and publishes on the main thread.
+        // AppState publishes on the main thread; a send from anywhere else
+        // hops there first rather than touching this object off it.
         subscription = appState.objectWillChange.sink { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.checkPending else { return }
-                self.checkPending = true
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.scheduleCheck() }
+            } else {
                 DispatchQueue.main.async { [weak self] in
-                    MainActor.assumeIsolated { self?.check() }
+                    MainActor.assumeIsolated { self?.scheduleCheck() }
                 }
             }
+        }
+    }
+
+    private func scheduleCheck() {
+        guard !checkPending else { return }
+        checkPending = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.check() }
         }
     }
 
