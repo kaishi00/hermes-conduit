@@ -665,6 +665,26 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: Array(lines.prefix(1))).map(\.text), ["one"])
     }
 
+    func testCallCaptionsShowRepliesWithoutMarkdownMarks() {
+        let question = VoiceConversationTranscriptEntry(speaker: .user, text: "Quelle est la capitale du Québec ?")
+        let reply = VoiceConversationTranscriptEntry(speaker: .assistant, text: "La capitale du Québec est **Québec** (la ville de Québec).")
+        let shown = VoiceConversationSheet.captionLines(from: [question, reply])
+        XCTAssertEqual(shown.map(\.text), ["Quelle est la capitale du Québec ?", "La capitale du Québec est Québec (la ville de Québec)."])
+        XCTAssertEqual(shown.map(\.id), [question.id, reply.id], "the lines keep their identity, so the captions don't re-animate")
+        XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: [reply]).map(\.text), ["La capitale du Québec est Québec (la ville de Québec)."])
+
+        // A reply still streaming in, cut inside a bold span.
+        let streaming = VoiceConversationTranscriptEntry(speaker: .assistant, text: "La capitale du Québec est **Qué")
+        XCTAssertEqual(VoiceConversationSheet.captionLines(from: [streaming]).map(\.text), ["La capitale du Québec est Qué"])
+
+        let marked = VoiceConversationTranscriptEntry(speaker: .assistant, text: "## Plan\n- *Pack* the `tent`\n- See [the map](https://x.y)")
+        XCTAssertEqual(VoiceConversationSheet.captionLines(from: [marked]).map(\.text), ["Plan Pack the tent See the map"])
+
+        // What the user said is never rewritten.
+        let said = VoiceConversationTranscriptEntry(speaker: .user, text: "what is 5 ** 3 and **this**")
+        XCTAssertEqual(VoiceConversationSheet.captionLines(from: [said]).map(\.text), ["what is 5 ** 3 and **this**"])
+    }
+
     func testTheV2CallClockShowsMinutesThenHours() {
         XCTAssertEqual(V2CallHeaderTitle.clock(0), "0:00")
         XCTAssertEqual(V2CallHeaderTitle.clock(12.9), "0:12")

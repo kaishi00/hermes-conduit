@@ -480,13 +480,19 @@ extension VoiceConversationSheet {
         .padding(.top, 14)
     }
 
-    /// Hermes' `@session:<id>` chat links read as the chat's name, as in
-    /// the transcript bubbles.
     private var v2CaptionLines: [VoiceConversationTranscriptEntry] {
-        controller.conversationTranscript.suffix(2).map { entry in
-            entry.speaker == .user
-                ? entry
-                : VoiceConversationTranscriptEntry(id: entry.id, speaker: entry.speaker, text: HermesSessionReference.plain(entry.text))
+        Self.captionLines(from: controller.conversationTranscript)
+    }
+
+    /// The last two lines said. In a reply, Hermes' `@session:<id>` chat
+    /// links read as the chat's name (as the transcript bubbles show them)
+    /// and Markdown marks drop, as in the live calls' captions.
+    static func captionLines(from transcript: [VoiceConversationTranscriptEntry]) -> [VoiceConversationTranscriptEntry] {
+        transcript.suffix(2).map { entry in
+            guard entry.speaker == .assistant else { return entry }
+            var line = entry
+            line.text = HermesSessionReference.plain(entry.text)
+            return LiveVoiceCallSheet.captionLine(line)
         }
     }
 

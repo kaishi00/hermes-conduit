@@ -348,7 +348,16 @@ struct LiveVoiceCallSheet: View {
 
     /// The captions under the orb: the last two lines said.
     static func captionLines(from transcript: [VoiceConversationTranscriptEntry]) -> [VoiceConversationTranscriptEntry] {
-        Array(transcript.suffix(2))
+        transcript.suffix(2).map(captionLine)
+    }
+
+    /// A reply's Markdown marks aren't said, so the caption drops them too:
+    /// "**Québec**" reads "Québec". What the user said shows as heard.
+    static func captionLine(_ entry: VoiceConversationTranscriptEntry) -> VoiceConversationTranscriptEntry {
+        guard entry.speaker == .assistant else { return entry }
+        var line = entry
+        line.text = PreviewText.plain(entry.text)
+        return line
     }
 
     // MARK: Transcript
