@@ -187,9 +187,6 @@ struct ChatWorkingLine: View {
     /// When the turn began; nil hides the timer.
     var startedAt: Date?
     @Environment(\.chatRowState) private var rowState
-    @Environment(\.chatRowActions) private var rowActions
-    /// Acted on, not observed: what a row shows comes from `rowState`.
-    private var appState: AppState { rowActions.required }
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -378,9 +375,6 @@ struct ChatStepRow: View {
     let message: ChatMessage
     let placement: ChatStepPlacement
     @Environment(\.chatRowState) private var rowState
-    @Environment(\.chatRowActions) private var rowActions
-    /// Acted on, not observed: what a row shows comes from `rowState`.
-    private var appState: AppState { rowActions.required }
     @Environment(\.chatRowDisclosure) private var disclosure
 
     var body: some View {

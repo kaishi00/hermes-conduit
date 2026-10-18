@@ -84,6 +84,8 @@ struct ComposerBar: View, Equatable {
     @State private var holdsExpanded = false
     @State private var collapseTask: Task<Void, Never>?
 
+    /// AppState lives as long as the app (ConduitApp), so the StateObject
+    /// made for the first one is the one every later init names.
     private let appStateID: ObjectIdentifier
 
     init(appState: AppState) {
