@@ -207,6 +207,9 @@ struct V2Shell: View {
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     /// The Chats filter (V2ChatsView), set from Tasks to list cron runs.
     @AppStorage("conduit.v2.sessionFilter") private var chatsFilterRaw = "all"
+    /// Chats' Sessions/Projects switch (V2ChatsView): Projects would hide
+    /// the runs.
+    @AppStorage("conduit.sessionPresentation") private var chatsPresentationRaw = "sessions"
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -529,7 +532,9 @@ struct V2Shell: View {
     /// lists them, at the top of Chats rather than behind an open chat.
     private func showScheduledRuns() {
         chatsFilterRaw = V2SessionFilter.scheduled.rawValue
-        chatsPath.removeAll { $0 == .conversation }
+        chatsPresentationRaw = "sessions"
+        // The list itself: not a chat, a project or Artifacts over it.
+        chatsPath.removeAll()
         visitedTabs.insert(.chats)
         selectTab(.chats)
     }

@@ -252695,7 +252695,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tampilkan jalannya di Obrolan"
+            "value" : "Tampilkan eksekusi di Obrolan"
           }
         },
         "it" : {
@@ -252777,7 +252777,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Setiap jalannya disimpan sebagai percakapan tersendiri. Obrolan menampilkannya di filter Terjadwal. Minta Hermes untuk menambah atau mengubah jadwal."
+            "value" : "Setiap eksekusi disimpan sebagai percakapan tersendiri. Obrolan menampilkannya di filter Terjadwal. Minta Hermes untuk menambah atau mengubah jadwal."
           }
         },
         "it" : {
