@@ -13,6 +13,9 @@ on:
       watch:
         description: "Watch simulator name"
         default: "Apple Watch Ultra 3"
+  push:
+    # TEMPORARY: one validation run before the PR; removed in the next commit.
+    branches: [claude/project-thread-3rugpr]
 
 permissions:
   contents: write
