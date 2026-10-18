@@ -110,29 +110,28 @@ final class AppStoreScreenshotTests: XCTestCase {
         settle(3)
     }
 
-    /// Back to the Chats list. The tab bar stays in the hierarchy (and
-    /// reports itself hittable) under a pushed chat, so the list's own
-    /// search field is the sign the list is showing.
+    /// Back to the Chats list. The list and tab bar stay in the hierarchy
+    /// under a pushed chat, so the chat's own menu button is the sign a
+    /// chat is still showing.
     private func backToTabs() {
-        let list = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "placeholderValue BEGINSWITH 'Search' OR label BEGINSWITH 'Search'")).firstMatch
-        for _ in 0..<3 {
-            if list.exists && list.isHittable { break }
-            // The V2 conversation's Back is the top-left round button.
+        let chatMenu = app.buttons["conversation.menu"]
+        for _ in 0..<3 where chatMenu.exists {
+            // The V2 conversation's Back: the small round button top left.
             let screen = app.frame
             let back = app.buttons.allElementsBoundByIndex.first { button in
                 let f = button.frame
-                return f.width > 0 && f.minX < screen.width * 0.15 && f.minY < screen.height * 0.12
+                return f.width > 0 && f.width <= 64 && f.minX < screen.width * 0.15 && f.minY < screen.height * 0.12
             }
-            if let back {
+            if let back, back.isHittable {
                 back.tap()
             } else {
                 let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                 start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
             }
-            _ = list.waitForExistence(timeout: 4)
+            let deadline = Date().addingTimeInterval(4)
+            while chatMenu.exists, Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
         }
-        if !list.exists {
+        if chatMenu.exists {
             snap("debug-back-failed")
             let tree = XCTAttachment(string: app.debugDescription)
             tree.name = "debug-back-tree"
