@@ -106,6 +106,7 @@ struct LoginAddressStep: View {
                 }
             }
         }
+        .loginReadableWidth()
         .padding(.horizontal, 16)
         .padding(.top, context == .addSheet ? 12 : 0)
         .padding(.bottom, 12)
@@ -383,6 +384,7 @@ struct LoginCredentialsPage: View {
                 }
             }
         }
+        .loginReadableWidth()
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 12)
@@ -617,6 +619,7 @@ struct LoginDashboardsScreen: View {
                     .multilineTextAlignment(.center)
             }
         }
+        .loginReadableWidth()
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
     }
@@ -1061,7 +1064,27 @@ struct LoginCapsuleButtonStyle: ButtonStyle {
     }
 }
 
+/// A sign-in screen's column on a wide screen (an iPad, a wide window): a
+/// readable width in the middle rather than edge to edge, as wide as the
+/// cards Hermes shows in a chat at the default text size. It grows with the
+/// text size, as UIKit's readable content guide does. An iPhone is
+/// narrower, so it never applies there.
+private struct LoginReadableWidth: ViewModifier {
+    @ScaledMetric(relativeTo: .body) private var maxWidth: CGFloat = 560
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
+    }
+}
+
 extension View {
+    /// A sign-in screen's column: see `LoginReadableWidth`.
+    func loginReadableWidth() -> some View {
+        modifier(LoginReadableWidth())
+    }
+
     /// A sign-in field: a quiet rounded well that turns gold while focused.
     func loginFieldChrome(isFocused: Bool, trailingPadding: CGFloat = 14) -> some View {
         self

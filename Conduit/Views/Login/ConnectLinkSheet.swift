@@ -131,6 +131,7 @@ struct ConnectLinkSheet: View {
                 .padding(.top, 4)
             }
         }
+        .loginReadableWidth()
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 16)
