@@ -79,7 +79,7 @@ PY
 )
 
 "$HERMES" plugins install kaishi00/hermes-conduit-notifier --enable > "$DEMO_WORK/plugin.log" 2>&1 \
-  || { echo "::warning::notifier plugin install failed"; tail -20 "$DEMO_WORK/plugin.log"; }
+  || { echo "::error::notifier plugin install failed"; tail -20 "$DEMO_WORK/plugin.log"; exit 1; }
 
 if ! grep -q " $DEMO_HOST\$" /etc/hosts; then
   echo "127.0.0.1 $DEMO_HOST" | sudo tee -a /etc/hosts >/dev/null
