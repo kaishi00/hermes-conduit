@@ -581,6 +581,100 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.savedDashboardRegistry.dashboards.count, 3)
     }
 
+    // MARK: - Native OAuth grants on switch
+
+    private func makeAppState(
+        registry: SavedDashboardRegistry,
+        mintTicket: @escaping @MainActor (String) async throws -> String
+    ) -> AppState {
+        AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: registry,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(mintTicket: mintTicket),
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: makeAppearanceStore()
+        )
+    }
+
+    private func grant() -> NativeOAuthTokenSet {
+        NativeOAuthTokenSet(accessToken: "access", refreshToken: "refresh", expiresAt: 4_000_000_000, provider: "self-hosted", userID: "user")
+    }
+
+    /// A dashboard whose only saved sign-in is its OAuth grant (the saved
+    /// session was cleared, or the first ticket never arrived) mints a
+    /// ticket from that grant on a switch, the way cold launch does,
+    /// instead of opening a sign-in it doesn't need.
+    func testSwitchToAGrantOnlyDashboardMintsATicketFromTheGrant() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var minted: [String] = []
+        let appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { baseURL in
+                minted.append(baseURL)
+                throw DashboardTicketBridgeError.signInRequired
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertEqual(minted, [vps.normalizedURL], "The switch asks the grant for a ticket")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertTrue(appState.showLogin, "A refused grant ends at sign-in")
+        XCTAssertNotNil(appState.pendingLoginFailure, "...saying why")
+    }
+
+    /// The sign-in screen's row for that dashboard: a tap reaches the grant
+    /// and, when it is refused, shows why. It never does nothing.
+    func testTappingAGrantOnlyDashboardRowIsNeverADeadTap() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var minted = 0
+        let appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                minted += 1
+                throw DashboardTicketBridgeError.signInRequired
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+        XCTAssertEqual(appState.savedSignIn(for: vps.id), .session)
+        let flow = LoginFlowModel()
+        flow.attach(appState)
+
+        await flow.open(vps)
+        await flow.open(vps)
+
+        XCTAssertEqual(minted, 2, "Every tap tries the grant")
+        XCTAssertNotNil(appState.pendingLoginFailure, "The refusal is shown under the row")
+    }
+
+    /// A widget launch that expires while the ticket is minted stops before
+    /// connecting and is settled on sign-in, as the other saved sign-ins are.
+    func testAnExpiredWidgetLaunchStopsAGrantSwitchBeforeConnecting() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        var leaseIsCurrent = true
+        let appState = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]),
+            mintTicket: { _ in
+                leaseIsCurrent = false
+                return "ticket"
+            }
+        )
+        KeychainHelper.saveNativeOAuthTokens(grant(), dashboardID: track(vps.id))
+
+        await appState.switchDashboard(to: vps.id, widgetLease: WidgetLaunchLease(isCurrent: { leaseIsCurrent }))
+
+        XCTAssertNil(appState.connection, "Nothing connects for an expired launch")
+        XCTAssertFalse(appState.isConnecting)
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertNotNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: vps.id), "The grant stays for the next try")
+    }
+
     // MARK: - Dashboard-scoped profile presentation (profile bleed)
 
     func testDefaultProfileNameAndPhotoDoNotFollowADashboardSwitch() throws {

@@ -10684,12 +10684,16 @@ final class AppState: ObservableObject {
     func restoreNativeOAuthConnection(
         baseURL: String,
         dashboardID: UUID,
-        switchGeneration: UInt64? = nil
+        switchGeneration: UInt64? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async {
+        guard widgetLease?.isCurrent != false else { return }
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
             // A dashboard switch made meanwhile owns the flow.
             guard restoreOwnsFlow(switchGeneration) else { return }
+            // So does a newer widget launch, or the expiry of this one.
+            guard widgetLease?.isCurrent != false else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
@@ -11520,6 +11524,23 @@ final class AppState: ObservableObject {
         }
         // Mirrors cold launch: the target's own saved copy and Chats list,
         // kept while another dashboard was in use, show until it answers.
+        // A browser sign-in's OAuth grant comes first, as it does there: it
+        // mints a fresh ticket, where a saved one may already be spent, and
+        // it is all a dashboard has left once a refused session was cleared.
+        if KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil {
+            presentOfflineChatIfAvailable(dashboardID: id)
+            showLogin = false
+            isConnecting = true
+            turnState = .synchronizing
+            await restoreNativeOAuthConnection(
+                baseURL: dashboard.normalizedURL,
+                dashboardID: id,
+                switchGeneration: generation,
+                widgetLease: widgetLease
+            )
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
+            return
+        }
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
             if !credentials.requiresFaceID {
                 presentOfflineChatIfAvailable(dashboardID: id)
