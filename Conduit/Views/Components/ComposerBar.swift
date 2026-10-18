@@ -15,7 +15,10 @@ import UniformTypeIdentifiers
 
 struct ComposerBar: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject var appState: AppState
+    /// Redraws only when something the composer shows changes, not on
+    /// every AppState publish (ComposerUpdates.swift).
+    @StateObject private var updates: ComposerUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var text = ""
@@ -76,6 +79,10 @@ struct ComposerBar: View {
     /// can take focus from the field) doesn't collapse it under the finger.
     @State private var holdsExpanded = false
     @State private var collapseTask: Task<Void, Never>?
+
+    init(appState: AppState) {
+        _updates = StateObject(wrappedValue: ComposerUpdates(appState))
+    }
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
