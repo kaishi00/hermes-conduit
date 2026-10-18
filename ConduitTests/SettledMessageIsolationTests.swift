@@ -243,7 +243,7 @@ final class SettledMessageIsolationTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         testWindow = window
-        drainUntil(0.5) { false }
+        XCTAssertTrue(PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0), "the mount never settled")
 
         TranscriptPerf.reset()
         appState.objectWillChange.send()
