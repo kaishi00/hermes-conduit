@@ -193,7 +193,7 @@ final class NativeAuthClientTests: XCTestCase {
 
         let discovery = try await client.authProviderDiscovery()
 
-        guard case .providers(let providers) = discovery else {
+        guard case .providers(let providers, _) = discovery else {
             return XCTFail("Expected a password provider answer, got \(discovery)")
         }
         XCTAssertEqual(providers.count, 1)
@@ -253,6 +253,78 @@ final class NativeAuthClientTests: XCTestCase {
         }
     }
 
+    // MARK: - auth_flows on the provider answer
+
+    func testProviderDiscoveryReadsAdvertisedAuthFlows() async throws {
+        let client = NativeAuthClient(
+            baseURL: "https://edge-native.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let discovery = try await client.authProviderDiscovery()
+
+        guard case .providers(let providers, let authFlows) = discovery else {
+            return XCTFail("Expected a provider answer, got \(discovery)")
+        }
+        XCTAssertEqual(providers.first?["name"] as? String, "self-hosted")
+        XCTAssertEqual(authFlows, ["cookie", "native_pkce"])
+    }
+
+    func testNativeSignInBehindAnEdgeIsDecidedByTheProviderAnswer() async throws {
+        // The edge answers the provider route anonymously and refuses
+        // `/api/status` without a bearer: the flows the provider answer
+        // advertises decide, and `/api/status` is never asked.
+        let client = NativeAuthClient(
+            baseURL: "https://edge-native.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let mode = try await DashboardSignInResolver.resolve(using: client)
+
+        XCTAssertEqual(mode, .interactive(.nativeOAuth(provider: "self-hosted")))
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/status", host: "edge-native.example"), 0)
+    }
+
+    func testProviderAnswerWithoutAuthFlowsStillAsksStatus() async throws {
+        // Stock Hermes: `auth_flows` only on `/api/status`. Unchanged.
+        let client = NativeAuthClient(
+            baseURL: "https://stock-native.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let discovery = try await client.authProviderDiscovery()
+        guard case .providers(_, let authFlows) = discovery else {
+            return XCTFail("Expected a provider answer, got \(discovery)")
+        }
+        XCTAssertNil(authFlows)
+        let mode = try await DashboardSignInResolver(client: client).mode(for: discovery)
+
+        XCTAssertEqual(mode, .interactive(.nativeOAuth(provider: "self-hosted")))
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/status", host: "stock-native.example"), 1)
+    }
+
+    func testMalformedAuthFlowsOnTheProviderAnswerAreNeverADowngrade() async throws {
+        // Not a list of strings: not advertised, so `/api/status` decides,
+        // and its refusal here is an error, never "no native sign-in".
+        let client = NativeAuthClient(
+            baseURL: "https://edge-malformed-flows.example",
+            sessionConfiguration: makeSessionConfiguration()
+        )
+
+        let discovery = try await client.authProviderDiscovery()
+        guard case .providers(_, let authFlows) = discovery else {
+            return XCTFail("Expected a provider answer, got \(discovery)")
+        }
+        XCTAssertNil(authFlows)
+        do {
+            let mode = try await DashboardSignInResolver(client: client).mode(for: discovery)
+            XCTFail("A refused capability check must not decide a mode, got \(mode)")
+        } catch {
+            XCTAssertTrue(error is AuthClientError, "\(error)")
+        }
+        XCTAssertEqual(NativeAuthURLProtocol.requestCount(forPath: "/api/status", host: "edge-malformed-flows.example"), 1)
+    }
+
     func testProviderDiscoverySendsCloudflareAccessHeaders() async throws {
         let credentials = CloudflareAccessCredentials(
             clientID: "test-client-id",
@@ -266,7 +338,7 @@ final class NativeAuthClientTests: XCTestCase {
 
         let discovery = try await client.authProviderDiscovery()
 
-        guard case .providers(let providers) = discovery else {
+        guard case .providers(let providers, _) = discovery else {
             return XCTFail("Expected a provider answer, got \(discovery)")
         }
         XCTAssertEqual(providers.count, 1)
@@ -619,7 +691,10 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "nokey.example",
             "wrongshape.example",
             "arrayroot.example",
-            "locationless.example"
+            "locationless.example",
+            "edge-native.example",
+            "stock-native.example",
+            "edge-malformed-flows.example"
         ].contains(host)
     }
 
@@ -678,6 +753,12 @@ private final class NativeAuthURLProtocol: URLProtocol {
         recordLock.lock()
         defer { recordLock.unlock() }
         return responseRecords.filter { $0.host == host }.count
+    }
+
+    static func requestCount(forPath path: String, host: String) -> Int {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return requestRecords.filter { $0.url?.host == host && $0.url?.path == path }.count
     }
 
     static func requestHeader(forPath path: String, name: String) -> String? {
@@ -819,6 +900,36 @@ private final class NativeAuthURLProtocol: URLProtocol {
             )
         case "providers.example":
             return Fixture(statusCode: 200, headers: [:], body: providerBody())
+        case "edge-native.example", "stock-native.example", "edge-malformed-flows.example":
+            // An auth edge in front of Hermes answers the provider route
+            // anonymously and refuses anything else without a bearer.
+            let host = request.url?.host ?? ""
+            switch request.url?.path {
+            case "/api/auth/providers":
+                let flows: String
+                switch host {
+                case "edge-native.example": flows = #","auth_flows":["cookie","native_pkce"]"#
+                case "edge-malformed-flows.example": flows = #","auth_flows":["native_pkce",1]"#
+                default: flows = ""
+                }
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"providers":[{"name":"self-hosted","display_name":"Self-Hosted","supports_password":false}]\#(flows)}"#.utf8)
+                )
+            case "/api/status" where host == "stock-native.example":
+                return Fixture(
+                    statusCode: 200,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"status":"ok","auth_flows":["cookie","native_pkce"]}"#.utf8)
+                )
+            default:
+                return Fixture(
+                    statusCode: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                )
+            }
         case "server-error.example":
             return Fixture(statusCode: 500, headers: [:], body: Data(#"{"error":"origin unavailable"}"#.utf8))
         case "native-capability.example":

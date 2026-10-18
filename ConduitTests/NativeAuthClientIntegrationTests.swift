@@ -519,7 +519,7 @@ final class NativeAuthClientIntegrationTests: XCTestCase {
             sessionConfiguration: realSessionConfiguration()
         ).authProviderDiscovery()
 
-        guard case .providers(let providers) = discovery else {
+        guard case .providers(let providers, _) = discovery else {
             return XCTFail("Expected a same-origin redirect to resolve to providers, got \(discovery)")
         }
         XCTAssertEqual(providers.count, 1)

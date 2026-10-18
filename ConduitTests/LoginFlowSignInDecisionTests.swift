@@ -118,6 +118,24 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         XCTAssertEqual(LoginFlowDiscoveryURLProtocol.requestCount(host: host, path: "/api/status"), 1)
     }
 
+    func testPickingTheBrowserSignInOpensSafariAtOnceWhenTheProviderAnswerAdvertisedIt() async {
+        // Behind an auth edge `/api/status` needs a bearer; the provider
+        // answer's `auth_flows` already name native sign-in.
+        let (flow, _) = makeWireFlow()
+        let host = "flow-mixed-edge.example.test"
+        flow.address = "https://\(host)"
+        await flow.continueFromAddress()
+        XCTAssertTrue(flow.showsCredentials)
+
+        await flow.signInWithBrowserInstead()
+
+        XCTAssertEqual(flow.nativeOAuthRequest?.baseURL, "https://\(host)")
+        XCTAssertEqual(flow.nativeOAuthRequest?.provider, "self-hosted")
+        XCTAssertNil(flow.browserRequest)
+        XCTAssertNil(flow.failure)
+        XCTAssertEqual(LoginFlowDiscoveryURLProtocol.requestCount(host: host, path: "/api/status"), 0)
+    }
+
     func testAFailedCapabilityCheckFailsOnlyTheBrowserPickAndKeepsThePassword() async {
         let (flow, _) = makeWireFlow()
         let host = "flow-mixed-status-5xx.example.test"
@@ -356,6 +374,10 @@ private final class LoginFlowDiscoveryURLProtocol: URLProtocol {
         case ("flow-mixed.example.test", "/api/auth/providers"),
              ("flow-mixed-status-5xx.example.test", "/api/auth/providers"):
             return (200, json, "{\"providers\":[\(basic),\(oidc)]}")
+        case ("flow-mixed-edge.example.test", "/api/auth/providers"):
+            return (200, json, "{\"providers\":[\(basic),\(oidc)],\"auth_flows\":[\"cookie\",\"native_pkce\"]}")
+        case ("flow-mixed-edge.example.test", _):
+            return (401, json, #"{"detail":"Unauthorized"}"#)
         case ("flow-mixed.example.test", "/api/status"):
             return (200, json, #"{"auth_flows":["cookie","native_pkce"]}"#)
         case ("flow-mixed-status-5xx.example.test", "/api/status"):

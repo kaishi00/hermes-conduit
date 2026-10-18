@@ -108,6 +108,82 @@ final class DashboardSignInDecisionTests: XCTestCase {
         XCTAssertNil(DashboardBrowserSignInOffer.nativeCapable(provider: nil).decidedSignIn)
     }
 
+    // MARK: - auth_flows on the provider answer
+
+    func testAdvertisedNativeFlowDecidesWithoutACapabilityRequest() async throws {
+        // A dashboard behind an auth edge may answer only the provider
+        // route before sign-in; its `auth_flows` there decide, even when the
+        // capability seam would fail (the edge refusing `/api/status`).
+        let (mode, calls) = try await mode(
+            .providers([selfHosted], authFlows: ["cookie", "native_pkce"]),
+            capability: .failure(CapabilityFixture.serverError)
+        )
+        XCTAssertEqual(mode, .interactive(.nativeOAuth(provider: "self-hosted")))
+        XCTAssertEqual(calls, 0, "The provider answer already said")
+    }
+
+    func testAdvertisedFlowsWithoutNativeLeaveTheDecisionToTheCapabilityRequest() async throws {
+        // Only `native_pkce` decides from the provider answer. Any other
+        // list is left to `/api/status`, so the provider answer never routes
+        // a native-capable provider to the browser view on its own, and a
+        // failed check stays an error.
+        for flows in [["cookie"], []] {
+            let native = try await mode(.providers([selfHosted], authFlows: flows), capability: .success(true))
+            XCTAssertEqual(native.0, .interactive(.nativeOAuth(provider: "self-hosted")), "\(flows)")
+            XCTAssertEqual(native.1, 1, "\(flows)")
+            let older = try await mode(.providers([selfHosted], authFlows: flows), capability: .success(false))
+            XCTAssertEqual(older.0, .interactive(.browser(.legacyOAuth)), "\(flows)")
+            do {
+                let (mode, _) = try await mode(
+                    .providers([selfHosted], authFlows: flows),
+                    capability: .failure(CapabilityFixture.serverError)
+                )
+                XCTFail("A failed capability check must not decide a mode, got \(mode)")
+            } catch {
+                XCTAssertEqual(error as? CapabilityFixture, .serverError, "\(flows)")
+            }
+        }
+    }
+
+    func testNoAdvertisedFlowsFallsBackToTheCapabilityRequest() async throws {
+        // Stock Hermes advertises `auth_flows` only on `/api/status`.
+        let supported = try await mode(.providers([selfHosted], authFlows: nil), capability: .success(true))
+        XCTAssertEqual(supported.0, .interactive(.nativeOAuth(provider: "self-hosted")))
+        XCTAssertEqual(supported.1, 1)
+        do {
+            let (mode, _) = try await mode(
+                .providers([selfHosted], authFlows: nil),
+                capability: .failure(CapabilityFixture.serverError)
+            )
+            XCTFail("A failed capability check must not decide a mode, got \(mode)")
+        } catch {
+            XCTAssertEqual(error as? CapabilityFixture, .serverError)
+        }
+    }
+
+    func testOfferedBrowserSignInCarriesTheAdvertisedFlows() async throws {
+        let (mode, calls) = try await mode(.providers([password, selfHosted], authFlows: ["cookie", "native_pkce"]))
+        let offer = DashboardBrowserSignInOffer.nativeCapable(
+            provider: "self-hosted",
+            advertisedFlows: ["cookie", "native_pkce"]
+        )
+        XCTAssertEqual(mode, .passwordOrBrowser(offer))
+        XCTAssertEqual(calls, 0)
+        XCTAssertEqual(offer.decidedSignIn, .nativeOAuth(provider: "self-hosted"))
+
+        let probe = CapabilityProbe(.failure(CapabilityFixture.serverError))
+        let opened = try await probe.resolver.signIn(for: offer)
+        XCTAssertEqual(opened, .nativeOAuth(provider: "self-hosted"))
+        XCTAssertEqual(probe.calls, 0, "Picking it asks nothing more")
+
+        let cookieOnly = DashboardBrowserSignInOffer.nativeCapable(provider: "self-hosted", advertisedFlows: ["cookie"])
+        XCTAssertNil(cookieOnly.decidedSignIn, "Only native_pkce decides from the provider answer")
+        let older = CapabilityProbe(.success(false))
+        let olderOpened = try await older.resolver.signIn(for: cookieOnly)
+        XCTAssertEqual(olderOpened, .browser(.legacyOAuth))
+        XCTAssertEqual(older.calls, 1)
+    }
+
     func testCrossOriginRedirectIsAuthProxyBrowserSignInWithoutACapabilityRequest() async throws {
         let (mode, calls) = try await mode(.interactiveSignInRequired)
         XCTAssertEqual(mode, .interactive(.browser(.authProxyRedirect)))

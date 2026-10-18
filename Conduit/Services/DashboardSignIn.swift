@@ -37,23 +37,34 @@ enum DashboardInteractiveSignIn: Equatable {
 /// The browser sign-in a password dashboard also offers, as discovery
 /// alone describes it. Whether a native-capable provider continues in
 /// Safari or in the browser view is the native capability check, and that
-/// check runs only once the user picks this sign-in: a failing check then
-/// fails that pick, never the password the dashboard also offers, and it
-/// never quietly turns into another sign-in.
+/// check runs only once the user picks this sign-in (unless the provider
+/// answer already advertised `native_pkce`): a failing check then fails
+/// that pick, never the password the dashboard also offers, and it never
+/// quietly turns into another sign-in.
 enum DashboardBrowserSignInOffer: Equatable {
     /// Providers listed without `supports_password` (Hermes before password
     /// sign-in existed): the dashboard's own sign-in page.
     case legacyOAuth
     /// A provider that signs in natively when the dashboard advertises it.
-    case nativeCapable(provider: String?)
+    /// `advertisedFlows` is the `auth_flows` the provider answer carried,
+    /// nil when it carried none (stock Hermes advertises them only on
+    /// `/api/status`, which the capability check then asks).
+    case nativeCapable(provider: String?, advertisedFlows: [String]? = nil)
 
     /// The sign-in this offer opens when discovery alone decides it; nil
     /// when the native capability check must decide. Lets a surface open it
     /// without a busy step; `DashboardSignInResolver.signIn(for:)` agrees.
+    /// Only an advertised `native_pkce` decides here: any other answer is
+    /// left to the capability check, so the provider answer can open native
+    /// sign-in but never, on its own, route a native-capable provider to the
+    /// browser view.
     var decidedSignIn: DashboardInteractiveSignIn? {
         switch self {
-        case .legacyOAuth: return .browser(.legacyOAuth)
-        case .nativeCapable: return nil
+        case .legacyOAuth:
+            return .browser(.legacyOAuth)
+        case .nativeCapable(let provider, let advertisedFlows):
+            guard let advertisedFlows, HermesProviderCheck.advertisesNativeSignIn(advertisedFlows) else { return nil }
+            return .nativeOAuth(provider: provider)
         }
     }
 }
@@ -80,11 +91,13 @@ enum DashboardSignInError: Error, Equatable {
     case noSignInMethod
 }
 
-/// Turns a discovery answer into a sign-in mode. The native capability
-/// lookup stays behind the one `supportsNativeOAuth` seam so a change to how
-/// Hermes advertises it touches a single place.
+/// Turns a discovery answer into a sign-in mode. A provider answer that
+/// advertises `native_pkce` in its `auth_flows` decides native sign-in;
+/// otherwise the native capability lookup stays behind the one
+/// `supportsNativeOAuth` seam.
 struct DashboardSignInResolver {
-    /// Whether the dashboard supports Hermes' native system-browser flow.
+    /// Whether the dashboard supports Hermes' native system-browser flow,
+    /// when its provider answer did not advertise it.
     /// Errors are failures, never "unsupported": a broken capability answer
     /// must not quietly send a native-capable provider to the embedded
     /// browser or to password sign-in.
@@ -112,8 +125,11 @@ struct DashboardSignInResolver {
             return .interactive(.browser(.authProxyRedirect))
         case .unrecognized:
             throw DashboardSignInError.unrecognizedServer
-        case .providers(let providers):
-            switch (HermesProviderCheck.supportsPassword(providers), Self.browserOffer(providers)) {
+        case .providers(let providers, let authFlows):
+            switch (
+                HermesProviderCheck.supportsPassword(providers),
+                Self.browserOffer(providers, advertisedFlows: authFlows)
+            ) {
             case (true, nil):
                 return .password
             case (true, let offer?):
@@ -128,23 +144,34 @@ struct DashboardSignInResolver {
         }
     }
 
-    /// The sign-in an offer opens. Only a native-capable provider asks the
-    /// dashboard anything (the capability check), and a failed check is an
-    /// error, never the browser view or a password.
+    /// The sign-in an offer opens. Only a native-capable provider whose
+    /// provider answer did not advertise `native_pkce` asks the dashboard
+    /// anything (the capability check), and a failed check is an error,
+    /// never the browser view or a password.
     func signIn(for offer: DashboardBrowserSignInOffer) async throws -> DashboardInteractiveSignIn {
+        // Decided by discovery alone: the legacy offer, or an advertised
+        // `native_pkce`.
+        if let decided = offer.decidedSignIn { return decided }
         switch offer {
         case .legacyOAuth:
             return .browser(.legacyOAuth)
-        case .nativeCapable(let provider):
+        case .nativeCapable(let provider, _):
             return try await supportsNativeOAuth() ? .nativeOAuth(provider: provider) : .browser(.legacyOAuth)
         }
     }
 
     /// The browser sign-in a provider list names, if any. A native-capable
-    /// provider wins over providers listed the pre-password way.
-    static func browserOffer(_ providers: [[String: Any]]) -> DashboardBrowserSignInOffer? {
+    /// provider wins over providers listed the pre-password way, and carries
+    /// the `auth_flows` the same answer advertised.
+    static func browserOffer(
+        _ providers: [[String: Any]],
+        advertisedFlows: [String]? = nil
+    ) -> DashboardBrowserSignInOffer? {
         if HermesProviderCheck.hasNativeOAuthProvider(providers) {
-            return .nativeCapable(provider: HermesProviderCheck.nativeOAuthProvider(providers))
+            return .nativeCapable(
+                provider: HermesProviderCheck.nativeOAuthProvider(providers),
+                advertisedFlows: advertisedFlows
+            )
         }
         if HermesProviderCheck.hasLegacySessionProvider(providers) {
             return .legacyOAuth

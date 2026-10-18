@@ -1137,6 +1137,24 @@ final class ConnectionSetupTestTests: XCTestCase {
         XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/ws-ticket", host: host), 0)
     }
 
+    func testProbeNativeDashboardBehindAnEdgeIsDecidedByTheProviderAnswer() async {
+        // `/api/status` needs a bearer behind this edge; the provider
+        // answer's `auth_flows` decide, so the probe never asks it.
+        let host = "probe-edge-native.example"
+        let events = await runProbe("https://\(host)")
+        XCTAssertEqual(events, [
+            .started(.server),
+            .succeeded(.server),
+            .started(.dashboard),
+            .succeeded(.dashboard),
+            .started(.authentication),
+            .requiresInteractiveSignIn(.authentication, .nativeOAuth(provider: "self-hosted")),
+        ])
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/status", host: host), 0)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/auth/password-login", host: host), 0)
+        XCTAssertEqual(SetupProbeURLProtocol.requestCount(forPath: "/api/auth/ws-ticket", host: host), 0)
+    }
+
     func testProbeMalformed200IsUnexpectedServerResponseNotInteractive() async {
         // Arbitrary website content: an unexpected server response, never
         // the interactive-auth outcome.
@@ -1341,6 +1359,7 @@ private final class SetupProbeURLProtocol: URLProtocol {
         "probe-hang.example",
         "probe-interactive.example",
         "probe-native-oauth.example",
+        "probe-edge-native.example",
         "probe-empty-providers.example",
         "probe-malformed.example",
         "probe-legacy-oauth.example",
@@ -1539,6 +1558,21 @@ private final class SetupProbeURLProtocol: URLProtocol {
             case "/api/auth/ws-ticket": return ticket
             default: return nil
             }
+        case "probe-edge-native.example":
+            // An auth edge: only the provider route is anonymous, and it
+            // advertises the sign-in flows itself.
+            guard request.url?.path == "/api/auth/providers" else {
+                return Fixture(
+                    statusCode: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"detail":"Unauthorized"}"#.utf8)
+                )
+            }
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"providers":[{"name":"self-hosted","supports_password":false}],"auth_flows":["cookie","native_pkce"]}"#.utf8)
+            )
         case "probe-native-oauth.example":
             switch request.url?.path {
             case "/api/auth/providers":

@@ -605,8 +605,9 @@ final class LoginFlowModel: ObservableObject {
 
     /// The sign-in step's "Sign in with browser instead". A provider that
     /// can sign in natively asks the dashboard for that capability now that
-    /// it is picked: a failed check shows on the step, with the password
-    /// still there, and never opens another sign-in instead.
+    /// it is picked, unless its provider answer advertised it: a failed
+    /// check shows on the step, with the password still there, and never
+    /// opens another sign-in instead.
     func signInWithBrowserInstead() async {
         guard let target, let offer = target.browserOffer, !isWorking else { return }
         clearFailure()

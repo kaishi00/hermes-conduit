@@ -93,8 +93,9 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
 enum ConnectionRepairSignIn {
     /// The tested interactive outcome's sign-in, or, for the sign-in-choice
     /// outcome, its browser sign-in, whose native capability check runs now
-    /// that it is picked. A failed check is an error: never the browser view
-    /// or a password instead. Nil when the test ended in neither outcome.
+    /// that it is picked (unless the tested provider answer advertised
+    /// `native_pkce`). A failed check is an error: never the browser view or
+    /// a password instead. Nil when the test ended in neither outcome.
     static func signIn(
         for testState: ConnectionSetupTestState,
         resolver: DashboardSignInResolver

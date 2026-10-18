@@ -334,6 +334,21 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertEqual(legacy.calls, 0)
     }
 
+    func testSignInToReconnectFromAChoiceWhoseTestAdvertisedNativeSignInAsksNothing() async throws {
+        let flow = try repairFlowAtReview(
+            ending: .requiresSignInChoice(
+                .authentication,
+                .nativeCapable(provider: "self-hosted", advertisedFlows: ["cookie", "native_pkce"])
+            )
+        )
+        // Behind an auth edge the capability check would be refused; the
+        // tested provider answer already said.
+        let seam = CapabilitySeam(.failure(CapabilityFixture.unavailable))
+        let opened = try await ConnectionRepairSignIn.signIn(for: flow.testState, resolver: seam.resolver)
+        XCTAssertEqual(opened, .nativeOAuth(provider: "self-hosted"))
+        XCTAssertEqual(seam.calls, 0)
+    }
+
     func testSignInToReconnectFailsClosedWhenAChoicesCapabilityCheckFails() async throws {
         let flow = try repairFlowAtReview(
             ending: .requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted"))
