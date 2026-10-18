@@ -26,6 +26,7 @@ struct ComposerInputs: Equatable {
     let isConnected: Bool
     let hasConnection: Bool
     let lastConnectionFailure: ConnectionFailure?
+    let showsConnectionRepair: Bool
     let isCompressing: Bool
     let chatTakeover: ChatTakeoverState?
     let activeChatTakeover: ChatTakeoverState?
@@ -75,6 +76,7 @@ struct ComposerInputs: Equatable {
         isConnected = appState.isConnected
         hasConnection = appState.connection != nil
         lastConnectionFailure = appState.lastConnectionFailure
+        showsConnectionRepair = appState.showsConnectionRepair
         isCompressing = appState.isCompressingActiveSession
         chatTakeover = appState.chatTakeover
         activeChatTakeover = appState.activeChatTakeover
