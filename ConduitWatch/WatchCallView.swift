@@ -135,6 +135,8 @@ struct WatchCallControls: View {
                     .accessibilityLabel(Text("Jobs running: \(String(call.jobsRunning))"))
                 }
             }
+            // Fits the 40 mm screen's width at every text size.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             if let hint {
                 Text(hint)
                     .font(.caption2)
