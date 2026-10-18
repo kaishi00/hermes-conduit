@@ -466,6 +466,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             sceneIsActive: true,
             reduceMotion: false,
             lowPowerMode: false,
+            idle: false,
             thermalState: .nominal
         ))
         XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
@@ -473,6 +474,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             sceneIsActive: true,
             reduceMotion: false,
             lowPowerMode: false,
+            idle: false,
             thermalState: .fair
         ))
 
@@ -482,22 +484,25 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             sceneIsActive: true,
             reduceMotion: false,
             lowPowerMode: false,
+            idle: false,
             thermalState: .nominal
         ))
 
-        let pausedConditions: [(Bool, Bool, Bool, ProcessInfo.ThermalState)] = [
-            (false, false, false, .nominal), // app inactive/background
-            (true, true, false, .nominal),  // Reduce Motion
-            (true, false, true, .nominal),  // Low Power Mode
-            (true, false, false, .serious),  // serious thermal pressure
-            (true, false, false, .critical)
+        let pausedConditions: [(Bool, Bool, Bool, Bool, ProcessInfo.ThermalState)] = [
+            (false, false, false, false, .nominal), // app inactive/background
+            (true, true, false, false, .nominal),  // Reduce Motion
+            (true, false, true, false, .nominal),  // Low Power Mode
+            (true, false, false, true, .nominal),  // nobody has used the app for a while
+            (true, false, false, false, .serious),  // serious thermal pressure
+            (true, false, false, false, .critical)
         ]
-        for (sceneIsActive, reduceMotion, lowPowerMode, thermalState) in pausedConditions {
+        for (sceneIsActive, reduceMotion, lowPowerMode, idle, thermalState) in pausedConditions {
             XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
                 drifts: true,
                 sceneIsActive: sceneIsActive,
                 reduceMotion: reduceMotion,
                 lowPowerMode: lowPowerMode,
+                idle: idle,
                 thermalState: thermalState
             ))
         }

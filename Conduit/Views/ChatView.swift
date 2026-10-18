@@ -3670,6 +3670,10 @@ private struct ConduitBreathing<Content: View>: View {
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,
+            // It breathes only while the chat shows work in progress (a
+            // turn, or compacting), never on an idle screen left alone, so
+            // the backdrop's idle pause doesn't apply.
+            idle: false,
             thermalState: devicePower.thermalState
         ) {
             ConduitBreathingTimeline(content: content)

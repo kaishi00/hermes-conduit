@@ -99,6 +99,11 @@ struct MainView: View {
 
     private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
+    private var isVoiceConversationShown: Bool {
+        appState.showVoiceSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet
+            || appState.showGrokLiveSheet || appState.showLocalLiveSheet
+    }
+
     var body: some View {
         sidebarLayoutContent
         // Changes Hermes asked for or just made (AgentSettings.swift).
@@ -170,8 +175,16 @@ struct MainView: View {
         ) { _, holds in
             UIApplication.shared.isIdleTimerDisabled = holds
         }
+        // A voice conversation on screen keeps the backdrop drifting, as a
+        // running turn does (InteractionIdleState).
+        .onChange(of: isVoiceConversationShown, initial: true) { _, shown in
+            InteractionIdleState.shared.setVoiceConversationShown(shown)
+        }
         // Sign-out swaps this view out with a sheet possibly still up.
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            InteractionIdleState.shared.setVoiceConversationShown(false)
+        }
         // Swiping a running call away minimises it; End hangs up.
         .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
             GeminiLiveVoiceSheet(

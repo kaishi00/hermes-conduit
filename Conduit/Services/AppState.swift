@@ -1059,8 +1059,14 @@ final class AppState: ObservableObject {
             || serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
     }
     @Published private(set) var turnState: TurnState = .idle {
-        // A message waiting for this chat goes once it takes one.
-        didSet { if oldValue != turnState { schedulePendingComposerSendCheck() } }
+        didSet {
+            guard oldValue != turnState else { return }
+            // A message waiting for this chat goes once it takes one.
+            schedulePendingComposerSendCheck()
+            // A running turn keeps the backdrop drifting; only its edges
+            // are reported, not every streamed token.
+            InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+        }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
     /// lifecycle boundaries where the socket can die or the gateway can change
