@@ -617,7 +617,7 @@ final class DashboardTicketBridge: NSObject {
         self.requestAuthorizer.cookieUpgradeCookies = { [weak self] in
             await self?.cookiesForRequestsWithoutPage() ?? []
         }
-        if nativeOAuthSession == nil, dashboardID != nil {
+        if nativeOAuthSession == nil, self.dashboardID != nil {
             let observer = DashboardCookieMirrorObserver(bridge: self)
             webView.configuration.websiteDataStore.httpCookieStore.add(observer)
             cookieMirrorObserver = observer
