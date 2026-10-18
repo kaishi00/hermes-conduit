@@ -56,6 +56,8 @@ async def seed(script_path, base, user, password):
 
         await rpc("client.capabilities", {"server_requests": True})
         for chat in script["chats"]:
+            if chat.get("seed") is False:
+                continue  # sent live by the preview recording instead
             created = await rpc("session.create", {"cols": 96, "source": "desktop"})
             sid = created["session_id"]
             for turn in chat["turns"]:

@@ -145,12 +145,46 @@
           ]
         }
       ]
+    },
+    {
+      "title": "Packing list for Big Sur",
+      "seed": false,
+      "turns": [
+        {
+          "match": "what should we pack",
+          "prompt": "What should we pack for the Big Sur trip?",
+          "steps": [
+            {
+              "delay": 0.06,
+              "reasoning": "Camping one night in the redwoods in October: cold nights, foggy mornings, a beach day.",
+              "content": "October nights in the redwoods get down to about 45°F, so pack for cold evenings and a sunny beach day.\n\n**Camp**\n- Tent, sleeping bags rated to 40°F, pads\n- Headlamps and a lantern\n- Stove, fuel and a pot for coffee\n\n**Clothes**\n- Warm layers and a rain shell for the fog\n- Hiking shoes for McWay Falls\n- Sandals and a towel for Pfeiffer Beach\n\n**Food**\n- Breakfast for Sunday, snacks for the drive\n- Lots of water, there's none at the beach\n\nI've saved this as a checklist in your trip notes."
+            }
+          ]
+        }
+      ]
     }
   ],
   "cron": [
-    {"name": "Morning briefing", "schedule": "0 7 * * *", "prompt": "Summarise my calendar, the weather and anything urgent in my inbox."},
-    {"name": "Inbox digest", "schedule": "every 4h", "prompt": "Digest new email and flag anything that needs a reply today."},
-    {"name": "Weekly review", "schedule": "0 18 * * 0", "prompt": "Review this week's notes and tasks and draft next week's priorities."},
-    {"name": "Flight price watch", "schedule": "every 6h", "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.", "paused": true}
+    {
+      "name": "Morning briefing",
+      "schedule": "0 7 * * *",
+      "prompt": "Summarise my calendar, the weather and anything urgent in my inbox."
+    },
+    {
+      "name": "Inbox digest",
+      "schedule": "every 4h",
+      "prompt": "Digest new email and flag anything that needs a reply today."
+    },
+    {
+      "name": "Weekly review",
+      "schedule": "0 18 * * 0",
+      "prompt": "Review this week's notes and tasks and draft next week's priorities."
+    },
+    {
+      "name": "Flight price watch",
+      "schedule": "every 6h",
+      "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.",
+      "paused": true
+    }
   ]
 }

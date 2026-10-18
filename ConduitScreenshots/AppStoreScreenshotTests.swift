@@ -66,6 +66,37 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
     }
 
+    /// The App Preview: the workflow records the screen while this runs.
+    /// Starts on the Chats list, opens a new chat, asks, and lets the
+    /// scripted answer stream in.
+    func testRecordPreview() throws {
+        guard ProcessInfo.processInfo.environment["CONDUIT_RECORD_PREVIEW"] == "1" else {
+            throw XCTSkip("Only the preview recording runs this")
+        }
+        signInIfNeeded()
+        dismissFinishSetupCard()
+        _ = app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30)
+        settle(2)
+        let newChat = app.buttons["New Chat"]
+        guard newChat.waitForExistence(timeout: 10) else {
+            snap("debug-no-new-chat")
+            return
+        }
+        newChat.tap()
+        settle(1.5)
+        let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
+        composer.tap()
+        composer.typeText("What should we pack for the Big Sur trip?")
+        settle(0.5)
+        app.buttons["Send message"].tap()
+        // The scripted answer streams for about 15 s.
+        let done = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'trip notes'")).firstMatch
+        _ = done.waitForExistence(timeout: 40)
+        settle(3)
+        snap("10-preview-end")
+    }
+
     private func openChat(_ title: String, waitingFor text: String) {
         let row = app.staticTexts[title]
         guard row.waitForExistence(timeout: 15) else {

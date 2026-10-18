@@ -139,11 +139,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
 
+        delay = float(step.get("delay", self.delay))
+
         def emit(obj):
             self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
             self.wfile.flush()
-            if self.delay:
-                time.sleep(self.delay)
+            if delay:
+                time.sleep(delay)
 
         emit(chunk({"role": "assistant", "content": ""}))
         for piece in words(step.get("reasoning", "")):

@@ -95,12 +95,33 @@ jobs:
               -destination "id=$udid" \
               -only-testing:ConduitScreenshots \
               -resultBundlePath "results/$slug.xcresult" \
+              -derivedDataPath dd \
               -enableCodeCoverage NO \
               COMPILER_INDEX_STORE_ENABLE=NO \
               CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
               DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
               > "results-$slug.log" 2>&1
             rc=$?
+            # The App Preview: record the screen while the preview test plays.
+            if [ "$rc" -eq 0 ]; then
+              xcrun simctl io "$udid" recordVideo --codec h264 --force "shots/preview-$slug.mov" > "record-$slug.log" 2>&1 &
+              recorder=$!
+              sleep 2
+              TEST_RUNNER_CONDUIT_DEMO_URL="http://$DEMO_HOST:$DEMO_PORT" \
+              TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
+              TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
+              TEST_RUNNER_CONDUIT_RECORD_PREVIEW=1 \
+              xcodebuild test-without-building \
+                -project Conduit.xcodeproj -scheme Conduit \
+                -destination "id=$udid" \
+                -only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPreview \
+                -resultBundlePath "results/$slug-preview.xcresult" \
+                -derivedDataPath dd \
+                > "results-$slug-preview.log" 2>&1
+              kill -INT "$recorder" || true
+              wait "$recorder" || true
+              grep -E "error:|Test Case" "results-$slug-preview.log" || true
+            fi
             set -e
             grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true
             mkdir -p "shots/$slug"
@@ -123,7 +144,7 @@ jobs:
             xcrun simctl shutdown "$udid" || true
             if [ "$rc" -ne 0 ]; then echo "::warning::$name capture exited $rc"; fi
           done
-          ls -R shots
+          ls -lR shots
 
       - name: Publish to a git ref
         # Cloud sessions can't download artifacts (blob storage is blocked
@@ -135,7 +156,8 @@ jobs:
           set -euo pipefail
           out=$(mktemp -d)
           cp -R shots "$out/" 2>/dev/null || true
-          find "$out" -name '*.mp4' -size +20M -delete
+          find "$out" -name '*.mp4' -delete
+          find "$out" -name '*.mov' -size +90M -delete
           mkdir -p "$out/logs"
           for f in demo-hermes/*.log results-*.log; do
             [ -f "$f" ] && tail -c 400000 "$f" > "$out/logs/$(basename "$f")"
