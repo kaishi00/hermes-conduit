@@ -138,13 +138,13 @@ struct RichWeather: Equatable, Hashable {
         hours = (json["hours"] as? [[String: Any]] ?? []).compactMap { hour in
             guard let time = hour["time"] as? String, let temp = RichJSON.number(hour["temp"]) else { return nil }
             return Hour(time: time, temp: temp, condition: (hour["condition"] as? String).flatMap(Condition.init(rawValue:)),
-                        precip: RichJSON.number(hour["precip"]).map { Int($0) })
+                        precip: RichJSON.percent(hour["precip"]))
         }
         days = (json["days"] as? [[String: Any]] ?? []).compactMap { day in
             guard let name = day["day"] as? String, let low = RichJSON.number(day["low"]),
                   let high = RichJSON.number(day["high"]), low <= high else { return nil }
             return Day(day: name, low: low, high: high, condition: (day["condition"] as? String).flatMap(Condition.init(rawValue:)),
-                       precip: RichJSON.number(day["precip"]).map { Int($0) })
+                       precip: RichJSON.percent(day["precip"]))
         }
         guard now != nil || !hours.isEmpty || !days.isEmpty else { return nil }
     }
@@ -185,7 +185,8 @@ struct RichStep: Equatable, Hashable {
     init?(json: [String: Any]) {
         guard let text = json["text"] as? String else { return nil }
         self.text = text
-        timer = RichJSON.number(json["timer"]).map { Int($0) }.flatMap { $0 > 0 ? $0 : nil }
+        // The schema's bounds: a second to a day.
+        timer = RichJSON.number(json["timer"]).map { Int($0.rounded()) }.flatMap { (1...86_400).contains($0) ? $0 : nil }
     }
 }
 
@@ -195,6 +196,11 @@ enum RichJSON {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
         let double = number.doubleValue
         return double.isFinite ? double : nil
+    }
+
+    /// A whole percent from 0 to 100.
+    static func percent(_ value: Any?) -> Int? {
+        number(value).map { Int(min(max($0, 0), 100).rounded()) }
     }
 
     static func numbers(_ value: Any?) -> [Double] {

@@ -128,6 +128,8 @@ extension AppStateVoiceCapabilityTests {
         let card = RichCard.cards(raw: raw)[0]
         let key = RichStepsMemory.key(for: card)
         XCTAssertEqual(key, RichStepsMemory.key(for: RichCard.cards(raw: raw)[0]), "the same steps get the same key")
+        let other: [[String: Any]] = [["type": "steps", "title": "Eggs", "needs": ["Eggs"], "steps": steps]]
+        XCTAssertNotEqual(key, RichStepsMemory.key(for: RichCard.cards(raw: other)[0]), "different needs, different card")
         let memory = RichStepsMemory(defaults: defaults)
         memory.toggle(key, 2)
         XCTAssertTrue(memory.isDone(key, 2))

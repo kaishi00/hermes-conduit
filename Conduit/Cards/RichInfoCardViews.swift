@@ -193,19 +193,37 @@ private struct RichChartView: View {
     let chart: RichChart
 
     private struct Point: Identifiable {
-        let id: Int
+        let id: String
         let label: String
         let value: Double
         let series: String
     }
 
+    @ScaledMetric(relativeTo: .body) private var plotHeight: CGFloat = 210
+    @ScaledMetric(relativeTo: .body) private var pieSize: CGFloat = 150
+
     var body: some View {
-        if chart.kind == .pie {
+        // A pie of nothing but zeros has no slices, so it's drawn as bars.
+        if chart.kind == .pie, (chart.series.first?.values.reduce(0, +) ?? 0) > 0 {
             pie
         } else {
             plot
-                .frame(height: 210)
+                .frame(height: plotHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: spokenSummary))
         }
+    }
+
+    /// Every series' values with their labels, for VoiceOver.
+    private var spokenSummary: String {
+        let unit = chart.unit.map { " \($0)" } ?? ""
+        return chart.series.map { series -> String in
+            let values = zip(chart.labels, series.values)
+                .map { "\($0.0) \($0.1.formatted(.number.locale(AppLocalization.formattingLocale)))\(unit)" }
+                .joined(separator: ", ")
+            return series.name.map { "\($0): \(values)" } ?? values
+        }
+        .joined(separator: "; ")
     }
 
     // Plain strings, not catalog keys: Charts uses them only to tell the
@@ -217,7 +235,7 @@ private struct RichChartView: View {
     private var points: [Point] {
         chart.series.enumerated().flatMap { seriesIndex, series in
             series.values.enumerated().map { index, value in
-                Point(id: seriesIndex * 1000 + index, label: chart.labels[index], value: value,
+                Point(id: "\(seriesIndex)-\(index)", label: chart.labels[index], value: value,
                       series: series.name ?? "\(seriesIndex + 1)")
             }
         }
@@ -239,7 +257,7 @@ private struct RichChartView: View {
     @ChartContentBuilder
     private func mark(_ point: Point, single: Bool) -> some ChartContent {
         switch chart.kind {
-        case .bar:
+        case .bar, .pie:
             bar(point, single: single)
         case .area:
             area(point, single: single)
@@ -292,7 +310,8 @@ private struct RichChartView: View {
                     .foregroundStyle(Self.palette[index % Self.palette.count])
                     .cornerRadius(3)
             }
-            .frame(width: 150, height: 150)
+            .frame(width: pieSize, height: pieSize)
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(zip(chart.labels, values).enumerated()), id: \.offset) { index, slice in
                     HStack(spacing: 6) {
@@ -304,7 +323,7 @@ private struct RichChartView: View {
                             .font(.caption)
                             .lineLimit(2)
                         Spacer(minLength: 4)
-                        Text(verbatim: total > 0 ? (slice.1 / total).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.formattingLocale)) : "")
+                        Text(verbatim: (slice.1 / total).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.formattingLocale)))
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
                     }
@@ -405,7 +424,8 @@ private struct RichWeatherNow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             RichWeatherSymbol(condition: now.condition)
-                .font(.system(size: 44))
+                .font(.largeTitle)
+                .imageScale(.large)
             VStack(alignment: .leading, spacing: 2) {
                 if let place {
                     Text(verbatim: place)
@@ -413,7 +433,7 @@ private struct RichWeatherNow: View {
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(verbatim: richDegrees(now.temp) + unit)
-                        .font(.system(size: 40, weight: .semibold, design: .rounded))
+                        .font(.system(.largeTitle, design: .rounded, weight: .semibold))
                         .monospacedDigit()
                     now.condition.name
                         .font(.subheadline)
@@ -479,6 +499,11 @@ private struct RichWeatherDays: View {
     let days: [RichWeather.Day]
     let unit: String
 
+    @ScaledMetric(relativeTo: .subheadline) private var dayWidth: CGFloat = 56
+    @ScaledMetric(relativeTo: .body) private var symbolWidth: CGFloat = 26
+    @ScaledMetric(relativeTo: .caption2) private var precipWidth: CGFloat = 40
+    @ScaledMetric(relativeTo: .subheadline) private var tempWidth: CGFloat = 36
+
     var body: some View {
         let low = days.map(\.low).min() ?? 0
         let high = days.map(\.high).max() ?? 0
@@ -487,26 +512,26 @@ private struct RichWeatherDays: View {
                 HStack(spacing: 10) {
                     Text(verbatim: day.day)
                         .font(.subheadline)
-                        .frame(width: 56, alignment: .leading)
+                        .frame(width: dayWidth, alignment: .leading)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     RichWeatherSymbol(condition: day.condition)
                         .font(.body)
-                        .frame(width: 26)
+                        .frame(width: symbolWidth)
                     RichWeatherPrecip(precip: day.precip)
-                        .frame(width: 40, alignment: .leading)
+                        .frame(width: precipWidth, alignment: .leading)
                     Text(verbatim: richDegrees(day.low))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .frame(width: tempWidth, alignment: .trailing)
                     RichTemperatureBar(low: day.low, high: day.high, rangeLow: low, rangeHigh: high)
                         .frame(height: 5)
                         .accessibilityHidden(true)
                     Text(verbatim: richDegrees(day.high))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
-                        .frame(width: 36, alignment: .leading)
+                        .frame(width: tempWidth, alignment: .leading)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(dayLabel(day))
@@ -556,13 +581,15 @@ private struct RichTemperatureBar: View {
 struct RichComparisonCard: View {
     let card: RichCard
 
+    @ScaledMetric(relativeTo: .subheadline) private var columnWidth: CGFloat = 200
+
     var body: some View {
         RichInfoCardFrame(title: card.title, source: card.source) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(Array(card.options.enumerated()), id: \.offset) { _, option in
                         RichOptionColumn(option: option)
-                            .frame(width: card.options.count == 2 ? 200 : 220, alignment: .topLeading)
+                            .frame(width: card.options.count == 2 ? columnWidth : columnWidth * 1.1, alignment: .topLeading)
                     }
                 }
                 .padding(.vertical, 2)
@@ -677,9 +704,16 @@ struct RichStepsCard: View {
                 ForEach(Array(card.steps.enumerated()), id: \.offset) { index, step in
                     RichStepRow(number: index + 1, step: step, key: key, title: card.title)
                 }
+                if memory.notificationsOff, card.steps.contains(where: { $0.timer != nil }) {
+                    Text("Notifications are off for Conduit in iPhone Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
+
+    @ObservedObject private var memory = RichStepsMemory.shared
 
     private var key: String { RichStepsMemory.key(for: card) }
 }
@@ -796,15 +830,18 @@ private struct RichStepTimer: View {
     }
 }
 
-/// Which steps the user ticked off (kept across launches) and the timers
-/// they started (with a notification for when one ends while Conduit
-/// isn't on screen).
+/// Which steps the user ticked off and the timers they started, both kept
+/// across launches, with a notification for when a timer ends while
+/// Conduit isn't on screen.
 @MainActor
 final class RichStepsMemory: ObservableObject {
     static let shared = RichStepsMemory()
 
     nonisolated static let notificationPrefix = "rich-step-timer-"
     private static let defaultsKey = "richCards.stepsDone"
+    private static let timersKey = "richCards.stepTimers"
+    /// How long a finished timer still shows Done.
+    private static let doneShown: TimeInterval = 10 * 60
     /// Cards whose ticks are kept; the oldest go first.
     private static let keptCards = 200
 
@@ -814,17 +851,21 @@ final class RichStepsMemory: ObservableObject {
     }
 
     @Published private var ticks: [String: Ticks]
-    @Published private var timers: [String: Date] = [:]
+    @Published private var timers: [String: Date]
+    /// Set when a timer started without permission to notify.
+    @Published private(set) var notificationsOff = false
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         ticks = defaults.data(forKey: Self.defaultsKey).flatMap { try? JSONDecoder().decode([String: Ticks].self, from: $0) } ?? [:]
+        let timers = defaults.data(forKey: Self.timersKey).flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } ?? [:]
+        self.timers = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
     }
 
     /// The same steps get the same key, whichever chat or call shows them.
     static func key(for card: RichCard) -> String {
-        let text = ([card.title ?? ""] + card.steps.map(\.text)).joined(separator: "\u{1F}")
+        let text = ([card.title ?? ""] + card.needs + ["\u{1E}"] + card.steps.map(\.text)).joined(separator: "\u{1F}")
         return SHA256.hash(data: Data(text.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -849,13 +890,15 @@ final class RichStepsMemory: ObservableObject {
         }
     }
 
+    /// When the timer ends, while it runs or shows Done.
     func timerEnd(_ key: String, _ number: Int) -> Date? {
-        timers[Self.timerID(key, number)]
+        timers[Self.timerID(key, number)].flatMap { $0.addingTimeInterval(Self.doneShown) > .now ? $0 : nil }
     }
 
     func startTimer(_ key: String, _ number: Int, seconds: Int, text: String, title: String?) {
         let id = Self.timerID(key, number)
         timers[id] = Date.now.addingTimeInterval(TimeInterval(seconds))
+        saveTimers()
         let content = UNMutableNotificationContent()
         content.title = title ?? AppLocalization.string("Timer done")
         content.body = text
@@ -863,16 +906,34 @@ final class RichStepsMemory: ObservableObject {
         let request = UNNotificationRequest(identifier: id, content: content,
                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false))
         Task {
+            // The countdown runs on the card either way; without permission
+            // the card says no notification will come.
             let center = UNUserNotificationCenter.current()
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
-            try? await center.add(request)
+            let allowed = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            notificationsOff = !allowed
+            guard allowed else { return }
+            do {
+                try await center.add(request)
+            } catch {
+                notificationsOff = true
+            }
         }
     }
 
     func stopTimer(_ key: String, _ number: Int) {
         let id = Self.timerID(key, number)
         timers.removeValue(forKey: id)
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        saveTimers()
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+    }
+
+    private func saveTimers() {
+        timers = timers.filter { $0.value.addingTimeInterval(Self.doneShown) > .now }
+        if let data = try? JSONEncoder().encode(timers) {
+            defaults.set(data, forKey: Self.timersKey)
+        }
     }
 
     private static func timerID(_ key: String, _ number: Int) -> String {
