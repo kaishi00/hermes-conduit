@@ -15,6 +15,10 @@ concurrency:
 jobs:
   review:
     name: review (${{ matrix.reviewer }})
+    # The reviewer is an agent holding the review secrets, and a PR's title,
+    # body and diff all reach its prompt. Only PRs from this repository's own
+    # branches (people with push access) get it; a fork's PR is never run.
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -24,8 +28,8 @@ jobs:
             model: commandcode/meta/muse-spark-1.3-contributor
           - reviewer: GLM-5.3-Flash
             model: zai-custom/glm-5.3-flash
+    # No id-token: opencode uses the PAT (USE_GITHUB_TOKEN), not OIDC.
     permissions:
-      id-token: write
       contents: read
       pull-requests: write
       issues: write
