@@ -2005,6 +2005,34 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.minimisedLiveVoice, .gptLive)
     }
 
+    /// The phone presents the call (its sheet up, the screen on): the car
+    /// going away leaves it running.
+    func testCarPlayGoingAwayKeepsACallTheOpenSheetPresents() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, _) = await startMinimisableGPTLive(in: appState)
+        XCTAssertTrue(appState.showGPTLiveSheet)
+
+        appState.releaseCarPlayGPTLive()
+
+        XCTAssertTrue(controller.isActive, "the phone still presents it, as its sheet")
+        XCTAssertTrue(appState.showGPTLiveSheet)
+    }
+
+    /// Only CarPlay presented it (the phone locked): unplugging ends the
+    /// call, as the release policy says, now that CarPlay's disconnect
+    /// reaches it.
+    func testCarPlayGoingAwayEndsALiveCallOnlyCarPlayPresented() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, _) = await startMinimisableGPTLive(in: appState)
+        swipeGPTLiveSheetAway(appState)
+        _ = appState.handleScenePhase(.background)
+        XCTAssertTrue(controller.isActive, "a locked phone alone keeps the call")
+
+        appState.releaseCarPlayGPTLive()
+
+        XCTAssertFalse(controller.isActive)
+    }
+
     func testCarPlayGoingAwayWhileLockedClearsTheBarOfACallThatStopped() async {
         let appState = makeGPTLiveAppState()
         let (controller, _) = await startMinimisableGPTLive(in: appState)

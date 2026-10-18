@@ -60,6 +60,19 @@ final class CarPlaySceneManifestTests: XCTestCase {
         )
     }
 
+    /// CarPlay calls the delegate by selector: a method whose Swift name
+    /// only nearly matches the protocol's is never called.
+    func testTheSceneDelegateAnswersCarPlaysConnectAndDisconnectSelectors() {
+        let delegate = CarPlayVoiceSceneDelegate()
+        XCTAssertTrue(delegate.responds(to: #selector(
+            CPTemplateApplicationSceneDelegate.templateApplicationScene(_:didConnect:))))
+        XCTAssertTrue(delegate.responds(to: #selector(
+            CPTemplateApplicationSceneDelegate.templateApplicationScene(_:didDisconnectInterfaceController:))),
+            "the phone leaving the car must reach handleDisconnect")
+        XCTAssertTrue(delegate.responds(to: #selector(CPInterfaceControllerDelegate.templateDidAppear(_:animated:))))
+        XCTAssertTrue(delegate.responds(to: #selector(CPInterfaceControllerDelegate.templateDidDisappear(_:animated:))))
+    }
+
     func testNoApplicationRoleSceneConfigurationIsDeclared() {
         // The phone scene stays on the SwiftUI default configuration: adding
         // one would change foreground scene behavior beyond the CarPlay role.

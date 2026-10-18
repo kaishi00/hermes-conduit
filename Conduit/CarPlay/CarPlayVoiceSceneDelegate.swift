@@ -40,9 +40,13 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         }
     }
 
+    /// The phone left the car. The protocol's name is
+    /// `didDisconnectInterfaceController:`: a method named like
+    /// `didConnect`'s (`didDisconnect:`) is never called, and the call
+    /// would keep its audio session after the car is gone.
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController
+        didDisconnectInterfaceController interfaceController: CPInterfaceController
     ) {
         MainActor.assumeIsolated {
             CarPlayMapsHandoff.scene = nil
