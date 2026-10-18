@@ -37,7 +37,7 @@ fi
 git -C "$DEMO_WORK/src" fetch -q --depth 1 origin "$HERMES_COMMIT"
 git -C "$DEMO_WORK/src" checkout -q FETCH_HEAD
 
-uv venv -q -p 3.14 "$DEMO_WORK/venv"
+uv venv -q --allow-existing -p 3.14 "$DEMO_WORK/venv"
 VIRTUAL_ENV="$DEMO_WORK/venv" uv pip install -q -e "$DEMO_WORK/src"
 HERMES="$DEMO_WORK/venv/bin/hermes"
 PY="$DEMO_WORK/venv/bin/python"
@@ -52,6 +52,9 @@ printf '<!doctype html><html><head></head><body></body></html>' > "$DEMO_WORK/sr
 "$HERMES" config set model.default hermes-4-405b >/dev/null
 # The scripted tool calls run unattended (they only touch the runner).
 "$HERMES" config set approvals.mode off >/dev/null
+# The board is staged by seed_board.py; nothing may pick its tasks up.
+"$HERMES" config set kanban.dispatch_in_gateway false >/dev/null
+"$HERMES" config set kanban.auto_decompose false >/dev/null
 
 # Password sign-in plus a non-loopback public URL: that engages the dashboard's
 # auth gate on a loopback bind, the same gated mode real remote setups use.
@@ -100,6 +103,8 @@ curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not sta
 # scheduled jobs through the CLI.
 "$PY" -u "$SCRIPT_DIR/seed_demo.py" "$SCRIPT_DIR/demo-script.json" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
   2>&1 | tee "$DEMO_WORK/seed.log"
+"$PY" "$SCRIPT_DIR/seed_board.py" "$SCRIPT_DIR/demo-script.json" "$HERMES" 2>&1 | tee -a "$DEMO_WORK/seed.log" \
+  || echo "::warning::the Kanban board was not fully seeded"
 "$PY" - "$SCRIPT_DIR/demo-script.json" <<'PY' > "$DEMO_WORK/cron.tsv"
 import json, sys
 for job in json.load(open(sys.argv[1])).get("cron", []):

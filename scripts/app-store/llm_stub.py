@@ -44,7 +44,9 @@ def pick_step(script, messages):
     prompt = text_of(messages[last_user].get("content")).lower()
     system = " ".join(text_of(m.get("content")) for m in messages if m.get("role") == "system").lower()
     tool_results = sum(1 for m in messages[last_user + 1:] if m.get("role") == "tool")
-    for entry in script.get("chats", []):
+    # A bot's chat keeps the fixed "Bot Chat" title.
+    entries = script.get("chats", []) + [dict(bot, title="Bot Chat") for bot in script.get("bots", [])]
+    for entry in entries:
         for turn in entry.get("turns", []):
             if turn["match"].lower() in prompt:
                 steps = turn["steps"]

@@ -186,5 +186,113 @@
       "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.",
       "paused": true
     }
+  ],
+  "bots": [
+    {
+      "name": "chef",
+      "title": "Chef",
+      "color": "orange",
+      "description": "Plans meals around what's in the fridge and the week's schedule.",
+      "soul": "You are Chef, a friendly home cook who plans simple weeknight meals.",
+      "turns": [
+        {
+          "match": "dinners this week",
+          "prompt": "Plan three easy dinners this week. We have chicken, spinach and a lot of lemons.",
+          "steps": [
+            {
+              "content": "Three quick ones that use it all up:\n\n- **Mon** Lemon garlic chicken with spinach orzo\n- **Wed** Chicken and spinach quesadillas\n- **Fri** Lemon pasta with crispy chicken thighs\n\nI added parmesan and tortillas to your shopping list."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coach",
+      "title": "Running Coach",
+      "color": "green",
+      "description": "Builds and adjusts a half marathon training plan.",
+      "soul": "You are an encouraging running coach preparing the user for a half marathon.",
+      "turns": [
+        {
+          "match": "long run",
+          "prompt": "My knee felt tight on yesterday's long run. Should I change this week?",
+          "steps": [
+            {
+              "content": "Let's play it safe. Swap Thursday's tempo run for an easy 30 minutes, and keep Saturday's long run to 8 miles on flat ground. If the knee still feels tight on Saturday morning, cross-train instead. You're still on track for race day."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scout",
+      "title": "Research Scout",
+      "color": "indigo",
+      "description": "Digs into a topic and comes back with sources.",
+      "soul": "You are a careful researcher who always cites sources.",
+      "turns": [
+        {
+          "match": "heat pump",
+          "prompt": "Is a heat pump worth it for a 1950s house in the Bay Area?",
+          "steps": [
+            {
+              "content": "Usually yes. The mild Bay Area climate is ideal for heat pumps, and the 2026 TECH Clean California rebate covers up to $3,000. The catch with older houses is insulation: get an energy audit first, since sealing the attic often lets you buy a smaller, cheaper unit."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "kanban": [
+    {
+      "title": "Compare flights to Tokyo",
+      "body": "Early December, under $700 round trip from SFO.",
+      "assignee": "scout",
+      "status": "running"
+    },
+    {
+      "title": "Book campsite for Big Sur",
+      "body": "Pfeiffer Big Sur, Saturday night, redwood loop #112 or #148.",
+      "status": "ready"
+    },
+    {
+      "title": "Send the landlord follow-up",
+      "body": "Use the draft from the landlord chat.",
+      "status": "ready"
+    },
+    {
+      "title": "Pick an espresso machine",
+      "body": "Shortlist is in the espresso chat.",
+      "status": "ready",
+      "id": "espresso"
+    },
+    {
+      "title": "Order a grinder",
+      "body": "Baratza Encore ESP once the machine is picked.",
+      "parent": "espresso"
+    },
+    {
+      "title": "Renew passport",
+      "body": "Needed before the Tokyo trip.",
+      "status": "blocked",
+      "reason": "Waiting on new passport photos"
+    },
+    {
+      "title": "Weekly meal plan",
+      "body": "Three dinners, use up the lemons.",
+      "assignee": "chef",
+      "status": "done",
+      "result": "Planned Monday, Wednesday and Friday dinners."
+    },
+    {
+      "title": "Q3 spending summary",
+      "status": "done",
+      "result": "Q3 was $72 over budget, all from dining out."
+    },
+    {
+      "title": "Fix the flaky upload test",
+      "status": "done",
+      "result": "Test now waits on the upload event; 50 runs pass."
+    }
   ]
 }

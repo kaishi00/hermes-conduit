@@ -54,13 +54,8 @@ async def seed(script_path, base, user, password):
                 raise RuntimeError(f"{method}: {frame['error']}")
             return frame.get("result") or {}
 
-        await rpc("client.capabilities", {"server_requests": True})
-        for chat in script["chats"]:
-            if chat.get("seed") is False:
-                continue  # sent live by the preview recording instead
-            created = await rpc("session.create", {"cols": 96, "source": "desktop"})
-            sid = created["session_id"]
-            for turn in chat["turns"]:
+        async def run_turns(sid, turns):
+            for turn in turns:
                 while not events.empty():
                     events.get_nowait()
                 await rpc("prompt.submit", {"session_id": sid, "text": turn.get("prompt", turn["match"])}, timeout=120)
@@ -75,7 +70,28 @@ async def seed(script_path, base, user, password):
                         break
                 # Let the turn's bookkeeping (usage, title) land first.
                 await asyncio.sleep(2)
-            print(f"seeded: {chat.get('title') or sid}")
+
+        await rpc("client.capabilities", {"server_requests": True})
+        # Bots first, so the chats seeded after them are the newest rows.
+        for bot in script.get("bots", []):
+            name = bot["name"]
+            await rpc("profiles.create", {"name": name, "description": bot.get("description", ""),
+                                          "soul": bot.get("soul", "")}, timeout=120)
+            meta = {key: bot[key] for key in ("title", "color") if bot.get(key)}
+            if meta:
+                await rpc("profiles.configure", {"name": name, "ui_meta": {"hermes-bots": meta}})
+            # The bot's one chat, made the way Conduit makes it.
+            created = await rpc("session.create", {"cols": 96, "source": "desktop", "profile": name,
+                                                   "title": "Bot Chat", "hidden": True,
+                                                   "follow_profile_config": True})
+            await run_turns(created["session_id"], bot.get("turns", []))
+            print(f"seeded bot: {name}")
+        for chat in script["chats"]:
+            if chat.get("seed") is False:
+                continue  # sent live by the preview recording instead
+            created = await rpc("session.create", {"cols": 96, "source": "desktop"})
+            await run_turns(created["session_id"], chat["turns"])
+            print(f"seeded: {chat.get('title') or created['session_id']}")
         task.cancel()
 
 

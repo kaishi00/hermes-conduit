@@ -23,7 +23,22 @@ final class AppStoreScreenshotTests: XCTestCase {
         continueAfterFailure = true
         guard demoURL != nil else { throw XCTSkip("CONDUIT_DEMO_URL is not set") }
         app = XCUIApplication()
+        app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
         app.launch()
+    }
+
+    /// The status bar reads 9:41, so run the app in the zone where the demo
+    /// chats, seeded minutes ago, were sent a little before that: 9 a.m.
+    /// local, or 8 a.m. late in the hour so no time reads after 9:41.
+    static func timeZoneNearStatusBarTime(now: Date = Date()) -> String {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let parts = utc.dateComponents([.hour, .minute], from: now)
+        var offset = ((parts.minute ?? 0) <= 41 ? 9 : 8) - (parts.hour ?? 0)
+        if offset > 14 { offset -= 24 }
+        if offset < -12 { offset += 24 }
+        // POSIX zone names flip the sign: Etc/GMT-5 is five hours ahead.
+        return offset == 0 ? "Etc/GMT" : String(format: "Etc/GMT%+d", -offset)
     }
 
     func testCaptureAppStoreScreens() throws {
@@ -46,18 +61,29 @@ final class AppStoreScreenshotTests: XCTestCase {
         snap("04-chat-code")
         backToTabs()
 
-        for (number, tab) in [(5, "Tasks"), (6, "Bots"), (7, "Settings")] {
+        for (number, tab) in [(5, "Tasks"), (7, "Bots"), (8, "Settings")] {
             let button = app.buttons[tab]
             guard button.waitForExistence(timeout: 5) else { continue }
             button.tap()
             settle(3)
             snap(String(format: "%02d-%@", number, tab.lowercased()))
+            if tab == "Tasks" {
+                // The scheduled jobs share the tab with the board.
+                let scheduled = app.buttons["Scheduled"]
+                if scheduled.waitForExistence(timeout: 5) {
+                    scheduled.tap()
+                    _ = app.staticTexts["Morning briefing"].waitForExistence(timeout: 10)
+                    settle(2)
+                    snap("06-scheduled")
+                    app.buttons["Board"].tap()
+                }
+            }
         }
         app.buttons["Chats"].tap()
 
         // Live voice: the real call screen over a scripted conversation
         // (Conduit/Services/ScreenshotCallFixture.swift); the sign-in is saved.
-        for (number, state) in [(8, "speaking"), (9, "listening")] {
+        for (number, state) in [(9, "speaking"), (10, "listening")] {
             app.terminate()
             app.launchArguments = ["-conduitScreenshotCall", state]
             app.launch()
