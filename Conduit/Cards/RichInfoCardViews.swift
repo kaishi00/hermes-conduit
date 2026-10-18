@@ -327,10 +327,19 @@ private struct RichChartView: View {
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
                     }
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: sliceSummary(slice.0, slice.1, total: total)))
                 }
             }
         }
+    }
+
+    /// A slice's label, value and share, for VoiceOver.
+    private func sliceSummary(_ label: String, _ value: Double, total: Double) -> String {
+        let locale = AppLocalization.formattingLocale
+        let unit = chart.unit.map { " \($0)" } ?? ""
+        let share = (value / total).formatted(.percent.precision(.fractionLength(0)).locale(locale))
+        return "\(label) \(value.formatted(.number.locale(locale)))\(unit), \(share)"
     }
 
     /// The slices' colours, which the legend's dots match.
@@ -765,39 +774,39 @@ private struct RichStepTimer: View {
     @ObservedObject private var memory = RichStepsMemory.shared
 
     var body: some View {
-        let end = memory.timerEnd(key, number)
+        if let end = memory.timerEnd(key, number) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let left = end.timeIntervalSince(context.date)
+                // Done shows for a while; after that it's ready to start again.
+                chip(left: left > -RichStepsMemory.doneShown ? left : nil)
+            }
+        } else {
+            chip(left: nil)
+        }
+    }
+
+    /// The timer's button: running or Done while `left` is set, ready to
+    /// start otherwise.
+    private func chip(left: TimeInterval?) -> some View {
         Button {
-            if memory.timerEnd(key, number) != nil {
+            if left != nil {
                 memory.stopTimer(key, number)
             } else {
                 memory.startTimer(key, number, seconds: seconds, text: text, title: title)
             }
         } label: {
             Group {
-                if let end {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let left = end.timeIntervalSince(context.date)
-                        if left > 0 {
-                            Label {
-                                Text(verbatim: Self.clock(left))
-                            } icon: {
-                                Image(systemName: "stop.fill")
-                            }
-                            .accessibilityValue(Text(verbatim: Self.clock(left)))
-                        } else if left <= -RichStepsMemory.doneShown {
-                            // Done has shown long enough; a tap starts it again.
-                            Label {
-                                Text(verbatim: Self.clock(TimeInterval(seconds)))
-                            } icon: {
-                                Image(systemName: "timer")
-                            }
-                        } else {
-                            Label {
-                                Text("Done")
-                            } icon: {
-                                Image(systemName: "bell.fill")
-                            }
-                        }
+                if let left, left > 0 {
+                    Label {
+                        Text(verbatim: Self.clock(left))
+                    } icon: {
+                        Image(systemName: "stop.fill")
+                    }
+                } else if left != nil {
+                    Label {
+                        Text("Done")
+                    } icon: {
+                        Image(systemName: "bell.fill")
                     }
                 } else {
                     Label {
@@ -812,11 +821,12 @@ private struct RichStepTimer: View {
             .labelStyle(RichCompactLabelStyle())
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .foregroundStyle(end != nil ? Color.white : Color.conduitAccent)
-            .background(end != nil ? Color.conduitAccent : Color.conduitAccent.opacity(0.14), in: Capsule())
+            .foregroundStyle(left != nil ? Color.white : Color.conduitAccent)
+            .background(left != nil ? Color.conduitAccent : Color.conduitAccent.opacity(0.14), in: Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(end != nil ? Text("Stop timer") : Text("Start a \(Self.spoken(seconds)) timer"))
+        .accessibilityLabel(left != nil ? Text("Stop timer") : Text("Start a \(Self.spoken(seconds)) timer"))
+        .accessibilityValue(left.map { $0 > 0 ? Text(verbatim: Self.clock($0)) : Text("Done") } ?? Text(verbatim: ""))
     }
 
     /// Like 6:30, or 1:05:00.
