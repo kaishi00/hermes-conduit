@@ -9125,6 +9125,10 @@ final class AppState: ObservableObject {
     /// revision of each, keyed by room id (`GroupRoomPictures`).
     @Published var groupRoomPictureData: [String: Data] = [:]
     var groupRoomPictureRevisions: [String: String] = [:]
+    /// Moves on each time a room's picture is set or removed here, so a
+    /// slower refresh or an older change can't undo a newer one. Never
+    /// reset: a reset could make a change look as if it never happened.
+    var groupRoomPictureGenerations: [String: Int] = [:]
     @Published private(set) var activeRoomSurface: GroupRoomSurface?
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?

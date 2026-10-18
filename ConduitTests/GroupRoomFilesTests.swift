@@ -140,6 +140,26 @@ extension GroupChatModelsTests {
         XCTAssertNil(GroupRoomPictures.storedRevision(from: ["ok": true]))
     }
 
+    func testARoomPictureChangedDuringARefreshKeepsTheChange() {
+        let old = Data([1]), new = Data([2]), other = Data([3])
+        // The refresh saw r1's old picture and r2 still listed, then the user
+        // set r1's picture and removed r2's before it finished.
+        let merged = GroupRoomPictures.merged(
+            data: ["r1": new, "r3": other, "gone": other],
+            revisions: ["r1": "2-new", "r3": "1-c", "gone": "1-g"],
+            listed: ["r1": "1-old", "r2": "1-b", "r3": "2-c"],
+            fetched: ["r1": (old, "1-old"), "r2": (other, "1-b"), "r3": (new, "2-c")],
+            changed: ["r1", "r2"]
+        )
+        XCTAssertEqual(merged.data["r1"], new, "the picture just set stays")
+        XCTAssertEqual(merged.revisions["r1"], "2-new")
+        XCTAssertNil(merged.data["r2"], "the picture just removed stays removed")
+        XCTAssertNil(merged.revisions["r2"])
+        XCTAssertEqual(merged.data["r3"], new, "an untouched room takes what the refresh fetched")
+        XCTAssertEqual(merged.revisions["r3"], "2-c")
+        XCTAssertNil(merged.data["gone"], "a room the host no longer lists loses its picture")
+    }
+
     func testDesktopProjectionCarriesTheRoomPictureAndID() {
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         let room: [String: Any] = [
