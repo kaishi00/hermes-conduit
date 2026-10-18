@@ -87,7 +87,7 @@ struct WatchCallControls: View {
             WatchLevelBars(mood: mood)
                 .frame(height: 26)
                 // A full-size tap target around the shorter bars.
-                .frame(minHeight: 40)
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -155,7 +155,7 @@ struct WatchCallControls: View {
                     .font(.body.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(call.isMuted ? Color.black : Color.white)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .background(Circle().fill(call.isMuted ? Color.white : Color.white.opacity(0.16)))
                     .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
             }
@@ -169,7 +169,7 @@ struct WatchCallControls: View {
                     .font(.body.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .background(Circle().fill(Color.red))
             }
             .disabled(call.phase == .ending)
@@ -237,6 +237,8 @@ struct WatchCallCaptions: View {
         VStack(alignment: .leading, spacing: 0) {
             if let current {
                 Text(verbatim: Self.newestWords(of: current))
+                    // VoiceOver reads the whole line, not the cut one.
+                    .accessibilityLabel(Text(verbatim: current))
                     .font(.system(.body, weight: .semibold))
                     // Three lines leave room for the bars and buttons on
                     // the smallest Watch.
@@ -254,7 +256,7 @@ struct WatchCallCaptions: View {
     static func newestWords(of text: String, limit: Int = 84) -> String {
         guard text.count > limit else { return text }
         let tail = text.suffix(limit)
-        let start = tail.firstIndex(of: " ").map { tail.index(after: $0) } ?? tail.startIndex
+        let start = tail.firstIndex(where: \.isWhitespace).map { tail.index(after: $0) } ?? tail.startIndex
         return "…" + tail[start...]
     }
 }
