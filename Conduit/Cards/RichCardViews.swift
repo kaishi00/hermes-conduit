@@ -77,7 +77,7 @@ struct RichMapCard: View {
             // when there is one to show.
             .disabled(!looked || found.isEmpty)
             .accessibilityLabel(Text(verbatim: card.title ?? card.places.map(\.name).joined(separator: ", ")))
-            .accessibilityHint(Text("Opens the map"))
+            .accessibilityHint(looked && !found.isEmpty ? Text("Opens the map") : Text(verbatim: ""))
 
             VStack(alignment: .leading, spacing: 10) {
                 if let title = card.title {
@@ -245,9 +245,13 @@ private struct RichPlaceRow: View {
                     RichHermesNote(note: note)
                 }
             }
+            .environment(\.richSourceActionsOnRow, true)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
+        .richSourceAction(place.rating?.source, url: place.rating?.url, onRow: true)
+        .richSourceAction(place.price?.source, url: place.price?.url, onRow: true)
+        .richSourceAction(place.hours?.source, url: place.hours?.url, onRow: true)
     }
 }
 
@@ -351,6 +355,8 @@ private struct RichPhotoHeader: View {
 
     @Environment(\.openURL) private var openURL
 
+    private var sourceURL: URL { photo.pageURL ?? photo.url }
+
     var body: some View {
         AsyncImage(url: photo.url) { phase in
             switch phase {
@@ -365,7 +371,7 @@ private struct RichPhotoHeader: View {
         .clipped()
         .overlay(alignment: .bottomTrailing) {
             Button {
-                openURL(photo.pageURL ?? photo.url)
+                openURL(sourceURL)
             } label: {
                 Text(verbatim: photo.source)
                     .font(.caption2.weight(.semibold))
@@ -378,7 +384,7 @@ private struct RichPhotoHeader: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(placeName), \(photo.source)"))
-        .richSourceAction(photo.source, url: photo.pageURL ?? photo.url)
+        .richSourceAction(photo.source, url: sourceURL)
     }
 }
 
@@ -487,13 +493,15 @@ private struct RichSourcedLine: View {
     }
 }
 
-extension View {
-    /// A row that reads as one element hides the source's link button, so
-    /// VoiceOver gets it back as an action named for the source.
+private extension View {
+    /// A line that reads as one element hides the source's link button, so
+    /// VoiceOver gets it back as an "Open <source>" action. Inside a place
+    /// row or tile the action goes on the whole row instead (`onRow`), so
+    /// it's there once however the row's children are combined.
     @ViewBuilder
-    fileprivate func richSourceAction(_ name: String, url: URL?) -> some View {
-        if let url {
-            modifier(RichSourceAction(name: name, url: url))
+    func richSourceAction(_ name: String?, url: URL?, onRow: Bool = false) -> some View {
+        if let name, let url {
+            modifier(RichSourceAction(name: name, url: url, onRow: onRow))
         } else {
             self
         }
@@ -503,11 +511,29 @@ extension View {
 private struct RichSourceAction: ViewModifier {
     let name: String
     let url: URL
+    let onRow: Bool
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.richSourceActionsOnRow) private var actionsOnRow
 
     func body(content: Content) -> some View {
-        content.accessibilityAction(named: Text("Open \(name)")) { openURL(url) }
+        if actionsOnRow && !onRow {
+            content
+        } else {
+            content.accessibilityAction(named: Text("Open \(name)")) { openURL(url) }
+        }
+    }
+}
+
+private struct RichSourceActionsOnRowKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private extension EnvironmentValues {
+    /// Set inside a place row or tile, which carries its lines' source actions itself.
+    var richSourceActionsOnRow: Bool {
+        get { self[RichSourceActionsOnRowKey.self] }
+        set { self[RichSourceActionsOnRowKey.self] = newValue }
     }
 }
 
@@ -717,6 +743,7 @@ private struct RichPlaceTile: View {
             .padding(12)
             Spacer(minLength: 0)
         }
+        .environment(\.richSourceActionsOnRow, true)
         // Grows with larger text rather than clipping it.
         .frame(width: 250, alignment: .top)
         .frame(minHeight: 250, alignment: .top)
@@ -731,6 +758,8 @@ private struct RichPlaceTile: View {
             looked = true
         }
         .accessibilityElement(children: .combine)
+        .richSourceAction(place.photo?.source, url: place.photo.map { $0.pageURL ?? $0.url }, onRow: true)
+        .richSourceAction(place.rating?.source, url: place.rating?.url, onRow: true)
     }
 }
 
