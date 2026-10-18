@@ -166,19 +166,42 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
-    func testOffScreenOrWithAPushRouteASignInKeepsTheLockScreenTurns() {
+    /// On screen a required sign-in ends the dashboard's Lock Screen turns,
+    /// all of them without the plugin and those the relay can't end by push
+    /// with it; off screen it keeps them.
+    func testASignInEndsTheLockScreenTurnsNothingElseCanEnd() {
         let reported = NotifierPluginStatus.State.reported(version: "0.46.0", capabilities: [])
         XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: reported), .endNotOnRelay, "The plugin still ends by push those the relay took")
         XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: .predatesCapabilities), .endAll, "No plugin to push the end")
         XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: false, plugin: .unknown), .endAll)
         XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: true, plugin: .predatesCapabilities), .keepAll, "Off screen the refusal is retried on screen")
         XCTAssertEqual(AppState.signInEndsLockScreenTurns(screenAway: true, plugin: reported), .keepAll)
+
+        XCTAssertEqual(AppState.SignInLockScreenTurnsEnd.endNotOnRelay.keepingThoseOnRelay, true)
+        XCTAssertEqual(AppState.SignInLockScreenTurnsEnd.endAll.keepingThoseOnRelay, false)
+        XCTAssertNil(AppState.SignInLockScreenTurnsEnd.keepAll.keepingThoseOnRelay)
+    }
+
+    /// The sign-in screen hands the dashboard's turns to
+    /// `liveTurnActivitiesEndDashboard` only on screen.
+    func testARequiredSignInOnScreenEndsTheLockScreenTurns() {
+        for away in [false, true] {
+            let appState = makeAppState()
+            appState.phoneScreenIsAway = { away }
+            var ends: [Bool] = []
+            appState.liveTurnActivitiesEndDashboard = { _, keepingThoseOnRelay in ends.append(keepingThoseOnRelay) }
+            appState.requireSignIn(message: "Your dashboard session ended.")
+            XCTAssertEqual(ends, away ? [] : [false], "No plugin reported: all of them end, on screen only")
+        }
     }
 
     func testEveryLiveRegistrySnapshotSettlesTheLockScreenTurns() {
         let appState = makeAppState()
         var snapshots: [(Set<String>, String)] = []
-        appState.liveTurnActivitiesRegistrySnapshot = { ids, profile, _ in snapshots.append((ids, profile)) }
+        appState.liveTurnActivitiesRegistrySnapshot = { ids, profile, _ in
+            snapshots.append((ids, profile))
+            return false
+        }
         appState.recordActiveListEvidence([
             LiveSessionStatus(runtimeSessionId: "rt", storedSessionId: "stored", status: "working"),
             LiveSessionStatus(runtimeSessionId: "done", storedSessionId: "done-stored", status: "idle"),
@@ -186,6 +209,23 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertEqual(snapshots.count, 1)
         XCTAssertEqual(snapshots.first?.0, ["rt", "stored"])
         XCTAssertEqual(snapshots.first?.1, "work", "Settled against the snapshot's own profile")
+        XCTAssertFalse(appState.liveTurnRegistryRecheckPending)
+    }
+
+    /// A chat just seen absent gets one more registry read, chat list or
+    /// not; a second absence meanwhile shares it.
+    func testAChatJustSeenAbsentGetsOneMoreRegistryRead() {
+        let appState = makeAppState()
+        var reads = 0
+        appState.liveTurnActivitiesRegistrySnapshot = { _, _, _ in
+            reads += 1
+            return true
+        }
+        appState.recordActiveListEvidence([], profile: "default")
+        XCTAssertTrue(appState.liveTurnRegistryRecheckPending)
+        appState.recordActiveListEvidence([], profile: "default")
+        XCTAssertEqual(reads, 2)
+        XCTAssertTrue(appState.liveTurnRegistryRecheckPending)
     }
 
     func testRequireSignInMessageOverloadWrapsHumanAuthoredStringsAsNotice() {

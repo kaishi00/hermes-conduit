@@ -831,10 +831,17 @@ final class AppState: ObservableObject {
     /// to (#454).
     @Published private(set) var liveSessionStatusIndex = SessionLiveStatusIndex()
     /// Where active_list snapshots and a required sign-in reach the Lock
-    /// Screen's turn activities (LiveTurnActivities); tests watch them.
-    var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Void = { ids, profile, dashboardID in
+    /// Screen's turn activities (LiveTurnActivities); tests watch them. A
+    /// snapshot answers true when a turn's chat was just seen absent and
+    /// another read is needed to settle it.
+    var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Bool = { ids, profile, dashboardID in
         LiveTurnActivities.shared.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID)
     }
+    /// The one `session.active_list` read that settles a turn whose chat
+    /// was just seen absent, whether or not the chat list (and its poll) is
+    /// on screen.
+    private var liveTurnRegistryRecheck: Task<Void, Never>?
+    var liveTurnRegistryRecheckPending: Bool { liveTurnRegistryRecheck != nil }
     /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
     /// sign-in), or with `true` only those the relay can't end by push.
     var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
@@ -12055,11 +12062,22 @@ final class AppState: ObservableObject {
         /// None: off the phone screen the refusal is weak evidence, retried
         /// once Conduit is on screen.
         case keepAll
-        /// Those whose push token the relay didn't take: the Conduit plugin
-        /// still ends the others by push, whatever Conduit's own sign-in.
+        /// Those whose push token this iPhone's current relay installation
+        /// didn't take: the Conduit plugin still ends the others by push,
+        /// whatever Conduit's own sign-in.
         case endNotOnRelay
         /// All of them: without the plugin nothing else will.
         case endAll
+
+        /// `liveTurnActivitiesEndDashboard`'s `keepingThoseOnRelay`, or nil
+        /// when none end.
+        var keepingThoseOnRelay: Bool? {
+            switch self {
+            case .keepAll: nil
+            case .endNotOnRelay: true
+            case .endAll: false
+            }
+        }
     }
 
     /// What a required sign-in does to the dashboard's Lock Screen turns.
@@ -12146,10 +12164,11 @@ final class AppState: ObservableObject {
         pendingLoginFailure = pendingFailure
         // A turn of this dashboard nothing can end now stops counting up on
         // the Lock Screen.
-        switch Self.signInEndsLockScreenTurns(screenAway: phoneScreenIsAway(), plugin: pluginStateBeforeSignIn) {
-        case .keepAll: break
-        case .endNotOnRelay: liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, true)
-        case .endAll: liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
+        if let keepingThoseOnRelay = Self.signInEndsLockScreenTurns(
+            screenAway: phoneScreenIsAway(),
+            plugin: pluginStateBeforeSignIn
+        ).keepingThoseOnRelay {
+            liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, keepingThoseOnRelay)
         }
     }
 
@@ -16042,6 +16061,21 @@ final class AppState: ObservableObject {
         return ids
     }
 
+    /// Reads the live registry once more after `registryAbsenceSpan`, so a
+    /// turn whose chat a one-off read found absent is settled even with the
+    /// chat list's poll off screen. One at a time: a read already waiting
+    /// settles every absence seen meanwhile.
+    private func scheduleLiveTurnRegistryRecheck() {
+        guard liveTurnRegistryRecheck == nil else { return }
+        liveTurnRegistryRecheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(LiveTurnActivities.registryAbsenceSpan + 1))
+            guard let self, !Task.isCancelled else { return }
+            // Cleared first, so this read can ask for the next one.
+            self.liveTurnRegistryRecheck = nil
+            await self.refreshLiveSessionStatuses()
+        }
+    }
+
     /// `session.active_list` rows are the gateway's live registry: every row
     /// naming both a runtime and a stored id is fresh authoritative routing
     /// evidence (the same authority class as a catalog snapshot), recorded
@@ -16061,7 +16095,9 @@ final class AppState: ObservableObject {
             }
         }
         // Lock Screen progress of a turn that ended unseen (#605).
-        liveTurnActivitiesRegistrySnapshot(Self.liveTurnSessionIDs(rows), profile, activeDashboardID?.uuidString)
+        if liveTurnActivitiesRegistrySnapshot(Self.liveTurnSessionIDs(rows), profile, activeDashboardID?.uuidString) {
+            scheduleLiveTurnRegistryRecheck()
+        }
         for row in rows {
             conversationIdentityIndex.recordAuthoritative(
                 runtimeID: row.runtimeSessionId,

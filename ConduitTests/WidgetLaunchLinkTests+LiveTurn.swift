@@ -168,30 +168,48 @@ extension WidgetLaunchLinkTests {
         func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
 
         var absences = LiveTurnProgress.RegistryAbsences()
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span), "Absent once: still running")
-        XCTAssertTrue(absences.record(.absent, for: "a", at: at(span), span: span), "Absent twice: over")
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(0), span: span), .started, "Absent once: still running, a recheck is due")
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(span), span: span), .over, "Absent twice: over")
 
         absences = LiveTurnProgress.RegistryAbsences()
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
-        XCTAssertFalse(absences.record(.running, for: "a", at: at(4), span: span))
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(span), span: span), "Absent, running, absent: still running")
-        XCTAssertTrue(absences.record(.absent, for: "a", at: at(2 * span), span: span))
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(0), span: span), .started)
+        XCTAssertEqual(absences.record(.running, for: "a", at: at(4), span: span), .none)
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(span), span: span), .started, "Absent, running, absent: still running")
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(2 * span), span: span), .over)
 
         absences = LiveTurnProgress.RegistryAbsences()
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(1), span: span), "Reads at the same moment count once")
-        XCTAssertFalse(absences.record(.unknown, for: "a", at: at(4), span: span))
-        XCTAssertTrue(absences.record(.absent, for: "a", at: at(span), span: span), "Another profile's snapshot in between changes nothing")
-        XCTAssertFalse(absences.record(.absent, for: "b", at: at(span), span: span), "Counted per activity")
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(0), span: span), .started)
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(1), span: span), .none, "Reads at the same moment count once")
+        XCTAssertEqual(absences.record(.unknown, for: "a", at: at(4), span: span), .none)
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(span), span: span), .over, "Another profile's snapshot in between changes nothing")
+        XCTAssertEqual(absences.record(.absent, for: "b", at: at(span), span: span), .started, "Counted per activity")
 
         absences.forget("b")
-        XCTAssertFalse(absences.record(.absent, for: "b", at: at(3 * span), span: span), "An ended activity's absence is gone")
+        XCTAssertEqual(absences.record(.absent, for: "b", at: at(3 * span), span: span), .started, "An ended activity's absence is gone")
 
         absences = LiveTurnProgress.RegistryAbsences()
         let long = span * LiveTurnProgress.RegistryAbsences.staleSpans + 1
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(0), span: span))
-        XCTAssertFalse(absences.record(.absent, for: "a", at: at(long), span: span), "An absence seen long ago starts over")
-        XCTAssertTrue(absences.record(.absent, for: "a", at: at(long + span), span: span))
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(0), span: span), .started)
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(long), span: span), .started, "An absence seen long ago starts over")
+        XCTAssertEqual(absences.record(.absent, for: "a", at: at(long + span), span: span), .over)
+    }
+
+    /// Which turns ending a dashboard's activities ends: its own and an
+    /// older build's, except, when asked, those whose token the relay
+    /// installation still in use took.
+    func testEndingADashboardsTurnsKeepsOnlyThoseTheRelayCanEnd() {
+        func ends(_ own: String?, token: String?, keeping: Bool, current: String? = "I1") -> Bool {
+            LiveTurnActivities.endsTurn(activityDashboardID: own, tokenInstallationID: token, ofDashboard: "D1", keepingThoseOnRelay: keeping, currentInstallationID: current)
+        }
+        XCTAssertTrue(ends("D1", token: nil, keeping: false))
+        XCTAssertTrue(ends("D1", token: "I1", keeping: false), "Disconnect and Sign Out end them all")
+        XCTAssertFalse(ends("D2", token: nil, keeping: false), "Another dashboard's stay")
+        XCTAssertTrue(ends(nil, token: nil, keeping: false), "An older build's activity names no dashboard")
+        XCTAssertFalse(ends("D1", token: "I1", keeping: true), "The plugin still ends it by push")
+        XCTAssertTrue(ends("D1", token: nil, keeping: true), "The relay never took its token")
+        XCTAssertTrue(ends("D1", token: "I1", keeping: true, current: nil), "Notifications turned off: the installation is gone")
+        XCTAssertTrue(ends("D1", token: "I1", keeping: true, current: "I2"), "Moved to another relay: its token isn't there")
+        XCTAssertFalse(ends("D2", token: nil, keeping: true))
     }
 
     /// Only a relay that took a Live Activity token counts as a route the

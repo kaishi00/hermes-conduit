@@ -957,17 +957,19 @@ final class PushNotificationService: ObservableObject {
     /// chat, under the ids the chat is known by (at most 6, the relay's
     /// limit), so the host's progress reports reach it. Best effort: without
     /// notifications, or on a relay without the route, the activity is only
-    /// updated while Conduit runs. True only when the relay took the token,
-    /// the one case the Conduit plugin can update and end it by push.
+    /// updated while Conduit runs. Returns the installation whose relay
+    /// took the token, the one case the Conduit plugin can update and end
+    /// it by push; nil otherwise.
     @discardableResult
-    func registerLiveActivity(token: String, sessionIDs: [String]) async -> Bool {
+    func registerLiveActivity(token: String, sessionIDs: [String]) async -> String? {
         guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
-              !sessionIDs.isEmpty else { return false }
-        return await sendLiveActivity(
+              !sessionIDs.isEmpty else { return nil }
+        let routeExists = await sendLiveActivity(
             LiveActivityRegistration(pushToken: token, sessionIDs: Array(sessionIDs.prefix(6))),
             method: "PUT",
             registration: registration
-        ) == true
+        )
+        return routeExists == true ? registration.installationID : nil
     }
 
     /// The activity ended on the phone: the relay forgets its token.

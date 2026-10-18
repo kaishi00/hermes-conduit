@@ -123,20 +123,31 @@ enum LiveTurnProgress {
         private var since: [String: Date] = [:]
         static let staleSpans: Double = 4
 
-        /// Records `verdict` for activity `id`; true once the turn is over.
-        mutating func record(_ verdict: RegistryVerdict, for id: String, at now: Date, span: TimeInterval) -> Bool {
+        /// Where a turn stands after one snapshot.
+        enum Outcome: Equatable {
+            /// Nothing to do.
+            case none
+            /// Its chat was just seen absent for the first time: a snapshot
+            /// `span` from now settles it.
+            case started
+            /// Its chat has stayed absent: the turn is over.
+            case over
+        }
+
+        /// Records `verdict` for activity `id`.
+        mutating func record(_ verdict: RegistryVerdict, for id: String, at now: Date, span: TimeInterval) -> Outcome {
             switch verdict {
             case .unknown:
-                return false
+                return .none
             case .running:
                 since[id] = nil
-                return false
+                return .none
             case .absent:
                 guard let first = since[id], now.timeIntervalSince(first) <= span * Self.staleSpans else {
                     since[id] = now
-                    return false
+                    return .started
                 }
-                return now.timeIntervalSince(first) >= span
+                return now.timeIntervalSince(first) >= span ? .over : .none
             }
         }
 
@@ -180,9 +191,11 @@ final class LiveTurnActivities {
         let sessionIDs: Set<String>
         var state: HermesTurnAttributes.ContentState
         var pushToken: String?
-        /// Whether the relay took `pushToken`, so the Conduit plugin can
-        /// update and end the activity by push.
-        var tokenOnRelay = false
+        /// The relay installation that took `pushToken`, through which the
+        /// Conduit plugin can update and end the activity by push. It only
+        /// counts while it is still this iPhone's installation: turning
+        /// notifications off or moving relays drops it.
+        var tokenInstallationID: String?
         var tokenTask: Task<Void, Never>?
         var stateTask: Task<Void, Never>?
         /// The last update handed to ActivityKit; each waits for the one
@@ -293,6 +306,9 @@ final class LiveTurnActivities {
                 finish(id, phase: next.turnPhase, dismissal: .after(Date().addingTimeInterval(Self.dismissAfterEnd)))
             } else {
                 running[id]?.state = next
+                // Its stream is live: an absence from the registry (an id
+                // that rotated mid-turn) is moot.
+                registryAbsences.forget(id)
                 let content = ActivityContent(state: next, staleDate: Date().addingTimeInterval(Self.staleAfter))
                 let previous = entry.updateTask
                 running[id]?.updateTask = Task {
@@ -311,10 +327,14 @@ final class LiveTurnActivities {
     /// instead of counting up for hours, once its chat has stayed out of
     /// the registry for `registryAbsenceSpan` (`RegistryAbsences`).
     /// `liveSessionIDs` are the ids of the rows still working, waiting or
-    /// starting.
-    func reconcile(liveSessionIDs: Set<String>, profile: String, dashboardID: String?, now: Date = Date()) {
-        guard !running.isEmpty else { return }
+    /// starting. True when a chat was just seen absent for the first time,
+    /// so another snapshot `registryAbsenceSpan` from now is needed to
+    /// settle it.
+    @discardableResult
+    func reconcile(liveSessionIDs: Set<String>, profile: String, dashboardID: String?, now: Date = Date()) -> Bool {
+        guard !running.isEmpty else { return false }
         var over: [String] = []
+        var confirmationNeeded = false
         for (id, entry) in running {
             let verdict = LiveTurnProgress.registryVerdict(
                 attributes: entry.activity.attributes,
@@ -325,8 +345,10 @@ final class LiveTurnActivities {
                 now: now,
                 grace: Self.registryGrace
             )
-            if registryAbsences.record(verdict, for: id, at: now, span: Self.registryAbsenceSpan) {
-                over.append(id)
+            switch registryAbsences.record(verdict, for: id, at: now, span: Self.registryAbsenceSpan) {
+            case .none: break
+            case .started: confirmationNeeded = true
+            case .over: over.append(id)
             }
         }
         // Ended only after the walk: finish removes from `running`.
@@ -334,26 +356,48 @@ final class LiveTurnActivities {
             // When it ended is unknown: no time shows rather than a wrong one.
             finish(id, phase: .done, dismissal: .after(now.addingTimeInterval(Self.dismissAfterEnd)), endKnown: false)
         }
+        return confirmationNeeded
     }
 
     /// Conduit stops following `dashboardID`'s turns (its sign-in expired
     /// with no push route to end them, or the user disconnected or signed
     /// out): their activities go now rather than counting up on a turn
     /// nothing will end. `keepingThoseOnRelay` keeps the ones whose push
-    /// token the relay took, which the Conduit plugin still ends by push.
-    /// Another dashboard's activities stay, except one started by a build
-    /// before `dashboardID`: naming no dashboard, it ends whichever
-    /// dashboard this is. That only holds through the upgrade, until the
-    /// system has ended those older activities.
+    /// token this iPhone's current relay installation took, which the
+    /// Conduit plugin still ends by push (`endsTurn`).
     func endTurns(ofDashboard dashboardID: String?, keepingThoseOnRelay: Bool = false) {
         adoptExisting()
+        let installationID = PushNotificationService.shared.installationID
         let ending = running.filter { _, entry in
-            guard !(keepingThoseOnRelay && entry.tokenOnRelay) else { return false }
-            return entry.activity.attributes.dashboardID.map { $0 == dashboardID } ?? true
+            Self.endsTurn(
+                activityDashboardID: entry.activity.attributes.dashboardID,
+                tokenInstallationID: entry.tokenInstallationID,
+                ofDashboard: dashboardID,
+                keepingThoseOnRelay: keepingThoseOnRelay,
+                currentInstallationID: installationID
+            )
         }.map(\.key)
         for id in ending {
             finish(id, phase: .stopped, dismissal: .immediate)
         }
+    }
+
+    /// Whether `endTurns(ofDashboard:)` ends an activity. Another
+    /// dashboard's activities stay, except one started by a build before
+    /// `dashboardID`: naming no dashboard, it ends whichever dashboard this
+    /// is. That only holds through the upgrade, until the system has ended
+    /// those older activities. With `keepingThoseOnRelay`, one whose token
+    /// the relay installation still in use took stays too.
+    nonisolated static func endsTurn(
+        activityDashboardID: String?,
+        tokenInstallationID: String?,
+        ofDashboard dashboardID: String?,
+        keepingThoseOnRelay: Bool,
+        currentInstallationID: String?
+    ) -> Bool {
+        if let own = activityDashboardID, own != dashboardID { return false }
+        if keepingThoseOnRelay, let tokenInstallationID, tokenInstallationID == currentInstallationID { return false }
+        return true
     }
 
     /// Lock Screen progress was turned off: every activity goes.
@@ -446,13 +490,13 @@ final class LiveTurnActivities {
         guard running[id] != nil else { return }
         let previous = running[id]?.pushToken
         running[id]?.pushToken = token
-        if previous != token { running[id]?.tokenOnRelay = false }
+        if previous != token { running[id]?.tokenInstallationID = nil }
         if let previous, previous != token {
             await PushNotificationService.shared.unregisterLiveActivity(token: previous)
         }
-        let onRelay = await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
+        let installationID = await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
         // Unless a newer token replaced it meanwhile.
-        if running[id]?.pushToken == token { running[id]?.tokenOnRelay = onRelay }
+        if running[id]?.pushToken == token { running[id]?.tokenInstallationID = installationID }
     }
 
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {
