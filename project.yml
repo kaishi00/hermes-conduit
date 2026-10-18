@@ -24,6 +24,9 @@ packages:
   WebRTC:
     url: https://github.com/stasel/WebRTC
     exactVersion: 153.0.0
+# Each shipped target that calls a required-reason API keeps its
+# PrivacyInfo.xcprivacy at its folder's root; xcodegen bundles it with that
+# folder's sources (ConduitTests/PrivacyManifestTests.swift checks them).
 targets:
   Conduit:
     type: application
