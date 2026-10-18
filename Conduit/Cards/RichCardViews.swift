@@ -108,6 +108,9 @@ struct RichMapCard: View {
     }
 
     private func look() async {
+        matches = []
+        route = nil
+        looked = false
         let lookups = await RichPlaceLookup.matches(card.places)
         // A newer card's lookup owns the state now.
         guard !Task.isCancelled else { return }
@@ -115,7 +118,9 @@ struct RichMapCard: View {
         if let planned = card.route, let to = match(card.places[planned.to]) {
             let from = planned.from.flatMap { match(card.places[$0]) }
             if planned.from == nil || from != nil {
-                route = await RichPlaceLookup.route(from: from, to: to, mode: planned.mode)
+                let found = await RichPlaceLookup.route(from: from, to: to, mode: planned.mode)
+                guard !Task.isCancelled else { return }
+                route = found
             }
         }
         looked = true
@@ -298,7 +303,10 @@ struct RichPlaceCard: View {
             guard !Task.isCancelled else { return }
             match = found
             looked = true
-            if let match { travelTime = await RichPlaceLookup.travelTime(to: match, mode: mode) }
+            guard let found else { return }
+            let time = await RichPlaceLookup.travelTime(to: found, mode: mode)
+            guard !Task.isCancelled else { return }
+            travelTime = time
         }
         .sheet(isPresented: $showsMap) {
             if let match {
@@ -677,7 +685,11 @@ private struct RichPlaceTile: View {
         .richCardSurface()
         .contentShape(Rectangle())
         .task(id: place) {
-            match = await RichPlaceLookup.match(place)
+            match = nil
+            looked = false
+            let found = await RichPlaceLookup.match(place)
+            guard !Task.isCancelled else { return }
+            match = found
             looked = true
         }
         .accessibilityElement(children: .combine)

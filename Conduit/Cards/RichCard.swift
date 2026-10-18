@@ -45,7 +45,10 @@ struct RichCard: Identifiable, Equatable, Hashable {
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
-        let places = (json["places"] as? [[String: Any]] ?? []).enumerated().compactMap { RichPlace(json: $1, index: $0) }
+        // Numbered after any unusable place is left out, so an index is a
+        // place's position in `places` (normalized cards never leave one out).
+        let usable = (json["places"] as? [[String: Any]] ?? []).filter { RichPlace(json: $0, index: 0) != nil }
+        let places = usable.enumerated().compactMap { RichPlace(json: $1, index: $0) }
         guard !places.isEmpty else { return nil }
         self.id = id
         self.kind = kind
