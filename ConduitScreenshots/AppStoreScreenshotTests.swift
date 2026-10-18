@@ -145,6 +145,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         settle(3)
         print("PREVIEW_MARK end \(Date().timeIntervalSince1970)")
         snap("10-preview-end")
+        // The recording's last frame is the home screen this brings up, so
+        // the cut dates the video from here (recordVideo starts late).
+        app.terminate()
+        print("PREVIEW_MARK stop \(Date().timeIntervalSince1970)")
     }
 
     private func openChat(_ title: String, waitingFor text: String) {

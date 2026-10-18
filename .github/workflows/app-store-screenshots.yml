@@ -13,14 +13,6 @@ on:
       watch:
         description: "Watch simulator name"
         default: "Apple Watch Ultra 3"
-  push:
-    # Temporary while the pipeline is built on this branch.
-    branches: [claude/project-thread-3rugpr]
-    paths:
-      - ".github/workflows/app-store-screenshots.yml"
-      - "scripts/app-store/**"
-      - "ConduitScreenshots/**"
-      - "ConduitWatch/**"
 
 permissions:
   contents: write
@@ -119,7 +111,6 @@ jobs:
                 -resultBundlePath "results/$slug-preview.xcresult" \
                 -derivedDataPath dd \
                 > "results-$slug-preview.log" 2>&1
-              echo "RECORD_END $(python3 -c 'import time; print(time.time())')" >> "shots/preview-$slug.marks"
               kill -INT "$recorder" || true
               wait "$recorder" || true
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
@@ -155,6 +146,22 @@ jobs:
           done
           ls -lR shots
 
+      - name: Cut App Previews
+        # 30 s, 30 fps H.264 with a silent track at Apple's preview sizes,
+        # next to the raw recordings (shots/preview-<device>.mp4).
+        if: always()
+        timeout-minutes: 15
+        run: |
+          set -uo pipefail
+          command -v ffmpeg >/dev/null || brew install ffmpeg >/dev/null
+          for marks in shots/preview-*.marks; do
+            [ -f "$marks" ] || continue
+            raw="${marks%.marks}.mov"
+            case "$marks" in *iPad*) size=1200x1600 ;; *) size=886x1920 ;; esac
+            scripts/app-store/cut-preview.sh "$raw" "$marks" "${marks%.marks}.mp4" "$size" \
+              || echo "::warning::could not cut $raw"
+          done
+
       - name: Publish to a git ref
         # Cloud sessions can't download artifacts (blob storage is blocked
         # there) but can fetch git refs: refs/app-store-shots/<run id> holds
@@ -165,7 +172,6 @@ jobs:
           set -euo pipefail
           out=$(mktemp -d)
           cp -R shots "$out/" 2>/dev/null || true
-          find "$out" -name '*.mp4' -delete
           find "$out" -name '*.mov' -size +90M -delete
           mkdir -p "$out/logs"
           for f in demo-hermes/*.log results-*.log; do
@@ -274,3 +280,11 @@ jobs:
           git -c user.name=ci -c user.email=ci@localhost commit -qm "App Store Watch screenshots, run ${{ github.run_id }}" --allow-empty
           git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
             "HEAD:refs/app-store-shots/${{ github.run_id }}-watch"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-watch-screenshots
+          path: shots
+          if-no-files-found: warn

@@ -10,9 +10,10 @@
 set -euo pipefail
 raw="$1"; marks="$2"; out="$3"; size="$4"; lead="${5:-2}"
 record=$(awk '$1 == "RECORD_START" {print $2}' "$marks")
-# The video's first frame comes seconds after recordVideo starts; its last
-# frame is when the recorder was stopped, so date the video from its end.
-stop=$(awk '$1 == "RECORD_END" {print $2}' "$marks")
+# recordVideo's first frame comes seconds after it starts, and it only writes
+# frames when the screen changes. The last change is the home screen after
+# the test quits the app (PREVIEW_MARK stop), so date the video from its end.
+stop=$(awk '$2 == "stop" {print $3}' "$marks")
 if [ -n "$stop" ]; then
   duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$raw")
   record=$(python3 -c "print($stop - $duration)")
