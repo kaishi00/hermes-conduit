@@ -182,6 +182,41 @@ extension HermesClientTests {
         assertDashboardUpgrade(upgrade, route: GrokLiveClient.socketPath, ticket: "fixture-ticket-1", bearer: nil)
     }
 
+    /// Local Live's relay behind an auth proxy (cookie mode): its upgrade
+    /// carries the dashboard's own session cookie, like Grok's relay and
+    /// the chat socket, so the proxy admits it.
+    func testLocalLiveUpgradeFromAppStateCarriesTheDashboardsSessionCookie() async throws {
+        useInMemoryKeychain()
+        let base = "http://127.0.0.1:9"
+        let id = UUID()
+        let suite = "HermesClientTests.localLive.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(
+                activeDashboardID: id,
+                dashboards: [SavedDashboard(id: id, label: "Proxy", normalizedURL: base)]
+            ),
+            clearSessionPresentationCache: {}
+        )
+        appState.prepareDashboardBridge(for: base)
+        let bridge = try XCTUnwrap(appState.dashboardTicketBridge)
+        addTeardownBlock { @MainActor in bridge.invalidate() }
+        XCTAssertFalse(bridge.usesNativeOAuth)
+        let session = try XCTUnwrap(HTTPCookie(properties: [
+            .name: "_proxy_session", .value: "proxy-value", .domain: "127.0.0.1", .path: "/",
+        ]))
+        bridge.requestAuthorizer.cookieTicketMinter = { "cookie-ticket" }
+        bridge.requestAuthorizer.cookieUpgradeCookies = { [session] }
+        appState.connection = HermesConnection(baseUrl: base, ticket: "")
+
+        let request = try await appState.localLiveClient.socketRequest()
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "_proxy_session=proxy-value")
+        XCTAssertEqual(request.url?.path, LocalLiveProtocol.socketPath)
+    }
+
     // MARK: - External voice providers
 
     /// Gemini's socket goes to the provider address the host hands out

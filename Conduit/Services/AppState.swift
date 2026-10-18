@@ -3174,8 +3174,10 @@ final class AppState: ObservableObject {
         }
         let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
         // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's.
-        return URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+        // headers, like the speech stream's. The authorizer then adds the
+        // dashboard's own session cookies (cookie mode), as for Grok's relay.
+        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
     })
 
     /// Built on first use only, like the other live modes'.
