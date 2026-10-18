@@ -429,16 +429,6 @@ struct ConnectionSetupView: View {
         }
     }
 
-    /// The numbered question's position, for the header's progress bar.
-    private var progressStep: Int? {
-        switch flow.step {
-        case .dashboard: return 1
-        case .credentials: return 2
-        case .accessMethod: return 3
-        default: return nil
-        }
-    }
-
     // MARK: - Step 1: Dashboard readiness
 
     private var dashboardStep: some View {
@@ -504,7 +494,7 @@ struct ConnectionSetupView: View {
             ConnectionSetupHeader(
                 symbol: "point.3.connected.trianglepath.dotted",
                 progress: flow.progressLabel,
-                progressStep: progressStep,
+                progressStep: flow.progressStep,
                 title: AppLocalization.string("How will this iPhone or iPad reach Hermes?"),
                 detail: AppLocalization.string("Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.")
             )
@@ -704,7 +694,7 @@ struct ConnectionSetupView: View {
             ConnectionSetupHeader(
                 symbol: symbol,
                 progress: flow.progressLabel,
-                progressStep: progressStep,
+                progressStep: flow.progressStep,
                 title: question,
                 detail: explanation
             )

@@ -339,13 +339,19 @@ final class ConnectionSetupFlowTests: XCTestCase {
 
     func testProgressLabelsCoverTheTwoFirstRunQuestions() {
         XCTAssertEqual(ConnectionSetupFlow(entry: .start).progressLabel, "Step 1 of 2")
+        // The bar has a segment per numbered question and fills to the label.
+        XCTAssertEqual(ConnectionSetupFlow.progressStepCount, 2)
+        XCTAssertEqual(ConnectionSetupFlow(entry: .start).progressStep, 1)
 
         var flow = ConnectionSetupFlow(entry: .start)
         flow.answerDashboard(.yes)
         XCTAssertEqual(flow.progressLabel, "Step 2 of 2")
+        XCTAssertEqual(flow.progressStep, 2)
 
         flow.selectAccessMethod(.lan)
         XCTAssertNil(flow.progressLabel, "Branch screens sit outside the numbered question sequence")
+        XCTAssertNil(flow.progressStep)
+        XCTAssertNil(ConnectionSetupFlow(entry: .credentials).progressStep)
 
         // Non-question entries are unnumbered too, including the
         // authentication-recovery credentials question.
