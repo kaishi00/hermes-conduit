@@ -112,13 +112,14 @@ final class AppStoreScreenshotTests: XCTestCase {
         let window = app.windows.firstMatch.frame
         let target = window.width > 700 ? "Compare flights to Tokyo" : "Book campsite for Big Sur"
         let card = app.staticTexts[target]
-        for _ in 0...5 {
+        let board = app.windows.firstMatch
+        for _ in 0..<5 {
             if card.exists, window.contains(card.frame) { return }
-            let board = app.windows.firstMatch
             board.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55))
                 .press(forDuration: 0.05, thenDragTo: board.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.55)))
             settle(1)
         }
+        if card.exists, window.contains(card.frame) { return }
         XCTFail("Could not scroll the board to \(target)")
     }
 

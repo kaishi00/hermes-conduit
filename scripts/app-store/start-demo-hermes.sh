@@ -112,7 +112,7 @@ for job in json.load(open(sys.argv[1])).get("cron", []):
 PY
 while IFS=$'\t' read -r name schedule prompt paused; do
   "$HERMES" cron create --name "$name" ${paused:+--paused} "$schedule" "$prompt" >> "$DEMO_WORK/seed.log" 2>&1 \
-    || echo "::warning::cron job '$name' was not created"
+    || { echo "::error::cron job '$name' was not created"; tail -20 "$DEMO_WORK/seed.log"; exit 1; }
 done < "$DEMO_WORK/cron.tsv"
 
 jar="$DEMO_WORK/cookies"
