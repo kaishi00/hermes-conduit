@@ -7,9 +7,9 @@
 //  the server actually received, not a mock that echoes what was asked
 //  for. Chat, Kanban live events, the dashboard speak and transcribe
 //  streams and the Grok relay carry the selected dashboard's fresh ticket
-//  and, for a native sign-in, no cookie, whatever the shared jar holds; a
-//  redirect is refused, so the ticket never follows it; external voice
-//  sockets carry nothing of the dashboard's.
+//  and, for a native sign-in, its bearer and no cookie, whatever the shared
+//  jar holds; a redirect is refused, so neither the ticket nor the bearer
+//  follows it; external voice sockets carry nothing of the dashboard's.
 //
 
 import Foundation
@@ -70,7 +70,7 @@ extension HermesClientTests {
 
     // MARK: - Native sign-in: every socket factory
 
-    func testChatUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testChatUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-chat")
@@ -86,12 +86,14 @@ extension HermesClientTests {
 
         XCTAssertTrue(client.isConnected, "The real 101 completed the handshake")
         let upgrade = fixture.upgrades.first
-        assertDashboardUpgrade(upgrade, route: "/api/ws", ticket: ticket, bearer: nil)
+        assertDashboardUpgrade(upgrade, route: "/api/ws", ticket: ticket, bearer: "access-chat")
         XCTAssertEqual(upgrade?.headers["x-conduit-client"], "conduit")
+        XCTAssertEqual(upgrade?.headers["authorization"], fixture.authorizationThatMinted(ticket),
+                       "The upgrade presents the bearer that minted its ticket")
         XCTAssertEqual(fixture.upgrades.count, 1)
     }
 
-    func testKanbanEventUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testKanbanEventUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-kanban")
@@ -111,12 +113,12 @@ extension HermesClientTests {
         defer { socket.cancel() }
 
         let upgrade = try await fixture.waitForUpgrades(1).first
-        assertDashboardUpgrade(upgrade, route: "/api/plugins/kanban/events", ticket: ticket, bearer: nil)
+        assertDashboardUpgrade(upgrade, route: "/api/plugins/kanban/events", ticket: ticket, bearer: "access-kanban")
         XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["board"], "default")
         XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["since"], "7")
     }
 
-    func testDashboardSpeakStreamUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testDashboardSpeakStreamUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-speak")
@@ -128,11 +130,11 @@ extension HermesClientTests {
 
         let upgrade = try await fixture.waitForUpgrades(1).first
         XCTAssertEqual(fixture.mintCount, 1, "One fresh ticket for the one socket")
-        assertDashboardUpgrade(upgrade, route: "/api/audio/speak-stream", ticket: "fixture-ticket-1", bearer: nil)
+        assertDashboardUpgrade(upgrade, route: "/api/audio/speak-stream", ticket: "fixture-ticket-1", bearer: "access-speak")
         XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["profile"], "work")
     }
 
-    func testDashboardTranscribeStreamUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testDashboardTranscribeStreamUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-transcribe")
@@ -144,12 +146,12 @@ extension HermesClientTests {
         defer { transcription?.cancel() }
 
         let upgrade = try await fixture.waitForUpgrades(1).first
-        assertDashboardUpgrade(upgrade, route: "/api/audio/transcribe-stream", ticket: "fixture-ticket-1", bearer: nil)
+        assertDashboardUpgrade(upgrade, route: "/api/audio/transcribe-stream", ticket: "fixture-ticket-1", bearer: "access-transcribe")
     }
 
     /// The speech-server relay's speak socket: its ticket, no cookie from
     /// the shared jar, on the dashboard socket session.
-    func testSpeechServerSpeakUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testSpeechServerSpeakUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-relay-speak")
@@ -160,12 +162,12 @@ extension HermesClientTests {
         defer { stream.cancel() }
 
         let upgrade = try await fixture.waitForUpgrades(1).first
-        assertDashboardUpgrade(upgrade, route: SpeechServerSpeechStream.socketPath, ticket: "fixture-ticket-1", bearer: nil)
+        assertDashboardUpgrade(upgrade, route: SpeechServerSpeechStream.socketPath, ticket: "fixture-ticket-1", bearer: "access-relay-speak")
         XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["mode"], "speak")
     }
 
     /// The speech-server relay's transcription socket, the same way.
-    func testSpeechServerTranscriptionUpgradeCarriesItsTicketAndNoCookie() async throws {
+    func testSpeechServerTranscriptionUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-relay-transcribe")
@@ -177,7 +179,7 @@ extension HermesClientTests {
         defer { transcription?.cancel() }
 
         let upgrade = try await fixture.waitForUpgrades(1).first
-        assertDashboardUpgrade(upgrade, route: SpeechServerTranscription.socketPath, ticket: "fixture-ticket-1", bearer: nil)
+        assertDashboardUpgrade(upgrade, route: SpeechServerTranscription.socketPath, ticket: "fixture-ticket-1", bearer: "access-relay-transcribe")
     }
 
     /// Neither relay socket follows a redirect: the ticket and the proxy
@@ -206,7 +208,7 @@ extension HermesClientTests {
         XCTAssertEqual(fixture.upgrades.count, 2)
     }
 
-    func testGrokRelayUpgradeFromAppStateCarriesItsTicketAndNoCookie() async throws {
+    func testGrokRelayUpgradeFromAppStateCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }
         useInMemoryKeychain()
@@ -238,7 +240,7 @@ extension HermesClientTests {
         defer { socket.close() }
 
         let upgrade = try await fixture.waitForUpgrades(1).first
-        assertDashboardUpgrade(upgrade, route: GrokLiveClient.socketPath, ticket: "fixture-ticket-1", bearer: nil)
+        assertDashboardUpgrade(upgrade, route: GrokLiveClient.socketPath, ticket: "fixture-ticket-1", bearer: "access-grok")
     }
 
     /// Local Live's relay behind an auth proxy (cookie mode): its upgrade
@@ -331,9 +333,9 @@ extension HermesClientTests {
         // that none did.
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(elsewhere.receivedRequests.isEmpty,
-                      "The ticket never follows a redirect to another origin")
+                      "Neither the ticket nor the bearer follows a redirect to another origin")
         XCTAssertEqual(fixture.upgrades.count, 1, "The redirect is not retried either")
-        assertDashboardUpgrade(fixture.upgrades.first, route: "/api/ws", ticket: ticket, bearer: nil)
+        assertDashboardUpgrade(fixture.upgrades.first, route: "/api/ws", ticket: ticket, bearer: "access-redirect")
         XCTAssertEqual(fixture.refreshes.count, 0)
         XCTAssertNotNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboard.id), "A redirect is not a sign-out")
     }

@@ -16,7 +16,11 @@
 //  cookies come from the dashboard's own stores, never a process-wide jar.
 //
 //  Native mode (a Hermes native sign-in): tickets are minted with the
-//  grant, and the upgrade carries the ticket and proxy headers, no cookie.
+//  grant, and the upgrade carries the ticket, the proxy headers and the
+//  grant's bearer, no cookie. An auth edge that admits a native client by
+//  its bearer checks it on the upgrade too, as on every REST request; a
+//  dashboard that does not ask for it ignores it. The bearer goes only to
+//  this dashboard's own address.
 //
 
 import Foundation
@@ -29,7 +33,8 @@ protocol DashboardUpgradeAuthorizing: AnyObject {
     func mintTicket() async throws -> String
     /// `request`, ready for this dashboard: in cookie mode it carries the
     /// dashboard's session cookies for its address and no other Cookie
-    /// header. Proxy headers must already be on the request.
+    /// header; in native mode, the grant's bearer for its address and no
+    /// cookie. Proxy headers must already be on the request.
     func authorizeUpgrade(_ request: URLRequest) async throws -> URLRequest
 }
 
@@ -111,18 +116,25 @@ final class DashboardRequestAuthorizer: DashboardUpgradeAuthorizing {
 
     // MARK: Upgrades
 
-    /// The ticket and proxy headers stay as they are. In cookie mode the
-    /// dashboard's session cookies that its page would send to this address
-    /// are attached (replacing any Cookie header already there); a request
-    /// for another address, and every native-mode upgrade, carries no
-    /// cookie.
+    /// The ticket and proxy headers stay as they are, and no upgrade
+    /// carries a cookie but these. In cookie mode the dashboard's session
+    /// cookies that its page would send to this address are attached
+    /// (replacing any Cookie header already there). In native mode the
+    /// grant's access token is attached as `Authorization: Bearer`
+    /// (refreshed first once expired) in place of any Authorization header
+    /// already there. A request for another address gets neither.
     func authorizeUpgrade(_ request: URLRequest) async throws -> URLRequest {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         var authorized = request
         authorized.setValue(nil, forHTTPHeaderField: "Cookie")
-        guard nativeSession == nil, let url = request.url, covers(url), let cookieUpgradeCookies else {
+        guard let url = request.url, covers(url) else { return authorized }
+        if let nativeSession {
+            let bearer = try await nativeSession.upgradeBearer()
+            guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+            authorized.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
             return authorized
         }
+        guard let cookieUpgradeCookies else { return authorized }
         let cookies = await cookieUpgradeCookies()
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         if let header = Self.cookieHeader(for: cookies, url: url) {
