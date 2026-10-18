@@ -275,6 +275,16 @@ final class SettledMessageIsolationTests: XCTestCase {
             TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
             "the transcript redrawing on a publish must not rebuild rows whose message is unchanged"
         )
+
+        // Same messages, but a newer reply changes what each row shows
+        // (`ChatRowState.latestAssistantMessageID`): the row state reaches
+        // the rows through `.equatable()`.
+        appState.messages = [markdownMessage(id: "newest")]
+        drainUntil(2.0) { TranscriptPerf.settledMessageBubbleBodyEvaluations > 0 }
+        XCTAssertGreaterThan(
+            TranscriptPerf.settledMessageBubbleBodyEvaluations, 0,
+            "a row state change redraws rows whose message is unchanged"
+        )
     }
 
     /// Redraws on every publish and rebuilds its rows, as ChatView's
