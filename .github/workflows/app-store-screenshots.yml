@@ -32,7 +32,7 @@ concurrency:
 jobs:
   capture:
     runs-on: macos-26
-    timeout-minutes: 75
+    timeout-minutes: 100
     env:
       DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max,iPad Pro 13-inch' }}
       DEMO_HOST: hermes.tail-demo.ts.net
@@ -58,7 +58,7 @@ jobs:
         run: bash scripts/app-store/start-demo-hermes.sh
 
       - name: Capture
-        timeout-minutes: 45
+        timeout-minutes: 75
         run: |
           set -euo pipefail
           mkdir -p shots
@@ -90,7 +90,7 @@ jobs:
             TEST_RUNNER_CONDUIT_DEMO_URL="http://$DEMO_HOST:$DEMO_PORT" \
             TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
             TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
-            xcodebuild test \
+            perl -e 'alarm shift; exec @ARGV' 1500 xcodebuild test \
               -project Conduit.xcodeproj -scheme Conduit \
               -destination "id=$udid" \
               -only-testing:ConduitScreenshots \
@@ -112,7 +112,7 @@ jobs:
               TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
               TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
               TEST_RUNNER_CONDUIT_RECORD_PREVIEW=1 \
-              xcodebuild test-without-building \
+              perl -e 'alarm shift; exec @ARGV' 420 xcodebuild test-without-building \
                 -project Conduit.xcodeproj -scheme Conduit \
                 -destination "id=$udid" \
                 -only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPreview \
@@ -124,8 +124,11 @@ jobs:
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
               grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
               # The next device's screenshots must not show this chat.
-              HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions prune \
-                --title "Packing list" --yes --force || echo "::warning::preview chat not removed"
+              for sid in $(HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions list --limit 50 \
+                  | awk '/^Packing list/ {print $NF}'); do
+                HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions delete -y "$sid" < /dev/null \
+                  || echo "::warning::preview chat $sid not removed"
+              done
             fi
             set -e
             grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true
