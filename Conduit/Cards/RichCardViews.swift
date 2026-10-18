@@ -38,6 +38,16 @@ struct RichCardView: View {
             }
         case .places:
             RichPlacesCarousel(card: card)
+        case .stats:
+            RichStatsCard(card: card)
+        case .chart:
+            RichChartCard(card: card)
+        case .weather:
+            RichWeatherCard(card: card)
+        case .comparison:
+            RichComparisonCard(card: card)
+        case .steps:
+            RichStepsCard(card: card)
         }
     }
 }
@@ -51,7 +61,7 @@ private struct RichCardSurface: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func richCardSurface() -> some View { modifier(RichCardSurface()) }
 }
 
@@ -646,7 +656,7 @@ private struct RichAppleMapsMark: View {
     }
 }
 
-private struct RichCompactLabelStyle: LabelStyle {
+struct RichCompactLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             configuration.icon

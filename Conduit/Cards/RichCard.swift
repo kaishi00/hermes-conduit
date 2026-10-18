@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  A rich card as the views read it, built from a card RichCardSchema has
-//  normalized. Hermes supplies the facts here: a place's name and where it
+//  normalized (the information cards' own parts are in RichInfoCard.swift).
+//  Hermes supplies the facts here: a place's name and where it
 //  is, its own note, and ratings, hours, prices and photos it found, each
 //  with its source. What Apple Maps knows (address, category, phone,
 //  website, travel time) is looked up on the phone when the card is drawn
@@ -22,6 +23,11 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case map
         case place
         case places
+        case stats
+        case chart
+        case weather
+        case comparison
+        case steps
     }
 
     enum TravelMode: String {
@@ -40,8 +46,17 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let id: Int
     let kind: Kind
     let title: String?
+    /// map, place and places.
     let places: [RichPlace]
     let route: Route?
+    /// The information cards: where they're from, when Hermes said.
+    let source: RichCardSource?
+    let stats: [RichStat]
+    let chart: RichChart?
+    let weather: RichWeather?
+    let options: [RichOption]
+    let needs: [String]
+    let steps: [RichStep]
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
@@ -49,7 +64,6 @@ struct RichCard: Identifiable, Equatable, Hashable {
         // place's position in `places` (normalized cards never leave one out).
         let usable = (json["places"] as? [[String: Any]] ?? []).filter { RichPlace(json: $0, index: 0) != nil }
         let places = usable.enumerated().compactMap { RichPlace(json: $1, index: $0) }
-        guard !places.isEmpty else { return nil }
         self.id = id
         self.kind = kind
         self.title = json["title"] as? String
@@ -60,6 +74,21 @@ struct RichCard: Identifiable, Equatable, Hashable {
                                mode: (route["mode"] as? String).flatMap(TravelMode.init(rawValue:)) ?? .driving)
         } else {
             self.route = nil
+        }
+        source = RichCardSource(json: json["source"])
+        stats = (json["stats"] as? [[String: Any]] ?? []).compactMap(RichStat.init(json:))
+        chart = RichChart(json: json["chart"])
+        weather = RichWeather(json: json["weather"])
+        options = (json["options"] as? [[String: Any]] ?? []).compactMap(RichOption.init(json:))
+        needs = json["needs"] as? [String] ?? []
+        steps = (json["steps"] as? [[String: Any]] ?? []).compactMap(RichStep.init(json:))
+        switch kind {
+        case .map, .place, .places: guard !places.isEmpty else { return nil }
+        case .stats: guard !stats.isEmpty else { return nil }
+        case .chart: guard chart != nil else { return nil }
+        case .weather: guard weather != nil, source != nil else { return nil }
+        case .comparison: guard options.count >= 2 else { return nil }
+        case .steps: guard !steps.isEmpty else { return nil }
         }
     }
 
@@ -185,8 +214,6 @@ struct RichPlace: Equatable, Hashable {
     }
 
     private static func webURL(_ value: Any?) -> URL? {
-        guard let text = value as? String, let url = URL(string: text),
-              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else { return nil }
-        return url
+        RichJSON.webURL(value)
     }
 }
