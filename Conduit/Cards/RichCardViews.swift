@@ -138,6 +138,8 @@ struct RichMapPicture: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var image: UIImage?
+    /// The snapshot couldn't be drawn: a still icon rather than a spinner.
+    @State private var failed = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -148,7 +150,7 @@ struct RichMapPicture: View {
                         .resizable()
                         .scaledToFill()
                         .transition(.opacity)
-                } else if looked && coordinates.isEmpty {
+                } else if (looked && coordinates.isEmpty) || failed {
                     Image(systemName: "map")
                         .font(.title)
                         .foregroundStyle(.tertiary)
@@ -183,6 +185,7 @@ struct RichMapPicture: View {
         )
         // A newer size or scheme started its own snapshot.
         guard !Task.isCancelled else { return }
+        failed = drawn == nil
         withAnimation(.easeOut(duration: 0.2)) { image = drawn }
     }
 }
@@ -319,16 +322,22 @@ struct RichPlaceCard: View {
     private var header: some View {
         if let photo = place.photo {
             RichPhotoHeader(photo: photo, placeName: place.name, height: 160)
+            // The photo opens its source, so a strip of map opens the map.
+            if let match { mapButton(match, height: 80) }
         } else if let match {
-            Button {
-                showsMap = true
-            } label: {
-                RichMapPicture(coordinates: [match.coordinate], route: nil, height: 120, looked: looked)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: match.name))
-            .accessibilityHint(Text("Opens the map"))
+            mapButton(match, height: 120)
         }
+    }
+
+    private func mapButton(_ match: RichPlaceMatch, height: CGFloat) -> some View {
+        Button {
+            showsMap = true
+        } label: {
+            RichMapPicture(coordinates: [match.coordinate], route: nil, height: height, looked: looked)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: match.name))
+        .accessibilityHint(Text("Opens the map"))
     }
 }
 
@@ -693,7 +702,6 @@ private struct RichPlaceTile: View {
             looked = true
         }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
     }
 }
 

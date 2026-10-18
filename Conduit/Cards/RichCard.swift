@@ -158,7 +158,7 @@ struct RichPlace: Equatable, Hashable {
         }
         hours = Self.fact(json["hours"])
         price = Self.fact(json["price"])
-        if let photo = json["photo"] as? [String: Any], let url = Self.webURL(photo["url"]), url.scheme == "https",
+        if let photo = json["photo"] as? [String: Any], let url = Self.webURL(photo["url"]), url.scheme?.lowercased() == "https",
            let source = photo["source"] as? String {
             self.photo = Photo(url: url, source: source, pageURL: Self.webURL(photo["page_url"]))
         } else {
