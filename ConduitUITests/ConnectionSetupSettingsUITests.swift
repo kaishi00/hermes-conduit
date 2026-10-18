@@ -12,6 +12,7 @@ import XCTest
 final class ConnectionSetupSettingsUITests: XCTestCase {
     private enum Identity {
         static let stubDashboardURL = "https://conduit-uitest.example"
+        static let stubDashboardHost = "conduit-uitest.example"
         static let settingsRow = "settings.connection-setup"
         static let gatewayRow = "settings.gateway"
         static let urlField = "setup.url"
@@ -85,12 +86,14 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // The active connection is intact: still inside Settings, still the
         // stubbed connected session, never bounced to the login card.
         XCTAssertFalse(app.textFields["login.server-url"].exists, "The live session must never be disrupted by the wizard")
+        // V2's Connection row names the dashboard by its host.
         let gatewayRow = app.buttons[Identity.gatewayRow]
         XCTAssertTrue(gatewayRow.waitForExistence(timeout: 5))
         XCTAssertTrue(
-            gatewayRow.label.contains(Identity.stubDashboardURL),
+            gatewayRow.label.contains(Identity.stubDashboardHost),
             "The Gateway row still shows the current dashboard, got: \(gatewayRow.label)"
         )
+        XCTAssertFalse(gatewayRow.label.contains("https://"), "V2 shows the host, not the address, got: \(gatewayRow.label)")
     }
 
     func testInteractiveSignInOutcomeFromSettingsOffersDoneAndDismissesSafely() {

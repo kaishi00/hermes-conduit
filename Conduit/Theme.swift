@@ -233,13 +233,14 @@ enum ConduitMotion {
     /// The quick fade-out before a profile switch.
     static let fadeOut = Animation.easeOut(duration: fadeOutDuration)
 
-    /// A tab's screen fading in as it opens (the one left hides at once).
-    /// A plain fade, so it stays under Reduce Motion; the slide carries the
-    /// rest, so it can be short.
-    static let tabFadeIn = Animation.easeOut(duration: 0.12)
-    /// A tab's screen sliding the last few points into place as it opens.
-    /// Callers zero the slide under Reduce Motion (`V2Shell.tabSlideOffset`).
-    static let tabSlideIn = Animation.spring(response: 0.3, dampingFraction: 0.88)
+    /// Under Reduce Motion, a tab's screen fading in as it opens (the one
+    /// left hides at once).
+    static let tabFadeIn = Animation.easeOut(duration: 0.18)
+    /// Switching tabs: the opened screen pushes the one left off its side,
+    /// a full screen width, like a pager. Callers don't slide under Reduce
+    /// Motion (`V2Shell.tabOffset`).
+    static let tabSlideDuration: TimeInterval = 0.45
+    static let tabSlide = Animation.spring(duration: tabSlideDuration, bounce: 0)
 
     /// Under Reduce Motion every spring becomes the plain settle fade.
     static func ease(reduceMotion: Bool) -> Animation {

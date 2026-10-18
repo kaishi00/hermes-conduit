@@ -131,6 +131,51 @@ extension ChatTypographyTests {
         XCTAssertTrue(canvas.subviews.allSatisfy { $0.layer.needsDisplay() })
     }
 
+    /// A sent bubble hugs a short message: asked for its ideal width, drawn
+    /// text gives its unbroken width as the text view's intrinsic size did,
+    /// instead of every bubble stretching to the widest it's offered.
+    @MainActor
+    func testDrawnTextFitsAShortSentBubble() throws {
+        let view = SelectableTextView(text: "Goodbye.", font: ChatTypography.font(for: .body, chatSize: .default))
+        let drawn = view.makeUIViewForTests(coordinator: view.makeCoordinator(), drawsUntilTouched: true)
+        let plain = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        let natural = try XCTUnwrap(drawn.canvas).naturalSize()
+        let textViewWidth = ceil(plain.mountedTextView.sizeThatFits(
+            CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
+        ).width)
+        XCTAssertEqual(natural.width, textViewWidth, accuracy: 1)
+        XCTAssertEqual(drawn.canvas?.height(atWidth: natural.width), natural.height, "fits on one line")
+
+        let widths = try ["Goodbye.", String(repeating: "A sent message long enough to wrap. ", count: 4)].map { text in
+            try sentBubbleTextWidth(UserBubble(
+                message: ChatMessage(id: text, role: .user, content: text, timestamp: "1"),
+                gatewayResolver: nil
+            ))
+        }
+        XCTAssertEqual(widths[0], natural.width, accuracy: 2, "a short message's bubble fits its text")
+        XCTAssertGreaterThan(widths[1], 2 * widths[0], "a long message still wraps at the column")
+    }
+
+    @MainActor
+    private func sentBubbleTextWidth(_ bubble: UserBubble) throws -> CGFloat {
+        let host = UIHostingController(rootView: bubble.environment(\.selectableTextDrawsUntilTouched, true))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        func hosts(in view: UIView) -> [SelectableTextViewHostView] {
+            ((view as? SelectableTextViewHostView).map { [$0] } ?? []) + view.subviews.flatMap(hosts)
+        }
+        let found = hosts(in: host.view)
+        XCTAssertEqual(found.count, 1)
+        let textHost = try XCTUnwrap(found.first)
+        XCTAssertNotNil(textHost.canvas, "the text draws until touched")
+        return textHost.bounds.width
+    }
+
     /// A code block's line can run thousands of points, and tiles that wide
     /// are too big to back: text that doesn't wrap keeps its text view.
     @MainActor

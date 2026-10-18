@@ -115,6 +115,7 @@ struct V2ScheduledList: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var selectedJob: CronJob?
+    @State private var jobPendingDeletion: CronJob?
     /// Pinned jobs, per profile: "profile\tjobID" lines. Kept on the phone;
     /// Hermes has no pin for a job.
     @AppStorage("conduit.v2.pinnedCronJobs") private var pinnedRaw = ""
@@ -214,6 +215,26 @@ struct V2ScheduledList: View {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
         }
+        .alert("Delete scheduled job?", isPresented: Binding(
+            get: { jobPendingDeletion != nil },
+            set: { if !$0 { jobPendingDeletion = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                guard let job = jobPendingDeletion else { return }
+                jobPendingDeletion = nil
+                let key = pinKey(job)
+                Task {
+                    let deleted = await appState.deleteCronJob(job)
+                    Haptics.mutationCompleted(deleted)
+                    if deleted {
+                        pinnedRaw = pinKeys.filter { $0 != key }.joined(separator: "\n")
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { jobPendingDeletion = nil }
+        } message: {
+            Text(AppLocalization.string("This removes \(jobPendingDeletion?.displayName ?? "") from Hermes, so it won't run again. Chats from its past runs are kept."))
+        }
     }
 
     private var listFooter: some View {
@@ -265,6 +286,12 @@ struct V2ScheduledList: View {
         } label: {
             Label(AppLocalization.string("Details"), systemImage: "info.circle")
         }
+        Button(role: .destructive) {
+            jobPendingDeletion = job
+        } label: {
+            Label(AppLocalization.string("Delete"), systemImage: "trash")
+        }
+        .disabled(appState.cronJobActionID != nil)
     }
 
     private func row(_ job: CronJob, pinned: Bool) -> some View {
@@ -340,6 +367,16 @@ struct V2ScheduledList: View {
             .tint(.conduitAccent)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Not a destructive role: that removes the row before the
+            // confirmation is answered.
+            Button {
+                Haptics.light()
+                jobPendingDeletion = job
+            } label: {
+                Label(AppLocalization.string("Delete"), systemImage: "trash")
+            }
+            .tint(.red)
+            .disabled(appState.cronJobActionID != nil)
             if !job.isFinished {
                 Button {
                     Haptics.medium()

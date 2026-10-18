@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri) that goes into the tool definitions as is. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Then the rules in 'rules' apply. cards/card-vectors.json holds the shared examples both test suites run.",
+  "max_cards": 4,
+  "rules": [
+    "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
+    "A place card keeps only its first place."
+  ],
+  "card": {
+    "type": "object",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through.",
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": ["map", "place", "places"],
+        "description": "map, place or places."
+      },
+      "title": {
+        "type": "string",
+        "maxLength": 80,
+        "description": "A short heading, a few words."
+      },
+      "places": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "description": "The places, best first. The phone finds each one in Apple Maps itself and shows Apple Maps' address, category, phone, website, travel time and Look Around: don't fill those in. Give coordinates or the place_id from conduit_maps when you have them; otherwise a name and address precise enough to find it.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string", "maxLength": 120, "description": "The place's name."},
+            "address": {"type": "string", "maxLength": 200, "description": "Its address or area, to find it."},
+            "lat": {"type": "number", "minimum": -90, "maximum": 90, "description": "Latitude, if known."},
+            "lon": {"type": "number", "minimum": -180, "maximum": 180, "description": "Longitude, if known."},
+            "place_id": {"type": "string", "maxLength": 200, "description": "The Apple Maps place id conduit_maps gave, if any."},
+            "note": {"type": "string", "maxLength": 300, "description": "Your own short note on it, shown as yours: why it fits, what to order."},
+            "rating": {
+              "type": "object",
+              "description": "Only a rating you actually found, with where it's from. Left out without a source.",
+              "properties": {
+                "value": {"type": "number", "minimum": 0, "maximum": 5, "description": "Out of 5."},
+                "count": {"type": "integer", "minimum": 0, "maximum": 100000000, "description": "How many reviews."},
+                "source": {"type": "string", "maxLength": 40, "description": "Where it's from, like Google or Yelp."},
+                "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's from."}
+              },
+              "required": ["value", "source"]
+            },
+            "hours": {
+              "type": "object",
+              "description": "Opening hours you actually found, with where they're from. Left out without a source.",
+              "properties": {
+                "text": {"type": "string", "maxLength": 120, "description": "Like \"Open until 22:00\" or \"Mon-Fri 9-17\"."},
+                "source": {"type": "string", "maxLength": 40, "description": "Where they're from."},
+                "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page they're from."}
+              },
+              "required": ["text", "source"]
+            },
+            "price": {
+              "type": "object",
+              "description": "A price level or price you actually found, with where it's from. Left out without a source.",
+              "properties": {
+                "text": {"type": "string", "maxLength": 24, "description": "Like $$ or 12-18 EUR."},
+                "source": {"type": "string", "maxLength": 40, "description": "Where it's from."},
+                "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's from."}
+              },
+              "required": ["text", "source"]
+            },
+            "photo": {
+              "type": "object",
+              "description": "A photo of the place you actually found: a direct image URL, with where it's from. Left out without a source.",
+              "properties": {
+                "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "A direct https image URL."},
+                "source": {"type": "string", "maxLength": 40, "description": "Where it's from."},
+                "page_url": {"type": "string", "format": "uri", "maxLength": 500, "description": "The page it's on."}
+              },
+              "required": ["url", "source"]
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      "route": {
+        "type": "object",
+        "description": "map only: draw a route. Places are counted from 0.",
+        "properties": {
+          "to": {"type": "integer", "minimum": 0, "maximum": 9, "description": "The place the route goes to."},
+          "from": {"type": "integer", "minimum": 0, "maximum": 9, "description": "The place it starts at. Leave it out to start where the user is."},
+          "mode": {"type": "string", "enum": ["driving", "walking", "transit", "cycling"], "description": "How to travel; driving if left out."}
+        },
+        "required": ["to"]
+      }
+    },
+    "required": ["type", "places"]
+  }
+}

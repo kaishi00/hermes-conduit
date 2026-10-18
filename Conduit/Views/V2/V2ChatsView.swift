@@ -245,9 +245,12 @@ struct V2FilterSelection: Equatable {
     }
 }
 
-struct V2ChatsView: View {
+struct V2ChatsView: View, Equatable {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// Followed through `updates`, which holds AppState's changes back
+    /// while a chat or a page covers the list or another tab is up.
+    private let appState: AppState
+    @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchText = ""
@@ -258,6 +261,8 @@ struct V2ChatsView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
+    /// Repair Connection opened from the top of the list.
+    @State private var repairContext: ConnectionRepairContext?
     /// The last activation the reveal served (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -276,6 +281,19 @@ struct V2ChatsView: View {
     @State private var collapsedSections = ChatListSection.collapsed(
         from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
     )
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    /// Redrawn by its own changes only; the shell redraws on every publish.
+    nonisolated static func == (lhs: V2ChatsView, rhs: V2ChatsView) -> Bool {
+        lhs.appState === rhs.appState
+    }
+
+    /// Nothing pushed over the list, on the selected tab.
+    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
@@ -328,8 +346,10 @@ struct V2ChatsView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
+        .environmentObject(updates)
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .onChange(of: isShown, initial: true) { _, shown in updates.isShown = shown }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
         .onChange(of: appState.activeSessionId) { _, active in
@@ -338,6 +358,10 @@ struct V2ChatsView: View {
         }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
+                .environmentObject(appState)
+        }
+        .sheet(item: $repairContext) { context in
+            ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showProjectCreator) {
@@ -357,8 +381,8 @@ struct V2ChatsView: View {
         // Running and Needs approval follow the gateway's live registry
         // while the list is on screen; a hidden tab or a conversation
         // pushed over the list stops polling.
-        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)|\(appState.showSidebar)") {
-            guard shell.isTabActive, appState.showSidebar else { return }
+        .task(id: "\(appState.activeProfile)|\(isShown)|\(appState.showSidebar)") {
+            guard isShown, appState.showSidebar else { return }
             while !Task.isCancelled {
                 await appState.refreshLiveSessionStatuses()
                 try? await Task.sleep(for: .seconds(4))
@@ -667,6 +691,33 @@ struct V2ChatsView: View {
 
     // MARK: - Sessions list
 
+    private var connectionRepairCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let error = appState.errorMessage, !error.isEmpty {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                Haptics.light()
+                repairContext = appState.beginConnectionRepair()
+            } label: {
+                Label("Repair Connection", systemImage: "wrench.and.screwdriver")
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
+            .accessibilityIdentifier("chats.repair-connection")
+            .accessibilityLabel("Repair Connection")
+            .accessibilityHint("Test and fix the failed connection, then reconnect")
+        }
+        .padding(14)
+        .settingsCard()
+    }
+
     private var sessionsList: some View {
         // Worked out once per render: the rows walk the whole catalog.
         let displayed = displayedSessions
@@ -686,6 +737,16 @@ struct V2ChatsView: View {
             // After the first connection to a dashboard added here.
             if appState.showsFinishSetup && !isSearching {
                 V2FinishSetupCard()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
+            }
+
+            // A failed connection: the app opens here, not on a composer,
+            // so the composer's Repair Connection is offered here too,
+            // searching or not.
+            if appState.showsConnectionRepair {
+                connectionRepairCard
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
@@ -1232,7 +1293,10 @@ struct V2ChatsListItem: Identifiable {
 /// One Chats list row. It works out its own dot, status and preview, so
 /// only the rows on screen do.
 private struct V2ChatsRow: View {
-    @EnvironmentObject private var appState: AppState
+    /// The list's updates (`V2ShownUpdates`): a row under a pushed chat
+    /// waits with the list.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: V2ChatsListItem
     /// The project a search result sits in, named before its preview.
@@ -1253,6 +1317,7 @@ private struct V2ChatsRow: View {
             childRow(session, depth: depth, parentTitle: parentTitle)
                 .v2ListRow(divider: isLast, dividerInset: V2SessionRow.iconTextInset)
                 .sessionActions(
+                    appState: appState,
                     session: session,
                     nest: nil,
                     isSavedRow: appState.isSavedChatRow(session),
@@ -1294,6 +1359,7 @@ private struct V2ChatsRow: View {
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
         .sessionActions(
+            appState: appState,
             session: session,
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
             isSavedRow: appState.isSavedChatRow(session),
@@ -1392,6 +1458,7 @@ extension View {
     /// while Conduit connects) takes none: they would act on a list Hermes
     /// hasn't sent yet.
     func sessionActions(
+        appState: AppState,
         session: SessionSummary,
         nest: NestReadToggle?,
         excludingProjectID: String? = nil,
@@ -1401,6 +1468,7 @@ extension View {
         onChanged: @escaping () -> Void = {}
     ) -> some View {
         modifier(V2SessionActions(
+            appState: appState,
             session: session,
             nest: nest,
             excludingProjectID: excludingProjectID,
@@ -1413,7 +1481,9 @@ extension View {
 }
 
 private struct V2SessionActions: ViewModifier {
-    @EnvironmentObject private var appState: AppState
+    /// Not followed here: the row redraws its actions, so a Chats row
+    /// under a pushed chat waits with its list.
+    let appState: AppState
     let session: SessionSummary
     let nest: NestReadToggle?
     let excludingProjectID: String?

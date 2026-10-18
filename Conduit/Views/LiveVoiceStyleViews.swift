@@ -39,7 +39,6 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var answerLength: LiveVoiceAnswerLength
     @State private var backchannels: Bool
     @State private var asksBeforeSending: Bool
-    @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
     /// The typed greeting not saved yet, pinned to its style and profile.
@@ -181,7 +180,9 @@ struct LiveVoiceStyleSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
-                preview = model.preview()
+                // A greeting still being typed is saved first, so the
+                // preview shows it.
+                flushPendingSave()
                 showsPreview = true
             } label: {
                 Label(AppLocalization.string("What Conduit sends"), systemImage: "doc.text.magnifyingglass")
@@ -224,7 +225,10 @@ struct LiveVoiceStyleSettingsSection: View {
             lastSaved = style
         }
         .sheet(isPresented: $showsPreview) {
-            LiveVoiceInstructionsPreview(preview: preview)
+            // Read when the sheet builds: a preview kept in @State and set in
+            // the same tap reached the sheet as its old nil on first open, so
+            // it said no live mode was on.
+            LiveVoiceInstructionsPreview(preview: model.preview())
         }
     }
 }

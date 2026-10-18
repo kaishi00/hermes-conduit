@@ -3136,3 +3136,32 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(timeouts[GeminiLiveTokenClient.webSearchStatusPath], GeminiLiveTokenClient.defaultTimeoutMilliseconds)
     }
 }
+
+// MARK: - Rich cards on the call screen
+
+extension VoiceConversationControllerTests {
+    func testGeminiLiveShowOnScreenDrawsCardsWithoutMarkdown() async throws {
+        let (supervisor, _, bridge) = makeJobs()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        var shownCards: [VoiceScreenCard] = []
+        supervisor.onScreenCardShown = { shownCards.append($0) }
+
+        let cards = #"[{"type": "place", "places": [{"name": "Tartine", "rating": {"value": 4.6}}]}, {"type": "weather"}]"#
+        let shown = await bridge.handle(.init(id: "c1", name: "show_on_screen", arguments: ["title": "Breakfast", "cards": cards]))
+        guard case .toolResponse(_, _, let result, _)? = shown.first else { return XCTFail("\(shown)") }
+        XCTAssertEqual(result["status"], "shown")
+        let card = try XCTUnwrap(supervisor.callScreenCards(supervisor.liveCallID).first)
+        XCTAssertEqual(card.markdown, "")
+        XCTAssertEqual(card.cards.map(\.kind), [.place], "only valid cards")
+        XCTAssertNil(card.cards.first?.places.first?.rating, "an unsourced rating isn't shown")
+        let saved = try XCTUnwrap(card.cardsJSON.flatMap { try JSONSerialization.jsonObject(with: $0) as? [[String: Any]] })
+        XCTAssertEqual(saved.count, 1, "the saved call keeps the normalized cards")
+        XCTAssertEqual(shownCards.map(\.id), [card.id], "the saved call hears about it")
+
+        let invalid = await bridge.handle(.init(id: "c2", name: "show_on_screen", arguments: ["title": "Weather", "cards": #"[{"type": "weather"}]"#]))
+        guard case .toolResponse(_, _, let refused, _)? = invalid.first else { return XCTFail("\(invalid)") }
+        XCTAssertEqual(refused["error"], GeminiLiveToolBridge.invalidCardsNote)
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 1)
+    }
+}

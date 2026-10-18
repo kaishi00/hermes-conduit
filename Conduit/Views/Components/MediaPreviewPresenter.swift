@@ -202,7 +202,17 @@ final class MediaPreviewPresenter {
         sessions[key] = session
         controller.dataSource = session
         controller.delegate = session
-        controller.modalPresentationStyle = .fullScreen
+        // Over, not in place of, the screens under it: a `.fullScreen`
+        // preview takes the app's views out of the window, and closing it
+        // puts them back, which re-laid out every live tab. Under the
+        // Artifacts page that re-layout of the Chats list never settled and
+        // the watchdog killed the app.
+        controller.modalPresentationStyle = .overFullScreen
+        // As `.fullScreen` did: Quick Look's chrome sets the status bar.
+        controller.modalPresentationCapturesStatusBarAppearance = true
+        // The rows under it stay on screen, so their `onDisappear` no longer
+        // stops an inline clip: Quick Look has its own player.
+        ChatAudioClipPlayer.shared.stop()
         presenter.present(controller, animated: true) {
             session.didPresent = true
         }

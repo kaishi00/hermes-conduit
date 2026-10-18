@@ -2,13 +2,14 @@ import XCTest
 
 /// Round-6 Repair Connection UI coverage. All paths are deterministic:
 /// `-CONDUIT_UI_TEST_FAILED_CONNECTION` starts the app on a failed stubbed
-/// session (Repair Connection visible), `-CONNECTION_SETUP_TEST_RESULT`
+/// session (Repair Connection visible at the top of V2's Chats, where the
+/// app opens), `-CONNECTION_SETUP_TEST_RESULT`
 /// scripts the staged probe, and `-CONDUIT_REPAIR_ACTIVATION` scripts the
 /// explicit activation outcome. No test touches a real Hermes server.
 final class ConnectionRepairUITests: XCTestCase {
     private enum Identity {
         static let stubDashboardURL = "https://repair-uitest.example"
-        static let repairButton = "composer.repair-connection"
+        static let repairButton = "chats.repair-connection"
         static let urlField = "setup.url"
         static let username = "setup.username"
         static let password = "setup.password"
@@ -86,8 +87,8 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertFalse(app.buttons["setup.use-settings"].exists, "Repair mode must not show the login handoff")
         tapVisible(app.buttons[Identity.reconnectNow], in: app)
 
-        // Back on the chat surface: still the (stubbed) failed session in
-        // its stable state — never the login card.
+        // Back on Chats: still the (stubbed) failed session in its stable
+        // state — never the login card.
         XCTAssertTrue(app.buttons[Identity.repairButton].waitForExistence(timeout: 5), "Wizard did not return to chat. Tree:\n\(app.debugDescription)")
         XCTAssertFalse(app.textFields["login.server-url"].exists, "Repair must never strand the user on the login card")
     }

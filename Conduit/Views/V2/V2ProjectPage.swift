@@ -212,6 +212,7 @@ struct V2ProjectPage: View {
                 sessionRow(session)
                     .v2ListRow(divider: index == lane.sessions.count - 1, dividerInset: 16)
                     .sessionActions(
+                        appState: appState,
                         session: session,
                         nest: nil,
                         excludingProjectID: project.id,

@@ -777,14 +777,8 @@ struct ComposerBar: View {
         return !(appState.errorMessage ?? "").isEmpty || showsRepairConnection
     }
 
-    /// Round 6: Repair Connection appears only once the connection is
-    /// actually down AND a failed attempt has surfaced — through the typed
-    /// classified failure or the visible error banner — never during
-    /// normal automatic recovery, and never uninvited.
     private var showsRepairConnection: Bool {
-        appState.connection != nil
-            && !appState.isConnected
-            && (appState.lastConnectionFailure != nil || !(appState.errorMessage ?? "").isEmpty)
+        appState.showsConnectionRepair
     }
 
     @ViewBuilder

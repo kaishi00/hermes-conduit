@@ -46,15 +46,20 @@ The PR description should include the marketing version, build number, starting 
 
 Build and test from the release branch itself. Do not test a moving `main` checkout and assume it represents the candidate.
 
-**Which gate certifies a candidate.** Hosted CI is a broad smoke gate — it
-compiles everything and runs a curated slice (`docs/CI.md`) — and is *not* a
-release verdict. A candidate is certified by the **Mac local exhaustive gate**
-(`scripts/local-ci-gate.sh`) run against the **exact release-head SHA**: the
-complete unit and UI suites, the timing/dormancy repeats, and bounded
-infrastructure recovery. Hosted-green on a different SHA certifies nothing, and
-neither does a gate run from before a rebase.
+**Which run certifies a candidate.** PR CI (`ci.yml`) is a light smoke gate —
+it compiles the app and runs a curated slice (`docs/CI.md`, CI v5) — and is
+*not* a release verdict. A candidate is validated by **dispatching the Nightly
+workflow on the release branch** (Actions > Nightly > Run workflow, pick the
+branch, or `gh workflow run nightly.yml --ref <release-branch>`): the complete
+unit suite, the timing/dormancy repeats and the complete UI suite on the exact
+release head. Every job must pass. A Nightly run on a different SHA certifies
+nothing, and neither does one from before a rebase. There is no separate
+release workflow.
 
-Run it in **release mode** — that is the mode whose coverage the release needs
+Until its tooling is deleted, the **Mac local exhaustive gate**
+(`scripts/local-ci-gate.sh`) can still be run against the exact release-head
+SHA as an additional check (`docs/CI.md` says no release needs it any more).
+Run it in **release mode** — that is the mode whose coverage a release needs
 (it is also the default, so the flag only has to be explicit when you are *not*
 certifying a release):
 

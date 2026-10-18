@@ -115,9 +115,23 @@ final class ProfilePickerUITests: XCTestCase {
         // 17s after the tap, and all 8 failures of the old 15s wait (about 20s
         // after the tap) showed the picker sheet presented but its remote
         // content not yet loaded. Wait long enough for that cold start.
+        //
+        // Some hosted runs never load that remote content at all: the picker
+        // sheet is up (it hides the profile picker underneath) but Cancel
+        // never arrives, even after 60s (nightlies 2026-10-17 and two in
+        // 2026-10-05..11). The sheet covering the profile picker is then the
+        // proof the control's own action ran, and a drag on the sheet's top
+        // edge puts it away.
         let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 60), "The photo picker must appear. Tree:\n\(app.debugDescription)")
-        cancel.tap()
+        if cancel.waitForExistence(timeout: 60) {
+            cancel.tap()
+        } else {
+            XCTAssertFalse(
+                app.staticTexts[Identity.pickerTitle].exists,
+                "The photo picker must appear over the profile picker. Tree:\n\(app.debugDescription)"
+            )
+            dismissUnloadedPhotoPicker(app)
+        }
 
         // The invariant: nothing selected behind it, so the picker is still
         // presented and the active profile is untouched.
@@ -252,6 +266,20 @@ final class ProfilePickerUITests: XCTestCase {
             .coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: point.x, dy: point.y))
             .tap()
+    }
+
+    /// Drags the photo picker sheet down by its top edge, below the status
+    /// bar, until the profile picker shows again (up to three tries).
+    private func dismissUnloadedPhotoPicker(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        let title = app.staticTexts[Identity.pickerTitle]
+        for _ in 0..<3 {
+            let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.09))
+            let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+            start.press(forDuration: 0.1, thenDragTo: end)
+            if title.waitForExistence(timeout: 5) { return }
+        }
+        XCTFail("Three drags did not put the unloaded photo picker away. Tree:\n\(app.debugDescription)")
     }
 
     /// The photo control opens `UIImagePickerController`, which can ask for the

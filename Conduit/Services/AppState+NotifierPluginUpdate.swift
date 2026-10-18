@@ -140,7 +140,7 @@ extension AppState {
 
     /// The notice over the main screen: an update is offered, or one is
     /// running or just ended. "Not now" hides it on this dashboard until a
-    /// newer Conduit offers a newer plugin.
+    /// newer plugin is offered.
     var showsNotifierPluginUpdateNotice: Bool {
         if activeNotifierPluginUpdate != .idle { return true }
         // A plugin already on the host that waits for a restart is offered

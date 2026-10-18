@@ -6,6 +6,7 @@
 //  dismissal helper shared by the sidebar's session-opening flows.
 //
 
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -149,6 +150,34 @@ final class SidebarLayoutTests: XCTestCase {
         state.dismissSidebarDrawer()
 
         XCTAssertFalse(state.showSidebar)
+    }
+
+    /// The V2 Chats list kept under a pushed chat doesn't redraw with every
+    /// publish: it waits, then draws once with what it missed.
+    @MainActor
+    func testCoveredChatsListWaitsUntilItShowsAgain() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        state.sessions = [pinnedTestSession("shown")]
+        XCTAssertGreaterThan(sent, 0)
+
+        sent = 0
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("covered")]
+        state.cronSessions = [pinnedTestSession("run", source: .cron)]
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+
+        // Nothing missed, nothing to draw.
+        sent = 0
+        updates.isShown = false
+        updates.isShown = true
+        XCTAssertEqual(sent, 0)
     }
 
     @MainActor

@@ -613,11 +613,14 @@ struct VoiceConversationTranscriptEntry: Identifiable, Equatable {
     let id: UUID
     let speaker: Speaker
     var text: String
+    /// Cards a live model showed at this point of a saved call.
+    var cards: [RichCard] = []
 
-    init(id: UUID = UUID(), speaker: Speaker, text: String) {
+    init(id: UUID = UUID(), speaker: Speaker, text: String, cards: [RichCard] = []) {
         self.id = id
         self.speaker = speaker
         self.text = text
+        self.cards = cards
     }
 }
 
