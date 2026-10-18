@@ -82,10 +82,52 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
         try evaluate("var wrapped = Object.getOwnPropertyDescriptor(Credentials.prototype, 'get');", in: context)
         XCTAssertFalse(try evaluate("wrapped.value === browserGet", in: context).toBool())
         XCTAssertEqual(try evaluate("wrapped.value.name", in: context).toString(), "get")
-        XCTAssertEqual(try evaluate("wrapped.value.length", in: context).toInt32(), 0)
+        XCTAssertEqual(try evaluate("wrapped.value.length", in: context).toInt32(), 3, "the original's length, whatever it is")
         XCTAssertTrue(try evaluate("wrapped.value.prototype === undefined", in: context).toBool())
+        XCTAssertEqual(
+            try evaluate("try { new wrapped.value(); 'constructed' } catch (e) { e instanceof TypeError }", in: context).toString(),
+            "true"
+        )
         XCTAssertTrue(try evaluate("wrapped.enumerable && wrapped.writable && wrapped.configurable", in: context).toBool())
+        XCTAssertTrue(try evaluate("String(wrapped.value) === browserGetText", in: context).toBool(), "toString gives the original's text")
+        XCTAssertTrue(try evaluate("Function.prototype.toString.call(wrapped.value) === browserGetText", in: context).toBool())
         XCTAssertTrue(try evaluate("Credentials.prototype.create === browserCreate", in: context).toBool())
+    }
+
+    func testToStringReadsAsBeforeForEverythingElse() throws {
+        let context = try makePage()
+        XCTAssertTrue(try evaluate("Function.prototype.toString !== toStringBefore", in: context).toBool(), "the shim is in place")
+        XCTAssertTrue(try evaluate("String(Function.prototype.toString) === toStringText", in: context).toBool())
+        XCTAssertTrue(try evaluate("Function.prototype.toString.toString() === toStringText", in: context).toBool())
+        XCTAssertEqual(try evaluate("Function.prototype.toString.name", in: context).toString(), "toString")
+        XCTAssertEqual(try evaluate("Function.prototype.toString.length", in: context).toInt32(), 0)
+        XCTAssertTrue(try evaluate("Function.prototype.toString.prototype === undefined", in: context).toBool())
+        XCTAssertTrue(try evaluate("""
+        var now = Object.getOwnPropertyDescriptor(Function.prototype, 'toString');
+        now.writable === toStringDescriptorBefore.writable
+          && now.enumerable === toStringDescriptorBefore.enumerable
+          && now.configurable === toStringDescriptorBefore.configurable
+        """, in: context).toBool())
+        XCTAssertTrue(try evaluate("String(sample) === sampleText && String(Math.max) === maxText", in: context).toBool())
+        XCTAssertTrue(try evaluate("String(browserGet) === browserGetText", in: context).toBool())
+        XCTAssertEqual(
+            try evaluate("try { Function.prototype.toString.call({}); 'none' } catch (e) { e instanceof TypeError }", in: context).toString(),
+            "true",
+            "a non-function still throws"
+        )
+    }
+
+    func testThePageCantUnmaskTheWrapperByBreakingBuiltIns() throws {
+        let context = try makePage()
+        try evaluate("""
+        WeakMap.prototype.get = function () { throw new Error('gone'); };
+        Reflect.apply = function () { throw new Error('gone'); };
+        Function.prototype.apply = function () { throw new Error('gone'); };
+        """, in: context)
+        XCTAssertTrue(try evaluate("String(navigator.credentials.get) === browserGetText", in: context).toBool())
+        try evaluate("navigator.credentials.get({ publicKey: {} })", in: context)
+        XCTAssertEqual(try events(in: context), [AuthWebPasskeyDetector.eventName])
+        XCTAssertEqual(try evaluate("calls.length", in: context).toInt32(), 1)
     }
 
     func testTheBrowsersErrorsReachThePage() throws {
@@ -155,27 +197,40 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
         AuthWebPasskeyDetector.install(into: configuration.userContentController, handler: handler)
         defer { AuthWebPasskeyDetector.uninstall(from: configuration.userContentController) }
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), configuration: configuration)
-        let delegate = LoadDelegate()
+        let loaded = expectation(description: "the probe page loads")
+        let delegate = LoadDelegate(loaded: loaded)
         webView.navigationDelegate = delegate
         webView.loadHTMLString(
             #"<!DOCTYPE html><html><body><iframe id="frame" srcdoc="<p>framed</p>"></iframe></body></html>"#,
             baseURL: URL(string: "https://idp.conduit-tests.invalid/"))
-        try await delegate.waitForLoad()
+        await fulfillment(of: [loaded], timeout: 15)
+        XCTAssertNil(delegate.failure, "the probe page failed to load")
 
         let page = try await webView.callAsyncJavaScript("""
         return {
           webkit: typeof window.webkit,
           own: Object.getOwnPropertyNames(navigator.credentials).length,
-          wrapped: !String(CredentialsContainer.prototype.get).includes('[native code]')
+          get: String(CredentialsContainer.prototype.get),
+          toString: String(Function.prototype.toString),
+          length: CredentialsContainer.prototype.get.length,
+          other: String(function sample(a) { return a; })
         };
         """, contentWorld: .page) as? [String: Any]
         XCTAssertEqual(page?["webkit"] as? String, "undefined", "the page world gets no message handler")
         XCTAssertEqual(page?["own"] as? Int, 0)
-        XCTAssertEqual(page?["wrapped"] as? Bool, true)
+        XCTAssertEqual(page?["get"] as? String, "function get() {\n    [native code]\n}")
+        XCTAssertEqual(page?["toString"] as? String, "function toString() {\n    [native code]\n}")
+        let nativeLength = try await nativeGetLength()
+        XCTAssertNotNil(nativeLength)
+        XCTAssertEqual(page?["length"] as? Int, nativeLength, "the browser's own length")
+        XCTAssertEqual(page?["other"] as? String, "function sample(a) { return a; }")
 
         // An already-aborted request settles without reaching an
         // authenticator; this app isn't entitled for the site either. Once
         // from the page, once from inside its frame.
+        let messages = expectation(description: "both requests reach Conduit")
+        messages.expectedFulfillmentCount = 2
+        handler.onMessage = { messages.fulfill() }
         let outcomes = try await webView.callAsyncJavaScript("""
         async function ask(credentials) {
           const controller = new AbortController();
@@ -195,11 +250,21 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
             XCTAssertTrue(["AbortError", "NotAllowedError"].contains(outcome), "the browser's own answer, got \(outcome)")
         }
 
-        for _ in 0..<50 where handler.bodies.count < 2 {
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
+        await fulfillment(of: [messages], timeout: 15)
         XCTAssertEqual(handler.bodies, [AuthWebPasskeyDetector.messageBody, AuthWebPasskeyDetector.messageBody])
         XCTAssertEqual(handler.worldNames, [DashboardScriptWorld.world.name, DashboardScriptWorld.world.name])
+    }
+
+    /// `CredentialsContainer.prototype.get.length` in a WebView without the
+    /// detector.
+    private func nativeGetLength() async throws -> Int? {
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), configuration: WKWebViewConfiguration())
+        let loaded = expectation(description: "the plain page loads")
+        let delegate = LoadDelegate(loaded: loaded)
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString("<!DOCTYPE html><html></html>", baseURL: URL(string: "https://idp.conduit-tests.invalid/"))
+        await fulfillment(of: [loaded], timeout: 15)
+        return try await webView.callAsyncJavaScript("return CredentialsContainer.prototype.get.length;", contentWorld: .page) as? Int
     }
 
     // MARK: - Helpers
@@ -207,27 +272,35 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
     private final class Handler: NSObject, WKScriptMessageHandler {
         private(set) var bodies: [String] = []
         private(set) var worldNames: [String?] = []
+        var onMessage: (() -> Void)?
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             bodies.append(message.body as? String ?? "")
             worldNames.append(message.world.name)
+            onMessage?()
         }
     }
 
+    /// Fulfills `loaded` once the page finishes or fails; a failure is kept
+    /// in `failure`.
     private final class LoadDelegate: NSObject, WKNavigationDelegate {
-        private var finished = false
-        private var failure: Error?
+        private let loaded: XCTestExpectation
+        private(set) var failure: Error?
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finished = true }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failure = error }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failure = error }
+        init(loaded: XCTestExpectation) {
+            self.loaded = loaded
+        }
 
-        func waitForLoad() async throws {
-            for _ in 0..<100 where !finished {
-                if let failure { throw failure }
-                try await Task.sleep(nanoseconds: 50_000_000)
-            }
-            XCTAssertTrue(finished, "the probe page never loaded")
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded.fulfill() }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            failure = error
+            loaded.fulfill()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            failure = error
+            loaded.fulfill()
         }
     }
 
@@ -248,7 +321,7 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
         var document = new EventTarget();
         function Credentials() {}
         ['get', 'create'].forEach(function (name) {
-          Credentials.prototype[name] = function () {
+          Credentials.prototype[name] = function (a, b, c) {
             calls.push({ name: name, receiver: this, options: arguments[0], count: arguments.length });
             if (browserThrows) { var error = new Error('denied'); error.name = 'NotAllowedError'; throw error; }
             return browserAnswer;
@@ -257,6 +330,13 @@ final class AuthWebPasskeyDetectorTests: XCTestCase {
         });
         var browserGet = Credentials.prototype.get;
         var browserCreate = Credentials.prototype.create;
+        var browserGetText = Function.prototype.toString.call(browserGet);
+        var toStringBefore = Function.prototype.toString;
+        var toStringText = toStringBefore.call(toStringBefore);
+        var toStringDescriptorBefore = Object.getOwnPropertyDescriptor(Function.prototype, 'toString');
+        function sample(a) { return a; }
+        var sampleText = String(sample);
+        var maxText = String(Math.max);
         window.navigator = { credentials: new Credentials() };
         var navigator = window.navigator;
         """, in: context)

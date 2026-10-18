@@ -326,6 +326,8 @@ struct AuthWebView: UIViewRepresentable {
             forName: "ticket",
             contentWorld: DashboardScriptWorld.world
         )
+        // Unconditional on purpose: removing a handler that was never added
+        // is a no-op, so this doesn't have to repeat makeUIView's condition.
         AuthWebPasskeyDetector.uninstall(from: uiView.configuration.userContentController)
     }
 

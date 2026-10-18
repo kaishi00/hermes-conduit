@@ -34,11 +34,23 @@ import WebKit
 ///   fixed string to Conduit. The page world gets no message handler, so a
 ///   page sees no `window.webkit` it didn't have before.
 ///
+/// The wrapper looks like the browser's method to a page that inspects it,
+/// as anti-bot checks such as Cloudflare Turnstile may: the same name and
+/// `length`, no `prototype`, not constructible, and `toString` gives the
+/// original's `[native code]` text. That last part replaces
+/// `Function.prototype.toString` with a method that answers for the
+/// wrapper and for itself from a WeakMap and passes every other call to
+/// the original, so other functions read as before. What still shows:
+/// the extra frame in an error's stack, and the wrapper's source to the
+/// `toString` of a realm the script didn't run in (for example a fresh
+/// `about:blank` frame's).
+///
 /// The page can fire the event itself; all that does is show the notice.
-/// A page that calls `document.open()` clears the document's listeners,
-/// so it gets no notice after that; sign-in pages don't.
-/// Only `get` is wrapped: `create` registers a passkey, which isn't the
-/// sign-in this notice is about.
+/// A page that redefines `get` after document start, or calls
+/// `document.open()` (which clears the document's listeners), gets no
+/// notice after that; sign-in pages do neither. Only `get` is wrapped:
+/// `create` registers a passkey, which isn't the sign-in this notice is
+/// about.
 @MainActor
 enum AuthWebPasskeyDetector {
     static let messageName = "passkeyRequest"
@@ -56,19 +68,40 @@ enum AuthWebPasskeyDetector {
       var root = document;
       var dispatch = EventTarget.prototype.dispatchEvent;
       var NoticeEvent = window.Event;
-      descriptor.value = {
-        get() {
+      var apply = Reflect.apply;
+      var defineProperty = Object.defineProperty;
+      var nativeToString = Function.prototype.toString;
+      var toStringDescriptor = Object.getOwnPropertyDescriptor(Function.prototype, 'toString');
+      var lookUp = WeakMap.prototype.get;
+      var disguises = new WeakMap();
+      var wrapper = {
+        get(options) {
           try {
-            var options = arguments[0];
             if (options && typeof options === 'object' && options.publicKey
                 && options.mediation !== 'conditional') {
-              dispatch.call(root, new NoticeEvent('\(eventName)'));
+              apply(dispatch, root, [new NoticeEvent('\(eventName)')]);
             }
           } catch (error) {}
-          return original.apply(this, arguments);
+          return apply(original, this, arguments);
         }
       }.get;
-      try { Object.defineProperty(container, 'get', descriptor); } catch (error) {}
+      var toString = {
+        toString() {
+          var disguise = (typeof this === 'function') ? apply(lookUp, disguises, [this]) : undefined;
+          return disguise !== undefined ? disguise : apply(nativeToString, this, arguments);
+        }
+      }.toString;
+      try {
+        defineProperty(wrapper, 'length', { value: original.length });
+        disguises.set(wrapper, apply(nativeToString, original, []));
+        disguises.set(toString, apply(nativeToString, nativeToString, []));
+        if (toStringDescriptor && toStringDescriptor.configurable) {
+          toStringDescriptor.value = toString;
+          defineProperty(Function.prototype, 'toString', toStringDescriptor);
+        }
+        descriptor.value = wrapper;
+        defineProperty(container, 'get', descriptor);
+      } catch (error) {}
     })();
     """
 
@@ -145,7 +178,10 @@ private struct AuthWebPasskeySignIn: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.spring(duration: 0.3)) { keyboardIsUp = false }
         }
-        .onDisappear { announcement?.cancel() }
+        .onDisappear {
+            announcement?.cancel()
+            keyboardIsUp = false
+        }
     }
 
     private func showNotice() {
@@ -154,7 +190,7 @@ private struct AuthWebPasskeySignIn: View {
         // After the page's own error, which VoiceOver may be reading.
         announcement?.cancel()
         announcement = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
+            try? await Task.sleep(for: AuthWebPasskeyNotice.announcementDelay)
             guard !Task.isCancelled, showsNotice else { return }
             AccessibilityNotification.Announcement("\(AuthWebPasskeyNotice.title)\n\(AuthWebPasskeyNotice.message)").post()
         }
@@ -174,6 +210,10 @@ struct AuthWebPasskeyNotice: View {
     /// keeps most of the sheet and the close button stays in reach.
     var maxTextHeight: CGFloat
     let onDismiss: () -> Void
+
+    /// How long VoiceOver waits before reading the notice, so it comes
+    /// after the page's own error.
+    static let announcementDelay: Duration = .milliseconds(600)
 
     static var title: String { AppLocalization.string("Passkeys don't work here") }
     static var message: String {
