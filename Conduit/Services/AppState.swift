@@ -3827,6 +3827,9 @@ final class AppState: ObservableObject {
     @Published var cronRuns: [CronRun] = []
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
+    /// Bumped by a job delete so a list load that started before it can't
+    /// bring the deleted job back.
+    private var cronJobsGeneration = 0
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -5644,6 +5647,11 @@ final class AppState: ObservableObject {
     /// (no plugin route, or no session store). Queued calls are kept.
     @Published private(set) var voiceCallSavesBlocked = false
     @Published private(set) var isSavingQueuedVoiceCalls = false
+    /// What the last Save Now did, shown under the button until the next.
+    @Published private(set) var voiceCallSaveNowResult: String?
+    /// The key and waiting count the result was written for: it goes once
+    /// either changes (another profile, or a later retry saved some).
+    private var voiceCallSaveNowResultState: (key: String, pending: Int)?
     /// Keys whose host refused the last outbox save as unsupported. Kept
     /// across launches so Voice settings gives the reason at once.
     private var voiceCallSaveBlockedKeys: Set<String> {
@@ -6202,6 +6210,10 @@ final class AppState: ObservableObject {
                 && !voiceTranscriptsSaving.contains(entry.request.callID)
         }.count
         if pendingVoiceCallSaves != pending { pendingVoiceCallSaves = pending }
+        if let state = voiceCallSaveNowResultState, state.key != key || state.pending != pending {
+            voiceCallSaveNowResult = nil
+            voiceCallSaveNowResultState = nil
+        }
         // The reason lasts only while a refused call is still waiting.
         if pending == 0, voiceCallSaveBlockedKeys.contains(key) { voiceCallSaveBlockedKeys.remove(key) }
         let blocked = pending > 0 && voiceCallSaveBlockedKeys.contains(key)
@@ -6209,13 +6221,53 @@ final class AppState: ObservableObject {
     }
 
     /// Save Now in Voice settings: retries the active profile's queued
-    /// calls at once.
+    /// calls at once, and says what happened under the button.
     func saveQueuedVoiceCallsNow() async {
         guard !isSavingQueuedVoiceCalls else { return }
         isSavingQueuedVoiceCalls = true
         defer { isSavingQueuedVoiceCalls = false }
+        voiceCallSaveNowResult = nil
         let profile = activeProfile
-        await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
+        let drain = await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
+        voiceCallSaveNowResult = Self.voiceCallSaveNowResult(drain, stillWaiting: pendingVoiceCallSaves)
+        voiceCallSaveNowResultState = (voiceHistoryKey(profile: profile), pendingVoiceCallSaves)
+        if let result = voiceCallSaveNowResult {
+            UIAccessibility.post(notification: .announcement, argument: result)
+        }
+    }
+
+    /// The line under Save Now. Nil when every call saved: the card goes.
+    static func voiceCallSaveNowResult(_ drain: VoiceTranscriptDrainResult, stillWaiting: Int) -> String? {
+        guard stillWaiting > 0 else { return nil }
+        // Whatever failed before it, what's left now waits on the call.
+        if drain.waitedOnCall {
+            return AppLocalization.string("Calls save once the live call ends.")
+        }
+        let reason = drain.failure.map(voiceCallSaveFailureReason)
+            ?? AppLocalization.string("Conduit couldn't reach your Hermes server.")
+        if drain.saved > 0 {
+            return AppLocalization.string("Saved \(String(drain.saved)). Still waiting: \(String(stillWaiting)). \(reason)")
+        }
+        return AppLocalization.string("Nothing saved. \(reason)")
+    }
+
+    private static func voiceCallSaveFailureReason(_ error: Error) -> String {
+        switch error {
+        case VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported:
+            return AppLocalization.string("Your Hermes server can't save these calls yet.")
+        case VoiceHistoryError.busy:
+            return AppLocalization.string("Hermes is busy with that conversation. Try again in a moment.")
+        case DashboardTicketBridgeError.http(let status, let detail):
+            // The host's text, kept to one short line.
+            let firstLine = detail.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+            var detail = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if detail.count > 200 { detail = String(detail.prefix(200)) + "…" }
+            return detail.isEmpty
+                ? AppLocalization.string("Hermes answered with error \(String(status)).")
+                : AppLocalization.string("Hermes answered: \(detail)")
+        default:
+            return error.localizedDescription
+        }
     }
 
     private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = [], attachment: VoiceCallAttachment? = nil) {
@@ -6244,9 +6296,16 @@ final class AppState: ObservableObject {
     }
 
     /// Retries the saves queued for this dashboard and profile, oldest first.
-    private func drainVoiceTranscriptOutbox(profile: String, key: String) async {
+    @discardableResult
+    private func drainVoiceTranscriptOutbox(profile: String, key: String) async -> VoiceTranscriptDrainResult {
+        var drain = VoiceTranscriptDrainResult()
         // A save while a live call runs stalls it: wait for the call to end.
-        guard !isLiveVoiceCallActive else { return }
+        guard !isLiveVoiceCallActive else {
+            drain.waitedOnCall = true
+            return drain
+        }
+        // Set once the host refuses a call as one it can't store yet.
+        var hostCantSave = false
         var snapshot = VoiceTranscriptOutbox.load(from: defaults)
         snapshot.prune(now: Date())
         let dashboard = activeDashboardID?.uuidString ?? "-"
@@ -6257,11 +6316,15 @@ final class AppState: ObservableObject {
         for entry in snapshot.entries where entry.dashboard == dashboard && entry.profile == profile
             && !voiceTranscriptsSaving.contains(entry.request.callID) {
             // A call started meanwhile: the rest waits for it to end.
-            if isLiveVoiceCallActive { break }
+            if isLiveVoiceCallActive {
+                drain.waitedOnCall = true
+                break
+            }
             var request = entry.request
             do {
                 let result = try await voiceHistoryClient.save(request, profile: profile)
-                voiceCallSaveBlockedKeys.remove(key)
+                if !hostCantSave { voiceCallSaveBlockedKeys.remove(key) }
+                drain.saved += 1
                 settled.append((entry, nil))
                 if let sessionID = result.sessionID, voiceSessionTagsByKey[key]?[sessionID] == nil {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
@@ -6312,8 +6375,21 @@ final class AppState: ObservableObject {
                 // session store) before the outbox gives up on the call.
                 // Voice settings says why the calls are waiting.
                 voiceCallSaveBlockedKeys.insert(key)
+                drain.failure = VoiceHistoryError.pluginMissing
                 break
+            } catch DashboardTicketBridgeError.http(let status, let detail) where status == 400 || status == 413 {
+                // The host refused this call itself (a plugin older than the
+                // call's engine, or a request it won't take): it's kept, and
+                // the calls behind it still save rather than wait on it.
+                if request.engine == .localLive, status == 400 {
+                    // Plugins before 0.44.1 don't know Local Live calls.
+                    hostCantSave = true
+                    voiceCallSaveBlockedKeys.insert(key)
+                }
+                drain.failure = DashboardTicketBridgeError.http(status: status, detail: detail)
+                continue
             } catch {
+                drain.failure = error
                 break
             }
         }
@@ -6325,6 +6401,7 @@ final class AppState: ObservableObject {
         }
         outbox.store(in: defaults)
         publishVoiceCallSaveStatus()
+        return drain
     }
 
     // MARK: Titles
@@ -10477,7 +10554,7 @@ final class AppState: ObservableObject {
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = nil
-            notifierPlugin = NotifierPluginStatus()
+            notifierPlugin = freshNotifierPluginStatus
             let failure = ConnectionFailureClassifier.classify(error)
             if keepOfflineChatInsteadOfSignIn(failure) { return }
             wipeOfflineChatCacheForSignIn(after: failure, dashboardID: dashboardID)
@@ -10874,7 +10951,7 @@ final class AppState: ObservableObject {
         }
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         prepareDashboardBridge(for: baseURL)
     }
 
@@ -11023,7 +11100,7 @@ final class AppState: ObservableObject {
         client = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
@@ -11046,6 +11123,8 @@ final class AppState: ObservableObject {
         voiceCallSaveBlockedKeys = []
         pendingVoiceCallSaves = 0
         voiceCallSavesBlocked = false
+        voiceCallSaveNowResult = nil
+        voiceCallSaveNowResultState = nil
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -11343,7 +11422,7 @@ final class AppState: ObservableObject {
         connectedAt = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         // A flush scheduled under the outgoing server must not write through
         // after the switch; the boundary already cleared the cache it would
         // resurrect content into.
@@ -11764,7 +11843,7 @@ final class AppState: ObservableObject {
             // Header or sign-in changes keep the host, so its plugin status
             // still holds; a new host is asked again on connect.
             if dashboardTicketBridge?.baseURL != normalized {
-                notifierPlugin = NotifierPluginStatus()
+                notifierPlugin = freshNotifierPluginStatus
             }
             dashboardTicketBridge?.invalidate()
             let bridge = DashboardTicketBridge(
@@ -11823,7 +11902,7 @@ final class AppState: ObservableObject {
         connection = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
-        notifierPlugin = NotifierPluginStatus()
+        notifierPlugin = freshNotifierPluginStatus
         // A forced sign-out kills the bridge mid-playback; stop the read
         // aloud and drop its gateway the same way Disconnect does.
         messageReadAloudController.stop()
@@ -20136,6 +20215,12 @@ final class AppState: ObservableObject {
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
+    /// The plugin on its repository's main branch, once read. A reset for
+    /// another host keeps it (`freshNotifierPluginStatus`).
+    private var latestNotifierPluginVersion: String?
+    private var freshNotifierPluginStatus: NotifierPluginStatus {
+        NotifierPluginStatus(latestVersion: latestNotifierPluginVersion)
+    }
     /// Apple Health sharing with one Hermes profile.
     /// Off until the user turns it on in Settings > Health.
     @Published var healthSyncPreferences = HealthSyncPreferences.load()
@@ -20195,6 +20280,7 @@ final class AppState: ObservableObject {
         notifierPluginStatusAcceptedGeneration = generation
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
@@ -20213,6 +20299,24 @@ final class AppState: ObservableObject {
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
         Task { await runPhoneSync(reason: .connected) }
+    }
+
+    /// Reads the latest plugin version (saved, then from GitHub at most
+    /// hourly), so a plugin release is offered without a new Conduit build.
+    private func refreshLatestNotifierPluginVersion() async {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        if latestNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cached(in: defaults) {
+            applyLatestNotifierPluginVersion(saved)
+        }
+        guard let fetched = await NotifierPluginLatestVersion.refresh(defaults: defaults) else { return }
+        applyLatestNotifierPluginVersion(fetched)
+    }
+
+    private func applyLatestNotifierPluginVersion(_ version: String) {
+        latestNotifierPluginVersion = version
+        guard notifierPlugin.latestVersion != version else { return }
+        notifierPlugin.latestVersion = version
+        clearSettledNotifierPluginUpdateOutcome()
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
@@ -25134,6 +25238,7 @@ final class AppState: ObservableObject {
     func loadCronJobs() async {
         guard !cronJobsLoading else { return }
         let profile = activeProfile
+        let generation = cronJobsGeneration
         cronJobsLoading = true
         defer { cronJobsLoading = false }
 
@@ -25142,11 +25247,11 @@ final class AppState: ObservableObject {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
         } catch {
@@ -25221,6 +25326,35 @@ final class AppState: ObservableObject {
             case .resume: errorMessage = AppLocalization.string("Could not resume scheduled job: \(reason)")
             case .trigger: errorMessage = AppLocalization.string("Could not run scheduled job: \(reason)")
             }
+            return false
+        }
+    }
+
+    /// Removes the job from Hermes. Chats from its past runs stay; Hermes
+    /// keeps those sessions.
+    func deleteCronJob(_ job: CronJob) async -> Bool {
+        guard cronJobActionID == nil else { return false }
+        let profile = activeProfile
+        cronJobActionID = job.id
+        defer { cronJobActionID = nil }
+
+        do {
+            guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
+            _ = try await dashboardTicketBridge.requestJSON(
+                path: cronDashboardPath("/api/cron/jobs/\(encodedID)", profile: profile),
+                method: "DELETE"
+            )
+            // Gone on Hermes either way; only the list on screen needs the
+            // same profile.
+            cronJobsGeneration += 1
+            if profile == activeProfile {
+                cronJobs.removeAll { $0.id == job.id }
+                cronMutedJobIDs.remove(job.id)
+            }
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not delete scheduled job: \(UserFacingError.message(for: error))")
             return false
         }
     }

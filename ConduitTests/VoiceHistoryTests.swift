@@ -565,6 +565,80 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 }
 
+// MARK: - A call the host refuses doesn't hold up the rest
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testRefusedLocalLiveCallIsKeptAndTheCallsBehindItStillSave() async throws {
+        let suite = "VoiceOutboxRefusedCall.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        let dashboard = appState.activeDashboardID?.uuidString ?? "-"
+        let turn = VoiceTranscriptTurn(index: 0, role: .user, text: "Hi", at: Date())
+        var outbox = VoiceTranscriptOutbox()
+        for (id, engine) in [("local", VoiceCallEngine.localLive), ("gemini", .geminiLive)] {
+            outbox.add(.init(
+                dashboard: dashboard, profile: appState.activeProfile,
+                request: VoiceTranscriptSaveRequest(callID: id, engine: engine, sessionID: nil, title: "Call", turns: [turn]),
+                queuedAt: Date()
+            ))
+        }
+        outbox.store(in: defaults)
+
+        // A plugin before 0.44.1 refuses the local-live engine.
+        script.responses = [
+            .failure(DashboardTicketBridgeError.http(status: 400, detail: "engine is missing or invalid")),
+            .success(["ok": true, "session_id": "row-1", "written": 1])
+        ]
+        await appState.saveQueuedVoiceCallsNow()
+
+        XCTAssertEqual(script.calls.count, 2, "the refused call doesn't stop the one behind it")
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.request.callID), ["local"], "the refused call is kept")
+        XCTAssertEqual(appState.pendingVoiceCallSaves, 1)
+        XCTAssertTrue(appState.voiceCallSavesBlocked, "Voice settings asks for a plugin update")
+        let result = try XCTUnwrap(appState.voiceCallSaveNowResult, "Save Now says what happened")
+        XCTAssertTrue(result.contains("engine is missing or invalid"), result)
+
+        // Once the plugin takes it, the card clears with nothing left to say.
+        script.responses = [.success(["ok": true, "session_id": "row-2", "written": 1])]
+        await appState.saveQueuedVoiceCallsNow()
+        XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
+        XCTAssertFalse(appState.voiceCallSavesBlocked)
+        XCTAssertNil(appState.voiceCallSaveNowResult)
+    }
+
+    func testSaveNowSaysWhyNothingSavedWhenHermesFails() async throws {
+        let suite = "VoiceOutboxSaveNowFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: appState.activeDashboardID?.uuidString ?? "-", profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                                                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Hi", at: Date())]),
+            queuedAt: Date()
+        ))
+        outbox.store(in: defaults)
+
+        script.responses = [.failure(DashboardTicketBridgeError.http(status: 500, detail: ""))]
+        await appState.saveQueuedVoiceCallsNow()
+
+        XCTAssertEqual(appState.pendingVoiceCallSaves, 1)
+        XCTAssertFalse(appState.voiceCallSavesBlocked, "a server error isn't a missing plugin")
+        let result = try XCTUnwrap(appState.voiceCallSaveNowResult)
+        XCTAssertTrue(result.contains("500"), result)
+    }
+}
+
 // MARK: - Calls started from a chat
 
 extension HermesVoiceGatewayTimeoutTests {

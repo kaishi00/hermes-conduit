@@ -1158,7 +1158,11 @@ struct UserMessageContent: View, Equatable {
             }
 
             if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownText(source: text, foregroundStyle: .white, usesAccentSurface: true)
+                // The text fills the column for its own layout; a sent
+                // bubble fits a short message instead.
+                HugsIdealWidth {
+                    MarkdownText(source: text, foregroundStyle: .white, usesAccentSurface: true)
+                }
             }
 
             if let attachments = message.attachments {
@@ -1192,6 +1196,29 @@ struct UserMessageContent: View, Equatable {
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
         .textSelection(.enabled)
+    }
+}
+
+/// Offers its content no more width than the content would take
+/// unbounded: a view that fills whatever it's offered, as Markdown text
+/// does, takes only its natural width when that is narrower.
+struct HugsIdealWidth: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        return content.sizeThatFits(contentProposal(proposal, content: content))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: bounds.origin,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
+    }
+
+    private func contentProposal(_ proposal: ProposedViewSize, content: LayoutSubview) -> ProposedViewSize {
+        guard let width = proposal.width, width.isFinite else { return proposal }
+        let ideal = content.sizeThatFits(.unspecified).width
+        return ProposedViewSize(width: min(width, ideal), height: proposal.height)
     }
 }
 

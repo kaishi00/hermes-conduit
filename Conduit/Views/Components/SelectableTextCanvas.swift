@@ -11,6 +11,9 @@ final class SelectableTextCanvas: UIView {
     /// Each tile is its own backing store, kept well under the largest a
     /// layer can hold: a long answer can be thousands of points tall.
     static let tileHeight: CGFloat = 1024
+    /// Wide enough that no line breaks: text that doesn't wrap, and the
+    /// text's natural size, are laid out at it.
+    static let unboundedWidth: CGFloat = 100_000
 
     private let contentStorage = NSTextContentStorage()
     private let textLayoutManager = NSTextLayoutManager()
@@ -23,6 +26,8 @@ final class SelectableTextCanvas: UIView {
     private var wrapsLines = true
     /// The width the text is laid out at; nil after the text changes.
     private var layoutWidth: CGFloat?
+    /// The text's size on unbroken lines; nil after the text changes.
+    private var cachedNaturalSize: CGSize?
     private var tiles: [SelectableTextCanvasTile] = []
 
     override init(frame: CGRect) {
@@ -67,8 +72,12 @@ final class SelectableTextCanvas: UIView {
             self.text = text
             contentStorage.attributedString = text
             layoutWidth = nil
+            cachedNaturalSize = nil
         }
-        self.font = font
+        if self.font != font {
+            self.font = font
+            cachedNaturalSize = nil
+        }
         linkStyle.attributes = [
             .foregroundColor: linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue
@@ -83,6 +92,7 @@ final class SelectableTextCanvas: UIView {
             textContainer.lineBreakMode = lineBreakMode
             self.wrapsLines = wrapsLines
             layoutWidth = nil
+            cachedNaturalSize = nil
         }
         setNeedsLayout()
         redrawTiles()
@@ -94,6 +104,24 @@ final class SelectableTextCanvas: UIView {
         guard text.length > 0 else { return Self.emptyHeight(for: font) }
         layOut(atWidth: width)
         return ceil(textLayoutManager.usageBoundsForTextContainer.height)
+    }
+
+    /// The size the text takes when no width bounds it, which a text view
+    /// pinned in its host gave as its intrinsic size: a short sent message's
+    /// bubble fits its text instead of the widest width it's offered.
+    func naturalSize() -> CGSize {
+        if let cachedNaturalSize { return cachedNaturalSize }
+        TranscriptPerf.note(.textKitMeasurement)
+        let size: CGSize
+        if text.length == 0 {
+            size = CGSize(width: 1, height: Self.emptyHeight(for: font))
+        } else {
+            layOut(atWidth: Self.unboundedWidth)
+            let bounds = textLayoutManager.usageBoundsForTextContainer
+            size = CGSize(width: max(1, ceil(bounds.width)), height: ceil(bounds.height))
+        }
+        cachedNaturalSize = size
+        return size
     }
 
     /// An empty text view still takes a line's height, where TextKit 2
@@ -121,7 +149,7 @@ final class SelectableTextCanvas: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let width = wrapsLines ? bounds.width : 100_000
+        let width = wrapsLines ? bounds.width : Self.unboundedWidth
         if !isHidden, layoutWidth != width {
             layOut(atWidth: width)
             redrawTiles()
@@ -160,7 +188,7 @@ final class SelectableTextCanvas: UIView {
     /// the context is the tile's, whose origin sits at `tileOrigin`.
     fileprivate func drawText(in rect: CGRect, tileOrigin: CGPoint, context: CGContext) {
         guard text.length > 0 else { return }
-        layOut(atWidth: wrapsLines ? bounds.width : 100_000)
+        layOut(atWidth: wrapsLines ? bounds.width : Self.unboundedWidth)
         context.saveGState()
         context.translateBy(x: -tileOrigin.x, y: -tileOrigin.y)
         textLayoutManager.enumerateTextLayoutFragments(
@@ -181,7 +209,7 @@ final class SelectableTextCanvas: UIView {
     /// Where the first character of `range` is drawn, in this view's
     /// points: for tests that hold the drawing against the text view's.
     func firstRectForTests(characterRange range: NSRange) -> CGRect? {
-        layOut(atWidth: wrapsLines ? bounds.width : 100_000)
+        layOut(atWidth: wrapsLines ? bounds.width : Self.unboundedWidth)
         return Self.firstRectForTests(characterRange: range, in: textLayoutManager)
     }
 

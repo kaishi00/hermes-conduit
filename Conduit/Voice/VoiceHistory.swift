@@ -471,6 +471,15 @@ final class VoiceTranscriptRecorder {
 
 // MARK: - Outbox
 
+/// What one pass over the outbox did, for Save Now's result line.
+struct VoiceTranscriptDrainResult {
+    var saved = 0
+    /// The last reason a call didn't save, if one didn't.
+    var failure: Error?
+    /// A live call was running, so saving waited for it to end.
+    var waitedOnCall = false
+}
+
 /// Saves that failed when a call ended, kept on the device until the host
 /// takes them. Keyed by dashboard and profile so a save never lands on
 /// another server's history.

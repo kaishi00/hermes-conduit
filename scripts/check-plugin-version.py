@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Fail when Conduit's recommended plugin version is behind the plugin.
+"""Fail when Conduit's recommended plugin version is ahead of the plugin.
 
-NotifierPluginStatus.recommendedVersion decides when Conduit offers the
-one-tap plugin update: only a host below it sees the notice. It is a constant
-someone has to raise by hand, so plugin releases 0.30-0.41 shipped while it
-still said 0.29.0 and nobody was told to update. This check compares it with
-the version on hermes-conduit-notifier's main branch (what an update installs)
-and fails until they match.
-
-Behind main means users miss the notice; ahead of main means an update can't
-reach the version Conduit asks for, so the notice would never go away. Merge
-the plugin first, then raise the constant in Conduit.
+Conduit offers the one-tap plugin update whenever the host is below the
+plugin on hermes-conduit-notifier's main branch, which it reads from GitHub
+(NotifierPluginLatestVersion.swift). NotifierPluginStatus.recommendedVersion
+is only the floor a build offers when GitHub can't be reached, so it may lag
+main (the check notes it). Ahead of main fails: an update can't reach the
+version Conduit asks for, so the notice would never go away. Merge the plugin
+first, then raise the constant in Conduit when a build needs it.
 
 If GitHub can't be reached the check warns and passes, so an outage doesn't
 block every PR.
@@ -114,6 +111,14 @@ def main(argv=None):
         return 1
 
     problem = compare(recommended, latest)
+    if problem and parts(recommended) is not None and parts(latest) is not None:
+        behind = parts(recommended) + (0,) * 8 < parts(latest) + (0,) * 8
+    else:
+        behind = False
+    if problem and behind:
+        # Conduit offers main's version itself; the floor may lag.
+        print(f"::notice file={SWIFT_FILE}::{problem}")
+        return 0
     if problem:
         print(f"::error file={SWIFT_FILE}::{problem}")
         return 1

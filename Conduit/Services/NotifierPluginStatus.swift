@@ -46,9 +46,10 @@ struct NotifierPluginStatus: Equatable {
         var bootID: String?
     }
 
-    /// The plugin version this Conduit build was made against. Below it, the
-    /// update notice shows even when no feature is missing yet.
-    static let recommendedVersion = "0.43.1"
+    /// The plugin version this Conduit build was made against: the least it
+    /// offers, even when GitHub can't be reached for the latest
+    /// (`latestVersion`).
+    static let recommendedVersion = "0.44.1"
 
     /// Where Hermes installs it from (`hermes plugins install …`).
     static let repository = "kaishi00/hermes-conduit-notifier"
@@ -56,6 +57,9 @@ struct NotifierPluginStatus: Equatable {
     var state: State = .unknown
     /// Nil until a plugin 0.24+ reports it.
     var runtime: Runtime?
+    /// The plugin on its repository's main branch, when Conduit has read it
+    /// (NotifierPluginLatestVersion.swift).
+    var latestVersion: String?
 
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
@@ -95,7 +99,7 @@ struct NotifierPluginStatus: Equatable {
     }
 
     /// Worth offering an update: something Conduit uses is missing, or the
-    /// plugin is older than this build's recommended version. A plugin that
+    /// plugin is older than the version an update brings. A plugin that
     /// is already new enough on disk only needs its restart.
     var updateAvailable: Bool {
         switch state {
@@ -104,13 +108,20 @@ struct NotifierPluginStatus: Equatable {
         case .predatesCapabilities:
             return true
         case .reported(let version, _):
-            let older = Self.isOlder(version, than: Self.recommendedVersion)
+            let older = Self.isOlder(version, than: offeredVersion)
             return restartPending ? older : (needsUpdate || older)
         }
     }
 
-    /// The version an update brings, for the notice.
-    var offeredVersion: String { Self.recommendedVersion }
+    /// The version an update brings: the latest plugin, or this build's
+    /// recommended one when the latest isn't known or is older.
+    var offeredVersion: String {
+        // Not older also means readable: an unreadable version counts as older.
+        guard let latestVersion, !Self.isOlder(latestVersion, than: Self.recommendedVersion) else {
+            return Self.recommendedVersion
+        }
+        return latestVersion
+    }
 
     /// Dotted numeric versions compared part by part ("0.9.1" < "0.10.0").
     /// An unreadable or missing version counts as older.
