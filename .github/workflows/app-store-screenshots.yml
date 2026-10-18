@@ -24,7 +24,7 @@ concurrency:
 jobs:
   capture:
     runs-on: macos-26
-    timeout-minutes: 100
+    timeout-minutes: 120
     env:
       DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max,iPad Pro 13-inch' }}
       DEMO_HOST: hermes.tail-demo.ts.net
@@ -121,11 +121,14 @@ jobs:
               grep -E "error:|Test Case" "results-$slug-preview.log" || true
               grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
               # The next device's screenshots must not show this chat.
+              preview_chats=0
               for sid in $(HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions list --limit 50 \
                   | awk '/^Packing list/ {print $NF}'); do
                 HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions delete -y "$sid" < /dev/null \
-                  || echo "::warning::preview chat $sid not removed"
+                  || echo "$name preview chat $sid not removed" >> failures.txt
+                preview_chats=$((preview_chats + 1))
               done
+              if [ "$preview_chats" -eq 0 ]; then echo "$name preview chat not found to remove" >> failures.txt; fi
             fi
             set -e
             grep -E "error:|Test Case|\*\* TEST|Testing failed|Skipped" "results-$slug.log" || true

@@ -104,7 +104,7 @@ curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not sta
 "$PY" -u "$SCRIPT_DIR/seed_demo.py" "$SCRIPT_DIR/demo-script.json" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
   2>&1 | tee "$DEMO_WORK/seed.log"
 "$PY" "$SCRIPT_DIR/seed_board.py" "$SCRIPT_DIR/demo-script.json" "$HERMES" 2>&1 | tee -a "$DEMO_WORK/seed.log" \
-  || echo "::warning::the Kanban board was not fully seeded"
+  || { echo "::error::the Kanban board was not fully seeded"; exit 1; }
 "$PY" - "$SCRIPT_DIR/demo-script.json" <<'PY' > "$DEMO_WORK/cron.tsv"
 import json, sys
 for job in json.load(open(sys.argv[1])).get("cron", []):

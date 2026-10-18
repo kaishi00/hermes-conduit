@@ -22,6 +22,9 @@ final class AppStoreScreenshotTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         guard demoURL != nil else { throw XCTSkip("CONDUIT_DEMO_URL is not set") }
+        if name.contains("testRecordPreview"), ProcessInfo.processInfo.environment["CONDUIT_RECORD_PREVIEW"] != "1" {
+            throw XCTSkip("Only the preview recording runs this")
+        }
         app = XCUIApplication()
         app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
         app.launch()
@@ -122,10 +125,8 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// The App Preview: the workflow records the screen while this runs.
     /// Starts on the Chats list, opens a new chat, asks, and lets the
     /// scripted answer stream in.
+    /// setUp skips it unless the recording asked for it.
     func testRecordPreview() throws {
-        guard ProcessInfo.processInfo.environment["CONDUIT_RECORD_PREVIEW"] == "1" else {
-            throw XCTSkip("Only the preview recording runs this")
-        }
         signInIfNeeded()
         dismissFinishSetupCard()
         guard app.staticTexts["Weekend trip to Big Sur"].waitForExistence(timeout: 30) else {
@@ -156,7 +157,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         // The scripted answer streams for about 15 s.
         let done = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS 'trip notes'")).firstMatch
-        _ = done.waitForExistence(timeout: 40)
+        if !done.waitForExistence(timeout: 40) {
+            XCTFail("The scripted packing answer never arrived")
+        }
         settle(3)
         print("PREVIEW_MARK end \(Date().timeIntervalSince1970)")
         snap("10-preview-end")
@@ -215,6 +218,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             tree.name = "debug-back-tree"
             tree.lifetime = .keepAlways
             add(tree)
+            XCTFail("Could not leave the chat after 3 Back attempts")
         }
         settle()
     }

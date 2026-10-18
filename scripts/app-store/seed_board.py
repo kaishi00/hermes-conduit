@@ -26,6 +26,8 @@ def main(script_path, hermes):
         if task.get("assignee"):
             args += ["--assignee", task["assignee"]]
         if task.get("parent"):
+            if task["parent"] not in ids:
+                sys.exit(f"board: {task['title']} names parent {task['parent']!r}, which no earlier task has as its id")
             args += ["--parent", ids[task["parent"]]]
         task_id = json.loads(run(*args))["id"]
         if task.get("id"):
