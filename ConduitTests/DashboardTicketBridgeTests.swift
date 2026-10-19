@@ -341,6 +341,36 @@ extension DashboardTicketBridgeTests {
         )
     }
 
+    func testABackgroundResponseOverTheLimitIsNeverHeldWhole() async throws {
+        let limit = 1_024
+        let request = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/sessions")))
+        let body = Data(repeating: 0x20, count: limit * 4)
+
+        // A length over the limit is refused before the body is read.
+        let announced = try await DashboardTicketBridge.load(
+            request, deadline: .seconds(10), maxResponseBytes: limit,
+            session: downloadSession(status: 200, body: body, headers: ["Content-Length": String(body.count)])
+        )
+        XCTAssertTrue(announced.oversized)
+        XCTAssertTrue(announced.data.isEmpty, "nothing of an announced oversized body is held")
+
+        // Without a length, the read stops once the limit is passed.
+        let streamed = try await DashboardTicketBridge.load(
+            request, deadline: .seconds(10), maxResponseBytes: limit,
+            session: downloadSession(status: 200, body: body)
+        )
+        XCTAssertTrue(streamed.oversized)
+        XCTAssertLessThanOrEqual(streamed.data.count, limit, "the body past the limit is never held")
+
+        let small = Data(#"{"ok":true}"#.utf8)
+        let fits = try await DashboardTicketBridge.load(
+            request, deadline: .seconds(10), maxResponseBytes: limit,
+            session: downloadSession(status: 200, body: small)
+        )
+        XCTAssertFalse(fits.oversized)
+        XCTAssertEqual(fits.data, small)
+    }
+
     // MARK: - File downloads (#569)
 
     private func downloadSession(status: Int, body: Data, headers: [String: String] = [:]) -> URLSession {
