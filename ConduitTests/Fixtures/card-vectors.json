@@ -1835,6 +1835,83 @@
           ]
         }
       ]
+    },
+    {
+      "name": "A place's or person's photo is kept only when its url is https",
+      "input": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "Kin Khao",
+              "photo": {
+                "url": "http://img.example/kin.jpg",
+                "source": "Yelp"
+              }
+            },
+            {
+              "name": "Tartine",
+              "photo": {
+                "url": "https://img.example/tartine.jpg",
+                "source": "Yelp",
+                "page_url": "http://yelp.example/biz/tartine"
+              }
+            }
+          ]
+        },
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Dr Lee",
+              "photo": {
+                "url": "http://a.test/lee.jpg",
+                "source": "Yelp"
+              }
+            },
+            {
+              "name": "Bo",
+              "photo": {
+                "url": "https://a.test/bo.jpg",
+                "source": "Yelp"
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "places",
+          "places": [
+            {
+              "name": "Kin Khao"
+            },
+            {
+              "name": "Tartine",
+              "photo": {
+                "url": "https://img.example/tartine.jpg",
+                "source": "Yelp",
+                "page_url": "http://yelp.example/biz/tartine"
+              }
+            }
+          ]
+        },
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Dr Lee"
+            },
+            {
+              "name": "Bo",
+              "photo": {
+                "url": "https://a.test/bo.jpg",
+                "source": "Yelp"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
