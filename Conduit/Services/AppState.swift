@@ -89,6 +89,9 @@ struct ChatResumeLifecycleOperations {
     /// decision RPC.
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
+    /// Test seam for a Queue send (`queued: true`, #842). Not an init
+    /// parameter: tests set it on the value.
+    var sendQueuedPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Test seam for one attachment upload (session id, attachment) before
     /// the prompt; returns the `@file:` reference the prompt carries, nil
     /// for an image. Not an init parameter: tests set it on the value.
@@ -2348,9 +2351,6 @@ final class AppState: ObservableObject {
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
     /// The transcript `submitVoiceTranscript` is submitting, while it is.
     private var spokenSubmissionText: String?
-    /// A queued message being sent now its turn is over (#842), while it
-    /// is: it goes as Hermes' client queue drain (`queued`).
-    var queuedDrainSubmissionText: String?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -21187,7 +21187,8 @@ final class AppState: ObservableObject {
     }
 
     /// A typed message while a turn runs, by `mode`: into the turn, as a
-    /// new turn after stopping it, or waiting as the next message (#842).
+    /// new turn after stopping it, or kept by Hermes as the next turn
+    /// (#842), so it goes even if the app closes.
     private func submitWhileBusy(
         _ text: String,
         mode: BusyInputMode,
@@ -21199,8 +21200,7 @@ final class AppState: ObservableObject {
         case .interrupt:
             return await redirectOrInterruptAndSend(text, context: context)
         case .queue:
-            guard isCurrentComposerSubmission(context) else { return false }
-            return queueForNextTurn(text, replyReference: nil)
+            return await sendMessage(text, context: context, queued: true)
         }
     }
 
@@ -21988,16 +21988,20 @@ final class AppState: ObservableObject {
         error.code == 4016 || error.code == 4018
     }
 
+    /// `queued` is Queue (#842): Hermes keeps the message as the next turn
+    /// while one runs. That turn's reply goes on streaming meanwhile.
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
-        context: ComposerSubmissionContext? = nil
+        context: ComposerSubmissionContext? = nil,
+        queued: Bool = false
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
+        let joinsRunningTurn = queued && turnState.isRunning
         cancelChatResumeRestoration()
-        resetResponseHapticTurn()
+        if !joinsRunningTurn { resetResponseHapticTurn() }
         // Bot Mode composer middleware (upstream `mention-middleware`):
         // @mention identification. The canonical-forever-chat `/new` guard
         // runs in `executeSlashCommand`, which `submitComposer` reaches
@@ -22006,7 +22010,6 @@ final class AppState: ObservableObject {
         // never rewrites what the user already saw.
         let outboundText = mentionAnnotatedOutboundText(text)
         let surface: String? = spokenSubmissionText == text ? Self.spokenPromptSurface : nil
-        let drainsQueue = queuedDrainSubmissionText == text
         // Durable before/after identity for ambiguous-delivery recovery:
         // positively-proven persisted row ids (from the latest accepted
         // hydration) plus whether the conversation holds rows whose persisted
@@ -22049,7 +22052,7 @@ final class AppState: ObservableObject {
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
-        clearStreamingText()
+        if !joinsRunningTurn { clearStreamingText() }
         turnState = .running
 
         // Every file that isn't an image (PDFs included) is staged as a file,
@@ -22122,16 +22125,20 @@ final class AppState: ObservableObject {
         await locationShare?.value
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
-        LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+        if !joinsRunningTurn {
+            LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+        }
         do {
             let outcome: PromptSubmissionOutcome
-            if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+            if queued, let sendQueuedPrompt = chatResumeLifecycleOperations.sendQueuedPrompt {
+                outcome = try await sendQueuedPrompt(client, sessionId, promptText)
+            } else if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
                 outcome = try await sendPrompt(client, sessionId, promptText)
             } else {
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
                     voiceTurn: surface == Self.spokenPromptSurface,
-                    queued: drainsQueue
+                    queued: queued
                 )
             }
             // The gateway accepted the prompt. A session handoff may have

@@ -933,12 +933,11 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
-    func testQueueDrainMarksQueuedAndDropsItWhenTheGatewayRefusesTheKey() async throws {
-        // A queued message's send (#842) carries `queued: true`, Hermes'
-        // client-queue-drain flag: a turn running by then holds it rather
-        // than steering. A gateway without the key gets it once more
-        // without, and later drains stop sending it. Ordinary sends never
-        // carry it.
+    func testQueueMarksQueuedAndNeverResendsWithoutIt() async throws {
+        // Queue (#842) carries `queued: true`: Hermes keeps the message as
+        // the next turn. A gateway that refuses the key fails the send
+        // rather than getting it without, which would steer or interrupt,
+        // and later Queue sends fail at once. Ordinary sends never carry it.
         let transport = FakeTransport()
         let socket = FakeSocket()
         transport.nextSocket = { socket }
@@ -968,34 +967,36 @@ final class HermesClientTests: XCTestCase {
         try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(plain["id"] as? Int), "result": ["status": "streaming"]])
         _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the ordinary prompt.submit response")
 
-        let first = try await nextRequest("the queue drain") {
+        let first = try await nextRequest("a queued prompt.submit") {
             submitTask = Task { try await client.sendPrompt("sess-1", text: "Next", queued: true) }
         }
-        var params = try XCTUnwrap(first["params"] as? [String: Any])
-        XCTAssertEqual(params["queued"] as? Bool, true)
-
-        let retry = try await nextRequest("the resend without queued") {
-            try? deliver([
-                "jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int),
-                "error": [
-                    "code": 4000,
-                    "message": "invalid params for prompt.submit: queued: Extra inputs are not permitted"
-                ]
-            ])
-        }
-        params = try XCTUnwrap(retry["params"] as? [String: Any])
-        XCTAssertNil(params["queued"])
-        XCTAssertEqual(params["text"] as? String, "Next")
-        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(retry["id"] as? Int), "result": ["status": "queued"]])
-        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the resent prompt.submit response")
+        XCTAssertEqual(try XCTUnwrap(first["params"] as? [String: Any])["queued"] as? Bool, true)
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int), "result": ["status": "queued"]])
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the queued prompt.submit response")
         XCTAssertEqual(outcome, .queued)
 
-        let later = try await nextRequest("a later queue drain") {
+        let refused = try await nextRequest("a queued prompt.submit to a gateway without the key") {
             submitTask = Task { try await client.sendPrompt("sess-1", text: "Again", queued: true) }
         }
-        XCTAssertNil(try XCTUnwrap(later["params"] as? [String: Any])["queued"])
-        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(later["id"] as? Int), "result": ["status": "streaming"]])
-        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the later prompt.submit response")
+        let sentBefore = socket.sentTexts.count
+        try deliver([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(refused["id"] as? Int),
+            "error": [
+                "code": 4000,
+                "message": "invalid params for prompt.submit: queued: Extra inputs are not permitted"
+            ]
+        ])
+        do {
+            _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the refused prompt.submit")
+            XCTFail("A refused Queue must not be sent another way")
+        } catch is HermesClient.QueueUnsupportedError {}
+        XCTAssertEqual(socket.sentTexts.count, sentBefore, "Nothing is resent without the key")
+
+        do {
+            _ = try await client.sendPrompt("sess-1", text: "Once more", queued: true)
+            XCTFail("Later Queue sends fail at once")
+        } catch is HermesClient.QueueUnsupportedError {}
+        XCTAssertEqual(socket.sentTexts.count, sentBefore)
         client.disconnect()
     }
 

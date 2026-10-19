@@ -299932,248 +299932,84 @@
         }
       }
     },
-    "Sends when Hermes finishes" : {
+    "This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird gesendet, sobald Hermes fertig ist"
+            "value" : "Dieses Hermes kann keine Nachrichten einreihen. Aktualisiere Hermes oder halte die Senden-Taste gedrückt, um stattdessen nachzusteuern oder zu unterbrechen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se enviará cuando Hermes termine"
+            "value" : "Este Hermes no puede poner mensajes en cola. Actualiza Hermes o mantén pulsado enviar para guiar o interrumpir."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Envoi quand Hermes aura terminé"
+            "value" : "Ce Hermes ne peut pas mettre de messages en file d'attente. Mettez Hermes à jour, ou maintenez le bouton d'envoi pour réorienter ou interrompre."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Akan dikirim saat Hermes selesai"
+            "value" : "Hermes ini tidak bisa mengantrekan pesan. Perbarui Hermes, atau tekan lama tombol kirim untuk mengarahkan atau menginterupsi."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verrà inviato quando Hermes avrà finito"
+            "value" : "Questo Hermes non può mettere in coda i messaggi. Aggiorna Hermes, oppure tieni premuto invio per reindirizzare o interrompere."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermesの応答が終わったら送信"
+            "value" : "このHermesはメッセージをキューに追加できません。Hermesをアップデートするか、送信ボタンを長押しして軌道修正または中断を選んでください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes가 끝나면 전송돼요"
+            "value" : "이 Hermes는 메시지를 대기열에 넣을 수 없어요. Hermes를 업데이트하거나, 보내기 버튼을 길게 눌러 방향 조정 또는 중단을 선택하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zostanie wysłana, gdy Hermes skończy"
+            "value" : "Ten Hermes nie umie kolejkować wiadomości. Zaktualizuj Hermesa albo przytrzymaj przycisk wysyłania, aby zamiast tego pokierować lub przerwać."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Será enviada quando o Hermes terminar"
+            "value" : "Este Hermes não consegue colocar mensagens na fila. Atualize o Hermes ou toque e segure o botão de enviar para orientar ou interromper."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отправится, когда Hermes закончит"
+            "value" : "Этот Hermes не умеет ставить сообщения в очередь. Обновите Hermes или нажмите и удерживайте кнопку отправки, чтобы скорректировать или прервать ответ."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes bitirince gönderilecek"
+            "value" : "Bu Hermes mesajları sıraya alamıyor. Hermes'i güncelle ya da yönlendirmek veya yarıda kesmek için gönder düğmesine basılı tut."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 完成后发送"
+            "value" : "此 Hermes 无法将消息排队。请更新 Hermes，或长按发送按钮改为引导或中断。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 完成後傳送"
-          }
-        }
-      }
-    },
-    "Send now" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jetzt senden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enviar ahora"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Envoyer maintenant"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kirim sekarang"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Invia ora"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今すぐ送信"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지금 보내기"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wyślij teraz"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enviar agora"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отправить сейчас"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şimdi gönder"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "立即发送"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "立即傳送"
-          }
-        }
-      }
-    },
-    "Steers the message into the current response" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lenkt die Nachricht in die laufende Antwort"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añade el mensaje a la respuesta en curso"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajoute le message à la réponse en cours"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mengarahkan pesan ke respons yang sedang berjalan"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aggiunge il messaggio alla risposta in corso"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "実行中の応答にメッセージを追加します"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "진행 중인 응답에 메시지를 더해요"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kieruje wiadomość do bieżącej odpowiedzi"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Acrescenta a mensagem à resposta em andamento"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Добавляет сообщение в текущий ответ"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mesajı süren yanıta yönlendirir"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将消息引导到当前回复中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "將訊息引導到進行中的回覆"
+            "value" : "此 Hermes 無法將訊息排隊。請更新 Hermes，或長按傳送按鈕改為引導或中斷。"
           }
         }
       }

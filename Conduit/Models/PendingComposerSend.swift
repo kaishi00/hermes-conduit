@@ -4,8 +4,7 @@
 //
 //  A message sent while its chat was still on its way: the saved copy at
 //  launch, a New Chat Hermes hasn't created yet, or a chat reconnecting
-//  (AppState+PendingSend.swift). Or one queued to go after the running
-//  turn (#842).
+//  (AppState+PendingSend.swift).
 //
 
 import Foundation
@@ -34,11 +33,6 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
     /// Its chat's title, for the notice when it isn't sent.
     let title: String
     let queuedAt: Date
-    /// Queued while Hermes was working: it goes only once the turn is
-    /// over. Optional so files saved before Queue decode as not queued.
-    private var waitsForTurn: Bool?
-
-    var waitsForTurnEnd: Bool { waitsForTurn ?? false }
 
     /// Every id its chat answers to, the draft's among them.
     var chatSessionIDs: Set<String> {
@@ -74,7 +68,6 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
         draftSessionID: String,
         isNewChat: Bool,
         title: String,
-        waitsForTurnEnd: Bool = false,
         queuedAt: Date = Date()
     ) {
         self.id = id
@@ -87,21 +80,14 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
         self.draftSessionID = draftSessionID
         self.isNewChat = isNewChat
         self.title = title
-        self.waitsForTurn = waitsForTurnEnd ? true : nil
         self.queuedAt = queuedAt
     }
 
     /// Another send before this one went: one message, in the order typed.
-    /// A reply already attached stays the one quoted. Either one queued
-    /// makes the whole message wait for the turn to end.
-    func appending(
-        _ more: String,
-        replyReference moreReply: ComposerReplyReference?,
-        waitsForTurnEnd moreWaits: Bool = false
-    ) -> PendingComposerSend {
+    /// A reply already attached stays the one quoted.
+    func appending(_ more: String, replyReference moreReply: ComposerReplyReference?) -> PendingComposerSend {
         var combined = self
         combined.draftText = ComposerDraft.joined(draftText, more)
-        if moreWaits { combined.waitsForTurn = true }
         if combined.replyReference == nil, let moreReply {
             combined.replyAuthor = moreReply.authorName
             combined.replyText = moreReply.text

@@ -1315,10 +1315,6 @@ struct ComposerBar: View, Equatable {
             queueUntilChatIsReady(trimmed)
             return
         }
-        if choice == .queue || (choice == nil && action == .queue) {
-            queueForNextTurn(trimmed)
-            return
-        }
 
         // Send is beside the dictate button, so it can be tapped mid-dictation:
         // the words so far go out, and late results must not refill the
@@ -1389,34 +1385,11 @@ struct ComposerBar: View, Equatable {
     /// "Sends when connected" and goes once the chat is ready
     /// (AppState+PendingSend.swift). Text only.
     private func queueUntilChatIsReady(_ trimmed: String) {
-        guard action == .send else { return }
-        holdForLater(trimmed) { appState.sendWhenConnected($0, replyReference: $1) }
-    }
-
-    /// Queue: the message waits in the chat as "Sends when Hermes
-    /// finishes" and goes once the running turn is over (#842). Text only.
-    private func queueForNextTurn(_ trimmed: String) {
-        // Queue shows with an attachment drafted, as Steer does; neither
-        // takes one, and the tap says so rather than doing nothing.
-        guard attachments.isEmpty, pendingScreenshot == nil else {
-            appState.errorMessage = AppLocalization.string("Attachments can only be sent in a new message, after the current response finishes.")
-            Haptics.error()
-            return
-        }
-        holdForLater(trimmed) { appState.queueForNextTurn($0, replyReference: $1) }
-    }
-
-    /// A message AppState keeps to send later: the field empties once it
-    /// has taken it.
-    private func holdForLater(
-        _ trimmed: String,
-        _ hold: (String, ComposerReplyReference?) -> Bool
-    ) {
-        guard attachments.isEmpty, pendingScreenshot == nil else { return }
+        guard action == .send, attachments.isEmpty, pendingScreenshot == nil else { return }
         let submittedReply = ComposerReplyReference.appliesToDraft(trimmed, hasAttachments: false)
             ? replyReference : nil
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
-        guard hold(trimmed, submittedReply) else {
+        guard appState.sendWhenConnected(trimmed, replyReference: submittedReply) else {
             Haptics.error()
             return
         }

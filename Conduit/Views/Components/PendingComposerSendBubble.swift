@@ -2,9 +2,8 @@
 //  PendingComposerSendBubble.swift
 //  Conduit
 //
-//  A message sent while its chat was on its way, or queued while Hermes
-//  works, waiting below the chat's rows until it goes
-//  (AppState+PendingSend.swift).
+//  A message sent while its chat was on its way, waiting below the chat's
+//  rows until it goes (AppState+PendingSend.swift).
 //
 
 import SwiftUI
@@ -27,12 +26,6 @@ struct PendingComposerSendBubble: View {
         )
     }
 
-    private var status: String {
-        pending.waitsForTurnEnd
-            ? AppLocalization.string("Sends when Hermes finishes")
-            : AppLocalization.string("Sends when connected")
-    }
-
     var body: some View {
         HStack {
             Spacer(minLength: 40)
@@ -45,17 +38,9 @@ struct PendingComposerSendBubble: View {
                 )
 
                 HStack(spacing: 10) {
-                    Label(status, systemImage: "clock")
+                    Label("Sends when connected", systemImage: "clock")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if pending.waitsForTurnEnd {
-                        Button("Send now") {
-                            Haptics.light()
-                            appState.sendPendingComposerSendNow()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .accessibilityHint(Text("Steers the message into the current response"))
-                    }
                     Button("Edit") {
                         Haptics.selection()
                         appState.editPendingComposerSend()
@@ -67,18 +52,10 @@ struct PendingComposerSendBubble: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(pending.draftText))
             .accessibilityHint(Text(pending.replyText ?? ""))
-            .accessibilityValue(Text(status))
+            .accessibilityValue(Text("Sends when connected"))
             .accessibilityAction(named: Text("Edit")) {
                 Haptics.selection()
                 appState.editPendingComposerSend()
-            }
-            .accessibilityActions {
-                if pending.waitsForTurnEnd {
-                    Button("Send now") {
-                        Haptics.light()
-                        appState.sendPendingComposerSendNow()
-                    }
-                }
             }
         }
         .id(Self.scrollID)
