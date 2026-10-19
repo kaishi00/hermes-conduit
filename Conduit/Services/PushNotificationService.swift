@@ -5,6 +5,12 @@ import os
 
 private let pushTokenLogger = Logger(subsystem: "com.milim.relay", category: "PushToken")
 
+/// A block observer that's removed when its owner goes away.
+private final class NotificationObserverToken {
+    var token: NSObjectProtocol?
+    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+}
+
 struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
     /// The runtime identity the notification names. Hermes notifications
@@ -1426,11 +1432,15 @@ final class PushNotificationService: ObservableObject {
         tokenContinuation = nil
         // Every launch and return to the front asks for the token; only a
         // new one goes to the relay, which shares one budget for device
-        // changes across all phones.
-        // Registrations saved before the token was recorded send it once.
-        // One that fails shows in Settings > Notifications and goes again
-        // the next time Conduit comes to the front.
-        guard registration?.deviceToken != token, let update = queueRegistrationUpdate(deviceToken: token) else { return }
+        // changes across all phones. Registrations saved before the token
+        // was recorded send it once. One that fails shows in Settings >
+        // Notifications and goes again the next time Conduit comes to the
+        // front.
+        if registration?.deviceToken == token {
+            clearTokenUpdateError()
+            return
+        }
+        guard let update = queueRegistrationUpdate(deviceToken: token) else { return }
         Task { [weak self] in
             guard let self else { return }
             switch await update.result {
@@ -1438,14 +1448,18 @@ final class PushNotificationService: ObservableObject {
                 lastError = UserFacingError.message(for: error)
                 tokenUpdateError = lastError
             case .success:
-                // A retry that lands clears the failure it left, not another.
-                if tokenUpdateError != nil, lastError == tokenUpdateError { lastError = nil }
-                tokenUpdateError = nil
+                clearTokenUpdateError()
             }
         }
     }
 
     private var tokenUpdateError: String?
+
+    /// A token the relay has clears the failure a refresh left, not another.
+    private func clearTokenUpdateError() {
+        if tokenUpdateError != nil, lastError == tokenUpdateError { lastError = nil }
+        tokenUpdateError = nil
+    }
 
     /// Asks iOS for this launch's push token, and again each time Conduit
     /// comes to the front. The token can change (a restore, a new phone),
@@ -1454,8 +1468,8 @@ final class PushNotificationService: ObservableObject {
     func refreshDeviceTokenAtLaunch() {
         // Turning notifications on later asks for the token itself.
         guard registration != nil else { return }
-        if becomeActiveObserver == nil {
-            becomeActiveObserver = NotificationCenter.default.addObserver(
+        if becomeActiveObserver.token == nil {
+            becomeActiveObserver.token = NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.requestCurrentDeviceToken() }
@@ -1464,7 +1478,8 @@ final class PushNotificationService: ObservableObject {
         requestCurrentDeviceToken()
     }
 
-    private var becomeActiveObserver: NSObjectProtocol?
+    /// Removed with the service (only tests make more than one).
+    private let becomeActiveObserver = NotificationObserverToken()
 
     private func requestCurrentDeviceToken() {
         guard registration != nil else { return }
@@ -1473,8 +1488,13 @@ final class PushNotificationService: ObservableObject {
 
     func didFailToRegister(_ error: Error) {
         if tokenContinuation == nil {
-            // A launch or return-to-front refresh: the next return asks again.
+            // A launch or return-to-front refresh: shown in Settings >
+            // Notifications, and the next return asks again.
             pushTokenLogger.error("Push token refresh failed: \(error.localizedDescription, privacy: .public)")
+            if registration != nil {
+                lastError = UserFacingError.message(for: error)
+                tokenUpdateError = lastError
+            }
         }
         failTokenRequest(error)
     }
