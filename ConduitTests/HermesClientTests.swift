@@ -1230,6 +1230,25 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(HermesClient.exactIntValue(nil))
     }
 
+    func testIntValueTruncatesInRangeNumbersAndRejectsTrappingDoubles() {
+        XCTAssertEqual(AnyCodable.number(42).intValue, 42)
+        XCTAssertEqual(AnyCodable.number(-10).intValue, -10)
+        XCTAssertEqual(AnyCodable.number(12.7).intValue, 12, "Fractional counters keep truncating")
+        XCTAssertNil(AnyCodable.number(1e100).intValue)
+        XCTAssertNil(AnyCodable.number(-1e100).intValue)
+        XCTAssertNil(AnyCodable.number(9.3e18).intValue)
+        XCTAssertNil(AnyCodable.number(Double.infinity).intValue)
+        XCTAssertNil(AnyCodable.number(Double.nan).intValue)
+        XCTAssertNil(AnyCodable.string("42").intValue)
+
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "context_used": .number(1e100),
+            "context_max": .number(200_000),
+        ])
+        XCTAssertNil(snapshot.contextUsed, "An out-of-range gateway number degrades to unknown instead of crashing")
+        XCTAssertEqual(snapshot.contextMax, 200_000)
+    }
+
     func testApprovalRespondSendsRequestIdentityAndRejectsZeroResolved() async throws {
         let (request, accepted) = try await capturedApprovalRespond(requestId: "approval-2", resolved: 0)
         let params = try XCTUnwrap(request["params"] as? [String: Any])
