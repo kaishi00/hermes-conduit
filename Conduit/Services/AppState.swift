@@ -2348,6 +2348,9 @@ final class AppState: ObservableObject {
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
     /// The transcript `submitVoiceTranscript` is submitting, while it is.
     private var spokenSubmissionText: String?
+    /// A queued message being sent now its turn is over (#842), while it
+    /// is: it goes as Hermes' client queue drain (`queued`).
+    var queuedDrainSubmissionText: String?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -22003,6 +22006,7 @@ final class AppState: ObservableObject {
         // never rewrites what the user already saw.
         let outboundText = mentionAnnotatedOutboundText(text)
         let surface: String? = spokenSubmissionText == text ? Self.spokenPromptSurface : nil
+        let drainsQueue = queuedDrainSubmissionText == text
         // Durable before/after identity for ambiguous-delivery recovery:
         // positively-proven persisted row ids (from the latest accepted
         // hydration) plus whether the conversation holds rows whose persisted
@@ -22126,7 +22130,8 @@ final class AppState: ObservableObject {
             } else {
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
-                    voiceTurn: surface == Self.spokenPromptSurface
+                    voiceTurn: surface == Self.spokenPromptSurface,
+                    queued: drainsQueue
                 )
             }
             // The gateway accepted the prompt. A session handoff may have

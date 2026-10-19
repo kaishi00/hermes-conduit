@@ -2324,7 +2324,16 @@ final class HermesClient: ObservableObject {
     /// gateway from before that slot refuses the unknown key with `4000`
     /// before anything runs, so the turn is resent once without it and the
     /// key is dropped for this client from then on.
-    func sendPrompt(_ sessionId: String, text: String, surface: String? = nil, voiceTurn: Bool = false) async throws -> PromptSubmissionOutcome {
+    /// `queued` marks a client queue drain (#842): if a turn is running by
+    /// the time it lands, Hermes holds it for the next turn instead of
+    /// steering or interrupting with it.
+    func sendPrompt(
+        _ sessionId: String,
+        text: String,
+        surface: String? = nil,
+        voiceTurn: Bool = false,
+        queued: Bool = false
+    ) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
@@ -2332,12 +2341,18 @@ final class HermesClient: ObservableObject {
         if let surface { params["surface"] = surface }
         let marksVoiceTurn = voiceTurn && !gatewayRefusesVoiceTurn
         if marksVoiceTurn { params["voice_turn"] = true }
+        let marksQueued = queued && !gatewayRefusesQueued
+        if marksQueued { params["queued"] = true }
         let result: AnyCodable
         do {
             result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
         } catch let error as RpcError where marksVoiceTurn && error.refusesUnknownParam("voice_turn") {
             gatewayRefusesVoiceTurn = true
             params.removeValue(forKey: "voice_turn")
+            result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+        } catch let error as RpcError where marksQueued && error.refusesUnknownParam("queued") {
+            gatewayRefusesQueued = true
+            params.removeValue(forKey: "queued")
             result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
         }
         return PromptSubmissionOutcome(
@@ -2348,6 +2363,9 @@ final class HermesClient: ObservableObject {
     /// Set once this gateway refused `prompt.submit`'s `voice_turn` key
     /// (a Hermes from before `auxiliary.voice_chat`).
     private var gatewayRefusesVoiceTurn = false
+
+    /// Set once this gateway refused `prompt.submit`'s `queued` key.
+    private var gatewayRefusesQueued = false
 
     /// Read-only liveness probe against the gateway's in-memory runtime
     /// registry (`session.active_list`). Unlike `session.resume` this does not

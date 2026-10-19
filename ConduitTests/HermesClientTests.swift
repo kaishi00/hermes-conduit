@@ -933,6 +933,72 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testQueueDrainMarksQueuedAndDropsItWhenTheGatewayRefusesTheKey() async throws {
+        // A queued message's send (#842) carries `queued: true`, Hermes'
+        // client-queue-drain flag: a turn running by then holds it rather
+        // than steering. A gateway without the key gets it once more
+        // without, and later drains stop sending it. Ordinary sends never
+        // carry it.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        func nextRequest(_ phase: String, after send: () -> Void) async throws -> [String: Any] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            send()
+            try await sent.wait(phase)
+            return try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func deliver(_ response: [String: Any]) throws {
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        var submitTask: Task<PromptSubmissionOutcome, Error>?
+        let plain = try await nextRequest("an ordinary prompt.submit") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Hi") }
+        }
+        XCTAssertNil(try XCTUnwrap(plain["params"] as? [String: Any])["queued"])
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(plain["id"] as? Int), "result": ["status": "streaming"]])
+        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the ordinary prompt.submit response")
+
+        let first = try await nextRequest("the queue drain") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Next", queued: true) }
+        }
+        var params = try XCTUnwrap(first["params"] as? [String: Any])
+        XCTAssertEqual(params["queued"] as? Bool, true)
+
+        let retry = try await nextRequest("the resend without queued") {
+            try? deliver([
+                "jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int),
+                "error": [
+                    "code": 4000,
+                    "message": "invalid params for prompt.submit: queued: Extra inputs are not permitted"
+                ]
+            ])
+        }
+        params = try XCTUnwrap(retry["params"] as? [String: Any])
+        XCTAssertNil(params["queued"])
+        XCTAssertEqual(params["text"] as? String, "Next")
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(retry["id"] as? Int), "result": ["status": "queued"]])
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the resent prompt.submit response")
+        XCTAssertEqual(outcome, .queued)
+
+        let later = try await nextRequest("a later queue drain") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Again", queued: true) }
+        }
+        XCTAssertNil(try XCTUnwrap(later["params"] as? [String: Any])["queued"])
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(later["id"] as? Int), "result": ["status": "streaming"]])
+        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the later prompt.submit response")
+        client.disconnect()
+    }
+
     func testUnknownParamRefusalMatchesOnlyTheNamedKey() {
         XCTAssertTrue(RpcError(code: 4000, message: "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
         XCTAssertFalse(RpcError(code: 4000, message: "invalid params for prompt.submit: surface: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))

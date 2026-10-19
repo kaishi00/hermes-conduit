@@ -291,9 +291,18 @@ extension AppState {
         deliveringPendingComposerSendIDs.insert(pending.id)
         let context = composerSubmissionContext()
         let key = durableComposerDraftKeyOnScreen
+        // A queued message's own send is Hermes' client queue drain: if a
+        // turn started meanwhile, it waits again (here, or on Hermes when
+        // the turn starts while it's on its way) rather than steering.
+        let drainsQueue = pending.waitsForTurnEnd && busyMode == nil
+        let sendMode: BusyInputMode? = drainsQueue ? BusyInputMode.queue : busyMode
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let sent = await self.submitComposer(text: pending.outboundText, context: context, busyMode: busyMode)
+            if drainsQueue { self.queuedDrainSubmissionText = pending.outboundText }
+            let sent = await self.submitComposer(text: pending.outboundText, context: context, busyMode: sendMode)
+            if drainsQueue, self.queuedDrainSubmissionText == pending.outboundText {
+                self.queuedDrainSubmissionText = nil
+            }
             self.deliveringPendingComposerSendIDs.remove(pending.id)
             if sent {
                 self.removePendingComposerSendFile(pending)
