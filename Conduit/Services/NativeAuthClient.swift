@@ -634,8 +634,9 @@ enum NativeAuthCookiePolicy {
     /// (oauth2-proxy with `cookie_domain`) sets its session for the parent
     /// domain; requests made without the page (CarPlay with the phone
     /// locked) must carry it too, or the proxy sends them to sign-in.
-    /// The cookies come from this dashboard's own stores only.
-    private static func domainMatches(_ cookieDomain: String, host: String) -> Bool {
+    /// The cookies come from this dashboard's own stores only. The one
+    /// rule for both send paths (DashboardRequestAuthorizer.cookieHeader).
+    static func domainMatches(_ cookieDomain: String, host: String) -> Bool {
         let domain = cookieDomain.lowercased()
         guard domain.hasPrefix(".") else { return domain == host }
         let bare = String(domain.dropFirst())

@@ -391,6 +391,14 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
             Set(header.components(separatedBy: "; ")),
             ["_oauth2_proxy=_oauth2_proxy-value", "dashboard_session=dashboard_session-value"]
         )
+        // The parent domain itself takes its Domain cookie and its own
+        // host-only one, not a subdomain's.
+        let parentHeader = NativeAuthCookiePolicy.headerFields(
+            for: cookies, url: url("https://example.test/api/auth/ws-ticket"))["Cookie"] ?? ""
+        XCTAssertEqual(
+            Set(parentHeader.components(separatedBy: "; ")),
+            ["_oauth2_proxy=_oauth2_proxy-value", "parent_host_only=parent_host_only-value"]
+        )
     }
 
     func testInvalidatedAuthorizerAuthorizesNothing() async throws {
