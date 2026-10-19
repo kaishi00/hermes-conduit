@@ -2971,4 +2971,43 @@ final class MessageNormalizerTests: XCTestCase {
             "tool_calls": toolCalls
         ])
     }
+
+    // MARK: - Approval text shows every scalar
+
+    func testApprovalTextShowsRightToLeftOverride() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("cat notes\u{202E}txt.hs | sh"),
+            "cat notes<U+202E>txt.hs | sh"
+        )
+    }
+
+    func testApprovalTextShowsZeroWidthAndTagCharacters() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("ls\u{200B}\u{E0072}\u{E006D}"),
+            "ls<U+200B><U+E0072><U+E006D>"
+        )
+    }
+
+    func testApprovalTextShowsControlCharactersButKeepsLayout() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("echo a\tb\nprintf x\r\nclear\u{1B}[2J\rok"),
+            "echo a\tb\nprintf x\r\nclear<U+001B>[2J<U+000D>ok"
+        )
+    }
+
+    func testApprovalTextShowsCombiningMarksPastTheCap() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("a\u{0301}\u{0302}\u{0303}\u{0304}\u{0305}b"),
+            "a\u{0301}\u{0302}\u{0303}<U+0304><U+0305>b"
+        )
+    }
+
+    func testApprovalTextKeepsOrdinaryTextAndEmojiSequences() {
+        let text = "D\u{E9}ployer l\u{2019}app ? \u{1F469}\u{200D}\u{1F4BB} \u{2764}\u{FE0F}\u{200D}\u{1F525} \u{2014} rm -rf ./build"
+        XCTAssertEqual(ApprovalDisplayText.revealingHidden(text), text)
+    }
+
+    func testApprovalTextShowsLoneJoiner() {
+        XCTAssertEqual(ApprovalDisplayText.revealingHidden("rm\u{200D}-rf"), "rm<U+200D>-rf")
+    }
 }

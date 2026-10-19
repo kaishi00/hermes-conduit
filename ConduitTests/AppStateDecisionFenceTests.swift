@@ -2207,6 +2207,105 @@ final class AppStateDecisionFenceTests: XCTestCase {
         )
         XCTAssertEqual(appState.messages.first?.approval?.status, .expired)
     }
+
+    // MARK: - Answering what the card showed
+
+    /// A legacy (request-less) card is updated in place when Hermes
+    /// announces the next command, so a tap made on the old content must
+    /// not answer the new one.
+    private final class RecordedApprovalResponses {
+        var choices: [String] = []
+    }
+
+    private func shownApproval(requestId: String? = nil) -> ApprovalActivity {
+        ApprovalActivity(
+            sessionId: "runtime-1",
+            requestId: requestId,
+            command: "ls ~/Downloads",
+            description: "List the downloads?",
+            choices: nil,
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+    }
+
+    private func makeShownApprovalAppState(
+        _ approval: ApprovalActivity,
+        recording responses: RecordedApprovalResponses
+    ) -> AppState {
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in [] },
+            respondToApproval: { _, _, _, choice, _ in
+                responses.choices.append(choice)
+                return true
+            }
+        ))
+        appState.activeSessionId = approval.sessionId
+        appState.client = makeReplacementClient(baseURL: "https://one.example")
+        appState.messages = [ChatMessage(
+            id: "approval-shown",
+            role: .approval,
+            content: approval.description,
+            timestamp: "1",
+            approval: approval
+        )]
+        return appState
+    }
+
+    func testLegacyCardReplacedByNextCommandIsNotAnsweredWithTheOldTap() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        appState.messages[0].approval?.command = "rm -rf ~"
+        appState.messages[0].approval?.description = "Delete the home folder?"
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "always", shown: shown)
+
+        XCTAssertEqual(responses.choices, [], "a tap on the old command must not answer the new one")
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+        XCTAssertNil(appState.messages.first?.approval?.choice)
+    }
+
+    func testApprovalWhoseOfferedChoicesChangedIsNotAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval(requestId: "req-shown")
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        appState.messages[0].approval?.allowPermanent = false
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "always", shown: shown)
+
+        XCTAssertEqual(responses.choices, [])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+    }
+
+    func testUnchangedApprovalIsAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval(requestId: "req-shown")
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+
+        XCTAssertEqual(responses.choices, ["once"])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .approved)
+    }
+
+    func testRetryAfterErrorAndDurableSessionMoveIsStillAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        // Progress and the hidden session identity are not the question.
+        appState.messages[0].approval?.status = .error
+        appState.messages[0].approval?.error = "Hermes did not accept that decision."
+        appState.messages[0].approval?.sessionId = "durable-1"
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "deny", shown: shown)
+
+        XCTAssertEqual(responses.choices, ["deny"])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .rejected)
+    }
 }
 
 private final class Gate: @unchecked Sendable {
