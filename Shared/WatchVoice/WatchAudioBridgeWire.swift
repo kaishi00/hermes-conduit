@@ -172,10 +172,13 @@ enum WatchAudioBridgeWire {
     /// a first line; `callOpening` makes the model open a call Hermes
     /// placed (#544), sent without a greeting (the host lets it win); `history` seeds a rejoined call's conversation.
     /// `resumeSessionID`: the Hermes chat a rejoining Local Live call
-    /// carries on in (`Started.sessionID`).
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil) -> Data {
+    /// carries on in (`Started.sessionID`). `approvals`: the Watch answers
+    /// Hermes' approval requests on its own card (Local Live), so the host
+    /// sends them (`ApprovalFrame`).
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil, approvals: Bool = false) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
         if let resumeSessionID, !resumeSessionID.isEmpty { message["resume_session_id"] = resumeSessionID }
+        if approvals { message["approvals"] = true }
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
@@ -185,6 +188,54 @@ enum WatchAudioBridgeWire {
     }
 
     static let end = Data(#"{"type":"end"}"#.utf8)
+
+    /// Hermes' approval requests in a Local Live call, which the host sends
+    /// as events on the call's stream when its start said `approvals`.
+    enum ApprovalFrame: Equatable {
+        /// The chat's oldest pending request: the one Hermes answers.
+        /// `canApproveOnce` is false while more are pending or the command
+        /// is shown only in part: the card then offers Deny only.
+        case show(id: String, command: String, description: String, canApproveOnce: Bool)
+        /// Hermes withdrew it, the turn ended, or it timed out.
+        case gone(id: String)
+        /// Hermes' answer to the Watch's answer.
+        case done(id: String, resolved: Bool)
+    }
+
+    /// The host's approval frame in `plain`; nil for any other event.
+    static func approvalFrame(_ plain: Data) -> ApprovalFrame? {
+        guard plain.range(of: Data("\"conduit.approval".utf8)) != nil,
+              let object = try? JSONSerialization.jsonObject(with: plain) as? [String: Any],
+              let type = object["type"] as? String,
+              let id = object["id"] as? String, !id.isEmpty else { return nil }
+        switch type {
+        case "conduit.approval":
+            let choices = object["choices"] as? [String] ?? []
+            // The host's own rule, kept here too: never once for a command
+            // shown in part, or while the card might not be Hermes' oldest.
+            let once = choices.contains(approveOnce) && object["cut"] as? Bool != true
+                && (object["pending"] as? Int ?? 1) <= 1
+            return .show(id: id, command: object["command"] as? String ?? "",
+                         description: object["description"] as? String ?? "",
+                         canApproveOnce: once)
+        case "conduit.approval.gone":
+            return .gone(id: id)
+        case "conduit.approval.done":
+            return .done(id: id, resolved: object["resolved"] as? Bool ?? false)
+        default:
+            return nil
+        }
+    }
+
+    /// Hermes' approval choices, as the host takes them.
+    static let approveOnce = "once"
+    static let deny = "deny"
+
+    /// The Watch's answer to the request `id`, sent as an event.
+    static func approvalAnswer(id: String, approve: Bool) -> String {
+        let message: [String: Any] = ["type": "conduit.approval.answer", "id": id, "choice": approve ? approveOnce : deny]
+        return (try? WatchToolSeal.json(message)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
 
     struct Started: Equatable {
         var engine: String

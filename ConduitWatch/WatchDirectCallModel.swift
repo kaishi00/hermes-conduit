@@ -400,8 +400,12 @@ final class WatchDirectCallModel: ObservableObject {
     private var jobsCarried = 0
     /// Running jobs per grant, as its last news said.
     private var relayRunning: [String: Int] = [:]
-    /// Approval requests on screen, oldest first.
+    /// Approval requests on screen, oldest first (a Local Live call's own
+    /// request before any job's).
     private var approvals: [WatchJobAnswer.Approval] = []
+    /// The stream the Local Live call's approval request came on, which
+    /// takes its answer.
+    private weak var callApprovalSocket: WatchGrokBridgeSocket?
     private var newsInFlight = false
     private var nextNewsAt: TimeInterval = 0
     /// Jobs this call started through the relay, for the user's cap.
@@ -863,7 +867,8 @@ final class WatchDirectCallModel: ObservableObject {
         let bridge = WatchGrokBridge(
             url: url, grantID: call.grant.grantID, root: root, watchKey: call.grant.watchKey, voice: nil,
             engine: WatchAudioBridgeWire.localLive,
-            resumeSessionID: { [weak self] in self?.localLiveChatID }
+            resumeSessionID: { [weak self] in self?.localLiveChatID },
+            takesApprovals: true
         )
         let session = LocalLiveSession(
             client: WatchGrokConnection(url: url),
@@ -882,6 +887,14 @@ final class WatchDirectCallModel: ObservableObject {
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
                 socket.onStarted = { [weak self] info in
                     if let chat = info.sessionID { self?.localLiveChatID = chat }
+                }
+                // A request shown on the last stream may have been settled
+                // since (answered in the chat, timed out): the host shows
+                // the new stream whatever is still pending.
+                self?.dropCallApprovals()
+                socket.onApproval = { [weak self, weak socket] frame in
+                    guard let self, let socket else { return }
+                    self.callApproval(frame, from: socket)
                 }
                 return socket
             }
@@ -2162,6 +2175,10 @@ final class WatchDirectCallModel: ObservableObject {
     func answerApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
         // Only the card the user read; a late tap never answers the next one.
         guard pendingApproval == approval else { return }
+        if approval.isCallRequest {
+            answerCallApproval(approval, approve: approve)
+            return
+        }
         let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
         resolveApproval(approval, choice: choice, byVoice: false) { [weak self] result in
             guard let self, result["error"] == nil, result["status"] != "failed" else { return }
@@ -2169,6 +2186,72 @@ final class WatchDirectCallModel: ObservableObject {
             let what = approve ? "approved" : "denied"
             self.quietQueue.append(.contextWhenIdle("[On their Watch, the user \(what) the command background job \"\(approval.title)\" asked to run.]"))
             self.flushQuietQueue()
+        }
+    }
+
+    // MARK: Local Live approvals
+
+    /// Hermes' approval request in a Local Live call, which the host runs
+    /// in its chat: shown before any job's (the call waits on it), and
+    /// answered on the call's stream. The host shows one at a time, its
+    /// oldest, and takes it away once it's answered, withdrawn or timed out.
+    private func callApproval(_ frame: WatchAudioBridgeWire.ApprovalFrame, from socket: WatchGrokBridgeSocket) {
+        switch frame {
+        case .show(let id, let command, let description, let canApproveOnce):
+            callApprovalSocket = socket
+            let approval = WatchJobAnswer.Approval(grantID: "", jobID: "", title: description, requestID: id,
+                                                   command: command, description: "", canApproveOnce: canApproveOnce)
+            let isNew = !approvals.contains { $0.isCallRequest && $0.requestID == id }
+            approvals.removeAll { $0.isCallRequest }
+            approvals.insert(approval, at: 0)
+            if isNew {
+                approvalsShown += 1
+                WKInterfaceDevice.current().play(.notification)
+            }
+        case .gone(let id), .done(let id, true):
+            approvals.removeAll { $0.isCallRequest && $0.requestID == id }
+        case .done(_, false):
+            // Not taken: the host shows the card again (or the next).
+            break
+        }
+        pendingApproval = approvals.first
+        let kind: String
+        switch frame {
+        case .show: kind = "show"
+        case .gone: kind = "gone"
+        case .done(_, let resolved): kind = resolved ? "resolved" : "unresolved"
+        }
+        WatchCallLog.shared.note("directCallApproval", [
+            "kind": kind,
+            "approvalsOnScreen": approvals.count,
+            "screen": "\(scenePhase)",
+        ])
+    }
+
+    private func dropCallApprovals() {
+        callApprovalSocket = nil
+        guard approvals.contains(where: \.isCallRequest) else { return }
+        approvals.removeAll { $0.isCallRequest }
+        pendingApproval = approvals.first
+    }
+
+    /// The card leaves the screen at once; the host shows it again if
+    /// Hermes didn't take the answer.
+    private func answerCallApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
+        approvals.removeAll { $0 == approval }
+        pendingApproval = approvals.first
+        approvalsTapped += 1
+        guard let socket = callApprovalSocket else {
+            WatchCallLog.shared.note("directCallApproval", ["kind": "unsent"])
+            return
+        }
+        let id = approval.requestID
+        Task { @MainActor in
+            do {
+                try await socket.sendApprovalAnswer(id: id, approve: approve && approval.canApproveOnce)
+            } catch {
+                WatchCallLog.shared.note("directCallApproval", ["kind": "unsent"])
+            }
         }
     }
 
