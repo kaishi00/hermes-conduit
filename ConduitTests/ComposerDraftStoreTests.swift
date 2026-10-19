@@ -101,25 +101,46 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual(appState.composerPrefillText, "Set up a scheduled check")
     }
 
-    func testFailedSubmissionDoesNotClobberNewerSavedDraftForOriginalKey() {
+    func testAFailedSubmissionJoinsWhatWasTypedSinceInsteadOfBeingLost() {
         let store = ComposerDraftStore(capacity: 12)
         let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let originalSubmittedDraft = ComposerDraft(text: "old submitted draft", attachments: [])
-        let newerDraft = ComposerDraft(text: "newer saved draft", attachments: [
-            Attachment(
-                id: "newer-attachment",
-                name: "newer.png",
-                uri: "file:///tmp/newer.png",
-                mimeType: "image/png",
-                kind: .image
-            )
-        ])
+        let reply = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
+        let submittedPhoto = Attachment(
+            id: "submitted-attachment",
+            name: "submitted.png",
+            uri: "file:///tmp/submitted.png",
+            mimeType: "image/png",
+            kind: .image
+        )
+        let newerPhoto = Attachment(
+            id: "newer-attachment",
+            name: "newer.png",
+            uri: "file:///tmp/newer.png",
+            mimeType: "image/png",
+            kind: .image
+        )
+        let failedSubmission = ComposerDraft(text: "old submitted draft", attachments: [submittedPhoto], replyReference: reply)
+        store.save(ComposerDraft(text: "newer saved draft", attachments: [newerPhoto]), for: key)
 
-        store.save(newerDraft, for: key)
+        store.restoreFailedSubmission(failedSubmission, for: key)
 
-        store.saveIfMissing(originalSubmittedDraft, for: key)
+        // Nothing is lost: the failed message first, then what was typed
+        // since, with both photos and the reply it quoted.
+        XCTAssertEqual(store.draft(for: key), ComposerDraft(
+            text: "old submitted draft\n\nnewer saved draft",
+            attachments: [newerPhoto, submittedPhoto],
+            replyReference: reply
+        ))
+    }
 
-        XCTAssertEqual(store.draft(for: key), newerDraft)
+    func testAFailedSubmissionComesBackWhole() {
+        let store = ComposerDraftStore(capacity: 12)
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let failedSubmission = ComposerDraft(text: "old submitted draft", attachments: [])
+
+        store.restoreFailedSubmission(failedSubmission, for: key)
+
+        XCTAssertEqual(store.draft(for: key), failedSubmission)
     }
 
     func testSuccessfulSubmissionRemovesOnlyUnchangedSubmittedDraft() {

@@ -1628,6 +1628,11 @@ struct ComposerBar: View, Equatable {
         replyReference submittedReply: ComposerReplyReference?,
         for key: ComposerDraftKey
     ) {
+        let failed = ComposerDraft(
+            text: submittedText,
+            attachments: submittedAttachments,
+            replyReference: submittedReply
+        )
         let restorationKey: ComposerDraftKey
         if Self.draftKeysAreEquivalent(
             key,
@@ -1640,22 +1645,16 @@ struct ComposerBar: View, Equatable {
         }
 
         guard loadedDraftKey == restorationKey else {
-            draftStore.saveIfMissing(
-                ComposerDraft(
-                    text: submittedText,
-                    attachments: submittedAttachments,
-                    replyReference: submittedReply
-                ),
-                for: restorationKey
-            )
+            draftStore.restoreFailedSubmission(failed, for: restorationKey)
             return
         }
-        // Do not overwrite a new draft if the user already returned to the
-        // composer while the failed request was in flight.
-        guard text.isEmpty, attachments.isEmpty else { return }
-        replaceComposerText(submittedText)
-        attachments = submittedAttachments
-        if replyReference == nil { replyReference = submittedReply }
+        // Words typed while the failed request was in flight stay, below
+        // the message that didn't go.
+        let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
+            .restoring(failed)
+        replaceComposerText(restored.text, cursorAtEnd: true)
+        attachments = restored.attachments
+        replyReference = restored.replyReference
     }
 
     /// A screenshot chat opened with the keyboard: the field takes focus.
