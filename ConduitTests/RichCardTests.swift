@@ -240,4 +240,28 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(calls.first?.turns.map(\.cards.count), [0, 1])
         XCTAssertEqual(calls.first?.turns.last?.cards.first?.places.first?.name, "Tartine")
     }
+
+    /// A live card shown again later in a saved call replaces the earlier
+    /// one there, as it does in a typed chat; the cards shown beside it stay.
+    func testSavedChatCallShowsOnlyTheLatestOfALiveCard() throws {
+        func shown(_ state: String, sibling: Bool = false) -> [String: Any] {
+            var cards: [[String: Any]] = [["type": "status", "live": "order", "status": ["state": state]]]
+            if sibling { cards.append(["type": "place", "places": [["name": "Tartine"]]]) }
+            return ["role": "assistant", "text": "Order: \(state)", "cards": cards]
+        }
+        let response: [String: Any] = [
+            "ok": true, "chat_id": "c",
+            "calls": [["call_id": "call-1", "engine": "gpt-live", "turns": [
+                ["role": "user", "text": "Where's my order?"] as [String: Any],
+                shown("Packed", sibling: true), shown("Shipped"), shown("Delivered"),
+            ]] as [String: Any]],
+        ]
+        let call = try XCTUnwrap(try VoiceHistoryClient.chatCalls(from: response).first)
+
+        let drawn = call.turns.map { call.currentCards(for: $0) }
+        XCTAssertEqual(drawn.map(\.count), [0, 1, 0, 1])
+        XCTAssertEqual(drawn[1].first?.places.first?.name, "Tartine", "the sibling stays")
+        XCTAssertEqual(drawn[3].first?.live, "order")
+        XCTAssertEqual(call.turns.map(\.cards.count), [0, 2, 1, 1], "the saved record is unchanged")
+    }
 }
