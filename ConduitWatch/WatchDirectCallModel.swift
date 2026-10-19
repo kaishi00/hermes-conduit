@@ -406,6 +406,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// The stream the Local Live call's approval request came on, which
     /// takes its answer.
     private weak var callApprovalSocket: WatchGrokBridgeSocket?
+    /// The call's own requests on the card, and those the host settled.
+    private var callApprovals = WatchCallApprovals()
     private var newsInFlight = false
     private var nextNewsAt: TimeInterval = 0
     /// Jobs this call started through the relay, for the user's cap.
@@ -2196,23 +2198,10 @@ final class WatchDirectCallModel: ObservableObject {
     /// answered on the call's stream. The host shows one at a time, its
     /// oldest, and takes it away once it's answered, withdrawn or timed out.
     private func callApproval(_ frame: WatchAudioBridgeWire.ApprovalFrame, from socket: WatchGrokBridgeSocket) {
-        switch frame {
-        case .show(let id, let command, let description, let canApproveOnce):
-            callApprovalSocket = socket
-            let approval = WatchJobAnswer.Approval(grantID: "", jobID: "", title: description, requestID: id,
-                                                   command: command, description: "", canApproveOnce: canApproveOnce)
-            let isNew = !approvals.contains { $0.isCallRequest && $0.requestID == id }
-            approvals.removeAll { $0.isCallRequest }
-            approvals.insert(approval, at: 0)
-            if isNew {
-                approvalsShown += 1
-                WKInterfaceDevice.current().play(.notification)
-            }
-        case .gone(let id), .done(let id, true):
-            approvals.removeAll { $0.isCallRequest && $0.requestID == id }
-        case .done(_, false):
-            // Not taken: the host shows the card again (or the next).
-            break
+        if case .show = frame { callApprovalSocket = socket }
+        if callApprovals.apply(frame, to: &approvals) {
+            approvalsShown += 1
+            WKInterfaceDevice.current().play(.notification)
         }
         pendingApproval = approvals.first
         let kind: String
@@ -2230,8 +2219,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func dropCallApprovals() {
         callApprovalSocket = nil
-        guard approvals.contains(where: \.isCallRequest) else { return }
-        approvals.removeAll { $0.isCallRequest }
+        callApprovals.reset(&approvals)
         pendingApproval = approvals.first
     }
 
@@ -2240,25 +2228,28 @@ final class WatchDirectCallModel: ObservableObject {
     private func answerCallApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
         approvals.removeAll { $0 == approval }
         pendingApproval = approvals.first
-        approvalsTapped += 1
         guard let socket = callApprovalSocket else {
             WatchCallLog.shared.note("directCallApproval", ["kind": "unsent"])
             return
         }
         let id = approval.requestID
+        let tappedIn = callID
         Task { @MainActor [weak self, weak socket] in
             guard let socket else { return }
             do {
                 try await socket.sendApprovalAnswer(id: id, approve: approve && approval.canApproveOnce)
+                // This call's summary, not a next call's.
+                if let self, self.callID == tappedIn { self.approvalsTapped += 1 }
             } catch {
                 WatchCallLog.shared.note("directCallApproval", ["kind": "unsent"])
                 // The answer never left: the card comes back for another
                 // try, unless the stream changed (the host shows the new one
-                // what is still pending) or another request took its place.
+                // what is still pending), the host settled the request
+                // meanwhile, or another request took its place.
                 guard let self, self.callApprovalSocket === socket,
-                      !self.approvals.contains(where: \.isCallRequest) else { return }
-                self.approvals.insert(approval, at: 0)
+                      self.callApprovals.restore(approval, to: &self.approvals) else { return }
                 self.pendingApproval = self.approvals.first
+                WKInterfaceDevice.current().play(.notification)
             }
         }
     }
@@ -3247,6 +3238,7 @@ final class WatchDirectCallModel: ObservableObject {
         relayJobsRunning = 0
         approvals = []
         callApprovalSocket = nil
+        callApprovals = WatchCallApprovals()
         pendingApproval = nil
         newsInFlight = false
         nextNewsAt = 0
@@ -3306,6 +3298,7 @@ final class WatchDirectCallModel: ObservableObject {
         jobsMovedTo = [:]
         approvals = []
         callApprovalSocket = nil
+        callApprovals = WatchCallApprovals()
         pendingApproval = nil
         stopPathMonitor()
         // A restart still waiting on its activation is over too.

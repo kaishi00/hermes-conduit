@@ -336,3 +336,53 @@ struct WatchAudioBridgeStream {
         return (opened.kind, opened.plain)
     }
 }
+
+/// A Local Live call's own approval requests on the Watch's card, beside a
+/// background job's: what the host's frames, a tap and an answer that
+/// couldn't be sent do to the list the card shows (the call's request
+/// first, since the call waits on it).
+struct WatchCallApprovals {
+    /// Requests the host said are over (answered, withdrawn, timed out):
+    /// an answer that couldn't be sent never brings one of them back.
+    private(set) var settled: Set<String> = []
+
+    /// Applies the host's frame to `approvals`; true when it put up a
+    /// request that wasn't on screen (worth a tap on the wrist).
+    @discardableResult
+    mutating func apply(_ frame: WatchAudioBridgeWire.ApprovalFrame, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        switch frame {
+        case .show(let id, let command, let description, let canApproveOnce):
+            settled.remove(id)
+            let isNew = !approvals.contains { $0.isCallRequest && $0.requestID == id }
+            approvals.removeAll { $0.isCallRequest }
+            approvals.insert(WatchJobAnswer.Approval(grantID: "", jobID: "", title: description, requestID: id,
+                                                     command: command, description: "", canApproveOnce: canApproveOnce),
+                             at: 0)
+            return isNew
+        case .gone(let id), .done(let id, true):
+            settled.insert(id)
+            approvals.removeAll { $0.isCallRequest && $0.requestID == id }
+        case .done(_, false):
+            // Not taken: the host shows the card again (or the next).
+            break
+        }
+        return false
+    }
+
+    /// The card the user answered, back after its answer couldn't be sent;
+    /// false when it stays away: the host settled it meanwhile, or another
+    /// request took its place.
+    func restore(_ approval: WatchJobAnswer.Approval, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        guard approval.isCallRequest, !settled.contains(approval.requestID),
+              !approvals.contains(where: \.isCallRequest) else { return false }
+        approvals.insert(approval, at: 0)
+        return true
+    }
+
+    /// A new stream (the host shows it whatever is still pending) or the
+    /// call's end.
+    mutating func reset(_ approvals: inout [WatchJobAnswer.Approval]) {
+        settled = []
+        approvals.removeAll { $0.isCallRequest }
+    }
+}

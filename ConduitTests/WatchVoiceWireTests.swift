@@ -1113,6 +1113,53 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(WatchJobAnswer.Approval(grantID: "G", jobID: "", title: "t", requestID: "r", command: "c", description: "d").isCallRequest)
     }
 
+    /// The call's own request on the card: first, ahead of a job's; the
+    /// next one in its place; and a card whose answer couldn't be sent back
+    /// only while the host still holds it.
+    func testWatchCallApprovalsOnTheCard() {
+        let job = WatchJobAnswer.Approval(grantID: "G", jobID: "watch-1", title: "Clean", requestID: "j1", command: "rm x", description: "")
+        var approvals = [job]
+        var calls = WatchCallApprovals()
+
+        XCTAssertTrue(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: true), to: &approvals))
+        XCTAssertEqual(approvals.map(\.requestID), ["a1", "j1"], "the call's request comes first")
+        // The same request shown again (its choices changed) is no new tap on the wrist.
+        XCTAssertFalse(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: false), to: &approvals))
+        XCTAssertEqual(approvals.first?.canApproveOnce, false)
+        XCTAssertEqual(approvals.count, 2)
+        // The next one takes its place.
+        XCTAssertTrue(calls.apply(.show(id: "a2", command: "ls", description: "List", canApproveOnce: true), to: &approvals))
+        XCTAssertEqual(approvals.map(\.requestID), ["a2", "j1"])
+
+        // Tapped (off the screen), then the send failed: back for another try.
+        let tapped = approvals.removeFirst()
+        XCTAssertTrue(calls.restore(tapped, to: &approvals))
+        XCTAssertEqual(approvals.map(\.requestID), ["a2", "j1"])
+
+        // Settled by the host while the answer was on its way: stays away.
+        let again = approvals.removeFirst()
+        calls.apply(.done(id: "a2", resolved: true), to: &approvals)
+        XCTAssertFalse(calls.restore(again, to: &approvals))
+        XCTAssertEqual(approvals.map(\.requestID), ["j1"], "a job's card is next")
+        // Not taken: the host shows it again, so the screen waits for that.
+        calls.apply(.done(id: "a3", resolved: false), to: &approvals)
+        XCTAssertEqual(approvals.map(\.requestID), ["j1"])
+        // Withdrawn, then shown again by the host: pending again.
+        calls.apply(.gone(id: "a4"), to: &approvals)
+        XCTAssertTrue(calls.settled.contains("a4"))
+        calls.apply(.show(id: "a4", command: "c", description: "d", canApproveOnce: true), to: &approvals)
+        XCTAssertFalse(calls.settled.contains("a4"))
+
+        // A newer request on screen keeps a failed send's card away; a job's card is never "restored".
+        XCTAssertFalse(calls.restore(WatchJobAnswer.Approval(grantID: "", jobID: "", title: "t", requestID: "a5", command: "c", description: ""), to: &approvals))
+        XCTAssertFalse(WatchCallApprovals().restore(job, to: &approvals))
+
+        // A new stream: the host shows it whatever is still pending.
+        calls.reset(&approvals)
+        XCTAssertEqual(approvals.map(\.requestID), ["j1"])
+        XCTAssertTrue(calls.settled.isEmpty)
+    }
+
     /// A Watch call ends on the same spoken goodbye as the phone's call:
     /// the matcher it shares with the phone.
     func testWatchCallsEndOnTheProfilesGoodbye() {
