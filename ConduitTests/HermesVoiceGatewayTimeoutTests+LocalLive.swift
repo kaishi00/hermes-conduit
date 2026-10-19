@@ -60,6 +60,39 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(LocalLiveProtocol.turnFrame(try data(["type": "response.output_audio_transcript.delta", "delta": "\"conduit.turn\""])))
     }
 
+    func testLocalLiveStopsPlaybackWhenTheServerClearsOrCancelsItsAudio() throws {
+        func data(_ object: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+        for type in ["output_audio_buffer.clear", "output_audio_buffer.cleared", "response.cancel", "response.cancelled"] {
+            XCTAssertTrue(LocalLiveProtocol.stopsPlayback(try data(["type": type])), type)
+        }
+        XCTAssertTrue(LocalLiveProtocol.stopsPlayback(try data(["type": "response.done", "response": ["status": "cancelled"]])))
+        XCTAssertFalse(LocalLiveProtocol.stopsPlayback(try data(["type": "response.done", "response": ["status": "completed"]])))
+        XCTAssertFalse(LocalLiveProtocol.stopsPlayback(try data(["type": "response.output_audio.delta", "delta": "AAAA"])))
+        // The model saying the words doesn't stop it.
+        XCTAssertFalse(LocalLiveProtocol.stopsPlayback(try data(["type": "response.output_audio_transcript.delta", "delta": "response.cancel \"cancelled\""])))
+    }
+
+    func testLocalLiveSessionStopsTheReplyWhenTheServerCutsItsAudio() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var interruptions = 0
+        session.onEvent = { event in
+            if case .interrupted = event { interruptions += 1 }
+        }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": [String: Any]()])
+        try await passLocalLiveReadiness(socket, session: session)
+        XCTAssertEqual(interruptions, 0)
+
+        socket.deliver(["type": "output_audio_buffer.clear"])
+        await localLiveSettle(until: { interruptions == 1 })
+        socket.deliver(["type": "response.done", "response": ["status": "cancelled"]])
+        await localLiveSettle(until: { interruptions == 2 })
+        XCTAssertEqual(interruptions, 2)
+        session.stop()
+    }
+
     func testLocalLiveSplitsLongRepliesIntoFramesThePluginTakes() {
         XCTAssertEqual(LocalLiveProtocol.deltaChunks(""), [])
         XCTAssertEqual(LocalLiveProtocol.deltaChunks("Hello."), ["Hello."])

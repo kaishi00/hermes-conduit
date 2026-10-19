@@ -3,6 +3,9 @@
 How Conduit's Voice settings map onto the Hermes profile configuration, and
 what the provider endpoint overrides do and do not change.
 
+To keep your voice on your own machines (a speech server for Classic voice
+or Local Live), see [Use your own voice server](OWN_VOICE_SERVER.md).
+
 ## Where TTS requests run
 
 All speech synthesis is relayed through the user's Hermes host: Conduit calls
