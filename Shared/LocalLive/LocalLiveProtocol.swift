@@ -146,6 +146,26 @@ enum LocalLiveProtocol {
         }
     }
 
+    /// Whether `data` tells the phone to stop the reply it is playing: the
+    /// server cleared its output audio, cancelled the response, or ended
+    /// it as cancelled. An engine that decides on its own that the caller
+    /// cut in (its own turn detection, a spoken "stop") sends one of these.
+    static func stopsPlayback(_ data: Data) -> Bool {
+        guard data.range(of: Data("output_audio_buffer".utf8)) != nil
+                || data.range(of: Data("response.cancel".utf8)) != nil
+                || data.range(of: Data("\"cancelled\"".utf8)) != nil,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String else { return false }
+        switch type {
+        case "output_audio_buffer.clear", "output_audio_buffer.cleared", "response.cancel", "response.cancelled":
+            return true
+        case "response.done":
+            return (object["response"] as? [String: Any])?["status"] as? String == "cancelled"
+        default:
+            return false
+        }
+    }
+
     static func encode(_ message: [String: Any]) throws -> String {
         try GrokLiveProtocol.encode(message)
     }
