@@ -404,10 +404,11 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
     }
 
     /// Where an update moves an item: nil when it names no calendar or
-    /// list. One that's gone or can't be changed fails the update, as it
-    /// does for an add, rather than saving the rest in the old place and
-    /// reporting it applied.
-    static func moveDestination<Collection>(_ id: String?, find: (String) -> Collection?, isWritable: (Collection) -> Bool) throws -> Collection? {
+    /// list. One that's gone or can't be changed fails the update rather
+    /// than saving the rest in the old place and reporting it applied. An add
+    /// instead falls back to the default calendar or list when the named
+    /// one is gone; only a read-only one fails it.
+    static func moveDestination<Destination>(_ id: String?, find: (String) -> Destination?, isWritable: (Destination) -> Bool) throws -> Destination? {
         guard let id else { return nil }
         guard let found = find(id) else { throw PhoneCalendarSourceError.notFound }
         guard isWritable(found) else { throw PhoneCalendarSourceError.readOnly }
