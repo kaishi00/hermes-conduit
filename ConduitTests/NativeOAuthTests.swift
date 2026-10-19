@@ -504,6 +504,68 @@ final class NativeOAuthTests: XCTestCase {
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
         session.invalidate()
     }
+
+    /// Hermes refuses a sensitive or unreadable file with 403, its sign-in
+    /// still good. The download reports Hermes' reason and leaves the grant
+    /// alone: no refresh, nothing cleared from the Keychain.
+    @MainActor
+    func testRefusedFileDownloadDoesNotRefreshOrClearTokens() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        var downloads = 0
+        var refreshCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshCalls += 1
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/fs/download":
+                downloads += 1
+                return (403, ["detail": "Access to sensitive files is not allowed"])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        let bridge = DashboardTicketBridge(
+            baseURL: "https://hermes.example",
+            dashboardID: dashboardID,
+            requestAuthorizer: DashboardRequestAuthorizer(
+                baseURL: "https://hermes.example",
+                dashboardID: dashboardID,
+                cloudflareAccess: nil,
+                nativeSession: session
+            )
+        )
+        defer { bridge.invalidate() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [NativeOAuthURLProtocolStub.self]
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        do {
+            _ = try await bridge.downloadFile(
+                path: "/api/fs/download?path=%2Froot%2F.env",
+                filename: ".env",
+                into: root,
+                session: URLSession(configuration: configuration)
+            )
+            XCTFail("A refused file must not download")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(detail, "Access to sensitive files is not allowed")
+        } catch {
+            XCTFail("Expected Hermes' refusal, got \(error)")
+        }
+        XCTAssertEqual(downloads, 1)
+        XCTAssertEqual(refreshCalls, 0)
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
+        XCTAssertTrue(session.matchesStoredTokens(initial))
+    }
 }
 
 @MainActor

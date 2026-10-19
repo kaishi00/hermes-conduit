@@ -399,6 +399,19 @@ extension DashboardTicketBridgeTests {
             XCTFail("401 needs a sign-in")
         } catch DashboardTicketBridgeError.signInRequired {}
 
+        // Hermes refuses a sensitive or unreadable file with 403 to a caller
+        // who is signed in: a failure with Hermes' reason, not a sign-in.
+        do {
+            _ = try await DashboardTicketBridge.download(
+                request, filename: "a.mp3", into: root, maxBytes: 1_000,
+                session: downloadSession(status: 403, body: Data(#"{"detail":"Access to sensitive files is not allowed"}"#.utf8))
+            )
+            XCTFail("a refused file is not a file")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(detail, "Access to sensitive files is not allowed")
+        }
+
         do {
             _ = try await DashboardTicketBridge.download(
                 request, filename: "a.mp3", into: root, maxBytes: 1_000,
