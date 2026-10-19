@@ -478,8 +478,6 @@ struct MarkdownReferenceContext: Equatable {
     }
 }
 
-/// A parsed chat message: its visible blocks plus the reference definitions
-/// that were removed from the visible body before block parsing.
 /// A fenced code block's delimiter: three or more backticks or tildes. Only
 /// a line of the same character, at least as long and with nothing after
 /// it, closes the block, so a ````markdown block can show ``` fences inside.
@@ -500,6 +498,8 @@ struct MarkdownFence: Equatable {
     }
 }
 
+/// A parsed chat message: its visible blocks plus the reference definitions
+/// that were removed from the visible body before block parsing.
 struct MarkdownParsedDocument {
     let blocks: [MarkdownBlock]
     let references: MarkdownReferenceContext
