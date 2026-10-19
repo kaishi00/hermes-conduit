@@ -58,9 +58,10 @@ extension AppState {
            activeDashboardID == nil || activeDashboardID == destination.dashboardID {
             engine.note(nil)
         }
-        // Frequent moments that are rarely news: a pass at most every half minute.
-        if reason == .foreground || reason == .messageSent || reason == .calendarChanged || reason == .voiceCall,
-           let last = engine.state.lastAttempt, Date().timeIntervalSince(last) < 30 {
+        // Frequent moments that are rarely news: a pass at most every half
+        // minute, longer in Low Power or Low Data Mode (ContextUploadPolicy).
+        let spacing = ContextUploadPolicy.phoneSpacing(for: reason, conditions: deviceConditions())
+        guard ContextUploadPolicy.isDue(lastAttempt: engine.state.lastAttempt, spacing: spacing, now: Date()) else {
             return .unfinished
         }
         let inBackground = !PhoneScenePresence.isInForeground
@@ -78,7 +79,8 @@ extension AppState {
         let deadline = inBackground ? started.addingTimeInterval(25) : Date().addingTimeInterval(60)
         guard engine.preferences.isOn, engine.preferences.destination == destination else { return .off }
         let profile = destination.profile
-        let outcome = await engine.sync(deadline: deadline) { [weak self] path, method, body in
+        let keepalive = ContextUploadPolicy.phoneKeepalive(for: reason)
+        let outcome = await engine.sync(deadline: deadline, keepalive: keepalive) { [weak self] path, method, body in
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == destination.dashboardID else {
                 throw DashboardTicketBridgeError.notReady
             }

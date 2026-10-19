@@ -68,8 +68,10 @@ extension AppState {
                 return try await client.activeSessions(inProfile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
             },
             latestReply: { [weak self] chat in
-                guard let self else { return nil }
-                return await self.latestLiveVoiceThreadReply(self.scopedShortcutChat(chat))
+                guard let self,
+                      let latest = await self.latestLiveVoiceThreadReplyMessage(self.scopedShortcutChat(chat)) else { return nil }
+                return ShortcutReply(text: latest.message.content, rowID: latest.message.rowId,
+                                     openChatID: latest.inOpenChat ? latest.message.id : nil)
             }
         )
     }

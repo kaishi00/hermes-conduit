@@ -22,6 +22,7 @@
 //      listen/call paths; plays the classic mode's status sounds.
 //
 
+import AVFAudio
 import Combine
 import CarPlay
 import Foundation
@@ -242,6 +243,11 @@ final class CarPlayVoiceCoordinator {
     }
     private static let sharedEarcons = CarPlayEarconPlayer()
 
+    /// Test seam: how long after another app gives the audio back a
+    /// classic conversation it interrupted listens again.
+    var resumeAfterInterruptionDelay: Duration = .milliseconds(800)
+    private var interruptionObserver: NSObjectProtocol?
+
     internal init() {}
 
     // MARK: - Scene lifecycle
@@ -251,6 +257,7 @@ final class CarPlayVoiceCoordinator {
     /// binds the shared AppState, and starts async Voice establishment under
     /// the current generation.
     func handleConnect(_ interfacing: any CarPlayInterfacing) {
+        observeAudioInterruptions()
         connectionGeneration &+= 1
         let generation = connectionGeneration
         connectionWaitTask?.cancel()
@@ -355,6 +362,78 @@ final class CarPlayVoiceCoordinator {
         appState.releaseCarPlayGrokLive()
         // Up to ~30 MB of orb frames at 3x; drawn again on the next connect.
         CarPlayVoiceArtwork.clearCache()
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        interruptionObserver = nil
+    }
+
+    // MARK: - Audio interruptions
+
+    /// A phone call, Siri or another app's audio ends the classic
+    /// conversation ("Audio was interrupted"); in the car it listens again
+    /// once the audio comes back, rather than waiting on a tap.
+    private func observeAudioInterruptions() {
+        guard interruptionObserver == nil else { return }
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            // Only when the system says to: an interruption that ends
+            // without shouldResume (the other app still wants the audio, or
+            // the driver declined) leaves the microphone off.
+            let options = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                .map(AVAudioSession.InterruptionOptions.init(rawValue:)) ?? []
+            guard options.contains(.shouldResume) else { return }
+            MainActor.assumeIsolated { self?.audioInterruptionEnded() }
+        }
+    }
+
+    /// The audio came back: a classic conversation the interruption ended
+    /// listens again, after a moment for the other app to let go.
+    func audioInterruptionEnded() {
+        // In the car: a conversation the phone's screen is showing is the
+        // phone's to restart, with a tap, as before.
+        guard isConnected, !phoneScreenProvider() else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        guard CarPlayVoiceMode.current(in: appState) == .classic else { return }
+        let controller = appState.voiceConversationController
+        guard Self.resumesAfterInterruption(controller) else { return }
+        let generation = connectionGeneration
+        let startRequest = voiceStartRequest
+        let delay = resumeAfterInterruptionDelay
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            // Still the same drive and conversation, and nothing the driver
+            // did meanwhile (End, Listen) moved it on.
+            guard let self, self.isCurrent(generation), self.isConnected, self.voiceStartRequest == startRequest,
+                  !self.phoneScreenProvider(), Self.resumesAfterInterruption(controller) else { return }
+            await self.performStartListeningTurn(generation: generation)
+        }
+    }
+
+    private static func resumesAfterInterruption(_ controller: VoiceConversationController) -> Bool {
+        guard controller.failedForAudioInterruption, case .failed = controller.state else { return false }
+        return true
+    }
+
+    /// Stop: Hermes' spoken reply stops and the car listens. On the car's
+    /// route the microphone is closed while Hermes speaks, so this is the
+    /// classic sheet's Interrupt; Gemini and Grok Live stop their speech.
+    func stopReply() {
+        guard isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic:
+            let controller = appState.voiceConversationController
+            let generation = connectionGeneration
+            Task { @MainActor [weak self] in
+                guard let self, self.isCurrent(generation), self.isConnected else { return }
+                await controller.stopAssistantReply()
+            }
+        case .geminiLive: appState.geminiLiveController.interruptSpeaking()
+        case .grokLive: appState.grokLiveController.interruptSpeaking()
+        case .gptLive: break
+        }
     }
 
     // MARK: - Template
@@ -510,7 +589,8 @@ final class CarPlayVoiceCoordinator {
             startListening: fenced { $0.startListeningTurn() },
             startNewChat: fenced { $0.startNewChat() },
             toggleMicrophone: fenced { $0.toggleMicrophone() },
-            endConversation: fenced { $0.endTapped() }
+            endConversation: fenced { $0.endTapped() },
+            stopReply: fenced { $0.stopReply() }
         )
     }
 
@@ -557,6 +637,7 @@ final class CarPlayVoiceCoordinator {
                 var updated = self.controls
                 updated.isClassic = mode == .classic
                 updated.isMicrophoneMuted = isMuted
+                updated.canStopReply = mode != .gptLive
                 self.updateControls(updated)
             }
     }

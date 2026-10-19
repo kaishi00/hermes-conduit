@@ -81,6 +81,8 @@ final class WatchLink: ObservableObject {
         phoneContext = WatchPhoneContext.decode(session.receivedApplicationContext) ?? phoneContext
         HermesWatchCalls.keepMainProfileNames(phoneContext)
         WatchCallLog.shared.note("linkActivated", ["reachable": session.isReachable, "companionInstalled": session.isCompanionAppInstalled])
+        // Lines that waited for the link, some from a previous run.
+        WatchCallLog.shared.sendBatch()
     }
 
     fileprivate func phoneContextChanged(_ context: WatchPhoneContext?) {

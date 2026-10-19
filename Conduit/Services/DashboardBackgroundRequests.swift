@@ -87,9 +87,13 @@ extension DashboardTicketBridge {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
-        let result: (Data, URLResponse)
+        let result: (data: Data, response: URLResponse, oversized: Bool)
         do {
-            result = try await Self.load(request, deadline: .milliseconds(max(1_000, timeoutMilliseconds)))
+            result = try await Self.load(
+                request,
+                deadline: .milliseconds(max(1_000, timeoutMilliseconds)),
+                maxResponseBytes: maxResponseBytes
+            )
         } catch let error as URLError {
             // A cancelled caller hears cancellation, as from the page path.
             if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
@@ -97,7 +101,7 @@ extension DashboardTicketBridge {
             // abort: status 0.
             throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)
         }
-        let (data, response) = result
+        let (data, response, oversized) = result
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")
         }
@@ -132,13 +136,13 @@ extension DashboardTicketBridge {
         if http.statusCode == 401 || http.statusCode == 403 {
             // Hermes' refusal of a session write is a verdict on the chat,
             // not an expired sign-in (as in the page's response handler).
-            if http.statusCode == 403, data.count <= maxResponseBytes,
+            if http.statusCode == 403, !oversized,
                let detail = Self.errorDetail(data), SessionMutationIdentity.isRefusalDetail(detail) {
                 throw DashboardTicketBridgeError.http(status: 403, detail: detail)
             }
             throw DashboardTicketBridgeError.signInRequired
         }
-        guard data.count <= maxResponseBytes else {
+        guard !oversized else {
             throw DashboardTicketBridgeError.oversizedResponse(limit: maxResponseBytes)
         }
         let value = data.isEmpty ? nil : try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -169,10 +173,35 @@ extension DashboardTicketBridge {
 
     /// The response, or `URLError(.timedOut)` once `deadline` passes in
     /// total, as the page's AbortController does. A request's own timeout
-    /// only limits the wait between bytes.
-    private static func load(_ request: URLRequest, deadline: Duration) async throws -> (Data, URLResponse) {
-        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
-            group.addTask { try await DashboardBackgroundSession.shared.data(for: request) }
+    /// only limits the wait between bytes. The body is read as it arrives
+    /// and no further than `maxResponseBytes` (`oversized` past it), so an
+    /// oversized one is never held whole: this runs in the background and
+    /// from CarPlay, where the memory limit is tightest.
+    static func load(
+        _ request: URLRequest,
+        deadline: Duration,
+        maxResponseBytes: Int,
+        session: URLSession = DashboardBackgroundSession.shared
+    ) async throws -> (data: Data, response: URLResponse, oversized: Bool) {
+        try await withThrowingTaskGroup(of: (data: Data, response: URLResponse, oversized: Bool).self) { group in
+            group.addTask {
+                let (bytes, response) = try await session.bytes(for: request)
+                if let length = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init),
+                   length > maxResponseBytes {
+                    bytes.task.cancel()
+                    return (Data(), response, true)
+                }
+                var data = Data()
+                for try await byte in bytes {
+                    guard data.count < maxResponseBytes else {
+                        // The rest isn't wanted: stop the download.
+                        bytes.task.cancel()
+                        return (data, response, true)
+                    }
+                    data.append(byte)
+                }
+                return (data, response, false)
+            }
             group.addTask {
                 try await Task.sleep(for: deadline)
                 throw URLError(.timedOut)

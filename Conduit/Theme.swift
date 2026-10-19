@@ -285,15 +285,20 @@ enum ConduitBackdropMotionPolicy {
     /// detail screens: they hold the static composition so only the main chat,
     /// the persistent sidebar column and sign-in run a timeline, rather than
     /// one per stacked layer while a sheet is open.
+    ///
+    /// `idle` is `InteractionIdleState.isIdle`: nothing touched, typed or
+    /// running for a couple of minutes. An iPad that never auto-locks would
+    /// otherwise draw the drift all night with nobody watching.
     static func shouldAnimate(
         drifts: Bool,
         sceneIsActive: Bool,
         reduceMotion: Bool,
         lowPowerMode: Bool,
+        idle: Bool,
         thermalState: ProcessInfo.ThermalState
     ) -> Bool {
         let thermalStateAllowsMotion = thermalState == .nominal || thermalState == .fair
-        return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
+        return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && !idle && thermalStateAllowsMotion
     }
 
     /// One smooth out-and-back drift over 26 seconds, matching the previous
@@ -353,6 +358,8 @@ struct ConduitBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var devicePower = DevicePowerState.shared
+    /// Publishes only when Conduit goes idle or wakes, never per touch.
+    @ObservedObject private var interactionIdle = InteractionIdleState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
     private let drifts: Bool
     /// The warm glow's color. V2 tints it with the active profile's color;
@@ -373,6 +380,7 @@ struct ConduitBackdrop: View {
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,
+            idle: interactionIdle.isIdle,
             thermalState: devicePower.thermalState
         )
     }

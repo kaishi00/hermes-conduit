@@ -475,12 +475,11 @@ struct SessionList: View {
             await appState.loadSessionCatalogIfNeeded()
         }
         // Working / Needs input (#454) follow the gateway's live registry
-        // while the list is on screen.
-        .task(id: appState.activeProfile) {
-            while !Task.isCancelled {
-                await appState.chatListPollTick()
-                try? await Task.sleep(for: .seconds(4))
-            }
+        // while the list is on screen, and only while the app is: the loop
+        // ends in the background instead of ticking to no effect.
+        .task(id: "\(appState.activeProfile)|\(scenePhase == .background)") {
+            guard scenePhase != .background else { return }
+            await appState.runChatListPolling()
         }
         // Back in the app over the list: an old read is read again.
         .onChange(of: scenePhase) { _, phase in

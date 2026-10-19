@@ -425,13 +425,15 @@ struct V2ChatsView: View, Equatable {
         }
         // Running and Needs approval follow the gateway's live registry
         // while the list is on screen; a hidden tab or a conversation
-        // pushed over the list stops polling.
+        // pushed over the list stops polling. The poll slows down while
+        // nothing on the list changes (PollCadence).
         .task(id: "\(appState.activeProfile)|\(isShown)|\(appState.showSidebar)") {
             guard isShown, appState.showSidebar else { return }
-            while !Task.isCancelled {
-                await appState.chatListPollTick()
-                try? await Task.sleep(for: .seconds(4))
-            }
+            await appState.runChatListPolling()
+        }
+        // Searching is looking at the list: it catches up at once.
+        .onChange(of: searchText) { _, _ in
+            if isShown { appState.noteChatListInteraction() }
         }
         // Back in the app over the list: it reads the catalog again if its
         // last read is old (a chat started elsewhere meanwhile).

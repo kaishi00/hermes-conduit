@@ -1,8 +1,25 @@
 import SwiftUI
 
 enum KanbanPollingPolicy {
-    static let boardIntervalNanoseconds: UInt64 = 8_000_000_000
-    static let detailIntervalNanoseconds: UInt64 = 4_000_000_000
+    static let boardIntervalNanoseconds = nanoseconds(PollCadence.kanbanBoard)
+    static let detailIntervalNanoseconds = nanoseconds(PollCadence.kanbanTaskDetail)
+
+    /// The board's poll: 8 s, or 60 s while the live event stream is
+    /// connected and says when to read; stretched in Low Power and Low Data
+    /// Mode.
+    static func boardInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
+        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanBoard, by: conditions))
+    }
+
+    /// The open task's poll: 4 s, or 60 s while the stream is connected (a
+    /// batch touching the task reads it at once).
+    static func detailInterval(streaming: Bool, conditions: DeviceConditions) -> UInt64 {
+        nanoseconds(PollCadence.stretched(streaming ? PollCadence.kanbanWhileStreaming : PollCadence.kanbanTaskDetail, by: conditions))
+    }
+
+    private static func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
+        UInt64(seconds * 1_000_000_000)
+    }
 }
 
 /// Pure draft-reconciliation rules for the task detail surface, extracted so
@@ -369,6 +386,9 @@ struct KanbanView: View {
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
+    /// Control Center or a Face ID sheet only dips the scene to inactive:
+    /// the stream and the poll stop in the background, not on a dip.
+    @Environment(\.scenePhase) private var scenePhase
     /// iPhone-native interaction: one selected lane rendered as a vertical
     /// card list behind a horizontally scrolling chip selector.
     @State private var selectedLane: String?
@@ -513,6 +533,7 @@ struct KanbanView: View {
             },
             ticketMinter: { try await bridge.mintTicket() },
             sleeper: { nanoseconds in try await Task.sleep(nanoseconds: nanoseconds) },
+            onConnectionChange: { [store] connected in store.setLiveStreamConnected(connected) },
             onBatch: { [includeArchived] invalidation in
                 let disposition = await store.refreshFromEvent(
                     expectedContext: invalidation.context,
@@ -809,11 +830,13 @@ struct KanbanView: View {
             pruneSelectionAgainstBoard()
         }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
-        // board listens and polls only while it shows, and catches up when it
-        // comes back. Outside V2 the board is always active.
-        .task(id: "\(liveEventsKey)|\(shell.isTabActive)") {
-            guard shell.isTabActive else { return }
+        // board listens and polls only while it shows and the app is on
+        // screen, and catches up when it comes back. Outside V2 the board is
+        // always active while the app is.
+        .task(id: "\(liveEventsKey)|\(shell.isTabActive)|\(scenePhase == .background)") {
+            guard shell.isTabActive, scenePhase != .background else { return }
             await runLiveEventStream()
+            store.setLiveStreamConnected(false)
         }
         .task(id: pollingKey) {
             selectedTask = nil
@@ -823,16 +846,22 @@ struct KanbanView: View {
             )
             await store.reload(includeArchived: includeArchived)
         }
-        .task(id: "\(pollingKey)|\(shell.isTabActive)") {
-            guard shell.isTabActive else { return }
-            // Back on the tab: refresh what changed while it was hidden. The
-            // first load is the configure task's own.
-            if store.loadedBoardSlug != nil {
+        // The stream connecting or dropping restarts the poll: a dropped
+        // stream may have missed events, so the board reads at once.
+        .task(id: "\(pollingKey)|\(shell.isTabActive)|\(scenePhase == .background)|\(store.liveStreamConnected)") {
+            guard shell.isTabActive, scenePhase != .background else { return }
+            // Back on the tab, or the stream gone: refresh what changed
+            // meanwhile. The first load is the configure task's own, and a
+            // stream that just connected has nothing to catch up on.
+            if store.loadedBoardSlug != nil, !store.liveStreamConnected {
                 await store.poll(includeArchived: includeArchived)
             }
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardIntervalNanoseconds)
+                    try await Task.sleep(nanoseconds: KanbanPollingPolicy.boardInterval(
+                        streaming: store.liveStreamConnected,
+                        conditions: DeviceConditionsMonitor.shared.current
+                    ))
                 } catch {
                     break
                 }

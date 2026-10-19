@@ -17,6 +17,13 @@ enum TranscriptImageCache {
     static let budgetBytes = 200 * 1024 * 1024
     static let trimTargetBytes = 150 * 1024 * 1024
 
+    /// Moves on with every `purge`: a load that started before one keeps
+    /// nothing, so a signed-out dashboard's pictures don't come back.
+    static var generation: Int { lock.withLock { current } }
+    private nonisolated(unsafe) static var current = 0
+    /// Keeps a write and a purge from interleaving.
+    private static let lock = NSLock()
+
     /// Quick Look and the share sheet read the type from the extension.
     private static let fileExtensions = ["jpg", "png", "gif", "webp", "heic", "img"]
 
@@ -51,34 +58,49 @@ enum TranscriptImageCache {
     }
 
     /// Keeps the picture in `dataURL` under `key` and returns its file, or
-    /// nil when the data URL holds no picture or the write failed.
+    /// nil when the data URL holds no picture, the write failed, or the
+    /// cache was purged since `generation` (read when the load started).
     @discardableResult
-    static func store(dataURL: String, for key: String, in directory: URL = defaultDirectory) -> URL? {
+    static func store(dataURL: String, for key: String, in directory: URL = defaultDirectory,
+                      generation: Int = TranscriptImageCache.generation) -> URL? {
         guard let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else { return nil }
         let stem = fileStem(for: key)
         let type = fileExtension(forDataURL: dataURL)
         let file = directory.appendingPathComponent("\(stem).\(type)")
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            var directoryURL = directory
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? directoryURL.setResourceValues(values)
-            try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        } catch {
-            return nil
+        let kept = lock.withLock { () -> Bool in
+            guard current == generation else { return false }
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                var directoryURL = directory
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                try? directoryURL.setResourceValues(values)
+                try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            } catch {
+                return false
+            }
+            // The same picture kept earlier under another type would shadow
+            // this one in `cachedFile`.
+            for other in fileExtensions where other != type {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent("\(stem).\(other)"))
+            }
+            return true
         }
-        // The same picture kept earlier under another type would shadow
-        // this one in `cachedFile`.
-        for other in fileExtensions where other != type {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent("\(stem).\(other)"))
-        }
+        guard kept else { return nil }
         trim(directory)
         return file
     }
 
+    /// Drops every kept picture. Loads already under way keep nothing; the
+    /// files go off the caller's thread.
+    @discardableResult
+    static func purge(in directory: URL = defaultDirectory) -> Task<Void, Never> {
+        lock.withLock { current += 1 }
+        return Task.detached(priority: .utility) { removeAll(in: directory) }
+    }
+
     static func removeAll(in directory: URL = defaultDirectory) {
-        try? FileManager.default.removeItem(at: directory)
+        lock.withLock { _ = try? FileManager.default.removeItem(at: directory) }
     }
 
     /// Drops the least recently used pictures once the cache outgrows

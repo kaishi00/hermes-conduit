@@ -115,9 +115,27 @@ jobs:
           fi
 
           echo "$opencode_bin_dir" >> "$GITHUB_PATH"
-      - name: Run opencode review
-        run: GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
+      # opencode reads the PR number from the event's pull_request, which a
+      # manual run's event doesn't have: give it the event a pull_request run
+      # for that PR would carry.
+      - name: Build the pull_request event for a manual run
+        id: dispatch_event
+        if: github.event_name == 'workflow_dispatch'
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          case "$PR_NUMBER" in
+            '' | *[!0-9]*) echo "pr_number must be a PR number, not '$PR_NUMBER'" >&2; exit 1 ;;
+          esac
+          event="$RUNNER_TEMP/pull_request_event.json"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            | jq '{action: "opened", number, pull_request: ., repository: .base.repo, sender: .user}' > "$event"
+          echo "path=$event" >> "$GITHUB_OUTPUT"
+      - name: Run opencode review
+        run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
+        env:
+          DISPATCH_EVENT_PATH: ${{ steps.dispatch_event.outputs.path }}
           STEPFUN_API_KEY: ${{ secrets.STEPFUN_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # The run's own token: this repo only, the job's permissions above,

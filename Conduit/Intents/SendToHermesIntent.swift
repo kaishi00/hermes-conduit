@@ -86,9 +86,31 @@ struct ShortcutSendBackend {
     var resumeChat: @MainActor (_ chat: VoiceThreadTarget) async throws -> String
     var submit: @MainActor (_ chat: VoiceThreadTarget, _ runtimeID: String, _ text: String) async throws -> PromptSubmissionOutcome
     var liveSessions: @MainActor (_ profile: String) async throws -> [LiveSessionStatus]
-    var latestReply: @MainActor (_ chat: VoiceThreadTarget) async -> String?
+    var latestReply: @MainActor (_ chat: VoiceThreadTarget) async -> ShortcutReply?
     var sleep: (_ seconds: Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     var now: () -> Date = Date.init
+}
+
+/// A chat's newest reply, with what tells it apart from an earlier reply
+/// worded the same ("Done." twice in a row).
+struct ShortcutReply: Equatable {
+    var text: String
+    /// Hermes's saved row id. Nil for a reply that streamed into the open
+    /// chat and hasn't been reloaded.
+    var rowID: Int? = nil
+    /// The message's id when it was read from the open chat.
+    var openChatID: String? = nil
+
+    /// Whether this may be `earlier` read again. The text decides only when
+    /// nothing else can.
+    func mayBe(_ earlier: ShortcutReply) -> Bool {
+        if let rowID, let earlierRow = earlier.rowID { return rowID == earlierRow }
+        // A streamed reply saved since: the same one or a new one, by its
+        // id alone it can't tell.
+        if earlier.rowID == nil, rowID != nil { return text == earlier.text }
+        if let openChatID, let earlierID = earlier.openChatID { return openChatID == earlierID }
+        return text == earlier.text
+    }
 }
 
 /// The chats runs with a Chat Name went to, so the next run with that name
@@ -179,7 +201,7 @@ struct ShortcutSender {
         guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
 
         // A reused chat already has replies: only a new one answers this run.
-        var earlier: String?
+        var earlier: ShortcutReply?
         if reused && request.waitsForAnswer { earlier = await backend.latestReply(chat) }
         switch try await backend.submit(chat, runtimeID, text) {
         case .accepted: break
@@ -203,7 +225,7 @@ struct ShortcutSender {
     }
 
     /// Throws only when the run is cancelled.
-    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: String?, deadline: Date) async throws -> ShortcutSendOutcome {
+    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: ShortcutReply?, deadline: Date) async throws -> ShortcutSendOutcome {
         var sawRunning = false
         var missed = 0
         while backend.now().addingTimeInterval(Self.pollInterval) < deadline {
@@ -260,10 +282,15 @@ struct ShortcutSender {
         return .stillWorking
     }
 
-    private func newReply(in chat: VoiceThreadTarget, earlier: String?) async -> String? {
-        guard let reply = await backend.latestReply(chat)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !reply.isEmpty, reply != earlier?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        return reply
+    private func newReply(in chat: VoiceThreadTarget, earlier: ShortcutReply?) async -> String? {
+        guard var reply = await backend.latestReply(chat) else { return nil }
+        reply.text = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.text.isEmpty else { return nil }
+        if var earlier {
+            earlier.text = earlier.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if reply.mayBe(earlier) { return nil }
+        }
+        return reply.text
     }
 
     /// A new chat's title: the text's first line, shortened.

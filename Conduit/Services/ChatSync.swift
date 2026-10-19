@@ -24,8 +24,11 @@ struct ChatListCatalogFreshness {
     /// status and count): a live chat the catalog never lists (an archived
     /// one, a bot's) stops asking until it changes.
     static let unlistedReadsPerChat = 2
-    /// Renames, deletions and titles made elsewhere show within this long
-    /// while the list is on screen.
+    /// Renames, deletions and titles made elsewhere are read at the first
+    /// poll at least this long after the last read while the list is on
+    /// screen: 30 s while it polls every 4 s, up to its slowest step (60 s,
+    /// longer in Low Power or Low Data Mode, PollCadence) while nothing
+    /// moves.
     static let fallbackInterval: TimeInterval = 30
     /// Coming back to the app reads the list again when the last read is
     /// older than this.
@@ -112,10 +115,14 @@ struct OpenChatSync {
     /// A running turn that streamed nothing here for this long is checked
     /// against the registry.
     static let streamSilence: TimeInterval = 20
-    /// How often a silent turn is checked.
+    /// How often a silent turn is checked. Never stretched: it only runs
+    /// while a turn of this device's has streamed nothing for 20 s.
     static let silentTurnCheckInterval: TimeInterval = 8
-    /// How often an idle open chat is checked.
-    static let idleCheckInterval: TimeInterval = 15
+    /// How often an idle open chat is checked: 15 s, then 30 s and 60 s
+    /// while the registry shows the chat unchanged (PollCadence). A change,
+    /// a send here, a turn running elsewhere or a return to the app goes
+    /// back to 15 s.
+    static let idleCheckInterval: TimeInterval = PollCadence.openChatIdleSteps[0]
     /// An idle chat shows another device's turn once it has been idle here
     /// this long (the registry can lag this device's own turn edges).
     static let localIdleGrace: TimeInterval = 5
@@ -138,11 +145,24 @@ struct OpenChatSync {
     private var lastReadAt: Date?
     /// Another device is getting the reply of a turn in this chat.
     private(set) var repliesElsewhere = false
+    /// The idle check's pace, and the registry row it last saw.
+    private(set) var idleBackoff = PollBackoff(steps: PollCadence.openChatIdleSteps)
+    private var lastIdleRow: OpenChatRegistryRow?
+    private var sawIdleRow = false
 
     /// This device sent something in the open chat: the registry's count
     /// moving next is its own doing.
     mutating func noteSentHere() {
         sentHereSinceBaseline = true
+        idleBackoff.reset()
+    }
+
+    /// Back in the app, or the chat shown again: the idle check goes back
+    /// to its shortest interval.
+    mutating func resetIdlePace() {
+        idleBackoff.reset()
+        lastIdleRow = nil
+        sawIdleRow = false
     }
 
     /// A read asked for was called off (the chat ran again before it could
@@ -160,15 +180,22 @@ struct OpenChatSync {
     }
 
     /// Whether the open chat wants a registry snapshot now. Called on every
-    /// tick, it also tracks the local turn's edges.
-    mutating func checkDue(_ local: OpenChatLocalTurn, now: Date) -> Bool {
+    /// tick, it also tracks the local turn's edges. `conditions` stretch the
+    /// idle check (Low Power Mode, Low Data Mode); a silent turn's check
+    /// keeps its pace, so a turn that ended elsewhere still settles.
+    mutating func checkDue(_ local: OpenChatLocalTurn, now: Date, conditions: DeviceConditions = DeviceConditions()) -> Bool {
         track(local, now: now)
         let due: Bool
         if local.isRunning {
             guard silence(now) >= Self.streamSilence else { return false }
             due = lastCheckAt.map { now.timeIntervalSince($0) >= Self.silentTurnCheckInterval } ?? true
         } else {
-            due = lastCheckAt.map { now.timeIntervalSince($0) >= Self.idleCheckInterval } ?? true
+            // A turn running elsewhere is checked every 15 s whatever the
+            // conditions, so it settles here soon after it ends.
+            let interval = watchingTurnElsewhere
+                ? idleBackoff.interval
+                : PollCadence.stretched(idleBackoff.interval, by: conditions)
+            due = lastCheckAt.map { now.timeIntervalSince($0) >= interval } ?? true
         }
         // Stamped when asked, so a registry that keeps failing is asked at
         // the same pace.
@@ -194,7 +221,30 @@ struct OpenChatSync {
         if local.isRunning {
             return observeRunningTurn(row, local: local, now: now)
         }
-        return observeIdleChat(row, local: local, now: now, chatVisible: chatVisible)
+        let action = observeIdleChat(row, local: local, now: now, chatVisible: chatVisible)
+        paceIdleCheck(after: row, action: action)
+        return action
+    }
+
+    /// The registry last showed a turn running or starting elsewhere in this
+    /// idle chat, or one ran and its rows are still to read.
+    private var watchingTurnElsewhere: Bool {
+        sawRunElsewhere || (lastIdleRow.map { $0.isRunning || $0.isStarting } ?? false)
+    }
+
+    /// The same row twice with nothing to do waits longer before the next
+    /// check; anything else (a turn running or starting elsewhere, a moved
+    /// count, a read, a chat waiting to show a change) checks again at 15 s.
+    private mutating func paceIdleCheck(after row: OpenChatRegistryRow?, action: OpenChatSyncAction) {
+        let unchanged = sawIdleRow && row == lastIdleRow
+        lastIdleRow = row
+        sawIdleRow = true
+        let busyElsewhere = row.map { $0.isRunning || $0.isStarting } ?? false
+        if action == .none, unchanged, !busyElsewhere, !sawRunElsewhere {
+            idleBackoff.lengthen()
+        } else {
+            idleBackoff.reset()
+        }
     }
 
     private mutating func observeRunningTurn(
@@ -281,7 +331,12 @@ struct OpenChatSync {
             idleSince = nil
         } else {
             runningSince = nil
-            if idleSince == nil { idleSince = now }
+            if idleSince == nil {
+                idleSince = now
+                // A turn just ended here: another device's reply to it may
+                // follow, so the idle check starts over at its shortest.
+                resetIdlePace()
+            }
         }
     }
 

@@ -93049,6 +93049,88 @@
         }
       }
     },
+    "Enter both the Cloudflare Client ID and Client Secret, or turn off the service token." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib sowohl die Cloudflare Client ID als auch das Client Secret ein oder schalte das Service-Token aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introduce el Client ID y el Client Secret de Cloudflare, o desactiva el token de servicio."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisissez le Client ID et le Client Secret Cloudflare, ou désactivez le jeton de service."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masukkan Client ID dan Client Secret Cloudflare, atau matikan token layanan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inserisci sia il Client ID sia il Client Secret di Cloudflare, oppure disattiva il token di servizio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloudflare の Client ID と Client Secret の両方を入力するか、サービストークンをオフにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloudflare Client ID와 Client Secret을 모두 입력하거나 서비스 토큰을 끄세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wpisz zarówno Client ID, jak i Client Secret Cloudflare albo wyłącz token usługi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digite o Client ID e o Client Secret do Cloudflare ou desative o token de serviço."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введите и Client ID, и Client Secret Cloudflare или выключите сервисный токен."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hem Cloudflare Client ID hem de Client Secret değerini girin ya da hizmet belirtecini kapatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请同时输入 Cloudflare Client ID 和 Client Secret，或关闭服务令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請同時輸入 Cloudflare Client ID 和 Client Secret，或關閉服務權杖。"
+          }
+        }
+      }
+    },
     "Enter selection mode to run bulk operations" : {
       "localizations" : {
         "de" : {

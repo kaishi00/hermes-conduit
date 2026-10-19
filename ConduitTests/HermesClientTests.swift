@@ -1230,6 +1230,25 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(HermesClient.exactIntValue(nil))
     }
 
+    func testIntValueTruncatesInRangeNumbersAndRejectsTrappingDoubles() {
+        XCTAssertEqual(AnyCodable.number(42).intValue, 42)
+        XCTAssertEqual(AnyCodable.number(-10).intValue, -10)
+        XCTAssertEqual(AnyCodable.number(12.7).intValue, 12, "Fractional counters keep truncating")
+        XCTAssertNil(AnyCodable.number(1e100).intValue)
+        XCTAssertNil(AnyCodable.number(-1e100).intValue)
+        XCTAssertNil(AnyCodable.number(9.3e18).intValue)
+        XCTAssertNil(AnyCodable.number(Double.infinity).intValue)
+        XCTAssertNil(AnyCodable.number(Double.nan).intValue)
+        XCTAssertNil(AnyCodable.string("42").intValue)
+
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "context_used": .number(1e100),
+            "context_max": .number(200_000),
+        ])
+        XCTAssertNil(snapshot.contextUsed, "An out-of-range gateway number degrades to unknown instead of crashing")
+        XCTAssertEqual(snapshot.contextMax, 200_000)
+    }
+
     func testApprovalRespondSendsRequestIdentityAndRejectsZeroResolved() async throws {
         let (request, accepted) = try await capturedApprovalRespond(requestId: "approval-2", resolved: 0)
         let params = try XCTUnwrap(request["params"] as? [String: Any])
@@ -2881,7 +2900,8 @@ extension HermesClientTests {
     /// `onSend` is installed before the handshake so a keepalive ping sent
     /// right after it is never missed.
     private func connectKeepaliveClient(
-        onSend: (() -> Void)? = nil
+        onSend: (() -> Void)? = nil,
+        backgroundInterval: TimeInterval? = nil
     ) async throws -> (client: HermesClient, socket: FakeSocket) {
         let transport = FakeTransport()
         let socket = FakeSocket()
@@ -2891,6 +2911,7 @@ extension HermesClientTests {
             connection: HermesConnection(baseUrl: "https://test.example", ticket: "ticket"),
             transportFactory: { transport },
             keepaliveInterval: 0.3,
+            backgroundKeepaliveInterval: backgroundInterval,
             keepalivePingTimeout: 0.3,
             monitorsPath: false
         )
@@ -2929,6 +2950,20 @@ extension HermesClientTests {
             socket.sentTexts.filter { $0.contains("\"ping\"") }.count, 2,
             "One retry before giving up"
         )
+        client.disconnect()
+    }
+
+    func testOffScreenTheKeepalivePingsLessOften() async throws {
+        let (client, socket) = try await connectKeepaliveClient(backgroundInterval: 1.5)
+        client.setKeepaliveBackgrounded(true)
+        func pings() -> Int { socket.sentTexts.filter { $0.contains("\"ping\"") }.count }
+        try await Task.sleep(for: .seconds(0.8))
+        XCTAssertEqual(pings(), 0, "Off screen the 0.3 s interval gives way to the longer one")
+        let deadline = Date().addingTimeInterval(5)
+        while pings() == 0, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(pings(), 1, "The quiet socket is still pinged off screen")
         client.disconnect()
     }
 
