@@ -1292,6 +1292,10 @@ final class PushNotificationService: ObservableObject {
     var installationID: String? { registration?.installationID }
 
     static let pairPath = "/api/plugins/conduit_push/pair"
+    /// Past the host's own wait: it claims the code at the relay with a
+    /// 15 s timeout (plugin_api PAIR_TIMEOUT_S), then writes the pairing.
+    /// Giving up first would leave the host paired with no key handed over.
+    static let pairTimeoutMilliseconds = 25_000
 
     /// Who a profile's notifications go to, from the plugin's
     /// `GET /e2e?profile=` answer.
