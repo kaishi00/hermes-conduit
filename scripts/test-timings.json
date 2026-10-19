@@ -90,6 +90,7 @@
     "SessionYoloPersistenceTests": 0.396,
     "SessionYoloStoreTests": 0.033,
     "SettledMessageIsolationTests": 0.363,
+    "ShareDraftTests": 4.5,
     "SpeechRecognitionLocaleTests": 0.05,
     "StreamEventParserTests": 0.15,
     "TranscriptPerformanceFixtureTests": 2.628,

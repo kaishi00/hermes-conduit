@@ -3,6 +3,30 @@ import XCTest
 
 @MainActor
 final class WidgetLaunchCoordinatorTests: XCTestCase {
+
+    /// A shared draft (#812) rides on a launch and needs to know which one
+    /// ended: superseded (nil) or with its outcome.
+    func testEndedSaysWhichLaunchEndedAndHow() async throws {
+        var ended: [(WidgetLaunchLink, WidgetLaunchOutcome?)] = []
+        let coordinator = WidgetLaunchCoordinator(
+            now: { .zero },
+            prepare: { _, _ in .handled },
+            perform: { _, _ in .handled },
+            finish: { _ in },
+            ended: { ended.append(($0, $1)) }
+        )
+        let first = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        let second = try XCTUnwrap(WidgetLaunchLink(action: .open, workspace: workspace, reference: nil))
+
+        coordinator.receive(first)
+        coordinator.receive(second)
+        for _ in 0..<10_000 where coordinator.hasPendingRequest { await Task.yield() }
+
+        XCTAssertFalse(coordinator.hasPendingRequest)
+        XCTAssertEqual(ended.map(\.0), [first, second])
+        XCTAssertNil(ended.first?.1, "superseded")
+        XCTAssertEqual(ended.last?.1, .handled)
+    }
     func testDuplicateInFlightDeliveryRunsOnceButLaterTapRunsAgain() async throws {
         let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
         let prepareGate = AsyncLaunchGate()

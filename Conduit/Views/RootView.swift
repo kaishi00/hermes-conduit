@@ -43,6 +43,39 @@ struct RootView: View {
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
+        // A draft shared from another app before Conduit listed any chats,
+        // with more than one dashboard it could be for (#812). An alert, so
+        // it shows the same on iPad, where a dialog would need an anchor.
+        .alert(
+            Text("Which dashboard is this draft for?"),
+            isPresented: Binding(
+                get: { appState.sharedDraftChoice != nil },
+                set: { presented in
+                    if !presented, let choice = appState.sharedDraftChoice { appState.postponeSharedDraftChoice(choice) }
+                }
+            ),
+            presenting: appState.sharedDraftChoice
+        ) { choice in
+            ForEach(choice.dashboards) { dashboard in
+                Button {
+                    appState.chooseDashboardForSharedDraft(dashboard.id, for: choice)
+                } label: {
+                    Text(verbatim: dashboard.label)
+                }
+            }
+            Button(role: .destructive) {
+                appState.discardSharedDraft(choice)
+            } label: {
+                Text("Discard Draft")
+            }
+            Button(role: .cancel) {
+                appState.postponeSharedDraftChoice(choice)
+            } label: {
+                Text("Not Now")
+            }
+        } message: { _ in
+            Text("Conduit didn't have your chats yet when you shared this. It opens in a new chat, and nothing is sent until you send it.")
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // Only the primary window drives the process-wide lifecycle: a
             // transient duplicate window's .background must never suspend a

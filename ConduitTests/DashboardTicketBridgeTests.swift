@@ -304,6 +304,65 @@ extension DashboardTicketBridgeTests {
     }
 }
 
+// MARK: - Answers that land after a dashboard switch
+
+@MainActor
+extension DashboardTicketBridgeTests {
+    /// The page answered, and the switch invalidated the bridge before the
+    /// caller ran: the caller hears unreadiness, never the old dashboard's
+    /// answer, which it would apply to the dashboard now showing.
+    func testAPageAnswerThatLandsAfterInvalidationIsNotReady() async throws {
+        let requests = DashboardTicketBridgePendingRequests()
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            pendingRequests: requests,
+            readinessPollAttempts: 0,
+            readinessPollInterval: .milliseconds(1)
+        )
+        bridge.webViewCanRun = { true }
+        // Let the initial load settle first, as in
+        // testExpiredRequestDeadlineMarksWebViewStalled, so its failure
+        // can't reject the request this test answers.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        bridge.simulateLandingForTesting(.ready)
+
+        let result = Task { try await bridge.requestJSON(path: "/api/sessions") }
+        var answer: DashboardTicketBridgePendingRequests.Continuation?
+        for _ in 0..<1_000 where answer == nil {
+            await Task.yield()
+            answer = requests.removeValue(for: 1)
+        }
+        try XCTUnwrap(answer).resume(returning: ["sessions": []])
+        bridge.invalidate()
+
+        do {
+            _ = try await result.value
+            XCTFail("an answer for an invalidated bridge must not reach its caller")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected
+        }
+    }
+
+    /// invalidate() doesn't cancel a request sent without the page, so its
+    /// answer can come back up to its deadline after a switch.
+    func testAnAnswerWithoutThePageThatLandsAfterInvalidationIsNotReady() async throws {
+        let held = HeldDashboardRequests(baseURL: "https://late-\(UUID().uuidString.lowercased()).invalid")
+        let result = Task { try await held.bridge.requestJSON(path: "/api/sessions") }
+        try await held.waitForRequests(1)
+        held.bridge.invalidate()
+        try await held.answer(["sessions": []])
+
+        do {
+            _ = try await result.value
+            XCTFail("an answer for an invalidated bridge must not reach its caller")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected
+        }
+    }
+}
+
 @MainActor
 extension DashboardTicketBridgeTests {
     func testBackgroundRequestsSendTheCookieThatExpiresLast() throws {

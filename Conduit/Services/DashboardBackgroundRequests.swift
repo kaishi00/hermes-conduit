@@ -89,11 +89,16 @@ extension DashboardTicketBridge {
 
         let result: (data: Data, response: URLResponse, oversized: Bool)
         do {
-            result = try await Self.load(
-                request,
-                deadline: .milliseconds(max(1_000, timeoutMilliseconds)),
-                maxResponseBytes: maxResponseBytes
-            )
+            if let loadWithoutPageForTesting {
+                let (data, response) = try await loadWithoutPageForTesting(request)
+                result = (data, response, false)
+            } else {
+                result = try await Self.load(
+                    request,
+                    deadline: .milliseconds(max(1_000, timeoutMilliseconds)),
+                    maxResponseBytes: maxResponseBytes
+                )
+            }
         } catch let error as URLError {
             // A cancelled caller hears cancellation, as from the page path.
             if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
@@ -101,6 +106,9 @@ extension DashboardTicketBridge {
             // abort: status 0.
             throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)
         }
+        // invalidate() doesn't cancel this request: an answer that lands
+        // after a dashboard switch is the old dashboard's, as on the page.
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         let (data, response, oversized) = result
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")

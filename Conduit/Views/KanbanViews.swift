@@ -381,6 +381,7 @@ struct KanbanView: View {
     @State private var selectedTask: KanbanTask?
     @State private var showNewTask = false
     @State private var newTaskStatus = "todo"
+    @State private var newTaskContext: KanbanBoardContextStamp?
     @State private var includeArchived = false
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -658,7 +659,7 @@ struct KanbanView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showNewTask) {
-            KanbanTaskComposerView(initialStatus: newTaskStatus)
+            KanbanTaskComposerView(initialStatus: newTaskStatus, expectedContext: newTaskContext)
                 .environmentObject(store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
@@ -807,6 +808,8 @@ struct KanbanView: View {
             showBoardSettings = false
             showNewBoard = false
             showFilters = false
+            // So is a New Task draft (its lane and workspace default).
+            showNewTask = false
             assigneeFilter = nil
             tenantFilter = nil
             // V3C: a board switch invalidates every selected ID - selection
@@ -820,6 +823,7 @@ struct KanbanView: View {
             showBoardSettings = false
             showNewBoard = false
             showFilters = false
+            showNewTask = false
             pendingBoardArchive = nil
             nudgeNoticeState.invalidateOnContextChange()
             exitSelectionMode()
@@ -1921,6 +1925,7 @@ struct KanbanView: View {
                 // visible lane. Locked lanes collapse to the default unlocked
                 // landing status.
                 newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: effectiveSelectedLane)
+                newTaskContext = store.loadedContextStamp
                 showNewTask = true
             } label: {
                 Image(systemName: "plus")

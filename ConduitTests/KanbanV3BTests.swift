@@ -816,6 +816,33 @@ final class KanbanV3BTests: XCTestCase {
         XCTAssertFalse(requester.calls.contains { $0.method == "PATCH" && $0.path.contains("/boards/beta") }, "zero PATCH to beta")
     }
 
+    func testNewTaskComposedForOneBoardIsNotCreatedOnAnother() async {
+        // An open New Task sheet captured alpha's stamp; the loaded board
+        // then moved to beta (a server-side current-board change, or a
+        // switch). Submitting the draft must not create it on beta.
+        let requester = V3BMockRequester(responsesByPath: routes())
+        requester.boardsProvider = { _ in
+            ["boards": V3BMockRequester.baseBoards, "current": "alpha"]
+        }
+        requester.boardForSlug = { _ in V3BMockRequester.defaultBoard }
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+        XCTAssertEqual(stampA.boardSlug, "alpha")
+        await store.selectBoard(slug: "beta")
+        XCTAssertEqual(store.loadedBoardSlug, "beta")
+
+        do {
+            _ = try await store.createTask(KanbanCreateTaskRequest(title: "For alpha"), initialStatus: "todo", expectedContext: stampA)
+            XCTFail("a draft composed for alpha must fail closed on beta")
+        } catch KanbanServiceError.boardNavigationInProgress {
+            // expected
+        } catch {
+            XCTFail("unexpected: \(error)")
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/tasks") }, "zero task POST")
+    }
+
     func testArchiveTargetMismatchWithCurrentContextFailsClosed() async {
         // B. Same stale-sheet regression for an archive: current = beta,
         // stamp = beta, explicit target slug = alpha -> zero DELETE (the

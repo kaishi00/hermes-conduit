@@ -115,6 +115,15 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // "Draft ready in Conduit" from the share sheet (#812): coming to the
+        // front picks the draft up; one already on screen takes it now.
+        if request.identifier.hasPrefix(ShareDraftInbox.notificationIdentifierPrefix), !(request.trigger is UNPushNotificationTrigger) {
+            Task { @MainActor in
+                AppStateRuntimeRegistry.shared.appState.sharedDraftWasStaged()
+                completionHandler()
+            }
+            return
+        }
         // Only the notification Conduit posted itself, never a push carrying the key.
         if request.identifier == MapsNavigator.notificationIdentifier, !(request.trigger is UNPushNotificationTrigger),
            let maps = MapsNavigator.url(fromNotification: request.content.userInfo) {
@@ -154,6 +163,15 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             let userInfo = notification.request.content.userInfo
             Task { @MainActor in
                 await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(userInfo)
+            }
+            completionHandler([])
+            return
+        }
+        // A draft shared while Conduit is on screen opens in it: no banner.
+        if notification.request.identifier.hasPrefix(ShareDraftInbox.notificationIdentifierPrefix),
+           !(notification.request.trigger is UNPushNotificationTrigger) {
+            Task { @MainActor in
+                AppStateRuntimeRegistry.shared.appState.sharedDraftWasStaged()
             }
             completionHandler([])
             return
@@ -287,6 +305,8 @@ struct ConduitApp: App {
                 pendingExternalLink = nil
                 appState.openAppLink(link)
             }
+            // A draft shared from another app while Conduit is on screen.
+            .task { SharedDraftStagedObserver.start() }
             .task { await PushNotificationService.shared.refresh() }
             // Siri learns the cached profile names for its profile phrases.
             .task { SiriProfileShortcuts.refresh() }

@@ -53,11 +53,11 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 - **The app without its Watch app and extensions.** The smoke job generates
   the project from `project-tests.yml`, an xcodegen overlay of `project.yml`
   whose only change is that the Conduit target no longer embeds the Apple
-  Watch app and the three app extensions. No test runs them, and the Watch app
+  Watch app and the app extensions. No test runs them, and the Watch app
   is a second platform compiled from scratch. The smoke job builds the full
   app instead when the PR touches those targets' sources (`ConduitWatch/`,
   `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
-  `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
+  `ConduitShareExtension/`, `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
   spec). `Conduit/Localizable.xcstrings` is left
   out on purpose: the app target compiles the same catalog in the slim build,
   and nearly every PR edits it. Every push to `main` builds the full app too,
