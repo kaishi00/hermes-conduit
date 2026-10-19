@@ -5831,9 +5831,10 @@ final class AppState: ObservableObject {
 
     /// Test seam: a live call's recording starts, as when the call
     /// connects, with `turns` already said.
-    func beginVoiceCallRecordingForTesting(engine: VoiceCallEngine, turns: [VoiceConversationTranscriptEntry]) {
+    func beginVoiceCallRecordingForTesting(engine: VoiceCallEngine, turns: [VoiceConversationTranscriptEntry], jobs: [String] = []) {
         beginVoiceCallRecording(engine: engine)
         voiceCallRecorder?.capture(turns, unsettled: [])
+        voiceCallRecorder?.jobSessionIDs += jobs
     }
     #endif
     private var voiceTagsFetchedAt: [String: Date] = [:]
@@ -6186,7 +6187,7 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return }
         let profile = profile ?? activeProfile
         let key = voiceHistoryKey(profile: profile)
-        let owner = currentDashboardRuntimeOwner()
+        let dashboardID = activeDashboardID
         for id in ids {
             voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID, parentTitle: parentTitle)
         }
@@ -6198,10 +6199,12 @@ final class AppState: ObservableObject {
             await previous?.value
             defer { if self?.voiceTagGeneration == generation { self?.voiceTagChain = nil } }
             for id in ids {
-                // A switch meanwhile: the rest are the old dashboard's.
-                guard let owner, self?.ownsDashboardRuntime(owner) == true else { return }
+                // A switch meanwhile: the rest are the old dashboard's. A
+                // reconnect to the same one (a new bridge) still takes them:
+                // tags aren't retried.
+                guard let self, self.activeDashboardID == dashboardID else { return }
                 do {
-                    try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
+                    try await self.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
                     Self.voiceHistoryLog.debug("Tagging a voice session failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
@@ -6448,8 +6451,15 @@ final class AppState: ObservableObject {
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
             // Its jobs' tags, chat link and the list reload belong to the
-            // dashboard the call was on, not one switched to since.
-            if let owner = callDashboard?.owner, !self.ownsDashboardRuntime(owner) { return }
+            // dashboard the call was on, not one switched to since. A save
+            // that landed is queued again for that dashboard (the host
+            // skips the turns it has), so its next save run files them.
+            if let owner = callDashboard?.owner, !self.ownsDashboardRuntime(owner) {
+                if requeued == nil, let replay = recorder.savedCallReplay {
+                    self.queueVoiceTranscript(replay, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
+                }
+                return
+            }
             let callRow = recorder.sessionID
             // A call kept with its chat files its jobs under the chat.
             let chatID = recorder.savedWithChat ? recorder.chatID : nil

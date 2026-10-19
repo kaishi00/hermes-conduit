@@ -488,6 +488,20 @@ final class VoiceTranscriptRecorder {
         }
     }
 
+    /// The saved call again, as its last turn, for the outbox when what
+    /// follows a save (its jobs' tags, its chat link) couldn't run: the host
+    /// skips the turn and answers with the call's row or chat. Nil when the
+    /// call has neither.
+    var savedCallReplay: VoiceTranscriptSaveRequest? {
+        guard sessionID != nil || savedWithChat, let last = turns.last, last.index < written else { return nil }
+        return VoiceTranscriptSaveRequest(
+            callID: callID, engine: engine, sessionID: sessionID,
+            title: nil, turns: [last],
+            chatID: sessionID == nil ? chatID : nil,
+            chatProfile: sessionID == nil ? chatProfile : nil
+        )
+    }
+
     /// What is still unsaved, for the outbox to retry after the call. Kept
     /// even when the host can't store transcripts yet: the outbox holds the
     /// call until the host is updated or the entry ages out.
