@@ -1158,6 +1158,36 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesRingSettler.result(status: 404, data: Data(#"{"error":"unknown_ring"}"#.utf8)), .failed, "The relay forgot it")
     }
 
+    /// A settle sent but never answered (it timed out, or the connection
+    /// dropped) may have reached the relay, which then forwarded the
+    /// Watch's start to the iPhone: the Watch still fetches its handoff.
+    /// One the relay refused (it forgot the ring) or never got is a failure.
+    func testASettleThatGotNoAnswerMayStillHaveHandedTheCallOff() async throws {
+        let ring = HermesRing(id: Self.ringID, token: Self.ringToken, url: try XCTUnwrap(URL(string: "https://push.example/v1/rings/\(Self.ringID)/settled")))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HermesRingSettleStubProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { HermesRingSettleStubProtocol.error = nil }
+        func settle(failingWith error: URLError) async -> HermesRingSettleResult {
+            HermesRingSettleStubProtocol.error = error
+            return await HermesRingSettler.settle(ring, by: .watch, outcome: .answered, start: "c2VhbGVk", session: session)
+        }
+
+        let timedOut = await settle(failingWith: URLError(.timedOut))
+        XCTAssertEqual(timedOut, .unconfirmed, "Sent, no answer: the relay may have it")
+        XCTAssertTrue(timedOut.mayFetchHandoff)
+        let dropped = await settle(failingWith: URLError(.networkConnectionLost))
+        XCTAssertEqual(dropped, .unconfirmed)
+        let unreachable = await settle(failingWith: URLError(.cannotConnectToHost))
+        XCTAssertEqual(unreachable, .failed, "Never reached the relay")
+        XCTAssertFalse(unreachable.mayFetchHandoff)
+
+        XCTAssertTrue(HermesRingSettleResult.settled.mayFetchHandoff)
+        XCTAssertFalse(HermesRingSettler.result(status: 404, data: Data(#"{"error":"unknown_ring"}"#.utf8)).mayFetchHandoff, "The relay forgot it")
+        XCTAssertFalse(HermesRingSettler.result(status: 410, data: Data()).mayFetchHandoff)
+        XCTAssertFalse(HermesRingSettleResult.alreadySettled(.answered, by: .phone).mayFetchHandoff)
+    }
+
     func testACallAnsweredOrDeclinedOnTheWatchIsReportedAsTheUserLeftIt() {
         XCTAssertNil(HermesCallOutcome.of(.elsewhere(.answered), answered: false), "Picked up on the Watch")
         XCTAssertEqual(HermesCallOutcome.of(.elsewhere(.declined), answered: false), .declined)
@@ -1458,4 +1488,16 @@ extension VoiceConversationControllerTests {
                        "The host runs its turns in a chat of its own: the iPhone answers instead")
         XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.geminiLive.rawValue), "Not checked yet: rings, as before")
     }
+}
+
+/// Fails every settle with `error`, as a timeout or a dropped connection.
+private final class HermesRingSettleStubProtocol: URLProtocol {
+    static var error: URLError?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: Self.error ?? URLError(.badServerResponse))
+    }
+    override func stopLoading() {}
 }
