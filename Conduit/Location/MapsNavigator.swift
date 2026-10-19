@@ -79,7 +79,7 @@ enum MapsNavigator {
         case .driving: return MKLaunchOptionsDirectionsModeDriving
         case .walking: return MKLaunchOptionsDirectionsModeWalking
         case .transit: return MKLaunchOptionsDirectionsModeTransit
-        case .cycling: return MKLaunchOptionsDirectionsModeDefault
+        case .cycling: return MKLaunchOptionsDirectionsModeCycling
         }
     }
 

@@ -8,6 +8,7 @@
 //  extension of an existing class, so the test planner needs no new entry.
 //
 
+import MapKit
 import XCTest
 @testable import Conduit
 
@@ -84,6 +85,15 @@ extension AppStateVoiceCapabilityTests {
         let drive: [[String: Any]] = [["type": "map", "places": [["name": "A"]], "route": ["to": 0]]]
         let driving = try XCTUnwrap(RichCard.cards(raw: drive).first)
         XCTAssertEqual(driving.route?.mode, .driving)
+    }
+
+    func testACyclingRouteIsDrawnAndOpenedAsCycling() {
+        // Not walking's time and line under the bicycle, and Maps opens on its bike directions.
+        XCTAssertEqual(RichPlaceLookup.transportType(.cycling), .cycling)
+        XCTAssertEqual(RichPlaceLookup.directionsMode(.cycling), MKLaunchOptionsDirectionsModeCycling)
+        XCTAssertEqual(MapsNavigator.directionsMode(.cycling), MKLaunchOptionsDirectionsModeCycling)
+        XCTAssertEqual(RichPlaceLookup.transportType(.walking), .walking)
+        XCTAssertEqual(MapsNavigator.directionsMode(.walking), MKLaunchOptionsDirectionsModeWalking)
     }
 
     func testRichInformationCardsReadTheirOwnParts() throws {
