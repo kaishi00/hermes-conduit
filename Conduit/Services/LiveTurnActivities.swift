@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import os
+import UIKit
 
 private let liveActivityLog = Logger(subsystem: "com.milim.relay", category: "LiveActivity")
 
@@ -201,6 +202,8 @@ final class LiveTurnActivities {
         /// The last update handed to ActivityKit; each waits for the one
         /// before it, so a burst of events lands in order.
         var updateTask: Task<Void, Never>?
+        /// Sends the state the throttle holds once its interval is up.
+        var heldTask: Task<Void, Never>?
     }
 
     /// How long after a turn starts an idle `session.busy` / `session.info`
@@ -216,6 +219,8 @@ final class LiveTurnActivities {
 
     private var running: [String: Running] = [:]
     private var registryAbsences = LiveTurnProgress.RegistryAbsences()
+    /// At most one stream update every 2 seconds per activity.
+    private var throttle = LiveActivityUpdateThrottle()
     private var adopted = false
     /// Stream events of chats whose prompt is still being submitted: the
     /// gateway can stream before prompt.submit answers, and those events
@@ -230,6 +235,17 @@ final class LiveTurnActivities {
 
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
+    }
+
+    private init() {
+        // Nothing stays held across a suspension: on resuming, its wait
+        // would end at once and send a state older than what the relay
+        // may have pushed meanwhile.
+        for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { LiveTurnActivities.shared.sendAllHeld() }
+            }
+        }
     }
 
     /// A prompt is about to be submitted: its chat's events are held until
@@ -309,14 +325,55 @@ final class LiveTurnActivities {
                 // Its stream is live: an absence from the registry (an id
                 // that rotated mid-turn) is moot.
                 registryAbsences.forget(id)
-                let content = ActivityContent(state: next, staleDate: Date().addingTimeInterval(Self.staleAfter))
-                let previous = entry.updateTask
-                running[id]?.updateTask = Task {
-                    await previous?.value
-                    guard !Task.isCancelled else { return }
-                    await entry.activity.update(content)
+                switch throttle.offer(next, for: id, at: Date()) {
+                case .now:
+                    running[id]?.heldTask?.cancel()
+                    running[id]?.heldTask = nil
+                    update(id, to: next)
+                case .at(let due):
+                    guard running[id]?.heldTask == nil else { break }
+                    running[id]?.heldTask = Task { [weak self] in
+                        let wait = max(0, due.timeIntervalSinceNow)
+                        do {
+                            try await Task.sleep(for: .seconds(wait), tolerance: .milliseconds(250))
+                        } catch {
+                            return
+                        }
+                        // Cancelled after its wait ended: a newer task or
+                        // send took over.
+                        guard !Task.isCancelled else { return }
+                        self?.sendHeld(id)
+                    }
                 }
             }
+        }
+    }
+
+    /// The newest state held back by the throttle, now its interval is up.
+    private func sendHeld(_ id: String) {
+        guard running[id] != nil else { return }
+        running[id]?.heldTask?.cancel()
+        running[id]?.heldTask = nil
+        guard let state = throttle.due(for: id, at: Date()) else { return }
+        update(id, to: state)
+    }
+
+    /// Conduit is leaving the screen: every held state goes now.
+    private func sendAllHeld() {
+        for id in running.keys where throttle.holds(id) {
+            sendHeld(id)
+        }
+    }
+
+    /// Hands `state` to ActivityKit after the update before it.
+    private func update(_ id: String, to state: HermesTurnAttributes.ContentState) {
+        guard let entry = running[id] else { return }
+        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(Self.staleAfter))
+        let previous = entry.updateTask
+        running[id]?.updateTask = Task {
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            await entry.activity.update(content)
         }
     }
 
@@ -473,14 +530,17 @@ final class LiveTurnActivities {
             }
         }
         running[id] = Running(activity: activity, sessionIDs: sessionIDs, state: state, tokenTask: tokenTask, stateTask: stateTask)
+        throttle.started(id, showing: state, at: Date())
     }
 
     private func forget(_ id: String) async {
         registryAbsences.forget(id)
+        throttle.forget(id)
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()
         entry.updateTask?.cancel()
+        entry.heldTask?.cancel()
         if let token = entry.pushToken {
             await PushNotificationService.shared.unregisterLiveActivity(token: token)
         }
@@ -501,9 +561,13 @@ final class LiveTurnActivities {
 
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {
         registryAbsences.forget(id)
+        // The end goes out at once, with the newest state: nothing held
+        // back follows it.
+        throttle.forget(id)
         guard let entry = running.removeValue(forKey: id) else { return }
         entry.tokenTask?.cancel()
         entry.stateTask?.cancel()
+        entry.heldTask?.cancel()
         var lastState = entry.state.turnPhase.isFinished
             ? entry.state
             : LiveTurnProgress.finished(entry.state, phase, now: Date())

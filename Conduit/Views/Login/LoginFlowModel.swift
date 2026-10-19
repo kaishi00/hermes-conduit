@@ -73,7 +73,7 @@ struct LoginBrowserRequest: Identifiable {
     let baseURL: String
     let cloudflare: CloudflareAccessCredentials?
     /// The WebKit session store for this sign-in (#148): the saved
-    /// dashboard's own when one exists, else a fresh one for a new dashboard.
+    /// dashboard's own, registered first for a new address.
     let webKitStoreID: UUID
 }
 
@@ -271,8 +271,14 @@ final class LoginFlowModel: ObservableObject {
         LoginCloudflareState(isEnabled: cloudflareEnabled, clientID: cloudflareClientID, clientSecret: cloudflareClientSecret)
     }
 
+    /// The service token is switched on but a field is still empty: it
+    /// would be dropped, not sent, so the address step waits for it.
+    var cloudflareIncomplete: Bool {
+        cloudflareEnabled && typedCloudflare == nil
+    }
+
     var canContinue: Bool {
-        LoginView.hasConnectableInput(serverURL: address) && !isWorking
+        LoginView.hasConnectableInput(serverURL: address) && !cloudflareIncomplete && !isWorking
     }
 
     var canSignIn: Bool {
@@ -434,6 +440,15 @@ final class LoginFlowModel: ObservableObject {
         let candidates = LoginAddress.candidates(address)
         guard !candidates.isEmpty else {
             show(.notice(title: AppLocalization.string("Enter a valid dashboard URL.")), at: .address)
+            return
+        }
+        // A half-typed service token never falls back to no token, or to an
+        // older one saved for this address: the keyboard's last Return
+        // reaches here even when Continue is off.
+        guard !cloudflareIncomplete else {
+            show(.notice(title: AppLocalization.string(
+                "Enter both the Cloudflare Client ID and Client Secret, or turn off the service token."
+            )), at: .address)
             return
         }
         // Keep WHICH address rule failed: a malformed address and plain http
@@ -714,19 +729,22 @@ final class LoginFlowModel: ObservableObject {
 
     private func startBrowserSignIn(baseURL: String, cloudflare: CloudflareAccessCredentials?, place: LoginFailurePlace) {
         guard let appState else { return }
-        // The WebKit session is the dashboard's own: the saved dashboard's
-        // identified store when it exists (repair, signing in again),
-        // otherwise a fresh store for this new sign-in. Never the default
-        // store: sibling-host cookies must not cross dashboards.
-        let storeID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false) ?? UUID()
+        // The WebKit session is the dashboard's own identified store, never
+        // the default one: sibling-host cookies must not cross dashboards.
+        // A new address is registered first, so the store is the one its
+        // saved dashboard keeps: Sign Out, Remove Dashboard and an abandoned
+        // attempt's cleanup all clear that same store.
         noteUnsavedSignIn(at: baseURL)
-        // The service token belongs to the dashboard it opens; resolve (or
-        // pre-register) it so the scoped write can't land on another record.
-        if let cloudflare, let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) {
+        guard let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
+            show(.notice(title: AppLocalization.string("Could not save this dashboard.")), at: place)
+            return
+        }
+        // The service token belongs to the dashboard it opens.
+        if let cloudflare {
             KeychainHelper.saveCloudflareAccess(cloudflare, origin: baseURL, dashboardID: dashboardID)
         }
         browserPlace = place
-        browserRequest = LoginBrowserRequest(baseURL: baseURL, cloudflare: cloudflare, webKitStoreID: storeID)
+        browserRequest = LoginBrowserRequest(baseURL: baseURL, cloudflare: cloudflare, webKitStoreID: dashboardID)
     }
 
     /// Where a browser sign-in's failure shows once its sheet reports one.

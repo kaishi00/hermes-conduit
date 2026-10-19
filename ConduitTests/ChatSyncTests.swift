@@ -344,6 +344,8 @@ final class ChatSyncTests: XCTestCase {
         )
         appState.isConnected = true
         appState.chatSyncNow = { box.now }
+        // Not this Mac's Low Power Mode or network.
+        appState.deviceConditions = { DeviceConditions() }
         return appState
     }
 
@@ -473,5 +475,67 @@ final class ChatSyncTests: XCTestCase {
         appState.chatListBecameActive()
         await appState.leaveCatalogRefreshTask?.value
         XCTAssertEqual(box.loads, 2)
+    }
+
+    // MARK: - The list's poll pace (PowerPolicy.swift)
+
+    private func pollWait(_ appState: AppState) async -> TimeInterval {
+        let wait = await appState.chatListPollTick()
+        await appState.leaveCatalogRefreshTask?.value
+        return wait
+    }
+
+    func testAQuietListPollsLessOftenAndCatchesUpWhenAChatStartsElsewhere() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        let profile = appState.activeProfile
+        appState.sessions = [row("listed", profile: profile)]
+        box.catalog = [row("listed", profile: profile)]
+        box.live = [LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "idle", messageCount: 2)]
+
+        var waits: [TimeInterval] = []
+        for _ in 0..<5 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15, 30, 60])
+
+        // Another device starts a chat: the unknown live id reads the
+        // catalog at once, and the poll is quick again.
+        box.live.append(LiveSessionStatus(runtimeSessionId: "rt-new", storedSessionId: "new", status: "working"))
+        box.catalog = [row("new", profile: profile, minutesAgo: 0), row("listed", profile: profile)]
+        let loadsBefore = box.loads
+        let wait = await pollWait(appState)
+        XCTAssertEqual(wait, 4)
+        XCTAssertEqual(box.loads, loadsBefore + 1, "The unknown live id is read on the same tick")
+        XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["new", "listed"])
+    }
+
+    func testAReturnToTheAppOrASearchBringsTheListPollBack() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        box.live = []
+        for _ in 0..<5 {
+            box.now += await pollWait(appState)
+        }
+        XCTAssertEqual(appState.chatListPollPacer.backoff.interval, 60)
+        appState.noteChatListInteraction()
+        let wait = await pollWait(appState)
+        XCTAssertEqual(wait, 4)
+    }
+
+    func testLowPowerModeStretchesTheListPoll() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.deviceConditions = { DeviceConditions(lowPowerMode: true) }
+        box.live = []
+        let first = await pollWait(appState)
+        box.now += first
+        let second = await pollWait(appState)
+        XCTAssertEqual([first, second], [12, 24])
     }
 }

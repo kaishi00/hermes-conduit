@@ -47,9 +47,13 @@ final class WatchPhoneCallLog: ObservableObject {
         append(line)
     }
 
-    /// Any other event line the Watch sent: logged, not shown.
-    func watchNote(_ line: String) {
-        append(line)
+    /// Any other event lines the Watch sent: logged, not shown. One line
+    /// from an older Watch, a batch of them from a newer one
+    /// (WatchCallLogBatch).
+    func watchNote(_ text: String) {
+        for line in WatchCallLogBatch.lines(in: text) {
+            append(line)
+        }
     }
 
     func clear() {

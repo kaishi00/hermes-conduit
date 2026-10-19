@@ -31,6 +31,7 @@ struct KanbanTaskDetailView: View {
 
     @EnvironmentObject private var store: KanbanStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     private let initialTask: KanbanTask
     /// Replace-current-detail navigation target for dependency taps. The
@@ -256,9 +257,17 @@ struct KanbanTaskDetailView: View {
             // drafts re-seed because the user navigated away from them.
             .task(id: displayedTaskID) {
                 await loadDetail(force: true)
+            }
+            // The poll stops in the background, and slows to a backstop
+            // while the board's live stream is connected.
+            .task(id: "\(displayedTaskID)|\(scenePhase == .background)|\(store.liveStreamConnected)") {
+                guard scenePhase != .background else { return }
                 while !Task.isCancelled {
                     do {
-                        try await Task.sleep(nanoseconds: KanbanPollingPolicy.detailIntervalNanoseconds)
+                        try await Task.sleep(nanoseconds: KanbanPollingPolicy.detailInterval(
+                            streaming: store.liveStreamConnected,
+                            conditions: DeviceConditionsMonitor.shared.current
+                        ))
                     } catch {
                         break
                     }

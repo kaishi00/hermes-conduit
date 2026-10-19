@@ -1819,8 +1819,8 @@ extension AppStateVoiceCapabilityTests {
         session.becomeReady()
         XCTAssertEqual(
             coordinator.controls,
-            CarPlayVoiceControls(isClassic: false, isMicrophoneMuted: false),
-            "a live call has no chat to continue, so Ready offers no New Chat"
+            CarPlayVoiceControls(isClassic: false, isMicrophoneMuted: false, canStopReply: false),
+            "a live call has no chat to continue, so Ready offers no New Chat, and GPT-Live stops when the driver speaks"
         )
 
         coordinator.toggleMicrophone()
@@ -2012,7 +2012,7 @@ extension AppStateVoiceCapabilityTests {
         let (controller, _) = await startMinimisableGPTLive(in: appState)
         XCTAssertTrue(appState.showGPTLiveSheet)
 
-        appState.releaseCarPlayGPTLive()
+        unplugCarPlay(from: appState, phoneScreenOn: true)
 
         XCTAssertTrue(controller.isActive, "the phone still presents it, as its sheet")
         XCTAssertTrue(appState.showGPTLiveSheet)
@@ -2028,9 +2028,23 @@ extension AppStateVoiceCapabilityTests {
         _ = appState.handleScenePhase(.background)
         XCTAssertTrue(controller.isActive, "a locked phone alone keeps the call")
 
-        appState.releaseCarPlayGPTLive()
+        unplugCarPlay(from: appState, phoneScreenOn: false)
 
         XCTAssertFalse(controller.isActive)
+    }
+
+    /// The car connects and then goes away through the coordinator, as the
+    /// scene delegate's disconnect delivers it (the selector test pins that
+    /// CarPlay reaches the delegate).
+    private func unplugCarPlay(from appState: AppState, phoneScreenOn: Bool) {
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.phoneScreenProvider = { phoneScreenOn }
+        coordinator.autoEstablishOnConnect = false
+        let spy = InterfacingSpy()
+        coordinator.handleConnect(spy)
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
     }
 
     func testCarPlayGoingAwayWhileLockedClearsTheBarOfACallThatStopped() async {

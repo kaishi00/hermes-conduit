@@ -8821,6 +8821,8 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: presentationCache
         )
+        // The registry checks' pace, not this Mac's Low Power Mode or network.
+        appState.deviceConditions = { DeviceConditions() }
         return (appState, coordinator, store, recoverySequence)
     }
 

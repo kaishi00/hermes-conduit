@@ -3,11 +3,13 @@
 //  Conduit
 //
 //  One sync pass: make sure this phone and the Hermes profile share a key,
-//  send the recent days again (the Watch syncs late), then new and deleted
+//  recompute the recent days (the Watch syncs late) and send the windows
+//  that changed since the host last took them, then new and deleted
 //  workouts, sleep stages and raw readings, then one more step of older
-//  history. Every piece is re-readable from Apple Health, so there is no
-//  outbox: an anchor or the history cursor moves only after the host has
-//  acknowledged the batch, and a crash or a timeout just means the next
+//  history. Recent days go whole every few hours, or when the user asks.
+//  Every piece is re-readable from Apple Health, so there is no outbox: an
+//  anchor, the history cursor or a window's hash moves only after the host
+//  has acknowledged the batch, and a crash or a timeout just means the next
 //  pass sends it again (the host's writes are idempotent).
 //
 //  The pass stops at its deadline (a background wake gets about half a
@@ -31,6 +33,15 @@ struct HealthSyncState: Codable, Equatable {
     /// The oldest day already sent; history before it is still to go.
     var backfillCursor: Date?
     var anchors: [String: Data] = [:]
+    /// Each recent window the host last took, by metric, grain and range,
+    /// as a hash of what it carried (HealthBatch.windowPrints), and when
+    /// they last all went. Optional so a state file from before still reads.
+    var recentWindows: [String: String]?
+    var recentWholeAt: Date?
+    /// When the host last took an upload, empty or not: only an upload
+    /// moves its `last_seen`, so a pass with nothing to send still posts
+    /// one every so often (ContextUploadPolicy.healthKeepalive).
+    var lastIngest: Date?
     var lastSync: Date?
     var lastAttempt: Date?
     var pause: HealthSyncPause?
@@ -138,6 +149,10 @@ final class HealthSyncEngine: ObservableObject {
     var calendar: Calendar
     private var running: Task<Outcome, Never>?
     private var runningPreferences: HealthSyncPreferences?
+    private var runningOptions = HealthPassOptions()
+    /// Apple Health woke Conduit with new data while a pass had only just
+    /// run: the next pass, for any reason, runs without waiting its turn.
+    var changesWaiting = false
     private var turnOffs = 0
     /// The state file couldn't be read at launch; nothing runs until it can.
     private var stateUnread = false
@@ -165,20 +180,25 @@ final class HealthSyncEngine: ObservableObject {
     }
 
     /// Runs a pass, or joins the one already running. A pass started with
-    /// other choices is followed by one with these, so a change isn't lost.
-    func sync(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
+    /// other choices, or that does less than these options ask (Sync now
+    /// during a routine pass), is followed by one with these, so a change
+    /// isn't lost.
+    func sync(preferences: HealthSyncPreferences, deadline: Date, options: HealthPassOptions = HealthPassOptions(),
+              request: @escaping Request) async -> Outcome {
         let turnOffs = self.turnOffs
         while let current = running {
             let joined = runningPreferences
+            let joinedOptions = runningOptions
             let outcome = await current.value
-            if joined == preferences { return outcome }
+            if joined == preferences, joinedOptions.covers(options) { return outcome }
             // Turned off meanwhile: these choices no longer hold.
             guard self.turnOffs == turnOffs else { return .off }
             if running == current { running = nil }
         }
-        let task = Task { await self.pass(preferences: preferences, deadline: deadline, request: request) }
+        let task = Task { await self.pass(preferences: preferences, deadline: deadline, options: options, request: request) }
         running = task
         runningPreferences = preferences
+        runningOptions = options
         isSyncing = true
         // An expiring background task stops the pass with it.
         let outcome = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
@@ -254,7 +274,8 @@ final class HealthSyncEngine: ObservableObject {
 
     // MARK: The pass
 
-    private func pass(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
+    private func pass(preferences: HealthSyncPreferences, deadline: Date, options: HealthPassOptions,
+                      request: @escaping Request) async -> Outcome {
         guard preferences.isOn, let destination = preferences.destination else { return .off }
         // Health is unreadable until the user unlocks the phone, this file too.
         guard readStateIfNeeded() else { return .unfinished }
@@ -269,13 +290,20 @@ final class HealthSyncEngine: ObservableObject {
         state.pause = nil
         lastError = nil
         defer { store.save(state) }
+        let postedBefore = state.lastIngest
         do {
             let key = try await ensureKey(request: request)
             prepareHistory(preferences.history)
-            var session = Session(engine: self, key: key, preferences: preferences, request: request, deadline: deadline)
+            var session = Session(engine: self, key: key, preferences: preferences, options: options, request: request,
+                                  deadline: deadline)
             try await session.sendRecentDays()
             try await session.sendEvents()
-            try await session.sendHistory()
+            // Low Data Mode: older history waits for another network.
+            if !options.lowData { try await session.sendHistory() }
+            if state.lastIngest == postedBefore,
+               ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now()) {
+                try await session.sendKeepalive()
+            }
             state.lastSync = now()
             state.pause = nil
             lastError = nil
@@ -350,6 +378,8 @@ final class HealthSyncEngine: ObservableObject {
 
     private func restart() {
         state.anchors = [:]
+        state.recentWindows = nil
+        state.recentWholeAt = nil
         state.backfillCursor = nil
         state.historyStart = nil
         state.history = nil
@@ -374,6 +404,10 @@ final class HealthSyncEngine: ObservableObject {
         store.save(state)
     }
 
+    fileprivate func notePosted() {
+        state.lastIngest = now()
+    }
+
     fileprivate var currentNow: Date { now() }
     fileprivate var currentDeviceName: String { deviceName() }
 
@@ -392,6 +426,7 @@ private struct Session {
     let engine: HealthSyncEngine
     let key: HealthSyncCrypto.SessionKey
     let preferences: HealthSyncPreferences
+    let options: HealthPassOptions
     let request: HealthSyncEngine.Request
     let deadline: Date
 
@@ -399,10 +434,11 @@ private struct Session {
     var categories: Set<HealthCategory> { preferences.categories }
 
     init(engine: HealthSyncEngine, key: HealthSyncCrypto.SessionKey, preferences: HealthSyncPreferences,
-         request: @escaping HealthSyncEngine.Request, deadline: Date) {
+         options: HealthPassOptions, request: @escaping HealthSyncEngine.Request, deadline: Date) {
         self.engine = engine
         self.key = key
         self.preferences = preferences
+        self.options = options
         self.request = request
         self.deadline = deadline
     }
@@ -418,14 +454,35 @@ private struct Session {
                     detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) })
     }
 
-    func send(_ batch: HealthBatch) async throws {
+    /// Sends `batch` in parts. Returns the windows (HealthBatch.windowPrints
+    /// keys) in parts where the host kept a newer computation of some
+    /// window over this one (`stale_windows`): those aren't the host's yet.
+    @discardableResult
+    func send(_ batch: HealthBatch) async throws -> Set<String> {
+        var notTaken: Set<String> = []
         for part in batch.split() {
-            try checkTime()
-            let plaintext = try JSONSerialization.data(withJSONObject: part.json(), options: [.sortedKeys])
-            let body = try HealthSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: engine.state.deviceID,
-                                                     batchID: part.batchID)
-            _ = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
+            let answer = try await post(part)
+            if ((answer["stale_windows"] as? NSNumber)?.intValue ?? 0) > 0 {
+                notTaken.formUnion(part.windowPrints().map(\.key))
+            }
         }
+        return notTaken
+    }
+
+    private func post(_ part: HealthBatch) async throws -> [String: Any] {
+        try checkTime()
+        let plaintext = try JSONSerialization.data(withJSONObject: part.json(), options: [.sortedKeys])
+        let body = try HealthSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: engine.state.deviceID,
+                                                 batchID: part.batchID)
+        let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
+        engine.notePosted()
+        return answer
+    }
+
+    /// An upload with nothing in it, so the host knows this phone is still
+    /// sharing and has nothing new (split() drops an empty batch).
+    func sendKeepalive() async throws {
+        _ = try await post(newBatch())
     }
 
     /// Buckets and nights for [from, to), as windows the host replaces.
@@ -457,16 +514,29 @@ private struct Session {
         return windows
     }
 
-    /// Today and the days before it that the Watch may still fill in.
+    /// Today and the days before it that the Watch may still fill in: the
+    /// windows that changed since the host took them, or all of them every
+    /// few hours. A sample added, edited or deleted in these days changes
+    /// its window, so it still goes.
     mutating func sendRecentDays() async throws {
-        let today = calendar.startOfDay(for: engine.currentNow)
+        let now = engine.currentNow
+        let today = calendar.startOfDay(for: now)
         let from = calendar.date(byAdding: .day, value: -(HealthSyncLimits.recomputedDays - 1), to: today) ?? today
         let to = calendar.date(byAdding: .day, value: 1, to: today) ?? today
         var batch = newBatch()
         batch.windows = try await windows(from: from, to: to)
-        try await send(batch)
-        if engine.state.backfillCursor == nil {
-            engine.acknowledged { $0.backfillCursor = from }
+        let prints = batch.windowPrints()
+        let whole = ContextUploadPolicy.healthResendsRecent(options, lastWhole: engine.state.recentWholeAt, now: now)
+        if !whole {
+            let sent = engine.state.recentWindows ?? [:]
+            batch.windows = zip(batch.windows, prints).filter { sent[$1.key] != $1.hash }.map(\.0)
+        }
+        let notTaken = try await send(batch)
+        engine.acknowledged { state in
+            let taken = prints.filter { !notTaken.contains($0.key) }
+            state.recentWindows = Dictionary(taken.map { ($0.key, $0.hash) }, uniquingKeysWith: { _, last in last })
+            if whole { state.recentWholeAt = now }
+            if state.backfillCursor == nil { state.backfillCursor = from }
         }
     }
 

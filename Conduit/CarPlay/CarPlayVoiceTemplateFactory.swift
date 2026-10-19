@@ -34,17 +34,21 @@ struct CarPlayVoiceActionHandlers {
     var toggleMicrophone: () -> Void
     /// End the conversation through the authoritative Close teardown.
     var endConversation: () -> Void
+    /// Stop Hermes' spoken reply and listen (Stop).
+    var stopReply: () -> Void
 
     init(
         startListening: @escaping () -> Void,
         startNewChat: @escaping () -> Void = {},
         toggleMicrophone: @escaping () -> Void = {},
-        endConversation: @escaping () -> Void
+        endConversation: @escaping () -> Void,
+        stopReply: @escaping () -> Void = {}
     ) {
         self.startListening = startListening
         self.startNewChat = startNewChat
         self.toggleMicrophone = toggleMicrophone
         self.endConversation = endConversation
+        self.stopReply = stopReply
     }
 }
 
@@ -63,6 +67,10 @@ struct CarPlayVoiceControls: Equatable {
     /// Listen starts a new one. Fixed like the other titles, so a different
     /// chat also needs a new template.
     var chatTitle: String? = nil
+    /// Hermes' spoken reply can be stopped with one tap (Stop): classic
+    /// Voice, Gemini Live and Grok Live. GPT-Live stops when the driver
+    /// speaks.
+    var canStopReply = true
 
     /// The classic mode's Listen continues the current chat, so a new chat
     /// is its own button. A live call always starts fresh.
@@ -78,6 +86,8 @@ enum CarPlayVoiceButton: Equatable {
     case unmute
     /// Reopens the classic mode's paused microphone.
     case resume
+    /// Stops Hermes' spoken reply and listens.
+    case stop
     case end
 
     /// The buttons for one state, in display order.
@@ -85,6 +95,10 @@ enum CarPlayVoiceButton: Equatable {
         switch state {
         case .ready, .error:
             return controls.offersNewChat ? [.listen, .newChat] : [.listen]
+        case .responding where !controls.isMicrophoneMuted && controls.canStopReply:
+            // The microphone is closed while Hermes speaks in the car, so
+            // the useful button is the one that stops it.
+            return [.stop, .end]
         case .listening, .processing, .responding:
             guard controls.isMicrophoneMuted else { return [.mute, .end] }
             // The classic microphone also pauses itself after a long
@@ -101,6 +115,7 @@ enum CarPlayVoiceButton: Equatable {
         case .mute: return AppLocalization.string("Mute")
         case .unmute: return AppLocalization.string("Unmute")
         case .resume: return AppLocalization.string("Listen")
+        case .stop: return AppLocalization.string("Stop")
         case .end: return AppLocalization.string("End")
         }
     }
@@ -113,6 +128,7 @@ enum CarPlayVoiceButton: Equatable {
         case .mute: return "mic.fill"
         case .unmute: return "mic.slash.fill"
         case .resume: return "mic.slash.fill"
+        case .stop: return "stop.fill"
         case .end: return "xmark.circle"
         }
     }
@@ -165,6 +181,7 @@ enum CarPlayVoiceTemplateFactory {
                 case .listen: handlers.startListening()
                 case .newChat: handlers.startNewChat()
                 case .mute, .unmute, .resume: handlers.toggleMicrophone()
+                case .stop: handlers.stopReply()
                 case .end: handlers.endConversation()
                 }
             }

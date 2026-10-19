@@ -21,6 +21,8 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
+            // Low Power Mode and Low Data Mode stretch every poll.
+            DeviceConditionsMonitor.shared.start()
             WatchVoiceLink.shared.activate()
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
@@ -242,6 +244,8 @@ struct ConduitApp: App {
             // new pick redraws in place: no view is rebuilt.
             .environment(\.conduitAccent, accentChoice)
             .background(WindowAccentTint(choice: accentChoice))
+            // Notes touches app-wide so the backdrop can rest when idle.
+            .background(InteractionIdleTouchProbe())
             // The Watch app draws in the same accent.
             .onChange(of: accentChoice) { _, _ in appState.shareWatchCallVoices() }
 #if DEBUG
