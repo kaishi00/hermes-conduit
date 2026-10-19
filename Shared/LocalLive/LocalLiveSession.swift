@@ -498,6 +498,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         keepaliveTask?.cancel()
         keepaliveTask = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropTurns()
         if let serverClose, GrokLiveSession.isRefusal(serverClose) {
             fail(Self.refusalMessage(serverClose))

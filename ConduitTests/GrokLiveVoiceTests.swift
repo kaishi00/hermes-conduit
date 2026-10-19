@@ -723,6 +723,33 @@ extension VoiceConversationControllerTests {
         session.stop()
     }
 
+    /// The upsampler is the connection's: a dropped connection's held
+    /// sample, or capture dropped while reconnecting, never reaches the
+    /// next connection's first chunk.
+    func testGrokLiveReconnectStartsTheMicrophoneStreamAfresh() async throws {
+        let (session, sockets) = makeGrokSession()
+        session.start()
+        await grokSettle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        await grokSettle(until: { session.state == .ready })
+        // 1, 3 go out as 1, 2; the 3 is held for the next chunk.
+        session.send(.audio(Data([1, 0, 3, 0])))
+        await grokSettle(until: { first.sent.last?["type"] as? String == "input_audio_buffer.append" })
+
+        first.serverClose(nil)
+        await grokSettle(until: { sockets().count == 2 && sockets()[1].sent.first != nil })
+        XCTAssertEqual(session.state, .reconnecting)
+        session.send(.audio(Data([7, 0, 9, 0])))
+        let second = try XCTUnwrap(sockets().last)
+        second.deliver(["type": "session.updated"])
+        await grokSettle(until: { session.state == .ready })
+        session.send(.audio(Data([5, 0])))
+        await grokSettle(until: { second.sent.last?["type"] as? String == "input_audio_buffer.append" })
+        XCTAssertEqual(second.sent.last?["audio"] as? String, Data([5, 0]).base64EncodedString(), "Nothing held from the dropped connection or the dropped capture")
+        session.stop()
+    }
+
     func testGrokLiveBridgeAnswersStartJobAtOnceAndReportsTheOutcomeAsText() async throws {
         let fake = FakeVoiceJobBackend()
         let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))

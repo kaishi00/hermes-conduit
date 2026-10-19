@@ -286,6 +286,30 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    /// The upsampler is the connection's: a dropped connection's held
+    /// sample never reaches the next connection's first chunk.
+    func testLocalLiveReconnectStartsTheMicrophoneStreamAfresh() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(first, session: session)
+        // 1, 3 go out as 1, 2; the 3 is held for the next chunk.
+        session.send(.audio(Data([1, 0, 3, 0])))
+        await localLiveSettle(until: { first.sent.last?["type"] as? String == "input_audio_buffer.append" })
+
+        first.serverClose(nil)
+        await localLiveSettle(until: { sockets().count == 2 && sockets()[1].sent.isEmpty == false })
+        let second = try XCTUnwrap(sockets().last)
+        second.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(second, session: session)
+        session.send(.audio(Data([5, 0])))
+        await localLiveSettle(until: { second.sent.last?["type"] as? String == "input_audio_buffer.append" })
+        XCTAssertEqual(second.sent.last?["audio"] as? String, Data([5, 0]).base64EncodedString(), "Nothing held from the dropped connection")
+        session.stop()
+    }
+
     func testLocalLiveSessionFailsWhenTheServerAnswersWithoutAskingHermes() async throws {
         let (session, sockets) = makeLocalLiveSession()
         session.start()
