@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Application 'com.apple.springboard'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"Not Now" IN identifiers'

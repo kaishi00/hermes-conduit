@@ -1,0 +1,107 @@
+Application, 0x118081040, pid: 5891, label: ' ' <App element pid: 5891>
+  Window, 0x118081a40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4727957504.6>
+    Other, 0x118081180, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4728993344.16>
+  Window, 0x1180812c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4727948288.7>
+    Other, 0x118081400, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4692240448.17>
+      Other, 0x118081540, {{1174.5, -150.0}, {7.5, 7.5}} <AX element pid: 5891, elementOrHash.elementID: 4692240000.28>
+  Window, 0x118081b80, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4398236928.8>
+    Other, 0x118081cc0, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4399078400.18>
+      Other, 0x118081e00, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4751087104.29>
+        Other, 0x118081f40, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4751717504.34>
+          Other, 0x118082080, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752064512.38>
+            Other, 0x1180821c0, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752066304.40>
+            Other, 0x118082300, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752066752.41>
+            Other, 0x118082440, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752067200.42>
+            Other, 0x118082580, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4856057792.43>
+            Other, 0x1180826c0, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4856044096.44>
+            Other, 0x118082800, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4856050368.121>
+            Other, 0x118082940, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752065856.45>
+            Other, 0x118082a80, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752067648.46>
+            Other, 0x118082bc0, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752068096.47>
+            Other, 0x118082d00, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752068544.48>
+            Other, 0x118082e40, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4752068992.49>
+  Window, 0x118082f80, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4398238208.9>
+    Other, 0x1180830c0, {{0.0, 0.0}, {2064.0, 2752.0}} <AX element pid: 5891, elementOrHash.elementID: 4399081984.19>
+  Window, 0x118083200, {{0.0, 0.0}, {1032.0, 1376.0}}, identifier: 'SBSwitcherWindow:Main' <AX element pid: 5891, elementOrHash.elementID: 4730958848.10>
+    Other, 0x118083340, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4429295424.20>
+      Other, 0x118083480, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4429295872.30>
+        Other, 0x1180835c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4429296320.35>
+          Other, 0x118083700, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4429297216.39>
+            ScrollView, 0x118083840, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4749183488.50>
+            Other, 0x118083980, {{0.0, 0.0}, {1032.0, 1376.0}}, identifier: 'AppSwitcherContentView' <AX element pid: 5891, elementOrHash.elementID: 4429299008.51>
+              Other, 0x118083ac0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4729490944.52>
+                Other, 0x118083c00, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4749886336.56>
+              Other, 0x118083d40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4748860160.53>
+                Other, 0x118083e80, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856040064.57>
+                  Other, 0x117e62940, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856040960.60>
+              Other, 0x117e62bc0, {{0.0, 0.0}, {1032.0, 1376.0}}, identifier: 'card:com.milim.relay:sceneID:com.milim.relay-7C13A69B-0834-40C1-8DD4-00001A0198F5', label: 'Conduit' <AX element pid: 5891, elementOrHash.elementID: 4730750208.54>
+                Other, 0x117e603c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855975872.58>
+                  Other, 0x117e60500, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4933899904.61>
+                    Other, 0x117e60640, {{-196.0, -294.0}, {1424.0, 1964.0}} <AX element pid: 5891, elementOrHash.elementID: 4855977216.63>
+                      Other, 0x117e60780, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855978112.65>
+                        Other, 0x117e61e00, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855976768.66>
+                          ScrollView, 0x117e621c0, {{0.0, -688.0}, {1032.0, 2064.0}} <AX element pid: 5891, elementOrHash.elementID: 4855228416.67>
+                            Other, 0x117e62300, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4729495424.68>
+                              Other, 0x117e62440, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4933901184.69>
+                                Other, 0x117e62580, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855984384.72>
+                              Other, 0x117e626c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855980800.70>
+                                Other, 0x117e61f40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855983488.73>
+                                  Other, 0x117e62080, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855880704.76>
+                                    Other, 0x117e62800, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855882496.77>
+                                      Other, 0x118090000, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855882944.78>
+                                        Other, 0x118090140, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855883840.79>
+                                          Other, 0x118090280, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855884288.80>
+                                            Other, 0x1180903c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855872384.82>
+                                              Other, 0x118090500, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4784846848.84>
+                                                Other, 0x118090640, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855871040.86>
+                                                  StatusBar, 0x118090780, {{0.0, 0.0}, {1032.0, 32.0}} <AX element pid: 5891, elementOrHash.elementID: 4933577984.88>
+                                                    Other, 0x1180908c0, {{0.0, 0.0}, {1032.0, 32.0}} <AX element pid: 5891, elementOrHash.elementID: 4748860928.89>
+                                                      Other, 0x118090a00, {{0.0, 0.0}, {1032.0, 32.0}} <AX element pid: 5891, elementOrHash.elementID: 4784845952.90>
+                                                        Other, 0x118090b40, {{25.0, 11.0}, {453.0, 10.0}} <AX element pid: 5891, elementOrHash.elementID: 4784845504.91>
+                                                          StaticText, 0x118090c80, {{25.0, 7.5}, {52.5, 17.0}}, label: '5:46 PM' <AX element pid: 5891, elementOrHash.elementID: 4853019776.93>
+                                                          StaticText, 0x118090dc0, {{87.5, 7.5}, {76.0, 17.0}}, label: 'Mon Oct 19' <AX element pid: 5891, elementOrHash.elementID: 4398398336.94>
+                                                        Other, 0x118090f00, {{554.0, 11.0}, {452.0, 10.0}} <AX element pid: 5891, elementOrHash.elementID: 4784848192.92>
+                                                          Other, 0x118091040, {{937.0, 10.5}, {18.5, 11.0}}, label: 'Cellular', value: 4 of 4 bars, signa... <AX element pid: 5891, elementOrHash.elementID: 4933776384.95>
+                                                          Other, 0x118091180, {{959.5, 11.0}, {15.0, 10.0}}, identifier: '3 of 3 Wi-Fi bars', value: SSID, 3 of 3 Wi-Fi... <AX element pid: 5891, elementOrHash.elementID: 4933775872.96>
+                                                          Other, 0x1180912c0, {{978.5, 9.5}, {27.5, 13.0}}, label: '100% battery power' <AX element pid: 5891, elementOrHash.elementID: 4933894784.97>
+                                            Other, 0x118091400, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4853016192.83>
+                                              Other, 0x118091540, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855884736.85>
+                                                Other, 0x118091680, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4934962688.87>
+                                          Other, 0x1180917c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855946688.81>
+                                Other, 0x118091900, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4855983040.74>
+                                Other, 0x118091a40, {{0.0, 32.0}, {1032.0, 1344.0}} <AX element pid: 5891, elementOrHash.elementID: 4855981248.75>
+                              Other, 0x118091b80, {{1012.0, 1356.0}, {40.0, 40.0}}, identifier: 'resize-grabber', label: 'Resize Conduit', value: Bottom Right <AX element pid: 5891, elementOrHash.elementID: 4855992256.71>
+              Other, 0x118091cc0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4748857856.55>
+                Other, 0x118091e00, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856038720.59>
+                  Other, 0x118091f40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856039168.62>
+                    Other, 0x118092080, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856052608.64>
+  Window, 0x1180921c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4935550976.115>
+    Other, 0x118092300, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4934962176.116>
+      Other, 0x118092440, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4856048128.117>
+        Other, 0x118092580, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4934966272.118>
+          Other, 0x1180926c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 11742258859058838462.9999>
+            Other, 0x118092800, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 31250, elementOrHash.elementID: 4410318336.5>
+              Other, 0x118092940, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 31250, elementOrHash.elementID: 4410999424.6>
+                Other, 0x118092a80, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 31250, elementOrHash.elementID: 4352320704.7>
+                  Other, 0x118092bc0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 31250, elementOrHash.elementID: 4352314432.8>
+  Window, 0x118092d00, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4730760448.98>
+    Other, 0x118092e40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4784837888.100>
+      Other, 0x118092f80, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4784837440.102>
+  Window, 0x1180930c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4433142528.11>
+    Other, 0x118093200, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4728991104.21>
+      Other, 0x118093340, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4728992448.31>
+  Window, 0x118093480, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4750832128.12>
+    Other, 0x1180935c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4432470784.22>
+      Other, 0x118093700, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4399082880.32>
+  Window (Main), 0x118093840, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4730951680.5>
+    Other, 0x118093980, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4728994688.23>
+      Other, 0x118093ac0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4728995136.33>
+        Other, 0x118093c00, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4730277376.36>
+        Other, 0x118093d40, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4730277824.37>
+  Window, 0x118093e80, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4398188544.13>
+    StatusBar, 0x11809c000, {{0.0, 0.0}, {1032.0, 32.0}} <AX element pid: 5891, elementOrHash.elementID: 4399089536.24>
+    Other, 0x11809c140, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4399077952.25>
+  Window, 0x11809c280, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4432194560.14>
+    Other, 0x11809c3c0, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4692236416.26>
+  Window, 0x11809c500, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4432198656.15>
+    Other, 0x11809c640, {{0.0, 0.0}, {1032.0, 1376.0}} <AX element pid: 5891, elementOrHash.elementID: 4692239104.27>
