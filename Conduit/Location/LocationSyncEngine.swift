@@ -344,8 +344,7 @@ final class LocationSyncEngine: ObservableObject {
 
     /// The host's 409s that mean it has no usable key for this phone.
     nonisolated static func needsNewKey(_ detail: String) -> Bool {
-        let lowered = detail.lowercased()
-        return lowered.contains("unknown_key") || lowered.contains("bad_seal") || lowered.contains("unknown key")
+        HostKeyConflict.isKeyLoss(detail)
     }
 
     private func post(_ batch: LocationBatch, key: LocationCrypto.SessionKey, request: Request) async throws -> [String: Any] {

@@ -374,6 +374,29 @@ extension NotificationE2ETests {
         XCTAssertFalse(LocationSyncEngine.needsNewKey("layer_off"))
     }
 
+    /// The notifier sends its message, not its code, as the 409's detail
+    /// (`location_store.py`, `health_store.py`): key loss is recognized from
+    /// those messages too, and its other 409s are not key loss.
+    func testTheNotifiersKeyLossMessagesAreRecognized() {
+        for detail in [
+            "This device's location key isn't on this profile; set it up again",
+            "The body didn't open with this device's key; set up location sharing again",
+            "This device's health key isn\u{2019}t on this profile; set it up again",
+            "The body didn't open with this device's key; set up health sync again",
+        ] {
+            XCTAssertTrue(LocationSyncEngine.needsNewKey(detail), detail)
+        }
+        for detail in [
+            "This profile already keeps location from 8 devices; delete one from Conduit first",
+            "This location store was written by a newer plugin; update the plugin",
+            "This health store was written by a newer plugin; update the plugin",
+            "A gps fix needs precise sharing on",
+            "That place rule was just deleted",
+        ] {
+            XCTAssertFalse(LocationSyncEngine.needsNewKey(detail), detail)
+        }
+    }
+
     func testAnIngest404KeepsTheKeyAndIsThePluginMissingOnlyWhenStatusIsGoneToo() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }
