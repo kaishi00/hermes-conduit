@@ -470,6 +470,43 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNil(appState.activeSessionId)
         XCTAssertEqual(prompts, 0)
         XCTAssertNotNil(appState.errorMessage, "A send that goes nowhere says why")
+        XCTAssertFalse(appState.isStartingNewChat, "a failed start leaves New Chat and the next send free")
+    }
+
+    func testAMessageSentDisconnectedSaysToConnectOverAnOlderMessage() async {
+        var created = 0
+        let appState = makeConnectedAppState { _, _ in }
+        appState.widgetSessionCreatorOverride = { _, _ in
+            created += 1
+            return ("created-runtime", "created-stored", "default")
+        }
+        appState.isConnected = false
+        appState.errorMessage = "An older, unrelated failure."
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(created, 0)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to start a conversation."))
+        XCTAssertFalse(appState.isStartingNewChat)
+    }
+
+    func testAMessageSentWhileConnectedButNotReadyIsNotToldToConnect() async {
+        var created = 0
+        let appState = makeConnectedAppState { _, _ in }
+        appState.widgetSessionCreatorOverride = { _, _ in
+            created += 1
+            return ("created-runtime", "created-stored", "default")
+        }
+        // Connected, with a reconnect under way: no chat can start yet,
+        // but the connection isn't what the user has to fix.
+        appState.isConnecting = true
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(created, 0)
+        XCTAssertNotEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to start a conversation."))
     }
 
     private func makeConnectedAppState(

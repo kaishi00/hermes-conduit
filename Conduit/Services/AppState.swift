@@ -20359,10 +20359,7 @@ final class AppState: ObservableObject {
         guard !showsPendingNewChat, !isStartingNewChat else { return }
         if canStartNewChatNow {
             isStartingNewChat = true
-            Task {
-                await createNewSession()
-                isStartingNewChat = false
-            }
+            Task { await createNewSessionMarkingStart() }
             return
         }
         guard canQueueNewChat, let dashboardID = activeDashboardID,
@@ -20987,17 +20984,26 @@ final class AppState: ObservableObject {
     /// chat could start: the composer then keeps the message.
     private func startChatForComposerSubmission() async -> ComposerSubmissionContext? {
         guard canStartNewChatNow, !isStartingNewChat else {
-            if errorMessage == nil {
+            // Said only when the connection is what's missing, over any
+            // older message: this one is why the message didn't go. A
+            // chat starting, a sync or a profile switch passes on its own.
+            if !isConnected || client == nil {
                 errorMessage = AppLocalization.string("Connect to Hermes to start a conversation.")
             }
             return nil
         }
-        isStartingNewChat = true
-        await createNewSession()
-        isStartingNewChat = false
+        await createNewSessionMarkingStart()
         // A chat that didn't start has already said why (createNewSession).
         guard activeSessionId != nil else { return nil }
         return composerSubmissionContext()
+    }
+
+    /// Creates a chat as New Chat does, marked as starting until it is
+    /// done, so neither New Chat nor a send starts a second one meanwhile.
+    private func createNewSessionMarkingStart() async {
+        isStartingNewChat = true
+        defer { isStartingNewChat = false }
+        await createNewSession()
     }
 
     private func performComposerSubmission(
