@@ -877,11 +877,14 @@ final class RichStepsMemory: ObservableObject {
     @Published private(set) var notificationsOff = false
     private let defaults: UserDefaults
     private let notifier: Notifier
+    /// Each timer's last scheduling task, so a later start's request lands after an earlier one's.
+    private var scheduling: [String: Task<Void, Never>] = [:]
 
     /// Asks to notify and schedules the timer's notification.
     struct Notifier {
         var allowed: @MainActor () async -> Bool
         var add: @MainActor (UNNotificationRequest) async throws -> Void
+        var remove: @MainActor ([String]) -> Void
 
         static let system = Notifier(
             allowed: {
@@ -895,7 +898,8 @@ final class RichStepsMemory: ObservableObject {
                     return false
                 }
             },
-            add: { try await UNUserNotificationCenter.current().add($0) })
+            add: { try await UNUserNotificationCenter.current().add($0) },
+            remove: { RichStepsMemory.clearNotifications($0) })
     }
 
     init(defaults: UserDefaults = .standard, notifier: Notifier = .system) {
@@ -940,7 +944,8 @@ final class RichStepsMemory: ObservableObject {
         timers[Self.timerID(key, number)].flatMap { $0.addingTimeInterval(Self.doneShown) > .now ? $0 : nil }
     }
 
-    func startTimer(_ key: String, _ number: Int, seconds: Int, text: String, title: String?) {
+    @discardableResult
+    func startTimer(_ key: String, _ number: Int, seconds: Int, text: String, title: String?) -> Task<Void, Never> {
         let id = Self.timerID(key, number)
         let end = Date.now.addingTimeInterval(TimeInterval(seconds))
         timers[id] = end
@@ -951,30 +956,40 @@ final class RichStepsMemory: ObservableObject {
         content.sound = .default
         let request = UNNotificationRequest(identifier: id, content: content,
                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false))
-        Task { @MainActor in
+        let earlier = scheduling[id]
+        let task = Task { @MainActor in
             // The countdown runs on the card either way; without permission
             // the card says no notification will come.
             let allowed = await notifier.allowed()
+            // An earlier start's request may still be going in under the same
+            // identifier; let it finish first so this one is the one that stays.
+            // Waited for even when this start is dropped, so a later start that
+            // waits on this task also waits on that one.
+            await earlier?.value
+            // Stopped (or started again) meanwhile: this one isn't wanted.
+            guard timers[id] == end else { return }
             notificationsOff = !allowed
-            // Stopped (or started again) while asking: this one isn't wanted.
-            guard allowed, timers[id] == end else { return }
+            guard allowed else { return }
             do {
                 try await notifier.add(request)
             } catch {
                 notificationsOff = true
             }
-            // Stopped while it was being added.
-            if timers[id] == nil {
-                Self.clearNotifications([id])
+            // Stopped or started again while it was being added: take it back.
+            // A newer start waits for this task, so its own request goes in after.
+            if timers[id] != end {
+                notifier.remove([id])
             }
         }
+        scheduling[id] = task
+        return task
     }
 
     func stopTimer(_ key: String, _ number: Int) {
         let id = Self.timerID(key, number)
         timers.removeValue(forKey: id)
         saveTimers()
-        Self.clearNotifications([id])
+        notifier.remove([id])
     }
 
     private static func clearNotifications(_ ids: [String]) {

@@ -8,6 +8,7 @@
 //  extension of an existing class, so the test planner needs no new entry.
 //
 
+import UserNotifications
 import XCTest
 @testable import Conduit
 
@@ -190,37 +191,81 @@ extension AppStateVoiceCapabilityTests {
     func testAStoppedStepTimerDoesNotScheduleItsNotification() async {
         let defaults = UserDefaults(suiteName: "RichStepsTimerTests")!
         defaults.removePersistentDomain(forName: "RichStepsTimerTests")
-        // Each start waits here, as it would on the settings call, until the test lets it on.
-        var gates: [CheckedContinuation<Bool, Never>] = []
+        // Each start waits at the settings call, and (when held) inside the add,
+        // until the test lets it on. `pending` is what the notification center keeps.
+        var asks: [CheckedContinuation<Bool, Never>] = []
+        var adds: [CheckedContinuation<Void, Never>] = []
+        var holdAdds = false
         var added: [String] = []
+        var pending: [String: TimeInterval] = [:]
         let notifier = RichStepsMemory.Notifier(
-            allowed: { await withCheckedContinuation { gates.append($0) } },
-            add: { added.append($0.identifier) })
+            allowed: { await withCheckedContinuation { asks.append($0) } },
+            add: { request in
+                added.append(request.identifier)
+                if holdAdds { await withCheckedContinuation { adds.append($0) } }
+                pending[request.identifier] = (request.trigger as? UNTimeIntervalNotificationTrigger)?.timeInterval
+            },
+            remove: { $0.forEach { pending.removeValue(forKey: $0) } })
         let memory = RichStepsMemory(defaults: defaults, notifier: notifier)
-        func settle() async { for _ in 0..<50 { await Task.yield() } }
+        func until(_ ready: () -> Bool, _ what: String) async {
+            var turns = 0
+            while !ready(), turns < 10_000 { await Task.yield(); turns += 1 }
+            XCTAssertTrue(ready(), what)
+        }
+        func id(_ number: Int) -> String { "\(RichStepsMemory.notificationPrefix)k-\(number)" }
 
-        memory.startTimer("k", 1, seconds: 60, text: "Simmer.", title: nil)
-        await settle()
+        // Stopped while asking for permission.
+        let first = memory.startTimer("k", 1, seconds: 60, text: "Simmer.", title: nil)
+        await until({ asks.count == 1 }, "asking")
         memory.stopTimer("k", 1)
-        gates.removeFirst().resume(returning: true)
-        await settle()
+        asks.removeFirst().resume(returning: true)
+        await first.value
         XCTAssertEqual(added, [], "stopped before the notification was added")
 
-        // Start, stop and start again: only the timer that runs gets one.
-        memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
-        await settle()
+        // Start, stop and start again while asking: only the timer that runs gets one.
+        let stale = memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
+        await until({ asks.count == 1 }, "asking")
         memory.stopTimer("k", 2)
-        memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
-        await settle()
-        XCTAssertEqual(gates.count, 2)
-        gates.removeFirst().resume(returning: true)
-        await settle()
+        let running = memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
+        await until({ asks.count == 2 }, "asking again")
+        asks.removeFirst().resume(returning: true)
+        await stale.value
         XCTAssertEqual(added, [], "the stopped start adds nothing")
-        gates.removeFirst().resume(returning: true)
-        await settle()
+        asks.removeFirst().resume(returning: true)
+        await running.value
         XCTAssertEqual(added.count, 1, "the running timer is scheduled")
+        XCTAssertNotNil(pending[id(2)])
         XCTAssertNotNil(memory.timerEnd("k", 2))
         memory.stopTimer("k", 2)
+        XCTAssertNil(pending[id(2)])
+
+        // Stopped while the add is in flight: the request is taken back.
+        holdAdds = true
+        let stopped = memory.startTimer("k", 3, seconds: 60, text: "Chill.", title: nil)
+        await until({ asks.count == 1 }, "asking")
+        asks.removeFirst().resume(returning: true)
+        await until({ adds.count == 1 }, "adding")
+        memory.stopTimer("k", 3)
+        adds.removeFirst().resume()
+        await stopped.value
+        XCTAssertNil(pending[id(3)], "a stopped timer's request doesn't stay")
+
+        // Stopped and started again while the first add is in flight: the old
+        // request lands first and is taken back; the new timer's request stays.
+        let old = memory.startTimer("k", 4, seconds: 60, text: "Bake.", title: nil)
+        await until({ asks.count == 1 }, "asking")
+        asks.removeFirst().resume(returning: true)
+        await until({ adds.count == 1 }, "adding")
+        memory.stopTimer("k", 4)
+        holdAdds = false
+        let restarted = memory.startTimer("k", 4, seconds: 90, text: "Bake.", title: nil)
+        await until({ asks.count == 1 }, "asking again")
+        asks.removeFirst().resume(returning: true)
+        adds.removeFirst().resume()
+        await old.value
+        await restarted.value
+        XCTAssertEqual(pending[id(4)], 90, "the restarted timer's notification is the one scheduled")
+        memory.stopTimer("k", 4)
     }
 
     func testRichCardsComeFromConduitShowsSavedAnswer() throws {
