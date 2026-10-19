@@ -1,6 +1,6 @@
 # Hermes Conduit
 
-A native iOS client for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
+A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
 
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)
 [![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://hermesconduit.app)
@@ -8,52 +8,62 @@ A native iOS client for [Hermes Agent](https://github.com/NousResearch/hermes-ag
 
 ## What it does
 
-Conduit connects directly to your self-hosted Hermes dashboard. Same sessions, same profiles, same capabilities as the desktop client. No relay service, no extra processes, no middleman.
+Conduit is a touch-first app for your own Hermes agent on iPhone, iPad and Apple Watch, with CarPlay, widgets and Live Activities. It signs in to the Hermes dashboard you run, so your sessions, profiles, bots, tools and scheduled jobs are the same ones you use on desktop. Start a conversation on desktop and pick it up on your phone: the session list is the same because it is the same database.
 
-Start a conversation on desktop, pick it up on your phone. The session list is the same because it is the same database.
+The app works with any Hermes dashboard on its own. The free [Hermes Conduit Notifier](https://github.com/kaishi00/hermes-conduit-notifier) plugin on your host adds notifications, live voice, Apple Watch calls, rich cards and the phone features below.
 
 ## Features
 
 **Chat**
 
-- Streaming responses with full Markdown — syntax-highlighted code, math, Mermaid diagrams, task lists
-- Tool call inspection, reasoning traces, and delegated-agent progress
-- Attach images and any other file (PDFs, documents, code), or paste an image straight into the composer
-- Steer or interrupt an active turn mid-flight
-- Context usage meter with token counts and a progress ring
-- Slash commands and workspace file browsing
-- Session branching, pinning, archiving, refresh, and delete
+- Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
+- Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
+- Map, place, travel, media, contact and info cards that Hermes draws in the chat
+- Attach photos, camera shots and any file; quote a message, react to it, copy it
+- Steer, queue or stop a running turn; context meter; slash commands and workspace files
+- Branch, pin, archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**
 
-- Push-to-talk voice mode with on-device speech recognition or server-side Whisper
-- Live voice conversations via GPT-Live (OpenAI Realtime) and Gemini Live, including web search through Gemini's tool bridge
-- CarPlay support — talk to Hermes from the car
-- Spoken stop/end commands, continuous-conversation controls, and background audio
+- Live voice calls with Gemini Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
+- Start, check and cancel Hermes jobs by voice; results come back into the call
+- Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
+- Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
+- Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply
+- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button
 
-**Agents and control**
+**Tasks, bots and groups**
 
-- Bot Mode — browse your Hermes bots and open their dedicated Bot Chat conversations
-- Multiple dashboards — save and switch between Hermes servers with isolated credentials, sessions, and connection state
-- Provider and model switching without leaving the conversation, plus reasoning effort controls
-- Capabilities tab to toggle skills, tools, and MCP servers
-- Scheduled jobs viewer, connector monitoring, and recent gateway logs
-- Multi-profile support with per-profile settings
+- Tasks board for Hermes' Kanban tasks
+- Bots and their Bot Chats; gateway-hosted group chats with @mentions, files and approvals
+- Scheduled jobs: review runs, run now, edit, mute their notifications, delete
 
-**Sign-in, notifications, platform**
+**Your phone, if you allow it**
 
-- Native OAuth sign-in for dashboards using Google or other OIDC providers
-- Cloudflare Access service-token support
-- Push notifications for approvals, input requests, completed responses, failed turns, and background tasks
-- Inline approvals so you can approve or reject tool calls without typing
-- Face ID lock and Keychain credential storage
-- iPhone and iPad (iOS 17+)
+Each is off until you turn it on, and goes only to your own Hermes host, encrypted end to end:
+
+- Location and place rules, travel times, directions and navigation
+- Calendar and reminders, with each change asked first unless you allow adds
+- Apple Health data
+- Focus and phone status, alarms and timers, and contacts you pick
+- Ask Hermes about what's on your screen, or send anything from Shortcuts or the share sheet
+
+**Notifications and control**
+
+- Approve tools and answer questions straight from a notification, end-to-end encrypted between your host and your phone
+- Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
+- Home Screen widgets to start a chat or talk in one tap
+- Provider, model and reasoning effort switching mid-conversation
+- Multiple dashboards and profiles, each with its own credentials and settings
+- Capabilities: skills, tools, connectors and plugins, plus Hermes settings and gateway logs
+- Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
+- Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 
 ## Requirements
 
-- iOS 17 or later
-- iPhone or iPad
+- iPhone or iPad on iOS 17 or later; Apple Watch app on watchOS 10 or later (some features need newer versions)
 - A running Hermes Agent instance with the native dashboard enabled (default port 9119)
 
 ## Connecting
@@ -71,18 +81,18 @@ If the dashboard is behind Cloudflare Access, enable the optional service token 
 
 **Native OAuth limitation:** service-token headers cannot be attached to the system Safari navigation that opens `/auth/native/authorize`. Native OAuth therefore requires that browser authorization route to be reachable through an interactive Cloudflare policy or without a service-token challenge. The token exchange, refresh, REST, and WebSocket-ticket requests still use the configured service-token headers. A service-token-only challenge in front of the authorize route cannot be bypassed by Conduit and must not silently fall back to embedded Google OAuth.
 
-## Push Notifications
+## Notifications, voice and phone features
 
-Push notifications require a small relay service because iOS does not allow apps to maintain persistent background connections. The relay source is in the `hermes-conduit-notifier` plugin and the push relay server.
+Push notifications need a small relay because iOS does not let apps keep a background connection open. Live voice, Apple Watch calls, cards and the phone features need the notifier plugin on your Hermes host. One install covers all of it; the relay and plugin source live in [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier).
 
-To set up push notifications, install the notifier plugin on your Hermes instance:
+Install the notifier plugin on your Hermes instance:
 
 ```
 hermes plugins install kaishi00/hermes-conduit-notifier --enable
 hermes gateway restart
 ```
 
-Then follow the in-app pairing flow under Settings > Notifications.
+Then turn on notifications under Settings > Notifications; Conduit pairs the signed-in profile by itself. Settings > Conduit plugin shows the installed version and can update it.
 
 The app uses a shared relay by default (`push.milim.dev`) so notifications work out of the box with no extra setup.
 
@@ -103,8 +113,7 @@ open Conduit.xcodeproj
 Select your team in Signing & Capabilities, then build and run on your device.
 
 **Requirements:**
-- Xcode 16 or later
-- iOS 17 SDK
+- A current Xcode with the iOS 26 and watchOS 26 SDKs or later (CI builds with the default Xcode on GitHub's `macos-26` runners)
 - [xcodegen](https://github.com/yonaskolb/XcodeGen)
 
 ## Releasing
@@ -113,22 +122,24 @@ See [the iOS release workflow](docs/RELEASE_WORKFLOW.md) for the TestFlight and 
 
 ## Architecture
 
-Conduit is pure SwiftUI targeting iOS 17+. The project uses xcodegen for Xcode project generation from `project.yml`.
+Conduit is SwiftUI, generated with xcodegen from `project.yml`. Targets: the iPhone and iPad app, the Watch app and its widgets, Home Screen widgets and Live Activities, a Notification Service Extension (decrypts end-to-end encrypted notifications), a Location Push extension, and a share extension.
 
-The app connects to the Hermes dashboard WebSocket endpoint (`/api/ws`) after authenticating through the dashboard login page. All RPC calls route through the dashboard, same as the desktop client. The gateway is never contacted directly.
+The app connects to the Hermes dashboard's WebSocket (`/api/ws`) and REST routes after authenticating through the dashboard, as the desktop client does. Plugin features use the notifier's routes under `/api/plugins/conduit_push/`, behind the same dashboard auth.
 
-Key files:
+Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer
-- `Conduit/Services/AppState.swift` - Main state management and session lifecycle
-- `Conduit/Services/DashboardTicketBridge.swift` - Authentication bridge
-- `Conduit/Views/ChatView.swift` - Chat interface with streaming
-- `Conduit/Voice/` - Voice pipeline: push-to-talk plus GPT-Live and Gemini Live conversations
+- `Conduit/Services/AppState.swift` (and its `AppState+*.swift` extensions) - state and session lifecycle
+- `Conduit/Views/V2/` - the app shell: Chats, Tasks, Bots, Settings
+- `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, GPT-Live, Grok Live, Local Live)
+- `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
+- `ConduitWatch/` - the Apple Watch app
+- `Shared/` - code shared with the extensions and the Watch
 
 ## Privacy
 
-Conduit does not collect, transmit, or store your data on any third-party server. All communication goes directly between the app and your own Hermes instance. The only external connection is the optional push relay, which delivers notifications through Apple; with end-to-end encryption on, it only sees routing data, not their content.
+Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
 
-No analytics. No telemetry. No ad frameworks.
+The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/privacy/) says what each party receives.
 
 ## Support
 
