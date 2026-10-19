@@ -28,7 +28,6 @@
 
 import Foundation
 import Combine
-import Network
 import os
 import UniformTypeIdentifiers
 
@@ -313,9 +312,16 @@ enum AnyCodable: Codable, Equatable, Sendable {
         }
     }
 
+    /// The number truncated toward zero, or nil when it isn't one or lies
+    /// outside `Int`'s range: `Int(Double)` traps on NaN, infinity and
+    /// out-of-range values, and gateway payloads can carry any JSON number.
     var intValue: Int? {
-        if case .number(let n) = self { return Int(n) }
-        return nil
+        guard case .number(let n) = self,
+              n.isFinite,
+              n >= -9_223_372_036_854_775_808.0, // Int.min == -2^63, exact as Double
+              n < 9_223_372_036_854_775_808.0    // 2^63 itself already overflows
+        else { return nil }
+        return Int(n)
     }
 
     var doubleValue: Double? {
@@ -918,12 +924,10 @@ final class HermesClient: ObservableObject {
     /// connections without a close, so a quiet socket can be dead for
     /// minutes before the next send finds out. The ping keeps the path warm
     /// and finds a dead one while nobody is waiting on it.
-    // nonisolated(unsafe): deinit cancels both; cancel() is thread-safe.
+    // nonisolated(unsafe): deinit cancels it; cancel() is thread-safe.
     nonisolated(unsafe) private var keepaliveTask: Task<Void, Never>?
     private var lastInboundAt = Date()
     private var isProbing = false
-    nonisolated(unsafe) private var pathMonitor: NWPathMonitor?
-    private var pathMonitorSawInitialPath = false
     private let keepaliveInterval: TimeInterval?
     private let backgroundKeepaliveInterval: TimeInterval?
     /// Off screen (audio keeps Conduit running): the longer quiet interval.
@@ -1029,7 +1033,6 @@ final class HermesClient: ObservableObject {
 
     deinit {
         keepaliveTask?.cancel()
-        pathMonitor?.cancel()
     }
 
     // MARK: - Connection
@@ -1151,29 +1154,15 @@ final class HermesClient: ObservableObject {
         guard let interval = keepaliveInterval, interval > 0 else { return }
         lastInboundAt = Date()
         startKeepaliveLoop(for: socket)
-        guard monitorsPath else { return }
-        // A network change (Wi-Fi to cellular, the VPN tunnel coming back)
-        // usually leaves the old TCP connection dead: check it at once
-        // instead of at the next quiet interval. The monitor reports the
-        // current path first; only later changes matter.
-        let monitor = NWPathMonitor()
-        pathMonitorSawInitialPath = false
-        let socketID = ObjectIdentifier(socket)
-        monitor.pathUpdateHandler = { [weak self] path in
-            let satisfied = path.status == .satisfied
-            Task { @MainActor [weak self] in
-                guard let self, let current = self.socket,
-                      ObjectIdentifier(current) == socketID else { return }
-                guard self.pathMonitorSawInitialPath else {
-                    self.pathMonitorSawInitialPath = true
-                    return
-                }
-                guard satisfied else { return }
-                await self.probe(current)
-            }
-        }
-        monitor.start(queue: DispatchQueue(label: "com.milim.conduit.hermes-path"))
-        pathMonitor = monitor
+    }
+
+    /// The network path changed and is usable (AppState hears it from the
+    /// app's one path monitor). A change (Wi-Fi to cellular, the VPN tunnel
+    /// coming back) usually leaves the old TCP connection dead: check it at
+    /// once instead of at the next quiet interval.
+    func networkPathChanged() {
+        guard monitorsPath, keepaliveTask != nil, let socket else { return }
+        Task { @MainActor [weak self] in await self?.probe(socket) }
     }
 
     /// Sleeps until the socket has been quiet for the interval, then pings.
@@ -1223,8 +1212,6 @@ final class HermesClient: ObservableObject {
     private func stopKeepalive() {
         keepaliveTask?.cancel()
         keepaliveTask = nil
-        pathMonitor?.cancel()
-        pathMonitor = nil
     }
 
     /// Pings the gateway, once more if the first goes unanswered, and closes
