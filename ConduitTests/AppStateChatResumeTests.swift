@@ -4470,6 +4470,48 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeAgents, 0)
     }
 
+    func testADeletedConversationsAgentsGoWithItOnAutomaticReturn() async {
+        for fallbackOpens in [true, false] {
+            let scheduler = ControlledReconnectScheduler()
+            let harness = makeHarness(
+                reconnectScheduler: scheduler.schedule(after:operation:),
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in [self.session("stored-other")] },
+                    openSession: { _, sessionID, _ in
+                        if sessionID == "stored-deleted" {
+                            throw RpcError(code: 4007, message: "Session not found")
+                        }
+                        guard fallbackOpens else { throw ControlledLifecycleError.failed }
+                        return SessionResumeResult(
+                            sessionId: sessionID,
+                            messages: [],
+                            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                        )
+                    },
+                    refreshContext: { _, _ in }
+                )
+            )
+            installComposerClient(in: harness)
+            harness.store.setLastSessionID("stored-deleted", for: "default")
+            harness.appState.activeSessionId = "stored-deleted"
+            harness.appState.handleStreamEvent(.delegateAgent(sessionId: "stored-deleted", activity: delegateAgent("agent-gone")))
+            XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-gone"])
+
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: nil,
+                automaticWorkToken: nil
+            )
+
+            XCTAssertEqual(harness.appState.activeSessionId, fallbackOpens ? "stored-other" : nil)
+            XCTAssertTrue(
+                harness.appState.delegateAgents.isEmpty,
+                "the deleted conversation's agents don't stay (fallback opens: \(fallbackOpens))"
+            )
+            XCTAssertEqual(harness.appState.activeAgents, 0)
+        }
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")

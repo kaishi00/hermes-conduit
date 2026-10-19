@@ -12777,6 +12777,9 @@ final class AppState: ObservableObject {
                     // workspace: the conversation's authoritative absence is
                     // not evidence about which surface it belonged to.
                     chatResumeCoordinator.rememberSession(nil, for: profile)
+                    // Its agents go with it, whichever conversation (or new
+                    // chat) is opened instead.
+                    keepDelegateAgents(of: [])
                     if let fallback = selectChatResumeTarget(
                         in: resumeCandidates,
                         profile: profile,
