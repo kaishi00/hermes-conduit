@@ -253,14 +253,15 @@ final class PresentedScreensSync: ObservableObject {
         }
         syncing = true
         defer { syncing = false }
-        var rounds = 0
+        // Every round answers a call that came meanwhile (an answer to send,
+        // a tool that finished), and that call has already returned: none is
+        // dropped. Rounds never ask for more themselves, so this ends.
         repeat {
             syncAgain = false
-            rounds += 1
             guard let current = self.scope, let next = latest else { return }
             await syncOnce(scope: current, profile: next.profile, installationID: next.installationID,
                            isCurrent: next.isCurrent, request: next.request)
-        } while syncAgain && rounds < 3
+        } while syncAgain
     }
 
     /// Notes the user's last call turn as a confirmation goes on screen.
