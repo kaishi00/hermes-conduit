@@ -11866,7 +11866,21 @@ final class AppState: ObservableObject {
             return
         }
         guard widgetLease?.isCurrent != false else { return }
-        await connect(with: saved, profile: activeProfile)
+        // The saved ticket was spent when it last opened the socket (Hermes'
+        // tickets are single-use and last 30 seconds), so a fresh one is
+        // minted with the dashboard's cookies first, as the OAuth restore
+        // does. A mint that fails leaves the saved record: its refusal
+        // schedules the reconnect, as before.
+        var connection = saved
+        if let ticket = try? await mintChatResumeTicket(for: saved) {
+            connection = HermesConnection(baseUrl: saved.baseUrl, ticket: ticket)
+        }
+        // Re-fence after the mint await.
+        if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
+            return
+        }
+        guard widgetLease?.isCurrent != false else { return }
+        await connect(with: connection, profile: activeProfile)
         guard widgetLease?.isCurrent != false else { return }
     }
 

@@ -790,6 +790,89 @@ final class ConnectionRepairTests: XCTestCase {
                       "Successful OAuth restoration must clear saved password credentials")
     }
 
+    /// A browser sign-in's saved ticket was spent when it last opened the
+    /// socket (Hermes' tickets are single-use and last 30 seconds). Cold
+    /// launch mints a fresh one with the dashboard's cookies and connects
+    /// with that, instead of a first attempt Hermes is bound to refuse.
+    func testColdStartSavedSessionConnectsWithFreshTicket() async throws {
+        let connected = expectation(description: "saved session connected")
+        let connectCount = RepairConnectCount()
+        var connectedTickets: [String] = []
+        var mintedBaseURLs: [String] = []
+        let harness = makeHarness(lifecycleOperations: coldStartLifecycle(
+            mint: { baseURL in
+                mintedBaseURLs.append(baseURL)
+                return "fresh-ticket"
+            },
+            connected: { client in
+                connectedTickets.append(client.connection.ticket)
+                connectCount.value += 1
+                if connectCount.value == 1 { connected.fulfill() }
+            }
+        ))
+        let dashboardID = harness.appState.adoptDashboard(forNormalizedURL: Self.failedURL)
+        KeychainHelper.saveConnection(
+            HermesConnection(baseUrl: Self.failedURL, ticket: "spent-ticket"),
+            dashboardID: dashboardID
+        )
+
+        harness.appState.loadSavedConnection()
+        await fulfillment(of: [connected], timeout: 2)
+
+        XCTAssertEqual(mintedBaseURLs.first, Self.failedURL)
+        XCTAssertEqual(connectedTickets.first, "fresh-ticket")
+        XCTAssertEqual(harness.appState.connection?.ticket, "fresh-ticket")
+    }
+
+    /// A mint that fails (the page not up yet, the cookies refused) connects
+    /// with the saved record as before; its refusal schedules the reconnect.
+    func testColdStartSavedSessionKeepsSavedTicketWhenMintFails() async throws {
+        let connected = expectation(description: "saved session connected")
+        let connectCount = RepairConnectCount()
+        var connectedTickets: [String] = []
+        let harness = makeHarness(lifecycleOperations: coldStartLifecycle(
+            mint: { _ in throw DashboardTicketBridgeError.notReady },
+            connected: { client in
+                connectedTickets.append(client.connection.ticket)
+                connectCount.value += 1
+                if connectCount.value == 1 { connected.fulfill() }
+            }
+        ))
+        let dashboardID = harness.appState.adoptDashboard(forNormalizedURL: Self.failedURL)
+        KeychainHelper.saveConnection(
+            HermesConnection(baseUrl: Self.failedURL, ticket: "saved-ticket"),
+            dashboardID: dashboardID
+        )
+
+        harness.appState.loadSavedConnection()
+        await fulfillment(of: [connected], timeout: 2)
+
+        XCTAssertEqual(connectedTickets.first, "saved-ticket")
+    }
+
+    private func coldStartLifecycle(
+        mint: @escaping @MainActor (String) async throws -> String,
+        connected: @escaping @MainActor (HermesClient) async throws -> Void
+    ) -> ChatResumeLifecycleOperations {
+        ChatResumeLifecycleOperations(
+            connectClient: connected,
+            loadCatalog: { _, _ in [] },
+            mintTicket: mint,
+            openSession: { _, id, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            loadProfiles: {},
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {}
+        )
+    }
+
     func testNativeOAuthBridgeRebuildsAfterSameModeGrantReplacement() throws {
         let app = makeHarness().appState
         let id = app.adoptDashboard(forNormalizedURL: Self.failedURL)
