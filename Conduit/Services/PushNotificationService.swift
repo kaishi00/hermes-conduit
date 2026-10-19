@@ -522,7 +522,25 @@ final class PushNotificationService: ObservableObject {
     }
 
     nonisolated static let relayURLDefaultsKey = "conduit.relayURL"
-    nonisolated static let defaultRelayURL = URL(string: "https://push.milim.dev")!
+    /// Upstream's shared relay.
+    nonisolated static let upstreamRelayURL = URL(string: "https://push.milim.dev")!
+    /// The Info.plist key carrying the build's `CONDUIT_DEFAULT_RELAY_URL`.
+    nonisolated static let defaultRelayInfoKey = "ConduitDefaultRelayURL"
+    /// The relay used when Settings is blank: the one the build names, so a
+    /// build signed for its own relay needs no source edit, else upstream's.
+    nonisolated static let defaultRelayURL = buildDefaultRelayURL(info: Bundle.main.infoDictionary)
+
+    /// The relay a build's Info.plist names, if it is a usable HTTPS relay
+    /// URL; anything else (empty, unexpanded, cleartext) is upstream's relay.
+    nonisolated static func buildDefaultRelayURL(info: [String: Any]?) -> URL {
+        guard let value = (info?[defaultRelayInfoKey] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = usableRelayURL(value),
+              url.scheme?.lowercased() == "https" else {
+            return upstreamRelayURL
+        }
+        return url
+    }
 
     /// The relay a saved Settings value points at. Blank (or
     /// whitespace-only) means the default relay, and so does anything
@@ -610,7 +628,15 @@ final class PushNotificationService: ObservableObject {
         Self.requestRelayURL(issuer: registration?.relayURL, configured: configuredRelayURL)
             ?? Self.unusableRelayURL
     }
-    private let bundleID = "com.milim.relay"
+    /// The bundle ID the relay sends this app's pushes to: the app's own,
+    /// so a build under another bundle ID registers as itself.
+    private let bundleID = PushNotificationService.registrationBundleID(Bundle.main.bundleIdentifier)
+
+    nonisolated static func registrationBundleID(_ identifier: String?) -> String {
+        guard let identifier, !identifier.isEmpty else { return "com.milim.relay" }
+        return identifier
+    }
+
     private var registration: StoredRegistration?
     /// Sends a registration update to the relay; tests answer it instead.
     var sendRegistrationUpdate: @MainActor (URLRequest) async throws -> (Data, URLResponse) = {

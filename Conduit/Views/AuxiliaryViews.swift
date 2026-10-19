@@ -3299,7 +3299,7 @@ private struct NotificationsSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
                 // Edits stay a draft until saved, so a half-typed URL never
                 // becomes the relay; saving moves an active registration.
-                TextField("https://push.milim.dev", text: $relayDraft)
+                TextField(PushNotificationService.defaultRelayURL.absoluteString, text: $relayDraft)
                     .textFieldStyle(.plain)
                     .font(.body.monospaced())
                     .padding(.vertical, 4)
