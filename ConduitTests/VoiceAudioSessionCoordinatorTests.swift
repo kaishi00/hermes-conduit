@@ -643,6 +643,62 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertFalse(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? true)
     }
 
+    // MARK: Conversation speech on the speaker
+
+    func testAReplyAfterTheMicrophoneStopsPlaysOnTheSpeaker() throws {
+        // Nothing connected: the route is the earpiece.
+        let capture = try coordinator.acquire(.conversationCapture)
+        XCTAssertEqual(session.speakerOverrides, 0, "listening alone leaves the route to the category")
+        _ = try coordinator.acquire(.conversationPlayback)
+        XCTAssertEqual(session.speakerOverrides, 1, "the reply goes to the loudspeaker")
+
+        // Half-duplex: the microphone stops while the reply plays, and iOS
+        // puts the output back on the earpiece.
+        session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
+        coordinator.release(capture)
+
+        XCTAssertEqual(session.speakerOverrides, 2)
+    }
+
+    func testAReplyAlreadyOnTheSpeakerIsNotOverriddenAgain() throws {
+        _ = try coordinator.acquire(.conversationCapture)
+        let first = try coordinator.acquire(.conversationPlayback)
+        XCTAssertEqual(session.speakerOverrides, 1)
+        coordinator.release(first)
+
+        _ = try coordinator.acquire(.conversationPlayback)
+        coordinator.ensureConversationSpeaker()
+
+        XCTAssertEqual(session.speakerOverrides, 1, "an override posts a route change: only when it's needed")
+    }
+
+    func testAReplyOnHeadphonesOrInTheCarStaysThere() throws {
+        // Headphones, Bluetooth or CarPlay: not the earpiece.
+        session.isOutputOnBuiltInReceiver = false
+        _ = try coordinator.acquire(.conversationCapture)
+        _ = try coordinator.acquire(.conversationPlayback)
+        coordinator.ensureConversationSpeaker()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testAReplyInACallFromHermesLeavesTheSpeakerToTheCall() throws {
+        coordinator.configureForIncomingCall()
+        _ = try coordinator.acquire(.conversationCapture)
+        _ = try coordinator.acquire(.conversationPlayback)
+        coordinator.ensureConversationSpeaker()
+
+        XCTAssertEqual(session.speakerOverrides, 0, "the call's Speaker button owns the route")
+    }
+
+    func testStandaloneSpeechIsNotMovedToTheSpeaker() throws {
+        _ = try coordinator.acquire(.standalonePlayback)
+        coordinator.ensureConversationSpeaker()
+
+        XCTAssertEqual(session.speakerOverrides, 0, "Read Aloud plays through .playback, which never uses the earpiece")
+    }
+
     func testSpeakerActivationOutsideACallDoesNothing() {
         coordinator.nativeCallAudioActivated()
 

@@ -235,6 +235,7 @@ final class VoiceAudioSessionCoordinator {
             Task { @MainActor in handler() }
         }
         notifyOwnersChanged()
+        if intent == .conversationPlayback { ensureConversationSpeaker() }
         return lease
     }
 
@@ -261,6 +262,27 @@ final class VoiceAudioSessionCoordinator {
         audioSessionLogger.debug(
             "audio intent released: \(Self.describe(intent), privacy: .public) (owners: \(self.leases.count))"
         )
+        // The microphone leaving a reply playing can leave it on the earpiece.
+        if intent == .conversationCapture { ensureConversationSpeaker() }
+    }
+
+    /// A conversation's reply plays on the loudspeaker when nothing is
+    /// connected. `.defaultToSpeaker` asks for that once, when the category
+    /// is set; the output-only engine that plays the reply after the
+    /// microphone stopped (barge-in off) could still land on the earpiece,
+    /// and nothing put it back. Only from the earpiece, so headphones,
+    /// Bluetooth and the car keep their route, and never in a call from
+    /// Hermes, whose Speaker button owns the choice. Once on the speaker it
+    /// does nothing: an override posts a route change of its own.
+    func ensureConversationSpeaker() {
+        guard appliedPolicy == .conversation, !isInNativeCall,
+              leases.values.contains(.conversationPlayback),
+              session.isOutputOnBuiltInReceiver else { return }
+        do {
+            try session.overrideOutputToSpeaker()
+        } catch {
+            audioSessionLogger.error("conversation speaker override failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// A call from Hermes answered in CallKit (#449): CallKit activates the
