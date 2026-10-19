@@ -461,6 +461,21 @@ struct ApprovalActivity: Codable, Equatable {
         case expired
         case error
     }
+
+    /// Whether this card still asks what `shown` asked: the same request,
+    /// command, explanation and offered choices. A legacy (request-less)
+    /// card is updated in place when Hermes announces the next command, so
+    /// a tap must only answer the card the person actually read. Status,
+    /// the chosen answer and the error are progress, not the question; the
+    /// session id is not shown and moves to the durable id on its own.
+    func asksSameAs(_ shown: ApprovalActivity) -> Bool {
+        requestId == shown.requestId
+            && command == shown.command
+            && description == shown.description
+            && choices == shown.choices
+            && allowPermanent == shown.allowPermanent
+            && smartDenied == shown.smartDenied
+    }
 }
 
 /// One masked single-value prompt Hermes asks through a server→client

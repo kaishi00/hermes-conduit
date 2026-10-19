@@ -26049,10 +26049,15 @@ final class AppState: ObservableObject {
         return error.localizedDescription.lowercased().contains("no pending")
     }
 
-    func respondToApproval(messageId: String, choice: String) async {
+    /// `shown` is the approval as the card drew it when the person tapped.
+    /// When the card has since changed to ask something else (a legacy card
+    /// is updated in place by the next command), nothing is sent: the card
+    /// on screen already shows the new question to answer.
+    func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
               current.status == .pending || current.status == .error else { return }
+        if let shown, !current.asksSameAs(shown) { return }
         let decisionKey = SessionPresentationCache.decisionKey(for: messages[index])
 
         let submissionIdentity = current.requestId.map { ApprovalSubmissionIdentity.identified($0) }

@@ -3043,6 +3043,53 @@ struct ClarifyQuestionRow: View {
 
 // MARK: - Approval Card
 
+/// An approval's command with every line reachable before Run: drawn in
+/// full while it fits `maxHeight`, scrolled inside that height past it, so
+/// one long heredoc can't make its chat row thousands of points tall. The
+/// height is settled in the first layout pass, from a hidden copy of the
+/// content measured at the offered width: no measure-then-shrink, so the
+/// chat list never sees the row at full length.
+struct ApprovalCommandBox<Content: View>: View {
+    /// About this many lines show before the command scrolls.
+    static var maxLines: CGFloat { 12 }
+
+    let maxHeight: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ApprovalCommandHeightLayout(maxHeight: maxHeight) {
+            content()
+                .hidden()
+                .accessibilityHidden(true)
+            ScrollView(.vertical) {
+                content()
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .scrollIndicators(.visible)
+            .scrollIndicatorsFlash(onAppear: true)
+        }
+    }
+}
+
+/// Two subviews: the first is measured at the offered width with no height
+/// limit, and the box takes that height up to `maxHeight`; the second (the
+/// scroll view) is laid out in exactly that box.
+private struct ApprovalCommandHeightLayout: Layout {
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+        let natural = subviews[0].sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? natural.width, height: min(natural.height, maxHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        subviews[0].place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
+        subviews[1].place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
 struct ApprovalCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
@@ -3050,6 +3097,9 @@ struct ApprovalCard: View {
     /// Acted on, not observed (`ChatRowState`).
     private var appState: AppState { rowActions.required }
     @State private var confirmAlways = false
+    /// The approval as drawn when Always allow was tapped: the confirmation
+    /// answers that one, even if the card changes while it is up.
+    @State private var alwaysShown: ApprovalActivity?
 
     var body: some View {
         if let approval = message.approval {
@@ -3063,7 +3113,7 @@ struct ApprovalCard: View {
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: approval.status))
                         SelectableTextView(
-                            text: approval.description,
+                            text: ApprovalDisplayText.revealingHidden(approval.description),
                             font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
                             textColor: .label
                         )
@@ -3084,13 +3134,15 @@ struct ApprovalCard: View {
                 }
 
                 if !approval.command.isEmpty {
-                    SelectableTextView(
-                        text: approval.command,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
-                        textColor: .label,
-                        maximumNumberOfLines: 5
-                    )
+                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+                    ApprovalCommandBox(maxHeight: ApprovalCommandBox<EmptyView>.maxLines * commandFont.lineHeight) {
+                        SelectableTextView(
+                            text: ApprovalDisplayText.revealingHidden(approval.command),
+                            font: commandFont,
+                            textColor: .label
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                         .padding(12)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
@@ -3152,12 +3204,13 @@ struct ApprovalCard: View {
             .confirmationDialog(
                 "Always allow this command?",
                 isPresented: $confirmAlways,
-                titleVisibility: .visible
-            ) {
+                titleVisibility: .visible,
+                presenting: alwaysShown
+            ) { shown in
                 Button("Always allow", role: .destructive) {
-                    send("always", for: approval)
+                    send("always", for: shown)
                 }
-            } message: {
+            } message: { _ in
                 Text("Hermes will save this approval pattern for future commands.")
             }
         }
@@ -3185,6 +3238,7 @@ struct ApprovalCard: View {
 
         if allows("always", for: approval) {
             Button("Always allow") {
+                alwaysShown = approval
                 confirmAlways = true
             }
             .buttonStyle(.bordered)
@@ -3212,7 +3266,7 @@ struct ApprovalCard: View {
 
     private func send(_ choice: String, for approval: ApprovalActivity) {
         guard allows(choice, for: approval), canRespond(approval.status) else { return }
-        Task { await appState.respondToApproval(messageId: message.id, choice: choice) }
+        Task { await appState.respondToApproval(messageId: message.id, choice: choice, shown: approval) }
     }
 
     private func decisionTitle(_ choice: String) -> String {
