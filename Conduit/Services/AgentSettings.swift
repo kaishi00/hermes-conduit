@@ -249,7 +249,14 @@ final class AgentSettingsSync: ObservableObject {
 
     private let defaults: UserDefaults
     private var syncing = false
+    /// Another call came while a sync was on its way.
     private var syncAgain = false
+    /// The last round answered requests Hermes should hear about.
+    private var answeredInRound = false
+    /// The newest caller's request, so a coalesced round uses the current
+    /// host and profile rather than the first caller's.
+    private var latest: (scope: String, profile: String, catalog: [AgentSettingDescriptor],
+                         isCurrent: @MainActor () -> Bool, request: Request)?
     /// Where the review items came from; they're shown only there.
     private var reviewScope: String?
 
@@ -267,25 +274,33 @@ final class AgentSettingsSync: ObservableObject {
     }
 
     /// One sync: upload the settings and the answers waiting, take what
-    /// Hermes asked for. Overlapping calls run one more sync afterwards.
+    /// Hermes asked for. Overlapping calls run one more sync afterwards,
+    /// with the newest caller's host and profile.
     func sync(
         scope: String, profile: String, catalog: [AgentSettingDescriptor],
-        isCurrent: @MainActor () -> Bool = { true }, request: Request
+        isCurrent: @escaping @MainActor () -> Bool = { true }, request: @escaping Request
     ) async {
+        latest = (scope, profile, catalog, isCurrent, request)
         if syncing {
             syncAgain = true
             return
         }
         syncing = true
-        defer { syncing = false }
+        // The request holds the dashboard bridge: not kept past the sync.
+        defer { syncing = false; latest = nil }
         // A sync that answered requests runs once more so Hermes hears the
-        // answers straight away; at most a few rounds.
-        var rounds = 0
+        // answers straight away; at most a few rounds. A call that came
+        // meanwhile always gets its round: it may carry an answer or
+        // another profile, and it has already returned.
+        var answeringRounds = 0
         repeat {
             syncAgain = false
-            rounds += 1
-            await syncOnce(scope: scope, profile: profile, catalog: catalog, isCurrent: isCurrent, request: request)
-        } while syncAgain && rounds < 3
+            answeredInRound = false
+            guard let next = latest else { return }
+            await syncOnce(scope: next.scope, profile: next.profile, catalog: next.catalog,
+                           isCurrent: next.isCurrent, request: next.request)
+            if answeredInRound { answeringRounds += 1 }
+        } while syncAgain || (answeredInRound && answeringRounds < 3)
     }
 
     private func syncOnce(
@@ -319,7 +334,7 @@ final class AgentSettingsSync: ObservableObject {
             .filter { !sentIDs.contains($0.id) }
         // The mode now, not when the request left: the user may have
         // switched it to Off meanwhile.
-        if take(pending, scope: scope, catalog: catalog, mode: mode) { syncAgain = true }
+        if take(pending, scope: scope, catalog: catalog, mode: mode) { answeredInRound = true }
     }
 
     /// Decides each waiting request; the ones for the user replace the
