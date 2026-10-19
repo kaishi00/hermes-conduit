@@ -6332,7 +6332,7 @@ final class AppState: ObservableObject {
                 // Another dashboard's showing now: the outbox keeps the
                 // call for the one it was on.
                 guard let owner, self.ownsDashboardRuntime(owner) else { throw DashboardTicketBridgeError.notReady }
-                return try await self.voiceHistoryClient.save(request, profile: profile)
+                return try await self.voiceHistoryClient.save(request, profile: request.rowProfile ?? profile)
             },
             title: { [weak self] turns in
                 // Never another dashboard's Hermes that names the call.
@@ -6701,7 +6701,7 @@ final class AppState: ObservableObject {
             if let owner, !ownsDashboardRuntime(owner) { break }
             var request = entry.request
             do {
-                let result = try await voiceHistoryClient.save(request, profile: profile)
+                let result = try await voiceHistoryClient.save(request, profile: request.rowProfile ?? profile)
                 if !hostCantSave { voiceCallSaveBlockedKeys.remove(key) }
                 drain.saved += 1
                 settled.append((entry, nil))
@@ -6741,6 +6741,7 @@ final class AppState: ObservableObject {
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil {
                 // The row is gone: keep the call's turns as a new row next time.
                 request.sessionID = nil
+                request.rowProfile = nil
                 request.callID = UUID().uuidString
                 request.title = Self.fallbackVoiceCallTitle(at: entry.queuedAt)
                 request.turns = request.turns.enumerated().map { offset, turn in
