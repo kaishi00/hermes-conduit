@@ -98,6 +98,29 @@ class WorksheetTests(unittest.TestCase):
         self.assertEqual(l10n.import_worksheets([path], create=True), 1)
         self.assertEqual(self.read()["strings"]["New string"]["localizations"]["ja"], unit("新しい文字列"))
 
+    def test_import_refuses_a_catalog_outside_the_shipped_list(self):
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        victim = os.path.join(outside, "victim.json")
+        l10n.save(victim, {"strings": {"Hello": {"localizations": {}}}})
+        with open(victim, "rb") as handle:
+            victim_before = handle.read()
+        with open(self.catalog_path, "rb") as handle:
+            catalog_before = handle.read()
+        for catalog in (os.path.relpath(victim, self.root), victim):
+            worksheet = {"language": "fr", "entries": [
+                {"catalog": "Conduit/Localizable.xcstrings", "key": "Hello", "translation": "Bonjour"},
+                {"catalog": catalog, "key": "Hello", "translation": "Bonjour"}]}
+            path = os.path.join(self.root, "fr.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(worksheet, handle)
+            with self.assertRaises(ValueError):
+                l10n.import_worksheets([path])
+            with open(victim, "rb") as handle:
+                self.assertEqual(handle.read(), victim_before)
+            with open(self.catalog_path, "rb") as handle:
+                self.assertEqual(handle.read(), catalog_before)
+
     def test_saved_catalogs_use_xcode_layout(self):
         with open(self.catalog_path, encoding="utf-8") as handle:
             text = handle.read()
