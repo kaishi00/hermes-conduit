@@ -4413,6 +4413,50 @@ final class AppStateChatResumeTests: XCTestCase {
         await assertProfileSwitchCancelsStaleReconnectMint(outcome: .signInRequired)
     }
 
+    // MARK: - Delegate agents belong to their conversation
+
+    private func delegateAgent(_ id: String) -> DelegateAgentActivity {
+        DelegateAgentActivity(
+            id: id, goal: "Look into it", model: nil, status: .running,
+            taskCount: 1, taskIndex: 0, currentTool: nil, summary: nil, stream: []
+        )
+    }
+
+    func testDelegateAgentsAreOnlyTheOpenConversations() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let first = session("stored-a")
+        let second = session("stored-b")
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [first, second]
+        harness.appState.activeSessionId = first.id
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: first.id, activity: delegateAgent("agent-a")))
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-a"])
+        XCTAssertEqual(harness.appState.activeAgents, 1)
+
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "the first conversation's agents don't show in the second")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: second.id, activity: delegateAgent("agent-b")))
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-b"], "opening the same conversation again keeps its agents")
+
+        harness.appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "another profile never sees them")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")

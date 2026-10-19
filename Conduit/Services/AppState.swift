@@ -4914,6 +4914,7 @@ final class AppState: ObservableObject {
         guard newValue != activeProfile else { return }
         activeProfile = newValue
         widgetSettledCatalogOwner = nil
+        keepDelegateAgents(of: [])
         publishWidgetCurrentWorkspace(dashboardID: activeDashboardID, profile: newValue)
         presentationCacheProfileEpoch &+= 1
         // The saved copy and list belong to the outgoing profile's scope.
@@ -9003,6 +9004,7 @@ final class AppState: ObservableObject {
         clearPendingDecisionRestorationGuard()
         activeSessionId = nil
         activeSessionTitle = AppLocalization.string("New conversation")
+        keepDelegateAgents(of: [])
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
@@ -11356,6 +11358,7 @@ final class AppState: ObservableObject {
         messages = []
         persistedTranscriptWindow = nil
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
+        keepDelegateAgents(of: [])
         clearStreamingText()
         resetReasoningTurn()
         turnState = .idle
@@ -13910,6 +13913,7 @@ final class AppState: ObservableObject {
             // layer and leaves the composer stuck synchronizing.
             markChatViewportReplacement()
             setActiveSessionState(id: runtimeSessionID, title: AppLocalization.string("New conversation"))
+            keepDelegateAgents(of: [])
             newChatOpenedSessionID = runtimeSessionID
             newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
             messages = []
@@ -17936,6 +17940,7 @@ final class AppState: ObservableObject {
         let transitionGeneration = acceptChatResumeConversationReplacement(replacement)
         markChatViewportReplacement()
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
+        keepDelegateAgents(of: [])
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
@@ -19285,6 +19290,7 @@ final class AppState: ObservableObject {
         // cold launch still restores exactly what was on screen. Ownership
         // comes from the bot registry (seeded above), never the id's shape.
         setActiveSessionState(id: sessionId)
+        keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
         // Explicit navigation owns the chat surface from here. A chat picked
         // in the saved list keeps its saved copy up until its own transcript
@@ -27601,6 +27607,16 @@ final class AppState: ObservableObject {
             delegateAgents = reconciled
             activeAgents = delegateAgents.filter { $0.status.isActive }.count
         }
+    }
+
+    /// Keeps only the delegate cards of the conversation now open (its
+    /// `sessionIDs`; none for a new chat, another profile or server). The
+    /// sheet is per conversation, and `refreshDelegateAgents` asks the
+    /// current client about every running card's session.
+    private func keepDelegateAgents(of sessionIDs: Set<String>) {
+        guard delegateAgents.contains(where: { !sessionIDs.contains($0.sessionId) }) else { return }
+        delegateAgents.removeAll { !sessionIDs.contains($0.sessionId) }
+        activeAgents = delegateAgents.filter { $0.status.isActive }.count
     }
 
     // MARK: - Clarify lifecycle
