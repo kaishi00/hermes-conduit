@@ -41,6 +41,9 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = false
         appState.isConnecting = false
+        // The backoff's jitter at its top, so each step's delay is its cap.
+        appState.reconnectJitter = { 1 }
+        appState.deviceConditions = { DeviceConditions() }
         return appState
     }
 

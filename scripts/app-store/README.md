@@ -17,6 +17,8 @@ Results:
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
   files minus large raw videos, for sessions that can't download artifacts:
   `git fetch origin refs/app-store-shots/<id> && git archive FETCH_HEAD | tar -x`.
+  The capture jobs only read the repository; they upload these files as the
+  one-day `app-store-shots-ref*` artifacts, and the `publish` job pushes them.
 
 ## How it works
 
