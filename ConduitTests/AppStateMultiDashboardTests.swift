@@ -360,15 +360,17 @@ final class AppStateMultiDashboardTests: XCTestCase {
         // The token still opens the address in use until the move.
         XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: home.id, for: home.normalizedURL), access)
 
-        appState.loadSavedConnection()
+        // The next launch reads the move back from the saved registry.
+        let relaunched = makeAppState(registry: SavedDashboardRegistryStore.load() ?? SavedDashboardRegistry())
+        relaunched.loadSavedConnection()
 
-        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id])
-        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://hermes.example.test/new")
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboards.map(\.id), [home.id])
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://hermes.example.test/new")
         XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: home.id, for: "https://hermes.example.test/new"), access)
         // The old address's ticket can't reconnect at the new one.
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: home.id))
-        XCTAssertTrue(appState.showLogin)
-        XCTAssertEqual(appState.lastDashboardURL, "https://hermes.example.test/new")
+        XCTAssertTrue(relaunched.showLogin)
+        XCTAssertEqual(relaunched.lastDashboardURL, "https://hermes.example.test/new")
     }
 
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
@@ -439,6 +441,58 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNotEqual(KeychainHelper.loadCredentials(dashboardID: home.id)?.baseURL, "https://new.example.test")
     }
 
+    func testASignInWriteAtTheEditedAddressMovesTheSelectedDashboard() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: home.normalizedURL, ticket: "old"), dashboardID: home.id)
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // A Cloudflare token or browser grant saved before connecting there
+        // (Home is selected, not in use).
+        let target = appState.resolveDashboardID(forURL: "https://new.example.test", registerIfMissing: true)
+
+        XCTAssertEqual(target, home.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id], "No second dashboard")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://new.example.test")
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: home.id))
+        XCTAssertEqual(appState.adoptDashboard(forNormalizedURL: "https://new.example.test"), home.id)
+    }
+
+    func testCancellingAnEditedAddressForgetsThePasswordSavedForIt() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false),
+            dashboardID: home.id
+        )
+        appState.isConnected = true
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "eric", password: "next"),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // Re-applying the address in use, with nothing typed, cancels it.
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: home.normalizedURL, username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: home.id)?.pendingURL)
+        // Its next sign-in can't reach the cancelled address as a second
+        // dashboard.
+        XCTAssertNotEqual(KeychainHelper.loadCredentials(dashboardID: home.id)?.baseURL, "https://new.example.test")
+        let relaunched = makeAppState(registry: SavedDashboardRegistryStore.load() ?? SavedDashboardRegistry())
+        relaunched.loadSavedConnection()
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboards.map(\.id), [home.id])
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, home.normalizedURL)
+    }
+
     func testAnEditedAddressThatIsAnotherSavedDashboardChangesNothing() {
         let home = dashboard("Home", "https://old.example.test")
         let vps = dashboard("VPS", "https://vps.example.test")
@@ -449,10 +503,11 @@ final class AppStateMultiDashboardTests: XCTestCase {
         KeychainHelper.saveCredentials(vpsCredentials, dashboardID: vps.id)
         let registryBefore = appState.savedDashboardRegistry
 
-        let plan = applyFromSettings(
-            ConnectionSetupResult(serverURL: vps.normalizedURL, username: "eric", password: "next"),
-            to: appState,
-            currentURL: home.normalizedURL
+        let plan = ConnectionSetupApplication.plan(
+            result: ConnectionSetupResult(serverURL: vps.normalizedURL, username: "eric", password: "next"),
+            currentDashboardURL: home.normalizedURL,
+            savedCredentials: appState.savedCredentialsForDashboard(at: home.normalizedURL),
+            savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: home.normalizedURL)
         )
 
         // Settings says which dashboard has that address.

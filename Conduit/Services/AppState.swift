@@ -11423,6 +11423,14 @@ final class AppState: ObservableObject {
         if let existing = savedDashboardRegistry.dashboardID(atNormalizedURL: normalized) {
             return existing
         }
+        // The selected dashboard's own edited address is that dashboard,
+        // moved, for every pre-connection write as for adoption. While it's
+        // in use the move waits, and a dashboard added here is a new one.
+        if let activeID = activeDashboardID,
+           savedDashboardRegistry.dashboard(with: activeID)?.pendingURL == normalized,
+           dashboardForSignIn(activeID)?.normalizedURL == normalized {
+            return activeID
+        }
         // A dashboard added here is its own, even at an address another
         // saved dashboard was moving to: that dashboard stays where it is.
         dropPendingDashboardMoves(toNormalizedURL: normalized)
@@ -11484,9 +11492,16 @@ final class AppState: ObservableObject {
 
     /// Saves an address edited in Settings for the dashboard's next sign-in
     /// (`SavedDashboard.pendingURL`). Its current address cancels a move
-    /// saved before.
+    /// saved before; a password saved for the address it no longer moves to
+    /// goes too, or its next sign-in would reach that address as a second
+    /// dashboard.
     func stageDashboardMove(_ id: UUID, toNormalizedURL url: String) {
         guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        if let previous = savedDashboardRegistry.dashboards[index].pendingURL, previous != url,
+           let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+           Self.normalizedDashboardURL(credentials.baseURL) == previous {
+            KeychainHelper.clearCredentials(dashboardID: id)
+        }
         var registry = savedDashboardRegistry
         registry.dashboards[index].pendingURL = url == registry.dashboards[index].normalizedURL ? nil : url
         guard registry != savedDashboardRegistry else { return }
