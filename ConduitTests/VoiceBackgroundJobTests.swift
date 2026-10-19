@@ -295,6 +295,16 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.screenCards.filter { !$0.liveNames.isEmpty }.count, 1, "only the newest stays")
     }
 
+    func testAScreenKeepsTheLongestTitleThePluginAccepts() {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        // conduit_show takes titles of up to 80 characters (MAX_CARD_TITLE_CHARS).
+        let eighty = String(repeating: "t", count: 80)
+        XCTAssertEqual(supervisor.showOnScreen(title: eighty, markdown: "pie")?.title, eighty)
+        XCTAssertEqual(supervisor.showOnScreen(title: eighty + "u", markdown: "pie")?.title, eighty)
+    }
+
     func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
         let (supervisor, _) = makeSupervisor()
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")

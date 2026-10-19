@@ -374,6 +374,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// times what it can say, since flattening only shrinks it.
     static let readBackSourceLimit = maximumResultCharacters * 4
     static let maximumTitleCharacters = 60
+    /// A shown screen's title: conduit_show takes up to 80 (the plugin's
+    /// MAX_CARD_TITLE_CHARS), and the call screen has two lines for it.
+    static let maximumScreenTitleCharacters = 80
     /// Settled, already-announced jobs kept for the Voice sheet and status.
     static let maximumSettledJobs = 10
     static let missedPollsBeforeSettling = 2
@@ -1008,7 +1011,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let card = VoiceScreenCard(
             id: UUID(),
-            title: String(trimmedTitle.prefix(Self.maximumTitleCharacters)),
+            title: String(trimmedTitle.prefix(Self.maximumScreenTitleCharacters)),
             markdown: body.isEmpty ? "" : Self.clippedScreenMarkdown(body),
             callAnchor: anchor,
             shownAt: Date(),
