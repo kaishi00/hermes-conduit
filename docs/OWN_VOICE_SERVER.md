@@ -73,6 +73,10 @@ speech-to-speech serve --llm_backend chat-completions \
   --num_pipelines 2
 ```
 
+`serve` listens on `127.0.0.1` only. When it runs on another machine than
+Hermes, add `--host 0.0.0.0` (or that machine's LAN address) and keep the
+port closed to anything outside your network.
+
 `--num_pipelines 2` lets the server listen while it speaks. **Copy setup for
 your agent** copies all of this as one block, so you can hand it to your
 Hermes agent or whoever runs the server. Conduit shows when the server last
