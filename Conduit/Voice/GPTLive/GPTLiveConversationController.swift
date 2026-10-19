@@ -734,9 +734,12 @@ final class GPTLiveConversationController: ObservableObject {
                 if !activeEndPhrases.isEmpty { requestEnd() }
                 return
             }
+            let call = session
             Task { [weak self] in
                 guard let self else { return }
                 let outgoing = await self.bridge.handleDelegation(id: id, request: parts.request, userWords: parts.userWords)
+                // Only into the call that asked: a newer call has its own.
+                guard self.session === call else { return }
                 // Answered even while paused: the model asked and is
                 // waiting, and the reply stays readable in the transcript.
                 self.dispatch(outgoing)
@@ -776,10 +779,13 @@ final class GPTLiveConversationController: ObservableObject {
             session?.appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
         case .cancelAll?:
             settleLatestUserTurn()
+            let call = session
             Task { [weak self] in
                 guard let self else { return }
                 let reply = await self.supervisor.cancelAll()
-                guard self.isActive, self.endRequestedAt == nil else { return }
+                // Only the call it was asked in: hung up and called again
+                // meanwhile, the new call never hears it.
+                guard self.session === call, self.isActive, self.endRequestedAt == nil else { return }
                 self.session?.appendContext(GPTLiveDelegationBridge.relay(reply), channel: .speakable, delegationID: nil)
                 self.dispatch(self.bridge.pendingUpdates())
             }
@@ -792,10 +798,11 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// Sends the chat's last reply to be read out, with its cue.
     private func readLastReply() {
+        let call = session
         Task { [weak self] in
             guard let self else { return }
             let outgoing = await self.bridge.userAskedForLastReply()
-            guard self.isActive, self.endRequestedAt == nil else { return }
+            guard self.session === call, self.isActive, self.endRequestedAt == nil else { return }
             for case .sessionContext(let text, let channel, _, _) in outgoing {
                 // Not ready yet: asking again must still be heard, and
                 // the cue never goes without the reply it reads.
@@ -820,10 +827,11 @@ final class GPTLiveConversationController: ObservableObject {
     /// new request.
     private func deliver(_ answer: GPTLiveDelegationBridge.SpokenAnswer) {
         delegatedEntries.formUnion(transcript.map(\.id))
+        let call = session
         Task { [weak self] in
             guard let self else { return }
             let outgoing = await self.bridge.deliver(answer)
-            guard self.isActive, self.endRequestedAt == nil else { return }
+            guard self.session === call, self.isActive, self.endRequestedAt == nil else { return }
             self.dispatch(outgoing)
             if !outgoing.isEmpty { self.sendJobStatus() }
         }

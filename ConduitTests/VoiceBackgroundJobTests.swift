@@ -107,6 +107,10 @@ final class FakeVoiceJobBackend {
     var parksRedirect = false
     let redirectParked = AwaitableCounter()
     private var parkedRedirect: CheckedContinuation<Void, Never>?
+    /// When true, the next cancel parks until `releaseCancel()`.
+    var parksCancel = false
+    let cancelParked = AwaitableCounter()
+    private var parkedCancel: CheckedContinuation<Void, Never>?
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
     /// = makeSupervisor()`), and the supervisor's backend must keep it alive
@@ -134,6 +138,13 @@ final class FakeVoiceJobBackend {
                 if let error = self.submitError { throw error }
             },
             cancel: { [self] id in
+                if self.parksCancel {
+                    self.parksCancel = false
+                    await withCheckedContinuation { continuation in
+                        self.parkedCancel = continuation
+                        self.cancelParked.increment()
+                    }
+                }
                 if let cancelError = self.cancelError { throw cancelError }
                 self.cancelled.append(id)
             },
@@ -182,6 +193,12 @@ final class FakeVoiceJobBackend {
     func releaseRedirect() {
         let continuation = parkedRedirect
         parkedRedirect = nil
+        continuation?.resume()
+    }
+
+    func releaseCancel() {
+        let continuation = parkedCancel
+        parkedCancel = nil
         continuation?.resume()
     }
 }
