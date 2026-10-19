@@ -672,41 +672,47 @@ final class PhoneSyncEngine: ObservableObject {
     /// An upload as parts the host takes, each with at most `maxItems` items
     /// (what phone_store counts against MAX_ITEMS: calendars, upserts,
     /// deletions, alarms and people) and about `maxBytes` of JSON. The first
-    /// part is the upload with as many event and reminder upserts as fit: it
-    /// carries every other section, each section's `full` and every deletion.
-    /// The others only add upserts (never `full`) under the same `sent_at`,
-    /// which the host applies after the first. An upload that fits is one part.
+    /// part is the upload with as many event and reminder deletions, then
+    /// upserts, as fit: it carries every other section and each section's
+    /// `full`. The others only add deletions and upserts (never `full`) under
+    /// the same `sent_at`, which the host applies after the first. An upload
+    /// that fits is one part.
+    ///
+    /// The host applies each part on its own, so between a full first part
+    /// and the last one it has only some of the snapshot; if a later part is
+    /// refused, nothing counts as sent and the next pass sends it all again.
     nonisolated static func parts(of batch: [String: Any], maxItems: Int, maxBytes: Int) -> [[String: Any]] {
         func size(_ value: Any) -> Int {
-            (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]))?.count ?? 0
+            (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]))?.count ?? 0
         }
         func count(_ value: Any?) -> Int { (value as? [Any])?.count ?? 0 }
         var head = batch
-        var upserts: [(section: String, item: [String: Any])] = []
+        // Deletions first, so an upload that fits keeps them all in its first part.
+        var deletes: [(section: String, list: String, item: Any)] = []
+        var upserts: [(section: String, list: String, item: Any)] = []
         var later = batch.filter { frameKeys.contains($0.key) }
         for section in ["events", "reminders"] {
             guard var body = batch[section] as? [String: Any] else { continue }
-            upserts += (body["upsert"] as? [[String: Any]] ?? []).map { (section, $0) }
+            deletes += (body["delete"] as? [Any] ?? []).map { (section, "delete", $0) }
+            upserts += (body["upsert"] as? [Any] ?? []).map { (section, "upsert", $0) }
             body["upsert"] = [[String: Any]]()
+            if body["delete"] != nil { body["delete"] = [String]() }
             head[section] = body
             var more: [String: Any] = ["full": false, "upsert": [[String: Any]](), "delete": [String]()]
             more["from"] = body["from"]
             more["to"] = body["to"]
             later[section] = more
         }
-        let events = head["events"] as? [String: Any]
-        let reminders = head["reminders"] as? [String: Any]
-        var items = count(head["calendars"]) + count(events?["delete"]) + count(reminders?["delete"])
-            + count(head["alarms"]) + count(head["contacts"])
+        var items = count(head["calendars"]) + count(head["alarms"]) + count(head["contacts"])
         var bytes = size(head)
         var base = head
-        var taken: [String: [[String: Any]]] = [:]
+        var taken: [String: [String: [Any]]] = [:]
         var parts: [[String: Any]] = []
         func close() {
             var part = base
-            for (section, list) in taken {
+            for (section, lists) in taken {
                 var body = part[section] as? [String: Any] ?? [:]
-                body["upsert"] = list
+                for (list, values) in lists { body[list] = values }
                 part[section] = body
             }
             // A later part has only the sections it adds to.
@@ -715,18 +721,18 @@ final class PhoneSyncEngine: ObservableObject {
             }
             parts.append(part)
         }
-        for (section, item) in upserts {
+        for (section, list, item) in deletes + upserts {
             let itemBytes = size(item) + 1
             // A later part takes at least one item, however large.
-            let startedEmpty = !parts.isEmpty && taken.isEmpty
-            if !startedEmpty, items + 1 > maxItems || bytes + itemBytes > maxBytes {
+            let mustTakeOne = !parts.isEmpty && taken.isEmpty
+            if !mustTakeOne, items + 1 > maxItems || bytes + itemBytes > maxBytes {
                 close()
                 base = later
                 taken = [:]
                 items = 0
                 bytes = size(later)
             }
-            taken[section, default: []].append(item)
+            taken[section, default: [:]][list, default: []].append(item)
             items += 1
             bytes += itemBytes
         }

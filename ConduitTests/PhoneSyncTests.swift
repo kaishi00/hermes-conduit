@@ -156,6 +156,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(other.state.eventHashes.count, 4_000)
     }
 
+    func testManyDeletionsGoInPartsTheHostTakes() throws {
+        // A calendar removed on the phone: thousands of deletions and the new
+        // calendar list, more than the host's 5,000 items in one upload.
+        let batch: [String: Any] = [
+            "sent_at": "2026-10-19T08:00:00Z",
+            "sharing": ["calendar": "full"],
+            "calendars": [["id": "c_2", "title": "Work", "kind": "event"]],
+            "events": ["full": false, "upsert": [[String: Any]](), "delete": (0..<4_000).map { "e_\($0)" }],
+            "reminders": ["full": false, "upsert": [["id": "r_new", "title": "Task"]], "delete": (0..<1_500).map { "r_\($0)" }],
+        ]
+        let parts = PhoneSyncEngine.parts(of: batch, maxItems: 5_000, maxBytes: 3_000_000)
+        XCTAssertGreaterThan(parts.count, 1)
+        for part in parts {
+            XCTAssertLessThanOrEqual(FakePhoneHost.items(in: part), 5_000)
+            XCTAssertEqual(part["sent_at"] as? String, "2026-10-19T08:00:00Z")
+        }
+        XCTAssertNotNil(parts.first?["calendars"])
+        XCTAssertNil(parts.last?["calendars"])
+        func all(_ section: String, _ list: String) -> [String] {
+            parts.flatMap { (($0[section] as? [String: Any])?[list] as? [Any]) ?? [] }
+                .compactMap { ($0 as? String) ?? (($0 as? [String: Any])?["id"] as? String) }
+        }
+        XCTAssertEqual(all("events", "delete"), (0..<4_000).map { "e_\($0)" })
+        XCTAssertEqual(all("reminders", "delete"), (0..<1_500).map { "r_\($0)" })
+        XCTAssertEqual(all("reminders", "upsert"), ["r_new"])
+
+        // An upload that fits is unchanged, as one part.
+        var small = batch
+        small["events"] = ["full": false, "upsert": [[String: Any]](), "delete": ["e_1"]]
+        small["reminders"] = ["full": false, "upsert": [["id": "r_new", "title": "Task"]], "delete": ["r_1"]]
+        let one = PhoneSyncEngine.parts(of: small, maxItems: 5_000, maxBytes: 3_000_000)
+        XCTAssertEqual(one.count, 1)
+        XCTAssertEqual(one.first.map { NSDictionary(dictionary: $0) }, NSDictionary(dictionary: small))
+    }
+
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {
         let source = FakePhoneCalendarSource()
         source.events = [phoneEvent("e_1", "Dentist")]
