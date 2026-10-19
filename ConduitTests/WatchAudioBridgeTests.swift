@@ -299,6 +299,27 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(WatchBridgeDelegation.working(title: "Tokyo weather", number: 2).contains("starting with \"Job 2:\""))
         XCTAssertFalse(WatchBridgeDelegation.working(title: "Tokyo weather").contains("Job "))
     }
+
+    /// The Grok and Local Live bridge's keepalive: a ping still unanswered
+    /// when the next is due, or one that failed, is a miss. Two in a row is
+    /// a dead socket (one can be a late pong after a suspension); an
+    /// answered ping clears them.
+    func testWatchBridgeKeepaliveCallsTwoMissedPingsADeadSocket() {
+        var pings = WatchPingWatchdog()
+        XCTAssertFalse(pings.pingDue(), "The first ping goes out")
+        XCTAssertFalse(pings.pingDue(), "Unanswered once: maybe a late pong")
+        XCTAssertTrue(pings.pingDue(), "Unanswered twice: the socket is dead")
+
+        pings = WatchPingWatchdog()
+        XCTAssertFalse(pings.pingDue())
+        XCTAssertFalse(pings.pingDue())
+        XCTAssertFalse(pings.answered(ok: true), "A pong clears the misses")
+        XCTAssertEqual(pings.misses, 0)
+        XCTAssertFalse(pings.pingDue())
+        XCTAssertFalse(pings.answered(ok: false), "A failed ping is one miss")
+        XCTAssertFalse(pings.pingDue())
+        XCTAssertTrue(pings.answered(ok: false), "Two failed in a row: dead")
+    }
 }
 
 private extension Data {

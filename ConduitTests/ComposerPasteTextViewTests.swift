@@ -20,6 +20,20 @@ final class ComposerPasteTextViewTests: XCTestCase {
     // rather than a hung pasteboard read. Writes and clears are safe, so
     // isolation here uses clears only — never an unsolicited read.
 
+    func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
+        XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
+    }
+
+    func testAPastedImageLinkKeepsThePicturesOwnType() {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let jpeg = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4), format: format).jpegData(withCompressionQuality: 0.8) { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        XCTAssertEqual(PastedRemoteImage.image(from: jpeg), PastedImage(data: jpeg, typeIdentifier: UTType.jpeg.identifier))
+    }
+
     func testPasteboardContainsImageTrueForImagePasteboard() {
         withClearedGeneralPasteboard {
             let view = ImagePasteTextView()

@@ -18,6 +18,7 @@ struct VoiceChatCallTranscriptSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                let latestLiveTurns = call.latestLiveTurns
                 LazyVStack(spacing: 10) {
                     ForEach(call.turns) { entry in
                         if entry.speaker == .assistant, let note = VoiceJobLinkNote(text: entry.text) {
@@ -35,7 +36,14 @@ struct VoiceChatCallTranscriptSheet: View {
                             )
                         }
                         if !entry.cards.isEmpty {
-                            RichCardsView(cards: entry.cards)
+                            // A live card shows only where it was last brought up to date.
+                            let cards = call.currentCards(for: entry, latestLiveTurns: latestLiveTurns)
+                            if cards.isEmpty {
+                                RichLiveUpdatedLine(title: entry.cards.first?.title)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                RichCardsView(cards: cards)
+                            }
                         }
                     }
                 }

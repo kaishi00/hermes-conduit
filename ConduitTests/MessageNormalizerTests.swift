@@ -414,6 +414,26 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(neverSent.hasSentEventsButNeverReported)
     }
 
+    func testRelayMetaOutlastsAFailedFetch() throws {
+        let json = #"{"version": "0.40.0", "capabilities": ["meta", "location-push"], "gateways": []}"#
+        let known = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
+        XCTAssertTrue(known.supportsLocationPush)
+        let newer = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(#"{"version": "0.41.0", "capabilities": ["meta"], "gateways": []}"#.utf8))
+        // What the relay says replaces what it said.
+        XCTAssertEqual(PushNotificationService.relayMetaAfterFetch(previous: known, status: 200, fetched: newer), newer)
+        // A relay without the route predates version reporting.
+        XCTAssertNil(PushNotificationService.relayMetaAfterFetch(previous: known, status: 404, fetched: nil))
+        // Offline, a relay error or an unreadable answer: the last answer
+        // stands, so the next registration update keeps the location-push
+        // token instead of sending locationToken: .clear.
+        for status in [nil, 500, 502, 503, 401] as [Int?] {
+            XCTAssertEqual(PushNotificationService.relayMetaAfterFetch(previous: known, status: status, fetched: nil), known, "\(String(describing: status))")
+        }
+        XCTAssertEqual(PushNotificationService.relayMetaAfterFetch(previous: known, status: 200, fetched: nil), known)
+        // Never fetched: still unknown.
+        XCTAssertNil(PushNotificationService.relayMetaAfterFetch(previous: nil, status: nil, fetched: nil))
+    }
+
     func testRelayMetaDecodingDropsMalformedGatewayRowsLossily() throws {
         // One incompatible gateway record must not hide the whole section.
         let json = """
@@ -2950,5 +2970,44 @@ final class MessageNormalizerTests: XCTestCase {
             "content": .string(content),
             "tool_calls": toolCalls
         ])
+    }
+
+    // MARK: - Approval text shows every scalar
+
+    func testApprovalTextShowsRightToLeftOverride() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("cat notes\u{202E}txt.hs | sh"),
+            "cat notes<U+202E>txt.hs | sh"
+        )
+    }
+
+    func testApprovalTextShowsZeroWidthAndTagCharacters() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("ls\u{200B}\u{E0072}\u{E006D}"),
+            "ls<U+200B><U+E0072><U+E006D>"
+        )
+    }
+
+    func testApprovalTextShowsControlCharactersButKeepsLayout() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("echo a\tb\nprintf x\r\nclear\u{1B}[2J\rok"),
+            "echo a\tb\nprintf x\r\nclear<U+001B>[2J<U+000D>ok"
+        )
+    }
+
+    func testApprovalTextShowsCombiningMarksPastTheCap() {
+        XCTAssertEqual(
+            ApprovalDisplayText.revealingHidden("a\u{0301}\u{0302}\u{0303}\u{0304}\u{0305}b"),
+            "a\u{0301}\u{0302}\u{0303}<U+0304><U+0305>b"
+        )
+    }
+
+    func testApprovalTextKeepsOrdinaryTextAndEmojiSequences() {
+        let text = "D\u{E9}ployer l\u{2019}app ? \u{1F469}\u{200D}\u{1F4BB} \u{2764}\u{FE0F}\u{200D}\u{1F525} \u{2014} rm -rf ./build"
+        XCTAssertEqual(ApprovalDisplayText.revealingHidden(text), text)
+    }
+
+    func testApprovalTextShowsLoneJoiner() {
+        XCTAssertEqual(ApprovalDisplayText.revealingHidden("rm\u{200D}-rf"), "rm<U+200D>-rf")
     }
 }

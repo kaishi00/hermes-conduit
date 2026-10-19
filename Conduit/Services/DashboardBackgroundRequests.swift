@@ -89,11 +89,16 @@ extension DashboardTicketBridge {
 
         let result: (data: Data, response: URLResponse, oversized: Bool)
         do {
-            result = try await Self.load(
-                request,
-                deadline: .milliseconds(max(1_000, timeoutMilliseconds)),
-                maxResponseBytes: maxResponseBytes
-            )
+            if let loadWithoutPageForTesting {
+                let (data, response) = try await loadWithoutPageForTesting(request)
+                result = (data, response, false)
+            } else {
+                result = try await Self.load(
+                    request,
+                    deadline: .milliseconds(max(1_000, timeoutMilliseconds)),
+                    maxResponseBytes: maxResponseBytes
+                )
+            }
         } catch let error as URLError {
             // A cancelled caller hears cancellation, as from the page path.
             if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
@@ -101,6 +106,9 @@ extension DashboardTicketBridge {
             // abort: status 0.
             throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)
         }
+        // invalidate() doesn't cancel this request: an answer that lands
+        // after a dashboard switch is the old dashboard's, as on the page.
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         let (data, response, oversized) = result
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")
@@ -134,10 +142,14 @@ extension DashboardTicketBridge {
             )
         }
         if http.statusCode == 401 || http.statusCode == 403 {
-            // Hermes' refusal of a session write is a verdict on the chat,
-            // not an expired sign-in (as in the page's response handler).
+            // Hermes' own 403 (a session write it refuses, a file it won't
+            // serve) is a verdict on the request, not an expired sign-in (as
+            // in the page's response handler).
             if http.statusCode == 403, !oversized,
-               let detail = Self.errorDetail(data), SessionMutationIdentity.isRefusalDetail(detail) {
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = Self.errorDetail(object),
+               !DashboardTicketBridgeError.meansSignIn(status: 403, hermesDetail: object["detail"] as? String)
+                || SessionMutationIdentity.isRefusalDetail(detail) {
                 throw DashboardTicketBridgeError.http(status: 403, detail: detail)
             }
             throw DashboardTicketBridgeError.signInRequired
@@ -165,10 +177,6 @@ extension DashboardTicketBridge {
     /// The error text a failed response carries, as the page reads it.
     private static func errorDetail(_ object: [String: Any]?) -> String? {
         (object?["error"] ?? object?["message"] ?? object?["detail"]) as? String
-    }
-
-    private static func errorDetail(_ data: Data) -> String? {
-        errorDetail(try? JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
     /// The response, or `URLError(.timedOut)` once `deadline` passes in

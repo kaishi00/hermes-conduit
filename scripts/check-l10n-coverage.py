@@ -1123,6 +1123,8 @@ def required_key_problems(catalog: dict, required_keys) -> dict:
 SOURCE_CATALOG = "Localizable.xcstrings"
 SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
+# The share extension's sources, which resolve through the app's catalog.
+SHARE_EXTENSION_DIRECTORY = "ConduitShareExtension"
 # The Apple Watch app's sources and its own Localizable catalog.
 WATCH_DIRECTORY = "ConduitWatch"
 # Each Info.plist with the InfoPlist catalog iOS reads its permission
@@ -1365,6 +1367,10 @@ def check(repo_root: str):
     checked = scan_sites(conduit, catalog_keys, repo_root, missing, key_problems)
     # The iPhone app compiles Shared/ too (project.yml).
     checked += scan_sites(os.path.join(repo_root, "Shared"), catalog_keys, repo_root, missing, key_problems)
+    # The share extension carries the app's catalog (project.yml).
+    share_extension = os.path.join(repo_root, SHARE_EXTENSION_DIRECTORY)
+    if os.path.exists(share_extension):
+        checked += scan_sites(share_extension, catalog_keys, repo_root, missing, key_problems)
 
     # The Apple Watch app has its own catalog, in the same languages.
     watch = os.path.join(repo_root, WATCH_DIRECTORY)

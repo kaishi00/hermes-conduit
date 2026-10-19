@@ -156,13 +156,7 @@ final class DashboardRequestAuthorizer: DashboardUpgradeAuthorizing {
         let applicable = cookies.filter { cookie in
             if let expires = cookie.expiresDate, expires <= now { return false }
             if cookie.isSecure && !secure { return false }
-            let domain = cookie.domain.lowercased()
-            if domain.hasPrefix(".") {
-                let bare = String(domain.dropFirst())
-                guard !bare.isEmpty, host == bare || host.hasSuffix(domain) else { return false }
-            } else {
-                guard host == domain else { return false }
-            }
+            guard NativeAuthCookiePolicy.domainMatches(cookie.domain, host: host) else { return false }
             let cookiePath = cookie.path.isEmpty ? "/" : cookie.path
             guard requestPath.hasPrefix(cookiePath) else { return false }
             if requestPath.count == cookiePath.count || cookiePath.hasSuffix("/") { return true }

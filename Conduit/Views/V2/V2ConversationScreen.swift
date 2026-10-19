@@ -47,6 +47,7 @@ struct V2ComposerTypingKey: PreferenceKey {
 struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
@@ -61,43 +62,70 @@ struct V2ConversationScreen: View {
         return appState.nestingParent(of: session)
     }
 
+    @ViewBuilder private var conversation: some View {
+        if appState.activeRoomSurface != nil {
+            // Keyed by room: another room starts with its own draft.
+            GroupChatView()
+                .id(appState.activeRoomSurface?.room.roomID)
+                .environment(\.v2ComposerRests, true)
+        } else {
+            ChatView()
+                .environment(\.v2ComposerRests, true)
+        }
+    }
+
     var body: some View {
         ZStack {
             V2Backdrop()
-            if appState.activeRoomSurface != nil {
-                // Keyed by room: another room starts with its own draft.
-                GroupChatView()
-                    .id(appState.activeRoomSurface?.room.roomID)
-                    .environment(\.v2ComposerRests, true)
-            } else {
-                ChatView()
-                    .environment(\.v2ComposerRests, true)
-            }
+            conversation
+                .overlay(alignment: .bottomTrailing) {
+                    if appState.activeRoomSurface == nil {
+                        // Beside the resting composer; it slides aside,
+                        // shrinks and fades while the composer is expanded.
+                        V2VoiceButton(context: .conversation, isHidden: composerExpanded)
+                            .scaleEffect(composerExpanded && !reduceMotion ? 0.4 : 1)
+                            .offset(x: composerExpanded && !reduceMotion ? 30 : 0)
+                            .opacity(composerExpanded ? 0 : 1)
+                            .allowsHitTesting(!composerExpanded)
+                            .accessibilityHidden(composerExpanded)
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 10)
+                            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: composerExpanded)
+                    }
+                }
+                // On a wide window the transcript, the composer and the
+                // voice button beside it keep to a readable column; the
+                // backdrop still fills the window.
+                .readableContentWidth(ReadableWidth.chat)
         }
         .modifier(V2FadingBarBackdrop())
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if appState.activeRoomSurface == nil {
-                // Beside the resting composer; it slides aside, shrinks and
-                // fades while the composer is expanded.
-                V2VoiceButton(context: .conversation, isHidden: composerExpanded)
-                    .scaleEffect(composerExpanded && !reduceMotion ? 0.4 : 1)
-                    .offset(x: composerExpanded && !reduceMotion ? 30 : 0)
-                    .opacity(composerExpanded ? 0 : 1)
-                    .allowsHitTesting(!composerExpanded)
-                    .accessibilityHidden(composerExpanded)
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 10)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: composerExpanded)
-            }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            // Beside the list on a wide window there is no Back: this
+            // closes the chat, as Back does on a phone, and the column goes
+            // back to offering a new one.
+            if shell.isSplit {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptics.light()
+                        appState.showSidebar = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.primary)
+                            .frame(width: 40, height: 40)
+                            .modifier(V2PreGlassToolbarControl())
+                    }
+                    .accessibilityLabel(AppLocalization.string("Close"))
+                    .accessibilityIdentifier("conversation.close")
+                }
+            }
             // Session-only controls: an open room owns the title and actions.
             if appState.activeRoomSurface == nil {
                 ToolbarItem(placement: .principal) {

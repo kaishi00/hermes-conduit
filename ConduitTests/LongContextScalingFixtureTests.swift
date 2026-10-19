@@ -182,6 +182,18 @@ final class LongContextScalingFixtureTests: XCTestCase {
         appState.messages = Self.deepTranscript()
 
         let host = mountChat(appState: appState)
+        // On a loaded runner the counters can go quiet before the bottom
+        // landing: only the top layout's first rows are mounted then, and the
+        // landing's rows render inside the measurement window below. Wait
+        // (capped) until the tail is mounted, then for quiet again.
+        let tail = Set(appState.messages.suffix(4).map(\.content))
+        let landingDeadline = Date().addingTimeInterval(10)
+        while mountedSettledSources(in: host.view, transcript: appState.messages).isDisjoint(with: tail),
+              Date() < landingDeadline {
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
         guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 1.0) else {
             XCTFail("deep transcript never reached a quiet state; measurement would be meaningless")
             return
@@ -192,7 +204,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
         // transcript, or the stack is not lazy and the measurement below
         // would tolerate a full cascade.
         let mountedAtWindowOpen = mountedSettledSources(in: host.view, transcript: appState.messages)
-        XCTAssertFalse(mountedAtWindowOpen.isEmpty, "the visible tail must be mounted")
+        XCTAssertFalse(mountedAtWindowOpen.isDisjoint(with: tail), "the visible tail must be mounted")
         XCTAssertLessThan(
             mountedAtWindowOpen.count, 40,
             "an 800-row transcript must mount only a small window: \(mountedAtWindowOpen.count) rows"

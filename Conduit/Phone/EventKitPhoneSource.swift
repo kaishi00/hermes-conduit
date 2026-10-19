@@ -200,7 +200,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         if !alarms.isEmpty { value["alarms_min"] = Array(alarms.prefix(5)) }
         if details {
             if let notes = event.notes, !notes.isEmpty { value["notes"] = String(notes.prefix(PhoneSyncLimits.notesChars)) }
-            if let url = event.url { value["url"] = url.absoluteString }
+            if let url = Self.sharedURL(event.url) { value["url"] = url }
             let attendees = (event.attendees ?? []).prefix(30).map { person -> [String: Any] in
                 var entry: [String: Any] = [
                     "name": String((person.name ?? "").prefix(100)),
@@ -215,6 +215,14 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             if !attendees.isEmpty { value["attendees"] = attendees }
         }
         return value
+    }
+
+    /// An item's link, left out when it's longer than the host takes: one
+    /// over phone_store's MAX_URL_CHARS refuses the whole upload, and a cut
+    /// link wouldn't open.
+    static func sharedURL(_ url: URL?) -> String? {
+        guard let text = url?.absoluteString, text.unicodeScalars.count <= PhoneSyncLimits.urlChars else { return nil }
+        return text
     }
 
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]] {
@@ -269,7 +277,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         }
         if details {
             if let notes = reminder.notes, !notes.isEmpty { value["notes"] = String(notes.prefix(PhoneSyncLimits.notesChars)) }
-            if let url = reminder.url { value["url"] = url.absoluteString }
+            if let url = Self.sharedURL(reminder.url) { value["url"] = url }
         }
         return value
     }
@@ -332,7 +340,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         case .updateEvent:
             let event = try findEvent(change.eventID ?? "", window: window)
             guard event.calendar?.allowsContentModifications ?? false else { throw PhoneCalendarSourceError.readOnly }
-            if let moved = calendar(id: fields.calendarID, type: .event), moved.allowsContentModifications {
+            if let moved = try Self.moveDestination(fields.calendarID, find: { calendar(id: $0, type: .event) }, isWritable: \.allowsContentModifications) {
                 event.calendar = moved
             }
             fill(event, with: fields, isNew: false)
@@ -361,7 +369,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             if change.kind == .completeReminder {
                 reminder.isCompleted = fields.completed ?? true
             } else {
-                if let moved = calendar(id: fields.listID, type: .reminder), moved.allowsContentModifications {
+                if let moved = try Self.moveDestination(fields.listID, find: { calendar(id: $0, type: .reminder) }, isWritable: \.allowsContentModifications) {
                     reminder.calendar = moved
                 }
                 fill(reminder, with: fields)
@@ -387,11 +395,13 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         if let start = fields.start {
             let length = event.endDate.flatMap { end in event.startDate.map { end.timeIntervalSince($0) } } ?? 3600
             event.startDate = start
-            if fields.end == nil { event.endDate = start.addingTimeInterval(allDay ? max(length, 86_400) : max(length, 0)) }
+            if fields.end == nil {
+                event.endDate = allDay ? Self.allDayEnd(start: start, previousLength: length, calendar: .current) : start.addingTimeInterval(max(length, 0))
+            }
         }
         if let end = fields.end { event.endDate = end }
         if isNew, event.endDate == nil, let start = event.startDate {
-            event.endDate = start.addingTimeInterval(allDay ? 86_400 : 3600)
+            event.endDate = allDay ? Self.allDayEnd(start: start, previousLength: nil, calendar: .current) : start.addingTimeInterval(3600)
         }
         if let location = fields.location { event.location = location }
         if let notes = fields.notes { event.notes = notes }
@@ -399,6 +409,28 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         if let minutes = fields.alarmsMinutes {
             event.alarms = minutes.prefix(3).map { EKAlarm(relativeOffset: TimeInterval(-$0 * 60)) }
         }
+    }
+
+    /// Where an update moves an item: nil when it names no calendar or
+    /// list. One that's gone or can't be changed fails the update rather
+    /// than saving the rest in the old place and reporting it applied. An add
+    /// instead falls back to the default calendar or list when the named
+    /// one is gone; only a read-only one fails it.
+    static func moveDestination<Destination>(_ id: String?, find: (String) -> Destination?, isWritable: (Destination) -> Bool) throws -> Destination? {
+        guard let id else { return nil }
+        guard let found = find(id) else { throw PhoneCalendarSourceError.notFound }
+        guard isWritable(found) else { throw PhoneCalendarSourceError.readOnly }
+        return found
+    }
+
+    /// An all-day event's end: whole calendar days after the day it starts
+    /// (its previous length rounded to days, at least one). Days, not
+    /// seconds: a day with a clock change has 23 or 25 hours, and 86 400 s
+    /// from its midnight lands in the next date.
+    static func allDayEnd(start: Date, previousLength: TimeInterval?, calendar: Calendar) -> Date {
+        let days = max(1, Int(((previousLength ?? 86_400) / 86_400).rounded()))
+        let day = calendar.startOfDay(for: start)
+        return calendar.date(byAdding: .day, value: days, to: day) ?? day.addingTimeInterval(TimeInterval(days) * 86_400)
     }
 
     private func fill(_ reminder: EKReminder, with fields: PhoneChangeFields) {

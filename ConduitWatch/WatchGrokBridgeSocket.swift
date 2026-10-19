@@ -33,6 +33,8 @@ struct WatchGrokBridge {
     var engine: String = WatchAudioBridgeWire.grok
     /// Local Live: the call's Hermes chat so far, read at each start.
     var resumeSessionID: (@MainActor () -> String?)? = nil
+    /// Local Live: the Watch answers Hermes' approval requests on its card.
+    var takesApprovals = false
 
     var isLocalLive: Bool { engine == WatchAudioBridgeWire.localLive }
 }
@@ -95,6 +97,9 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     var onNote: ((String, [String: Any]) -> Void)?
     /// The host started the engine, with what it said.
     var onStarted: ((WatchAudioBridgeWire.Started) -> Void)?
+    /// Local Live: Hermes' approval requests, which the host sends beside
+    /// the call's events. They never reach the session.
+    var onApproval: ((WatchAudioBridgeWire.ApprovalFrame) -> Void)?
 
     private let socket: WatchBridgeSocket?
     private var stream: WatchAudioBridgeStream?
@@ -106,6 +111,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     /// The host's refusal, as the session reads a server's close.
     private var refusal: GeminiLiveServerClose?
     private var pingTimer: Timer?
+    private var pings = WatchPingWatchdog()
     private var startTimer: Timer?
     private let bridge: WatchGrokBridge
 
@@ -164,6 +170,12 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
               object["type"] as? String == "input_audio_buffer.append",
               let audio = object["audio"] as? String else { return nil }
         return Data(base64Encoded: audio)
+    }
+
+    /// The Watch's answer to Hermes' approval request `id`, on this stream.
+    func sendApprovalAnswer(id: String, approve: Bool) async throws {
+        try await waitForStart()
+        try await seal(try WatchAudioBridgeWire.approvalAnswer(id: id, approve: approve), kind: .event)
     }
 
     func receive() async throws -> Data {
@@ -232,7 +244,8 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             // carries only the engine and voice, and a rejoining Local Live
             // call's chat.
             let start = WatchAudioBridgeWire.start(engine: bridge.engine, voice: bridge.voice, briefing: nil, greeting: nil, history: [],
-                                                   resumeSessionID: bridge.resumeSessionID?())
+                                                   resumeSessionID: bridge.resumeSessionID?(),
+                                                   approvals: bridge.takesApprovals)
             do {
                 try sealNow(start, kind: .control, stream: stream)
             } catch {
@@ -273,6 +286,10 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             guard let control = WatchAudioBridgeWire.control(opened.plain) else { return }
             handle(control)
         case .event:
+            if bridge.takesApprovals, let approval = WatchAudioBridgeWire.approvalFrame(opened.plain) {
+                onApproval?(approval)
+                return
+            }
             deliver(opened.plain)
         case .audio:
             // As xAI sent it, before the host took it out to pace it.
@@ -310,7 +327,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             startTimer = nil
             pingTimer?.invalidate()
             pingTimer = WatchVoiceMain.timer(every: Self.pingInterval, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.socket?.ping { _ in } }
+                MainActor.assumeIsolated { self?.pingIfDue() }
             }
             let waiters = startWaiters
             startWaiters = []
@@ -330,6 +347,22 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             }
             fail(Failure.closed)
         }
+    }
+
+    /// A ping unanswered or failed twice in a row: the socket died without
+    /// closing, and the session rejoins as for any closed socket.
+    private func pingIfDue() {
+        guard let socket, failure == nil else { return }
+        guard !pings.pingDue() else { return silent() }
+        socket.ping { [weak self] ok in
+            guard let self, self.failure == nil else { return }
+            if self.pings.answered(ok: ok) { self.silent() }
+        }
+    }
+
+    private func silent() {
+        onNote?("bridgeSocketSilent", ["misses": pings.misses])
+        fail(Failure.closed)
     }
 
     private func deliver(_ data: Data) {

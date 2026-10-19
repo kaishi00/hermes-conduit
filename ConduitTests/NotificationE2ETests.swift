@@ -255,3 +255,42 @@ final class NotificationE2ETests: XCTestCase {
         }
     }
 }
+
+// MARK: - Relay errors
+
+extension NotificationE2ETests {
+    func testRelayErrorsSayWhatTheRelayRefused() {
+        func message(_ json: String) -> String { PushNotificationService.relayErrorMessage(data: Data(json.utf8)) }
+        let generic = AppLocalization.string("Push relay request failed.")
+        // The relay answers {"error": "<code>"} (relay/src/server.mjs).
+        for code in ["unauthorized", "invalid_topic", "production_only", "invalid_device_token", "token_proof_required",
+                     "token_proof_invalid", "installation_limit_reached", "gateway_limit_reached", "rate_limited",
+                     "answer_too_large"] {
+            let text = message(#"{"error":"\#(code)"}"#)
+            XCTAssertNotEqual(text, generic, code)
+            XCTAssertFalse(text.contains(code), "A known code reads as a sentence: \(code)")
+        }
+        // An unknown code still says which it was.
+        XCTAssertTrue(message(#"{"error":"something_new"}"#).contains("something_new"))
+        // A relay that says it in words (none does today) is shown as is.
+        XCTAssertEqual(message(#"{"message":"Relay is down for maintenance"}"#), "Relay is down for maintenance")
+        XCTAssertEqual(message("not json"), generic)
+        XCTAssertEqual(message("{}"), generic)
+    }
+
+    func testAClarifyAnswerTooLongForTheRelayIsRefusedWithAReason() {
+        // The relay takes plaintext answers of 2,000 UTF-16 units after
+        // trimming, and answers 413 answer_too_large beyond (or for a sealed
+        // answer over its cap).
+        XCTAssertNil(PushNotificationService.decisionAnswerError(String(repeating: "a", count: 2_000)))
+        XCTAssertNil(PushNotificationService.decisionAnswerError("  " + String(repeating: "a", count: 2_000) + "\n"))
+        let tooLong = PushNotificationService.decisionAnswerError(String(repeating: "😀", count: 1_001))
+        XCTAssertNotNil(tooLong, "Counted as the relay counts: 2,002 UTF-16 units")
+        let refused = PushNotificationService.decisionError(status: 413, data: Data(#"{"error":"answer_too_large"}"#.utf8))
+        XCTAssertEqual(refused.errorDescription, tooLong?.errorDescription)
+        XCTAssertNotEqual(refused.errorDescription, PushNotificationService.RelayDecisionError.server(413).errorDescription)
+        // Other refusals keep the generic text.
+        XCTAssertEqual(PushNotificationService.decisionError(status: 400, data: Data(#"{"error":"invalid_answer"}"#.utf8)).errorDescription,
+                       PushNotificationService.RelayDecisionError.server(400).errorDescription)
+    }
+}

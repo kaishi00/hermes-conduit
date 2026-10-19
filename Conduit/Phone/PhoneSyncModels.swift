@@ -440,6 +440,8 @@ enum PhoneSyncLimits {
     static let maxEvents = 4_000
     static let maxReminders = 1_000
     static let notesChars = 2_000
+    /// The longest link the host takes (phone_store MAX_URL_CHARS).
+    static let urlChars = 1_000
     /// Completed reminders stay shared this long.
     static let completedReminderDays = 14
     /// Everything is sent whole again at least this often, so a missed

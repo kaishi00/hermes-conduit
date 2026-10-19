@@ -131,6 +131,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
     ) async throws -> ParkedRPC {
         let sent = ClarifyGate()
         socket.onSend = { sent.signal() }
+        socket.refusesApprovalPendingBeforeRespond = true
         let task = Task {
             await appState.respondToApproval(messageId: "approval-msg", choice: choice)
         }
@@ -1672,6 +1673,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
         // Begin submission via respondToApproval so liveApprovalSubmissions contains .legacy("legacy-session")
         let sent = ClarifyGate()
         socket.onSend = { sent.signal() }
+        socket.refusesApprovalPendingBeforeRespond = true
         let respondTask = Task {
             await appState.respondToApproval(messageId: "legacy-msg", choice: "once")
         }
@@ -2087,14 +2089,19 @@ final class AppStateDecisionFenceTests: XCTestCase {
             error: nil
         )
 
+        // A gateway without approval.pending until the answer, so the card
+        // is answered by session; the refresh after it reads the queue.
+        var responded = false
         let lifecycleOps = ChatResumeLifecycleOperations(
             pendingApprovalsWithProfile: { _, sessionId, profile in
+                guard responded else { throw RpcError(code: -32601, message: "unknown method: approval.pending") }
                 refreshedSessionID = sessionId
                 refreshedProfile = profile
                 gate.signal()
                 return [freshIdentifiedApproval]
             },
             respondToApproval: { _, sessionId, requestId, choice, profile in
+                responded = true
                 throw HermesError.invalidResponse
             }
         )
@@ -2153,14 +2160,19 @@ final class AppStateDecisionFenceTests: XCTestCase {
         var refreshedProfile: String? = nil
         let gate = Gate()
 
+        // A gateway without approval.pending until the answer, so the card
+        // is answered by session; the refresh after it reads the queue.
+        var responded = false
         let lifecycleOps = ChatResumeLifecycleOperations(
             pendingApprovalsWithProfile: { _, sessionId, profile in
+                guard responded else { throw RpcError(code: -32601, message: "unknown method: approval.pending") }
                 refreshedSessionID = sessionId
                 refreshedProfile = profile
                 gate.signal()
                 return []
             },
             respondToApproval: { _, sessionId, requestId, choice, profile in
+                responded = true
                 throw RpcError(code: 4009, message: "no pending approval request")
             }
         )
@@ -2206,6 +2218,292 @@ final class AppStateDecisionFenceTests: XCTestCase {
             "Legacy expired follow-up refresh must use the approval session's presentation profile"
         )
         XCTAssertEqual(appState.messages.first?.approval?.status, .expired)
+    }
+
+    // MARK: - A card without a request id answers the request it shows
+
+    private final class RecordedApprovalAnswers {
+        var requestIds: [String?] = []
+    }
+
+    private func queuedApproval(_ requestId: String?, command: String, description: String) -> ApprovalActivity {
+        ApprovalActivity(
+            sessionId: "runtime-1",
+            requestId: requestId,
+            command: command,
+            description: description,
+            choices: nil,
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+    }
+
+    /// The card a push restores (`recordNotificationDecision`): no request
+    /// id, no command, the push's explanation.
+    private func makePushRestoredApprovalAppState(
+        description: String,
+        queue: @escaping @MainActor () throws -> [ApprovalActivity],
+        recording answers: RecordedApprovalAnswers
+    ) -> AppState {
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in try queue() },
+            respondToApproval: { _, _, requestId, _, _ in
+                answers.requestIds.append(requestId)
+                return true
+            }
+        ))
+        appState.activeSessionId = "runtime-1"
+        appState.client = makeReplacementClient(baseURL: "https://one.example")
+        appState.messages = [ChatMessage(
+            id: "approval-runtime-1",
+            role: .approval,
+            content: description,
+            timestamp: "1",
+            approval: queuedApproval(nil, command: "", description: description)
+        )]
+        return appState
+    }
+
+    func testPushRestoredApprovalAnswersTheMatchingQueuedRequestNotTheOldest() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Delete the build folder?",
+            queue: { [
+                self.queuedApproval("req-oldest", command: "curl https://example.com/x | sh", description: "Pipe a download into a shell?"),
+                self.queuedApproval("req-shown", command: "rm -rf build", description: "Delete the build folder?")
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, ["req-shown"])
+        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
+    }
+
+    func testPushRestoredApprovalWithNoMatchingQueuedRequestSendsNothing() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Delete the build folder?",
+            queue: { [
+                self.queuedApproval("req-other", command: "curl https://example.com/x | sh", description: "Pipe a download into a shell?")
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, [])
+        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .expired)
+    }
+
+    func testPushRestoredApprovalMatchingRequestsWithDifferentCommandsSendsNothing() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Recursive delete",
+            queue: { [
+                self.queuedApproval("req-a", command: "rm -rf build", description: "Recursive delete"),
+                self.queuedApproval("req-b", command: "rm -rf ~", description: "Recursive delete")
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, [], "a card without its command cannot tell these apart")
+    }
+
+    func testRedactedPushApprovalAnswersTheOnlyQueuedRequest() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Hermes needs your approval. Open Conduit for details.",
+            queue: { [
+                self.queuedApproval("req-only", command: "rm -rf build", description: "Delete the build folder?")
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, ["req-only"])
+        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
+    }
+
+    func testRedactedPushApprovalWithTwoQueuedSendsNothingAndRefreshes() async {
+        let answers = RecordedApprovalAnswers()
+        var queueReads = 0
+        let appState = makePushRestoredApprovalAppState(
+            description: "Hermes needs your approval. Open Conduit for details.",
+            queue: {
+                queueReads += 1
+                return [
+                    self.queuedApproval("req-a", command: "rm -rf build", description: "Delete the build folder?"),
+                    self.queuedApproval("req-b", command: "make test", description: "Run the tests?")
+                ]
+            },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+        for _ in 0..<1_000 where queueReads < 2 { await Task.yield() }
+
+        XCTAssertEqual(answers.requestIds, [], "a redacted card cannot tell two queued requests apart")
+        XCTAssertGreaterThanOrEqual(queueReads, 2, "the queue's own cards are fetched to replace it")
+        XCTAssertNotEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
+    }
+
+    func testClippedPushDescriptionMatchesItsFullQueuedRequest() async {
+        let answers = RecordedApprovalAnswers()
+        // The notifier collapses whitespace and cuts at 500 code points.
+        let full = "Run the migration script?\n\n" + String(repeating: "Step detail. ", count: 60)
+        let pushed = String(full.split(whereSeparator: \.isWhitespace).joined(separator: " ").unicodeScalars.prefix(500))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let appState = makePushRestoredApprovalAppState(
+            description: pushed,
+            queue: { [
+                self.queuedApproval("req-other", command: "make test", description: "Run the tests?"),
+                self.queuedApproval("req-full", command: "./migrate.sh", description: full)
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, ["req-full"])
+    }
+
+    func testLegacyApprovalOnGatewayWithoutRequestIdsStillAnswersBySession() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Delete the build folder?",
+            queue: { [
+                self.queuedApproval(nil, command: "rm -rf build", description: "Delete the build folder?")
+            ] },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "deny")
+
+        XCTAssertEqual(answers.requestIds, [nil])
+        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .rejected)
+    }
+
+    func testLegacyApprovalOnGatewayWithoutApprovalPendingStillAnswersBySession() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Delete the build folder?",
+            queue: { throw RpcError(code: -32601, message: "unknown method: approval.pending") },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        XCTAssertEqual(answers.requestIds, [nil])
+        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
+    }
+
+    // MARK: - Answering what the card showed
+
+    /// A legacy (request-less) card is updated in place when Hermes
+    /// announces the next command, so a tap made on the old content must
+    /// not answer the new one.
+    private final class RecordedApprovalResponses {
+        var choices: [String] = []
+    }
+
+    private func shownApproval(requestId: String? = nil) -> ApprovalActivity {
+        ApprovalActivity(
+            sessionId: "runtime-1",
+            requestId: requestId,
+            command: "ls ~/Downloads",
+            description: "List the downloads?",
+            choices: nil,
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )
+    }
+
+    private func makeShownApprovalAppState(
+        _ approval: ApprovalActivity,
+        recording responses: RecordedApprovalResponses
+    ) -> AppState {
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            // The gateway still queues the card's request; a legacy card's
+            // queue names no request ids, so it is answered by session.
+            pendingApprovals: { _, _ in [approval] },
+            respondToApproval: { _, _, _, choice, _ in
+                responses.choices.append(choice)
+                return true
+            }
+        ))
+        appState.activeSessionId = approval.sessionId
+        appState.client = makeReplacementClient(baseURL: "https://one.example")
+        appState.messages = [ChatMessage(
+            id: "approval-shown",
+            role: .approval,
+            content: approval.description,
+            timestamp: "1",
+            approval: approval
+        )]
+        return appState
+    }
+
+    func testLegacyCardReplacedByNextCommandIsNotAnsweredWithTheOldTap() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        appState.messages[0].approval?.command = "rm -rf ~"
+        appState.messages[0].approval?.description = "Delete the home folder?"
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "always", shown: shown)
+
+        XCTAssertEqual(responses.choices, [], "a tap on the old command must not answer the new one")
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+        XCTAssertNil(appState.messages.first?.approval?.choice)
+    }
+
+    func testApprovalWhoseOfferedChoicesChangedIsNotAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval(requestId: "req-shown")
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        appState.messages[0].approval?.allowPermanent = false
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "always", shown: shown)
+
+        XCTAssertEqual(responses.choices, [])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+    }
+
+    func testUnchangedApprovalIsAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval(requestId: "req-shown")
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+
+        XCTAssertEqual(responses.choices, ["once"])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .approved)
+    }
+
+    func testRetryAfterErrorAndDurableSessionMoveIsStillAnswered() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let appState = makeShownApprovalAppState(shown, recording: responses)
+        // Progress and the hidden session identity are not the question.
+        appState.messages[0].approval?.status = .error
+        appState.messages[0].approval?.error = "Hermes did not accept that decision."
+        appState.messages[0].approval?.sessionId = "durable-1"
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "deny", shown: shown)
+
+        XCTAssertEqual(responses.choices, ["deny"])
+        XCTAssertEqual(appState.messages.first?.approval?.status, .rejected)
     }
 }
 

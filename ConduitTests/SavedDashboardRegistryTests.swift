@@ -82,6 +82,14 @@ final class SavedDashboardRegistryTests: XCTestCase {
         XCTAssertEqual(loaded, registry)
     }
 
+    func testARegistrySavedBeforeAddressMovesStillLoads() throws {
+        let id = UUID()
+        let saved = #"{"schemaVersion":1,"activeDashboardID":"\#(id.uuidString)","dashboards":[{"id":"\#(id.uuidString)","label":"Mac","normalizedURL":"https://mac.tailnet.ts.net"}]}"#
+        let registry = try JSONDecoder().decode(SavedDashboardRegistry.self, from: Data(saved.utf8))
+        XCTAssertEqual(registry.dashboard(with: id)?.normalizedURL, "https://mac.tailnet.ts.net")
+        XCTAssertNil(registry.dashboard(with: id)?.pendingURL)
+    }
+
     func testDashboardLookupByIDAndURL() {
         let a = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
         let b = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://hermes.example.com")

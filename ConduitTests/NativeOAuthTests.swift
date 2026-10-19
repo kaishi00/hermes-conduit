@@ -31,6 +31,32 @@ private final class NativeOAuthURLProtocolStub: URLProtocol {
     override func stopLoading() {}
 }
 
+/// Native-token writes fail while `failWrites` is set, as when the
+/// Keychain refuses to write over an item.
+private final class WriteFailingKeychainBackend: KeychainHelper.Backend {
+    private let storage = InMemoryKeychainBackend()
+    var failWrites = false
+    private(set) var failedWrites = 0
+
+    func data(for query: [String: Any]) -> Data? { storage.data(for: query) }
+
+    func update(_ data: Data, for query: [String: Any]) -> Int32 {
+        guard !failWrites else { failedWrites += 1; return errSecInteractionNotAllowed }
+        return storage.update(data, for: query)
+    }
+
+    func add(_ query: [String: Any]) -> Int32 {
+        guard !failWrites else { failedWrites += 1; return errSecInteractionNotAllowed }
+        return storage.add(query)
+    }
+
+    func delete(_ query: [String: Any]) { storage.delete(query) }
+
+    func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32 {
+        storage.setAccessibility(accessibility, for: query)
+    }
+}
+
 final class NativeOAuthTests: XCTestCase {
     private var backend: InMemoryKeychainBackend!
 
@@ -382,6 +408,65 @@ final class NativeOAuthTests: XCTestCase {
         session.invalidate()
     }
 
+    /// A refresh whose rotated tokens can't be written keeps them: the
+    /// server has retired the stored refresh token, so the session keeps
+    /// serving the new grant, retries the write once, and still counts as
+    /// matching the (stale) Keychain copy so no bridge is rebuilt from it.
+    @MainActor
+    func testRefreshThatCannotSaveKeepsTheRotatedTokens() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        let failing = WriteFailingKeychainBackend()
+        KeychainHelper.useBackendForTesting(failing)
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        failing.failWrites = true
+        var apiCalls = 0
+        var refreshCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshCalls += 1
+                let access = refreshCalls == 1 ? "new-access" : "newer-access"
+                return (200, [
+                    "access_token": access, "refresh_token": "\(access)-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                apiCalls += 1
+                // The first and fourth calls find their token expired.
+                if apiCalls == 1 || apiCalls == 4 { return (401, ["detail": "expired"]) }
+                let expected = apiCalls < 4 ? "Bearer new-access" : "Bearer newer-access"
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), expected)
+                return (200, ["ok": true])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+
+        let response = try await session.requestJSON(path: "/api/status")
+        _ = try await session.requestJSON(path: "/api/status")
+
+        XCTAssertEqual(response["ok"] as? Bool, true)
+        XCTAssertEqual(refreshCalls, 1)
+        XCTAssertEqual(apiCalls, 3, "the second request uses the rotated token, not the stored one")
+        XCTAssertEqual(failing.failedWrites, 2, "the save is retried once")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
+        XCTAssertTrue(
+            session.matchesStoredTokens(initial),
+            "the stale Keychain copy must not make the bridge rebuild from the retired grant"
+        )
+
+        // The next refresh that saves ends the exception.
+        failing.failWrites = false
+        _ = try await session.requestJSON(path: "/api/status")
+        let stored = try XCTUnwrap(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID))
+        XCTAssertEqual(stored.accessToken, "newer-access")
+        XCTAssertTrue(session.matchesStoredTokens(stored))
+        XCTAssertFalse(session.matchesStoredTokens(initial))
+        session.invalidate()
+    }
+
     @MainActor
     func testConcurrentRejectedRefreshCallersBothRequireSignIn() async {
         let id = UUID()
@@ -503,6 +588,68 @@ final class NativeOAuthTests: XCTestCase {
         XCTAssertEqual(calls, 1)
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
         session.invalidate()
+    }
+
+    /// Hermes refuses a sensitive or unreadable file with 403, its sign-in
+    /// still good. The download reports Hermes' reason and leaves the grant
+    /// alone: no refresh, nothing cleared from the Keychain.
+    @MainActor
+    func testRefusedFileDownloadDoesNotRefreshOrClearTokens() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        var downloads = 0
+        var refreshCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshCalls += 1
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/fs/download":
+                downloads += 1
+                return (403, ["detail": "Access to sensitive files is not allowed"])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        let bridge = DashboardTicketBridge(
+            baseURL: "https://hermes.example",
+            dashboardID: dashboardID,
+            requestAuthorizer: DashboardRequestAuthorizer(
+                baseURL: "https://hermes.example",
+                dashboardID: dashboardID,
+                cloudflareAccess: nil,
+                nativeSession: session
+            )
+        )
+        defer { bridge.invalidate() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [NativeOAuthURLProtocolStub.self]
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        do {
+            _ = try await bridge.downloadFile(
+                path: "/api/fs/download?path=%2Froot%2F.env",
+                filename: ".env",
+                into: root,
+                session: URLSession(configuration: configuration)
+            )
+            XCTFail("A refused file must not download")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(detail, "Access to sensitive files is not allowed")
+        } catch {
+            XCTFail("Expected Hermes' refusal, got \(error)")
+        }
+        XCTAssertEqual(downloads, 1)
+        XCTAssertEqual(refreshCalls, 0)
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
+        XCTAssertTrue(session.matchesStoredTokens(initial))
     }
 }
 

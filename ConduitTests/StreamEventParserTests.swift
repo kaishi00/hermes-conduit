@@ -108,7 +108,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"message_id": "msg-42", "content": "Final answer", "reasoning": "because"}}
         """#)
-        guard case .messageComplete(let sessionId, let messageId, let content, let reasoning) = event else {
+        guard case .messageComplete(let sessionId, let messageId, let content, let reasoning, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(sessionId, "s1")
@@ -117,11 +117,53 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(reasoning, "because")
     }
 
+    /// `response_previewed` / `response_reused` say the final text is one an
+    /// interim already delivered.
+    func testMessageCompleteReadsAlreadyShownFlags() {
+        for (flags, expected) in [
+            ("", false),
+            (#", "response_previewed": true"#, true),
+            (#", "response_reused": true"#, true),
+            (#", "response_previewed": false, "response_reused": false"#, false),
+        ] {
+            let event = parse(#"""
+            {"type": "message.complete", "session_id": "s1", "payload": {"text": "Done"\#(flags)}}
+            """#)
+            guard case .messageComplete(_, _, let content, _, let alreadyShown) = event else {
+                return XCTFail("Expected messageComplete for \(flags)")
+            }
+            XCTAssertEqual(content, "Done")
+            XCTAssertEqual(alreadyShown, expected, flags)
+        }
+    }
+
+    // MARK: - message.interim
+
+    func testMessageInterimCarriesAlreadyStreamed() {
+        guard case .messageInterim(let sessionId, let text, let streamed) = parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "Checking the logs.", "already_streamed": true}}
+        """#) else { return XCTFail("Expected messageInterim") }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(text, "Checking the logs.")
+        XCTAssertTrue(streamed)
+
+        guard case .messageInterim(_, _, let unstreamed) = parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "Commentary", "already_streamed": false}}
+        """#) else { return XCTFail("Expected messageInterim") }
+        XCTAssertFalse(unstreamed)
+    }
+
+    func testEmptyMessageInterimIsIgnored() {
+        XCTAssertNil(parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "  ", "already_streamed": false}}
+        """#))
+    }
+
     func testMessageCompleteFallsBackToIdField() {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"id": "alt-id"}}
         """#)
-        guard case .messageComplete(_, let messageId, _, _) = event else {
+        guard case .messageComplete(_, let messageId, _, _, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(messageId, "alt-id")
@@ -131,7 +173,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"rendered": "<p>html</p>"}}
         """#)
-        guard case .messageComplete(_, _, let content, _) = event else {
+        guard case .messageComplete(_, _, let content, _, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(content, "<p>html</p>")
@@ -321,6 +363,83 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(percent, 0.0)
         XCTAssertEqual(used, 0)
         XCTAssertEqual(max, 0)
+    }
+
+    // MARK: - background.complete / btw.complete
+
+    func testSideAgentCompletions() {
+        guard case .sideAgentComplete(let sessionId, let kind, let taskId, let text, let question) = parse(#"""
+        {"type": "btw.complete", "session_id": "s1", "payload": {"task_id": "btw_1a2b3c", "question": "what did we decide?", "text": "Ship on Friday."}}
+        """#) else { return XCTFail("Expected sideAgentComplete") }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(kind, .btw)
+        XCTAssertEqual(taskId, "btw_1a2b3c")
+        XCTAssertEqual(text, "Ship on Friday.")
+        XCTAssertEqual(question, "what did we decide?")
+
+        guard case .sideAgentComplete(_, let bgKind, let bgTask, let bgText, let bgQuestion) = parse(#"""
+        {"type": "background.complete", "session_id": "s1", "payload": {"task_id": "bg_4d5e6f", "text": "error: boom"}}
+        """#) else { return XCTFail("Expected sideAgentComplete") }
+        XCTAssertEqual(bgKind, .background)
+        XCTAssertEqual(bgTask, "bg_4d5e6f")
+        XCTAssertEqual(bgText, "error: boom")
+        XCTAssertNil(bgQuestion)
+
+        XCTAssertNil(parse(#"""
+        {"type": "btw.complete", "session_id": "s1", "payload": {"task_id": "btw_1", "text": "  "}}
+        """#))
+    }
+
+    // MARK: - session.usage
+
+    /// Hermes pushes live usage as `session.usage` once a second during a
+    /// turn, with the context fields nested under `payload.usage`.
+    func testSessionUsageMapsNestedContextFields() {
+        let event = parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"model": "m", "input": 900, "output": 40, "context_used": 45000, "context_max": 100000, "context_percent": 45, "context_source": "provider_usage"}}}
+        """#)
+        guard case .contextUpdate(let sessionId, let percent, let used, let max) = event else {
+            return XCTFail("Expected contextUpdate, got \(String(describing: event))")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(percent, 45)
+        XCTAssertEqual(used, 45000)
+        XCTAssertEqual(max, 100000)
+    }
+
+    /// Hermes omits the context fields while the window is unknown (no
+    /// compressor yet, or nothing sent): that must not zero the meter.
+    func testSessionUsageWithoutContextFieldsIsIgnored() {
+        XCTAssertNil(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"model": "m", "input": 0, "output": 0, "calls": 0}}}
+        """#))
+        XCTAssertNil(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"context_used": 10, "context_max": 0, "context_percent": 0}}}
+        """#))
+    }
+
+    /// Hermes' `context_percent` is 0-100, so a session at 1% of a large
+    /// window must read 1%, not a full meter.
+    @MainActor
+    func testSessionUsageAtOnePercentDoesNotFillTheMeter() throws {
+        let suite = "StreamEventParserTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        let event = try XCTUnwrap(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"context_used": 10000, "context_max": 1000000, "context_percent": 1}}}
+        """#))
+
+        state.handleStreamEvent(event)
+
+        XCTAssertEqual(state.runtime.contextUsed, 10000)
+        XCTAssertEqual(state.runtime.contextMax, 1_000_000)
+        XCTAssertEqual(state.runtime.contextPercent, 1, accuracy: 0.001)
     }
 
     // MARK: - cwd.update

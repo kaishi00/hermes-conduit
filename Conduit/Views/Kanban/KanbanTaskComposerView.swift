@@ -22,6 +22,9 @@ struct KanbanTaskComposerView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialStatus: String
+    /// The board the sheet was opened for: creating fails if another has
+    /// loaded since.
+    let expectedContext: KanbanBoardContextStamp?
 
     @State private var draft = KanbanComposerDraft()
     @State private var isSaving = false
@@ -35,8 +38,9 @@ struct KanbanTaskComposerView: View {
     @State private var showSkillsSheet = false
     @State private var showParentSheet = false
 
-    init(initialStatus: String) {
+    init(initialStatus: String, expectedContext: KanbanBoardContextStamp?) {
         self.initialStatus = initialStatus
+        self.expectedContext = expectedContext
     }
 
     private var statusPresentation: KanbanStatusPresentation {
@@ -411,7 +415,7 @@ struct KanbanTaskComposerView: View {
             isSaving = true
             errorMessage = nil
             defer { isSaving = false }
-            _ = try await store.createTask(request, initialStatus: initialStatus)
+            _ = try await store.createTask(request, initialStatus: initialStatus, expectedContext: expectedContext)
             dismiss()
         } catch let error as KanbanDraftValidationError {
             errorMessage = UserFacingError.message(for: error)

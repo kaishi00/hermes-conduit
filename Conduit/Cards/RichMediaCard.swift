@@ -80,6 +80,15 @@ struct RichPerson: Equatable, Hashable {
         return phone.prefix(while: { !$0.isNumber }).contains("+") ? "+" + digits : digits
     }
 
+    /// The Email action's link. It is built from parts, so nothing in the
+    /// address can add a header or a recipient to the composer.
+    static func mailtoURL(_ email: String) -> URL? {
+        var link = URLComponents()
+        link.scheme = "mailto"
+        link.path = email
+        return link.url
+    }
+
     /// The person the user shared with Hermes that this is: the same
     /// number, the same email, or the same name.
     func match(in people: [PhonePerson]) -> PhonePerson? {
@@ -133,5 +142,10 @@ struct RichStatus: Equatable, Hashable {
             guard let label = stage["label"] as? String else { return nil }
             return Milestone(label: label, done: stage["done"] as? Bool ?? false)
         }
+    }
+
+    /// What the bar shows and VoiceOver reads: full once it's done.
+    var shownProgress: Double? {
+        progress.map { phase == .done ? 1 : $0 }
     }
 }

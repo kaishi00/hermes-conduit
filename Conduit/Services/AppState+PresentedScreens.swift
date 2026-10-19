@@ -98,7 +98,7 @@ extension AppState {
         }.joined(separator: "\n\n")
         classicVoiceCard = PresentedCard(
             id: parts.map(\.id).joined(separator: "+"),
-            title: String(title.prefix(VoiceBackgroundJobSupervisor.maximumTitleCharacters)),
+            title: String(title.prefix(VoiceBackgroundJobSupervisor.maximumScreenTitleCharacters)),
             markdown: VoiceBackgroundJobSupervisor.clippedScreenMarkdown(markdown),
             cards: parts.flatMap(\.cards)
         )

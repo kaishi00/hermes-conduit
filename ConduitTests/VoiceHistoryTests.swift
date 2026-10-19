@@ -1014,6 +1014,84 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(recorder.outboxRequest?.chatProfile, "coder")
     }
 
+    func testABotChatsCallMadeIntoARowKeepsSavingToTheBotsProfile() async {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        recorder.chatID = "st-bot"
+        recorder.chatProfile = "coder"
+        // A plugin that predates chat calls makes a row of it, in the bot's profile.
+        harness.results = [.success(VoiceTranscriptSaveResult(sessionID: "row-1", written: 1))]
+        let hello = entry(.user, "Hello")
+        recorder.capture([hello], unsettled: [])
+        await recorder.flush()
+        XCTAssertNil(harness.requests[0].rowProfile, "the first save goes by the chat's profile")
+        XCTAssertEqual(recorder.rowProfile, "coder")
+
+        let bye = entry(.user, "Bye")
+        recorder.capture([hello, bye], unsettled: [])
+        XCTAssertEqual(recorder.outboxRequest?.rowProfile, "coder")
+        await recorder.flush()
+        XCTAssertEqual(harness.requests[1].sessionID, "row-1")
+        XCTAssertEqual(harness.requests[1].rowProfile, "coder")
+        XCTAssertEqual(recorder.savedCallReplay?.rowProfile, "coder")
+
+        // A reconnect goes on in the same row.
+        let reconnect = harness.makeRecorder(continuing: recorder)
+        let more = entry(.user, "One more")
+        reconnect.capture([more], unsettled: [])
+        await reconnect.flush()
+        XCTAssertEqual(harness.requests[2].sessionID, "row-1")
+        XCTAssertEqual(harness.requests[2].rowProfile, "coder")
+
+        // The row is gone: the call is kept with its chat again.
+        harness.results = [.failure(VoiceHistoryError.rowUnavailable)]
+        reconnect.capture([more, entry(.user, "Last")], unsettled: [])
+        await reconnect.flush()
+        XCTAssertNil(reconnect.rowProfile)
+        XCTAssertNil(harness.requests.last?.sessionID)
+        XCTAssertNil(harness.requests.last?.rowProfile)
+        XCTAssertEqual(harness.requests.last?.chatProfile, "coder")
+    }
+
+    func testABotChatsCallMadeIntoARowIsSavedThereFromTheOutbox() async throws {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        recorder.chatID = "st-bot"
+        recorder.chatProfile = "coder"
+        // A plugin that predates chat calls makes a row of it, in the bot's profile.
+        harness.results = [.success(VoiceTranscriptSaveResult(sessionID: "row-1", written: 1))]
+        let hello = entry(.user, "Hello")
+        recorder.capture([hello], unsettled: [])
+        await recorder.flush()
+        XCTAssertEqual(harness.requests.first?.chatProfile, "coder")
+        recorder.capture([hello, entry(.user, "Bye")], unsettled: [])
+        let request = try XCTUnwrap(recorder.outboxRequest)
+        XCTAssertEqual(request.sessionID, "row-1")
+
+        let suite = "VoiceOutboxBotChatRow.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: appState.activeDashboardID?.uuidString ?? "-", profile: appState.activeProfile,
+            request: request, queuedAt: Date()
+        ))
+        outbox.store(in: defaults)
+
+        script.responses = [.success(["ok": true, "session_id": "row-1", "written": 2])]
+        await appState.saveQueuedVoiceCallsNow()
+
+        XCTAssertEqual(script.calls.first?.path, DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "coder"),
+                       "appended to the row where it was made, not on the call's profile")
+        XCTAssertEqual(script.calls.first?.body?["session_id"] as? String, "row-1")
+        XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
+    }
+
     func testVoiceHistoryReadsAChatsCalls() async throws {
         let script = ScriptedVoiceHistoryRequests()
         script.responses = [.success(["ok": true, "chat_id": "st chat", "calls": [

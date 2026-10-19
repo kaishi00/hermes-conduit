@@ -175,7 +175,7 @@ enum RichPlaceLookup {
 
     /// How long getting to `match` from where the user is takes now.
     static func travelTime(to match: RichPlaceMatch, mode: RichCard.TravelMode) async -> TimeInterval? {
-        guard canUseLocation, mode != .cycling, CLLocationCoordinate2DIsValid(match.coordinate) else { return nil }
+        guard canUseLocation, CLLocationCoordinate2DIsValid(match.coordinate) else { return nil }
         let key = "\(match.coordinate.latitude),\(match.coordinate.longitude),\(mode.rawValue)"
         if let known = travelTimes[key], Date().timeIntervalSince(known.at) < travelTimeFor { return known.seconds }
         let request = MKDirections.Request()
@@ -210,9 +210,9 @@ enum RichPlaceLookup {
         case .driving: return .automobile
         case .walking: return .walking
         case .transit: return .transit
-        // Apple Maps on iPhone gives no cycling routes here: walking's
-        // shows the way.
-        case .cycling: return .walking
+        // No route where Maps has no bike directions: never walking's time
+        // and line under the bicycle.
+        case .cycling: return .cycling
         }
     }
 
@@ -221,7 +221,7 @@ enum RichPlaceLookup {
         case .driving: return MKLaunchOptionsDirectionsModeDriving
         case .walking: return MKLaunchOptionsDirectionsModeWalking
         case .transit: return MKLaunchOptionsDirectionsModeTransit
-        case .cycling: return MKLaunchOptionsDirectionsModeDefault
+        case .cycling: return MKLaunchOptionsDirectionsModeCycling
         }
     }
 

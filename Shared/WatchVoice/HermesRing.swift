@@ -163,6 +163,15 @@ enum HermesRingSettleResult: Equatable {
     /// The relay forgot the ring (it expired, or the relay restarted) or
     /// couldn't be reached: the other device rings out.
     case failed
+    /// Sent, but no answer came back (it timed out, or the connection
+    /// dropped): the relay may have settled it, and forwarded the Watch's
+    /// start.
+    case unconfirmed
+
+    /// Whether the relay may hold a handoff for the Watch's start: settled
+    /// here, or maybe. The Watch's fetch races its link to the iPhone, so
+    /// one that finds nothing costs only the wait.
+    var mayFetchHandoff: Bool { self == .settled || self == .unconfirmed }
 }
 
 enum HermesRingSettler {
@@ -196,9 +205,24 @@ enum HermesRingSettler {
             let (data, response) = try await session.data(for: request(ring, by: device, outcome: outcome, start: start))
             return result(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
         } catch {
-            return .failed
+            return result(for: error)
         }
     }
+
+    /// A settle that got no answer: failed when it never reached the relay
+    /// (no network, no connection, TLS refused), otherwise unconfirmed.
+    static func result(for error: Error) -> HermesRingSettleResult {
+        guard let code = (error as? URLError)?.code else { return .failed }
+        return neverSent.contains(code) ? .failed : .unconfirmed
+    }
+
+    private static let neverSent: Set<URLError.Code> = [
+        .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+        .badURL, .unsupportedURL, .cancelled, .appTransportSecurityRequiresSecureConnection,
+        .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+        .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected,
+        .clientCertificateRequired, .internationalRoamingOff, .dataNotAllowed, .callIsActive,
+    ]
 }
 
 /// A call from Hermes answered on the Watch: what its Watch call needs to

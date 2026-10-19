@@ -11,7 +11,7 @@
     "A weather card needs a source and at least one of now, hours or days (an empty list counts as none); a day whose low is above its high is dropped.",
     "A comparison keeps only its first recommended option.",
     "A media card needs a source and keeps only items whose url is https (dropped when none is left); artwork is kept only when it is https, and an image keeps no duration or artwork.",
-    "A contact's phone is kept only when it holds 3 to 20 digits and nothing but digits, spaces and + - ( ) . characters; an email only when it is one address like name@example.com, with no spaces, quotes, brackets, commas, semicolons or colons.",
+    "A contact's phone is kept only when it holds 3 to 20 digits and nothing but digits, spaces and + - ( ) . characters; an email only when it is one address like name@example.com, with no spaces, quotes, brackets, commas, semicolons, colons or any of ? # % & =.",
     "Only the first card in a set keeps a given live name."
   ],
   "card": {

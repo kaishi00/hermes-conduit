@@ -96,7 +96,7 @@ private struct ArtifactsList: View {
     @State private var query = ""
     @State private var items: [ArtifactItem] = []
     @State private var nextBefore: Int?
-    @State private var loadedKey: LoadKey?
+    @State private var loadedKey: ArtifactsListKey?
     @State private var isLoading = false
     @State private var failure: String?
     @State private var generation = 0
@@ -109,21 +109,15 @@ private struct ArtifactsList: View {
     /// over whatever screen the user moved on to.
     @State private var openTask: Task<Void, Never>?
 
-    private struct LoadKey: Equatable {
-        let profile: String
-        let filter: ArtifactFilter
-        let query: String
-    }
-
     private struct OpenPage: Identifiable {
         let id = UUID()
         let name: String
         let html: String
     }
 
-    private var currentKey: LoadKey {
-        LoadKey(profile: appState.activeProfile, filter: filter,
-                query: query.trimmingCharacters(in: .whitespacesAndNewlines))
+    private var currentKey: ArtifactsListKey {
+        ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile, filter: filter,
+                         query: query.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     var body: some View {
@@ -300,7 +294,8 @@ private struct ArtifactsList: View {
         Button {
             open(item)
         } label: {
-            ArtifactThumbnail(item: item, resolver: appState.gatewayMediaResolver, profile: appState.activeProfile)
+            ArtifactThumbnail(item: item, resolver: appState.gatewayMediaResolver,
+                              dashboard: appState.activeDashboardID, profile: appState.activeProfile)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if openingID == item.id {
@@ -488,6 +483,13 @@ private struct ArtifactsList: View {
         let key = currentKey
         generation &+= 1
         let ticket = generation
+        if !key.showsRows(of: loadedKey) {
+            // Another server's list isn't shown, even dimmed, under this one.
+            items = []
+            nextBefore = nil
+            failure = nil
+            loadedKey = nil
+        }
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
         do {
@@ -535,6 +537,28 @@ private struct ArtifactsList: View {
     }
 }
 
+/// What an artifacts list was read for. The dashboard is part of it: two
+/// servers' profiles can share a name (every server has a "default"), and
+/// switching servers keeps the Chats tab's screens.
+struct ArtifactsListKey: Equatable {
+    let dashboard: UUID?
+    let profile: String
+    let filter: ArtifactFilter
+    let query: String
+
+    /// Whether rows read for `loaded` may stay up, dimmed, while this key's
+    /// rows load: another filter or search, not another server.
+    func showsRows(of loaded: ArtifactsListKey?) -> Bool {
+        loaded?.dashboard == dashboard
+    }
+
+    /// One host path can be another file in another profile, or on another
+    /// server.
+    static func thumbnailCacheKey(dashboard: UUID?, profile: String, path: String) -> NSString {
+        NSString(string: "\(dashboard?.uuidString ?? "")\u{0}\(profile)\u{0}\(path)")
+    }
+}
+
 /// A row's round-cornered kind glyph.
 private struct ArtifactIcon: View {
     let kind: ArtifactItem.Kind
@@ -576,11 +600,13 @@ private struct ArtifactIcon: View {
 private struct ArtifactThumbnail: View {
     let item: ArtifactItem
     let resolver: GatewayMediaDataURLResolver
+    let dashboard: UUID?
     let profile: String
     @State private var image: UIImage?
 
-    /// One host path can be another file in another profile.
-    private var cacheKey: NSString { NSString(string: "\(profile)\u{0}\(item.path ?? "")") }
+    private var cacheKey: NSString {
+        ArtifactsListKey.thumbnailCacheKey(dashboard: dashboard, profile: profile, path: item.path ?? "")
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -591,16 +617,6 @@ private struct ArtifactThumbnail: View {
                     .scaledToFill()
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .clipped()
-            } else if item.kind == .image, let url = item.url {
-                AsyncImage(url: url) { phase in
-                    if let picture = phase.image {
-                        picture.resizable().scaledToFill()
-                    } else {
-                        placeholderGlyph
-                    }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
             } else {
                 placeholderGlyph
             }
@@ -624,7 +640,21 @@ private struct ArtifactThumbnail: View {
     }
 
     private func loadThumbnail() async {
-        guard item.kind == .image, item.exists, let path = item.path else { return }
+        guard item.kind == .image else { return }
+        if item.path == nil, let url = item.url {
+            // A web image: fetched and downsampled within bounds, like the
+            // same picture in the chat.
+            if let cached = BoundedRemoteImage.cachedImage(url, maxPixelSize: 360) {
+                image = cached
+                return
+            }
+            image = nil
+            guard case .image(let thumbnail) = await BoundedRemoteImage.load(url, maxPixelSize: 360),
+                  !Task.isCancelled else { return }
+            image = thumbnail
+            return
+        }
+        guard item.exists, let path = item.path else { return }
         if let cached = ArtifactThumbnailCache.shared.object(forKey: cacheKey) {
             image = cached
             return

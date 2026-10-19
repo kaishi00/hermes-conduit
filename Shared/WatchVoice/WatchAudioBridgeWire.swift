@@ -172,10 +172,13 @@ enum WatchAudioBridgeWire {
     /// a first line; `callOpening` makes the model open a call Hermes
     /// placed (#544), sent without a greeting (the host lets it win); `history` seeds a rejoined call's conversation.
     /// `resumeSessionID`: the Hermes chat a rejoining Local Live call
-    /// carries on in (`Started.sessionID`).
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil) -> Data {
+    /// carries on in (`Started.sessionID`). `approvals`: the Watch answers
+    /// Hermes' approval requests on its own card (Local Live), so the host
+    /// sends them (`ApprovalFrame`).
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]], resumeSessionID: String? = nil, approvals: Bool = false) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
         if let resumeSessionID, !resumeSessionID.isEmpty { message["resume_session_id"] = resumeSessionID }
+        if approvals { message["approvals"] = true }
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
@@ -185,6 +188,53 @@ enum WatchAudioBridgeWire {
     }
 
     static let end = Data(#"{"type":"end"}"#.utf8)
+
+    /// Hermes' approval requests in a Local Live call, which the host sends
+    /// as events on the call's stream when its start said `approvals`.
+    enum ApprovalFrame: Equatable {
+        /// The chat's oldest pending request: the one Hermes answers.
+        /// `canApproveOnce` is false while more are pending or the command
+        /// is shown only in part: the card then offers Deny only.
+        case show(id: String, command: String, description: String, canApproveOnce: Bool)
+        /// Hermes withdrew it, the turn ended, or it timed out.
+        case gone(id: String)
+        /// Hermes' answer to the Watch's answer.
+        case done(id: String, resolved: Bool)
+    }
+
+    /// The host's approval frame in `plain`; nil for any other event.
+    static func approvalFrame(_ plain: Data) -> ApprovalFrame? {
+        guard plain.range(of: Data("\"conduit.approval".utf8)) != nil,
+              let object = try? JSONSerialization.jsonObject(with: plain) as? [String: Any],
+              let type = object["type"] as? String,
+              let id = object["id"] as? String, !id.isEmpty else { return nil }
+        switch type {
+        case "conduit.approval":
+            let choices = object["choices"] as? [String] ?? []
+            // The host's own rule, kept here too: never once for a command
+            // shown in part, or while the card might not be Hermes' oldest.
+            let once = choices.contains(approveOnce) && object["cut"] as? Bool != true
+                && (object["pending"] as? Int ?? 1) <= 1
+            return .show(id: id, command: object["command"] as? String ?? "",
+                         description: object["description"] as? String ?? "",
+                         canApproveOnce: once)
+        case "conduit.approval.gone":
+            return .gone(id: id)
+        case "conduit.approval.done":
+            return .done(id: id, resolved: object["resolved"] as? Bool ?? false)
+        default:
+            return nil
+        }
+    }
+
+    /// Hermes' approval choices, as the host takes them: a job's answer's.
+    static let approveOnce = WatchJobAnswer.approve
+    static let deny = WatchJobAnswer.deny
+
+    /// The Watch's answer to the request `id`, sent as an event.
+    static func approvalAnswer(id: String, approve: Bool) throws -> Data {
+        try WatchToolSeal.json(["type": "conduit.approval.answer", "id": id, "choice": approve ? approveOnce : deny])
+    }
 
     struct Started: Equatable {
         var engine: String
@@ -284,5 +334,67 @@ struct WatchAudioBridgeStream {
         if let received, opened.counter <= received { throw WatchAudioBridgeWire.Failure.replayed }
         received = opened.counter
         return (opened.kind, opened.plain)
+    }
+}
+
+/// A Local Live call's own approval requests on the Watch's card, beside a
+/// background job's: what the host's frames, a tap and an answer that
+/// couldn't be sent do to the list the card shows (the call's request
+/// first, since the call waits on it).
+struct WatchCallApprovals {
+    /// Requests the host said are over (answered, withdrawn, timed out):
+    /// an answer that couldn't be sent never brings one of them back.
+    private(set) var settled: Set<String> = []
+    /// The call's current stream: frames a replaced stream still delivers
+    /// (it closes a moment after the next opens) are none of the card's.
+    private(set) var stream = 0
+
+    /// A new stream (the host shows it whatever is still pending): the
+    /// card starts over, and only this stream's frames count from now.
+    mutating func begin(_ approvals: inout [WatchJobAnswer.Approval]) -> Int {
+        reset(&approvals)
+        stream &+= 1
+        return stream
+    }
+
+    /// Applies the host's frame from `stream` to `approvals`; true when it
+    /// put up a request that wasn't on screen (worth a tap on the wrist).
+    /// A replaced stream's frame changes nothing.
+    @discardableResult
+    mutating func apply(_ frame: WatchAudioBridgeWire.ApprovalFrame, from stream: Int, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        guard stream == self.stream else { return false }
+        switch frame {
+        case .show(let id, let command, let description, let canApproveOnce):
+            settled.remove(id)
+            let isNew = !approvals.contains { $0.isCallRequest && $0.requestID == id }
+            approvals.removeAll { $0.isCallRequest }
+            approvals.insert(WatchJobAnswer.Approval(grantID: "", jobID: "", title: description, requestID: id,
+                                                     command: command, description: "", canApproveOnce: canApproveOnce),
+                             at: 0)
+            return isNew
+        case .gone(let id), .done(let id, true):
+            settled.insert(id)
+            approvals.removeAll { $0.isCallRequest && $0.requestID == id }
+        case .done(_, false):
+            // Not taken: the host shows the card again (or the next).
+            break
+        }
+        return false
+    }
+
+    /// The card the user answered, back after its answer couldn't be sent;
+    /// false when it stays away: the host settled it meanwhile, or another
+    /// request took its place.
+    func restore(_ approval: WatchJobAnswer.Approval, from stream: Int, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        guard stream == self.stream, approval.isCallRequest, !settled.contains(approval.requestID),
+              !approvals.contains(where: \.isCallRequest) else { return false }
+        approvals.insert(approval, at: 0)
+        return true
+    }
+
+    /// The call's end (and the start of each stream).
+    mutating func reset(_ approvals: inout [WatchJobAnswer.Approval]) {
+        settled = []
+        approvals.removeAll { $0.isCallRequest }
     }
 }

@@ -4642,6 +4642,9 @@ final class BotModeTests: XCTestCase {
             chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            // Hermetic: never the simulator Keychain's registry (a signed
+            // host shares it with the installed app).
+            dashboardRegistry: SavedDashboardRegistry(),
             clearSessionPresentationCache: {},
             sessionCatalogLoader: sessionCatalogLoader,
             chatResumeLifecycleOperations: lifecycleOperations,

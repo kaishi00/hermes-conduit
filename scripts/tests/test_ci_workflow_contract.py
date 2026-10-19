@@ -233,7 +233,7 @@ class WorkflowContractTests(unittest.TestCase):
         plan = self._job_text("plan")
         self.assertIn("fetch-depth: 2", plan)
         self.assertIn("^(ConduitWatch|ConduitWidgets|ConduitNotificationService"
-                      "|ConduitLocationPush|Shared)/", plan,
+                      "|ConduitLocationPush|ConduitShareExtension|Shared)/", plan,
                       "a change to any dropped target's folder must build the full app")
         self.assertIn(r"^project(-tests)?\.yml$", plan)
         self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)

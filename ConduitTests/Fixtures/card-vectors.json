@@ -1649,6 +1649,66 @@
       ]
     },
     {
+      "name": "An email that could add a recipient or prefill a message is dropped",
+      "input": [
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Ana",
+              "email": "first.last+tag@example.co.uk"
+            },
+            {
+              "name": "Bo",
+              "email": "bo@example.com?subject=Hi&body=Call%20me"
+            },
+            {
+              "name": "Cy",
+              "email": "cy@example.com?cc=eve%40evil.example"
+            },
+            {
+              "name": "Di",
+              "email": "di@example.com#top"
+            },
+            {
+              "name": "Ed",
+              "email": "ed%40evil.example@example.com"
+            },
+            {
+              "name": "Flo",
+              "email": "flo&co=x@example.com"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Ana",
+              "email": "first.last+tag@example.co.uk"
+            },
+            {
+              "name": "Bo"
+            },
+            {
+              "name": "Cy"
+            },
+            {
+              "name": "Di"
+            },
+            {
+              "name": "Ed"
+            },
+            {
+              "name": "Flo"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "A status keeps its state, and a live name stays on the first card that has it",
       "input": [
         {

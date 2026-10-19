@@ -819,6 +819,127 @@ else
   bad "grace must be attempted before killing a finalized session"
 fi
 
+# --- unit case 11b: which logs say the test session has ended ------------------
+# XCTest prints its top-level suite summary ("Test Suite 'Selected tests'
+# passed at ...", or 'All tests' for an unfiltered run) when test execution
+# ends, before xcodebuild finalizes - which can hang (a simulator diagnostics
+# request, xcresult writing). A class-level summary is not the end, and with
+# -retry-tests-on-failure a failed top-level summary is followed by a new
+# "started" line for the retry iteration: only the LAST top-level line counts.
+end_case
+begin_case "terminal marker read from sample xcodebuild logs" "$WORK/b11b"
+marker_says() { # $1=sample log file → ended/running
+  if bash -c 'source "$1/ci-lib.sh"; log_has_terminal_result_marker "$2"' _ "$SCRIPTS" "$1"; then
+    echo ended
+  else
+    echo running
+  fi
+}
+sample="$WORKCASE/sample.log"
+cat > "$sample" <<'EOF'
+Test Suite 'Selected tests' started at 2026-10-19 10:00:00.000.
+Test Suite 'ConduitTests.xctest' started at 2026-10-19 10:00:00.001.
+Test Suite 'AlphaTests' started at 2026-10-19 10:00:00.002.
+Test Case '-[ConduitTests.AlphaTests testC]' started.
+Test Case '-[ConduitTests.AlphaTests testC]' passed (0.100 seconds).
+Test Suite 'AlphaTests' passed at 2026-10-19 10:00:00.103.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.100 (0.101) seconds
+EOF
+assert_eq "a class-level summary is not the end of the session" "$(marker_says "$sample")" "running"
+cat >> "$sample" <<'EOF'
+Test Suite 'ConduitTests.xctest' passed at 2026-10-19 10:00:00.104.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.100 (0.102) seconds
+Test Suite 'Selected tests' passed at 2026-10-19 10:00:00.105.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.100 (0.103) seconds
+EOF
+assert_eq "XCTest's 'Selected tests' summary ends the session" "$(marker_says "$sample")" "ended"
+cat > "$sample" <<'EOF'
+Test Suite 'All tests' started at 2026-10-19 10:00:00.000.
+Test Case '-[ConduitTests.AlphaTests testC]' failed (0.100 seconds).
+Test Suite 'All tests' failed at 2026-10-19 10:00:00.105.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.100 (0.103) seconds
+EOF
+assert_eq "XCTest's 'All tests' failed summary ends the session" "$(marker_says "$sample")" "ended"
+cat >> "$sample" <<'EOF'
+Test Suite 'All tests' started at 2026-10-19 10:00:02.000.
+Test Case '-[ConduitTests.AlphaTests testC]' started.
+EOF
+assert_eq "a retry iteration after a failed summary is still running" "$(marker_says "$sample")" "running"
+printf '%s\n' "Test Suite 'Selected tests' passed at 2026-10-19 10:00:00.105." "** TEST EXECUTE SUCCEEDED **" > "$sample"
+assert_eq "xcodebuild's own final marker still ends the session" "$(marker_says "$sample")" "ended"
+
+# --- unit case 11c: the finalize deadline starts when XCTest ends --------------
+# The session printed XCTest's top-level summary and then xcodebuild hung
+# finalizing. The bounded finalize grace must start at that line, not after the
+# whole test budget: a 30s budget with a 3s grace ends each attempt in seconds.
+end_case
+begin_case "finalize deadline starts when XCTest ends" "$WORK/b11c"
+: > "$INVOCATION_LOG"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+prev=""
+for a in "$@"; do
+  case "$prev" in -resultBundlePath) echo "$(basename "$a" .xcresult)" >> "$INVOCATION_LOG" ;; esac
+  prev="$a"
+done
+echo "Test Suite 'Selected tests' started at 2026-10-19 10:00:00.000."
+echo "Test Suite 'Selected tests' passed at 2026-10-19 10:00:00.105."
+echo "wedged finalization (stub)"
+sleep 300
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=3
+finalize_case_started=$(date +%s)
+run_lane "AlphaTests" 30 1
+finalize_case_elapsed=$(( $(date +%s) - finalize_case_started ))
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "1"
+assert_eq "verdict" "$(lane_field "['status']")" "timeout"
+assert_eq "attempt chain" "$(attempts_statuses)" "['timeout', 'timeout']"
+if grep -q "finalize grace" "$WORKCASE/stdout.log"; then
+  ok "finalize grace announced at the end of the test session"
+else
+  bad "the finalize grace must start when XCTest reports the session ended"
+fi
+# Two attempts: each would take the full 30s budget if the grace waited for it.
+if [ "$finalize_case_elapsed" -lt 40 ]; then
+  ok "finalize deadline started at test-session completion (${finalize_case_elapsed}s)"
+else
+  bad "finalize grace waited for the 30s test budget (elapsed ${finalize_case_elapsed}s)"
+fi
+
+# --- unit case 11d: a retry iteration goes back on the test budget -------------
+# -retry-tests-on-failure: iteration 1 prints a failed top-level summary, then
+# the retry iteration starts and runs longer than the finalize grace. The
+# grace must not kill a session that is running tests again.
+end_case
+begin_case "retry iteration after a failed summary keeps its test budget" "$WORK/b11d"
+: > "$INVOCATION_LOG"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+prev=""
+for a in "$@"; do
+  case "$prev" in -resultBundlePath) echo "$(basename "$a" .xcresult)" >> "$INVOCATION_LOG" ;; esac
+  prev="$a"
+done
+echo "Test Suite 'Selected tests' started at 2026-10-19 10:00:00.000."
+echo "Test Suite 'Selected tests' failed at 2026-10-19 10:00:00.105."
+sleep 1
+echo "Test Suite 'Selected tests' started at 2026-10-19 10:00:01.200."
+echo "retry iteration running (stub)"
+sleep 8
+echo "Test Suite 'Selected tests' passed at 2026-10-19 10:00:09.300."
+echo "** TEST EXECUTE SUCCEEDED **"
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=3
+write_canned "$WORK/canned-retry-iter.json" "AlphaTests" "Passed"
+run_lane "AlphaTests" 60 3
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed']"
+
 echo ""
 end_case
 echo "unit batch state machine: $pass_count passed, $fail_count failed so far"

@@ -57,6 +57,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     private var socket: GeminiLiveSocket?
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
+    /// The connection's capture, upsampled as one stream.
+    private var inputUpsampler = GrokInputUpsampler()
     private var receiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var hasConnectedOnce = false
@@ -136,11 +138,13 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     }
 
     func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message)
+        // Before the upsampler moves: capture dropped while (re)connecting
+        // must not become the next connection's held sample.
         guard state == .ready, let socket else {
             onFailure?()
             return
         }
+        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
         let texts = frames.compactMap { try? GrokLiveProtocol.encode($0) }
         guard texts.count == frames.count else {
             onFailure?()
@@ -300,6 +304,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         socket?.close()
         socket = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropResponseState()
     }
 
@@ -490,6 +495,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         setupTimeoutTask?.cancel()
         setupTimeoutTask = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropResponseState()
         if let serverClose, Self.isRefusal(serverClose) {
             fail(Self.refusalMessage(serverClose))
