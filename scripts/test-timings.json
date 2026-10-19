@@ -1,6 +1,7 @@
 {
   "_comment": "Checked-in fallback timing baseline (seconds per XCTest class). Seeded from a full-suite xcresult measured on a local Apple-silicon Mac (ios_test run 20260827-204646-fa12), then scaled 3x to match the measured speed of GitHub-hosted macos-26 runners (first CI v2 run: two tests of MarkdownRichContentHostedTests took 86.7s on the runner vs ~20s locally). UI classes are seeded from the hosted-runner timing history (EWMA cache) as of the UI-sharding change so a cold cache still balances UI lanes correctly; SelectionObserverUITests was re-seeded from the same source (its 3x-scaled local value had drifted 2x high). Classes absent from the seed run use the planner default estimate. The living timing-history cache was removed in CI v3, so this file is now the only source of per-class estimates and scripts/update-timing-history.py no longer exists.",
   "classes": {
+    "AccessibilityLabelAuditTests": 3.0,
     "AnyCodableTests": 0.087,
     "AppStateChatResumeTests": 3.393,
     "AppStateReadAloudTests": 0.27,
