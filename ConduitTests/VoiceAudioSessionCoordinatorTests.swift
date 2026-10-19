@@ -699,10 +699,60 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 0, "Read Aloud plays through .playback, which never uses the earpiece")
     }
 
+    /// An override posts a route change; one landing on the running engine
+    /// stops it and drops what is scheduled, a one-chunk reply entirely.
+    /// The reply's route is settled when it takes ownership, before its
+    /// engine starts, and is not touched again under its first chunk.
+    func testAReplyIsMovedToTheSpeakerBeforeItsEngineStarts() throws {
+        _ = try coordinator.acquire(.conversationCapture)
+        let session = session!
+        var overridesWhenTheEngineStarted: Int?
+        let service = AVSpeechPlaybackService(
+            coordinator: coordinator,
+            makeEngine: {
+                RouteObservingOfflineEngine.make {
+                    MainActor.assumeIsolated {
+                        overridesWhenTheEngineStarted = session.speakerOverrides
+                        // The engine starting puts the output back on the earpiece.
+                        session.isOutputOnBuiltInSpeaker = false
+                        session.isOutputOnBuiltInReceiver = true
+                    }
+                }
+            }
+        )
+        service.ownershipIntent = .conversationPlayback
+        defer { service.stop() }
+
+        _ = try service.enqueuePCM16(Data(count: 480), sampleRate: 24_000)
+
+        XCTAssertEqual(overridesWhenTheEngineStarted, 1, "the reply is on the speaker before its engine starts")
+        XCTAssertEqual(session.speakerOverrides, 1, "no override under the scheduled chunk")
+    }
+
     func testSpeakerActivationOutsideACallDoesNothing() {
         coordinator.nativeCallAudioActivated()
 
         XCTAssertEqual(session.speakerOverrides, 0)
+    }
+}
+
+/// An offline-rendering engine (no output I/O unit, so no audio server on a
+/// hosted simulator) that reports when it starts.
+private final class RouteObservingOfflineEngine: AVAudioEngine {
+    private var onStart: () -> Void = {}
+
+    static func make(onStart: @escaping () -> Void) -> AVAudioEngine {
+        let engine = RouteObservingOfflineEngine()
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        try! engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
+        precondition(engine.isInManualRenderingMode, "the test engine must render offline")
+        engine.onStart = onStart
+        return engine
+    }
+
+    override func start() throws {
+        onStart()
+        try super.start()
     }
 }
 

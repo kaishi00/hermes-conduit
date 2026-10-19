@@ -235,6 +235,9 @@ final class VoiceAudioSessionCoordinator {
             Task { @MainActor in handler() }
         }
         notifyOwnersChanged()
+        // Here, before the player's engine starts: an override posts a
+        // route change, and one landing on a running engine stops it and
+        // drops the audio already scheduled (a one-chunk reply entirely).
         if intent == .conversationPlayback { ensureConversationSpeaker() }
         return lease
     }
@@ -281,7 +284,7 @@ final class VoiceAudioSessionCoordinator {
         do {
             try session.overrideOutputToSpeaker()
         } catch {
-            audioSessionLogger.error("conversation speaker override failed: \(String(describing: error), privacy: .public)")
+            audioSessionLogger.error("conversation speaker override failed: \(LogRedaction.describing(error), privacy: .public)")
         }
     }
 
