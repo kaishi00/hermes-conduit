@@ -480,6 +480,26 @@ struct MarkdownReferenceContext: Equatable {
 
 /// A parsed chat message: its visible blocks plus the reference definitions
 /// that were removed from the visible body before block parsing.
+/// A fenced code block's delimiter: three or more backticks or tildes. Only
+/// a line of the same character, at least as long and with nothing after
+/// it, closes the block, so a ````markdown block can show ``` fences inside.
+struct MarkdownFence: Equatable {
+    let character: Character
+    let length: Int
+
+    /// The fence a whitespace-trimmed line opens, if any.
+    static func opening(_ trimmed: String) -> MarkdownFence? {
+        guard let first = trimmed.first, first == "`" || first == "~" else { return nil }
+        let length = trimmed.prefix { $0 == first }.count
+        return length >= 3 ? MarkdownFence(character: first, length: length) : nil
+    }
+
+    /// Whether this whitespace-trimmed line closes the block.
+    func closes(_ trimmed: String) -> Bool {
+        trimmed.count >= length && trimmed.allSatisfy { $0 == character }
+    }
+}
+
 struct MarkdownParsedDocument {
     let blocks: [MarkdownBlock]
     let references: MarkdownReferenceContext
@@ -2789,7 +2809,7 @@ enum MarkdownParser {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var visibleLines: [String] = []
         var definitions: [String] = []
-        var openFence: String?
+        var openFence: MarkdownFence?
         var mathClose: String?
 
         var index = 0
@@ -2813,11 +2833,11 @@ enum MarkdownParser {
             }
             if let fence = openFence {
                 visibleLines.append(line)
-                if trimmed.hasPrefix(fence) { openFence = nil }
+                if fence.closes(trimmed) { openFence = nil }
                 index += 1
                 continue
             }
-            if let fence = fenceStart(trimmed) {
+            if let fence = MarkdownFence.opening(trimmed) {
                 openFence = fence
                 visibleLines.append(line)
                 index += 1
@@ -2866,11 +2886,11 @@ enum MarkdownParser {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { index += 1; continue }
 
-            if let fence = fenceStart(trimmed) {
-                let language = String(trimmed.dropFirst(fence.count)).trimmingCharacters(in: .whitespaces)
+            if let fence = MarkdownFence.opening(trimmed) {
+                let language = String(trimmed.dropFirst(fence.length)).trimmingCharacters(in: .whitespaces)
                 index += 1
                 var code: [String] = []
-                while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(fence) { code.append(lines[index]); index += 1 }
+                while index < lines.count, !fence.closes(lines[index].trimmingCharacters(in: .whitespaces)) { code.append(lines[index]); index += 1 }
                 if index < lines.count { index += 1 }
                 blocks.append(.code(language: language, source: code.joined(separator: "\n")))
                 continue
@@ -2978,7 +2998,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -2998,7 +3018,6 @@ enum MarkdownParser {
         return (String(marker), String(value[range.upperBound...]))
     }
 
-    private static func fenceStart(_ value: String) -> String? { value.hasPrefix("```") ? "```" : (value.hasPrefix("~~~") ? "~~~" : nil) }
 
     /// CommonMark allows a definition at most three spaces of indentation;
     /// anything deeper is indented-code content that Foundation keeps as

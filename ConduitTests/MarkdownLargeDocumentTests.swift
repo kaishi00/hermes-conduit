@@ -375,6 +375,40 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         XCTAssertFalse(scanner.isInOpenConstruct)
     }
 
+    func testALongerFenceIsClosedOnlyByAFenceAtLeastAsLong() {
+        let source = "````markdown\n```swift\nlet x = 1\n```\n````\n\nafter"
+        XCTAssertEqual(MarkdownParser.parse(source), [
+            .code(language: "markdown", source: "```swift\nlet x = 1\n```"),
+            .paragraph("after"),
+        ])
+    }
+
+    func testAFenceWithTextAfterItDoesNotClose() {
+        let source = "```\na\n```not-a-close\nb\n```"
+        XCTAssertEqual(MarkdownParser.parse(source), [
+            .code(language: "", source: "a\n```not-a-close\nb"),
+        ])
+    }
+
+    func testAReferenceLookingLineInsideALongerFenceStaysCode() {
+        let source = "````\n```\n[a]: https://example.com\n````\n\nSee [a]."
+        let document = MarkdownParser.parseDocument(source)
+        XCTAssertFalse(document.references.containsDefinitions)
+        XCTAssertEqual(document.blocks.first, .code(language: "", source: "```\n[a]: https://example.com"))
+    }
+
+    func testScannerKeepsALongerFenceOpenPastAShorterOne() {
+        var scanner = MarkdownStableBoundaryScanner()
+        _ = scanner.append("text\n\n````markdown\n```swift\nx\n```\n\n")
+        XCTAssertTrue(scanner.isInOpenConstruct)
+        _ = scanner.append("````\n\ndone\n")
+        XCTAssertFalse(scanner.isInOpenConstruct)
+
+        var tildes = MarkdownStableBoundaryScanner()
+        _ = tildes.append("~~~\n~~~ not a close\n\n")
+        XCTAssertTrue(tildes.isInOpenConstruct)
+    }
+
     func testScannerReportsOpenConstructState() {
         var scanner = MarkdownStableBoundaryScanner()
         _ = scanner.append("text\n\n```python\nprint(1)\n")
