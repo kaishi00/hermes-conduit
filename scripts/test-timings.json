@@ -67,6 +67,7 @@
     "MarkdownTableLayoutTests": 0.843,
     "MessageNormalizerTests": 0.453,
     "MessageReadAloudControllerTests": 5.661,
+    "MissingSessionRecoveryTests": 3.0,
     "ModelPickerTests": 0.036,
     "NativeAuthClientTests": 0.087,
     "OfflineChatCacheTests": 3.6,
