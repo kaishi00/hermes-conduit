@@ -155,6 +155,15 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
     }
 
+    func testADoneStatusShowsAndReadsAsComplete() throws {
+        // The bar and VoiceOver read the same value: a done card is full whatever progress it was last given.
+        let done = try XCTUnwrap(RichStatus(json: ["state": "Delivered", "phase": "done", "progress": 0.4]))
+        XCTAssertEqual(done.shownProgress, 1)
+        let active = try XCTUnwrap(RichStatus(json: ["state": "On its way", "phase": "active", "progress": 0.4]))
+        XCTAssertEqual(active.shownProgress, 0.4)
+        XCTAssertNil(RichStatus(json: ["state": "Delivered", "phase": "done"])?.shownProgress, "no bar without a progress")
+    }
+
     func testAChatShowsALiveCardOnlyWhereItWasLastUpdated() {
         func show(_ id: String, _ state: String) -> ChatMessage {
             let answer = #"{"ok": true, "cards": [{"type": "status", "live": "order", "status": {"state": "\#(state)"}}]}"#

@@ -134,4 +134,9 @@ struct RichStatus: Equatable, Hashable {
             return Milestone(label: label, done: stage["done"] as? Bool ?? false)
         }
     }
+
+    /// What the bar shows and VoiceOver reads: full once it's done.
+    var shownProgress: Double? {
+        progress.map { phase == .done ? 1 : $0 }
+    }
 }

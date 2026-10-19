@@ -597,8 +597,8 @@ struct RichStatusCard: View {
                         Spacer(minLength: 8)
                         RichPhaseBadge(phase: status.phase)
                     }
-                    if let progress = status.progress {
-                        ProgressView(value: status.phase == .done ? 1 : progress)
+                    if let progress = status.shownProgress {
+                        ProgressView(value: progress)
                             .tint(RichPhaseBadge.color(status.phase))
                             .accessibilityLabel(Text(verbatim: status.state))
                             .accessibilityValue(Text(verbatim: progress.formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.formattingLocale))))
