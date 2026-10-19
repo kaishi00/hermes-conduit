@@ -93,6 +93,27 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(played, [Data([1, 0]), Data([2, 0])])
     }
 
+    func testOnDeviceStreamDoesNotReadMarkdownMarks() async throws {
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "fr",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+
+        try await stream.append("La capitale est **Québec**. Le `code` et 5 ** 3")
+        XCTAssertEqual(synthesizer.spoken, ["La capitale est Québec."])
+        let finishing = Task { try await stream.finish() }
+        await Task.yield()
+        synthesizer.finishCurrent(audio: Data([1, 0]))
+        await waitUntil { synthesizer.spoken.count == 2 }
+        // A spaced mark is the text's own ("5 ** 3").
+        XCTAssertEqual(synthesizer.spoken.last, "Le code et 5 ** 3")
+        synthesizer.finishCurrent(audio: Data([2, 0]))
+        _ = try await finishing.value
+    }
+
     func testCancellingTheOnDeviceStreamStopsSpeech() async throws {
         let synthesizer = FakeSpeechSynthesizer()
         let stream = OnDeviceSpeechStream(
