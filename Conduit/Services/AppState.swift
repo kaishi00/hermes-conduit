@@ -5774,6 +5774,11 @@ final class AppState: ObservableObject {
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
     var hermesCallsStatusKey: String?
+    /// Every read and save of `hermesCallsStatus` takes the next number;
+    /// the shown status is from the highest one accepted, so a read answering
+    /// late can't replace what a newer read or a save set.
+    var hermesCallsStatusGeneration: UInt64 = 0
+    var hermesCallsStatusAcceptedGeneration: UInt64 = 0
     lazy var hermesCallsClient = HermesCallsClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
@@ -30091,6 +30096,11 @@ final class AppState: ObservableObject {
     /// connection swaps — without the voice capability snapshot plumbing.
     func installDashboardTicketBridgeForTesting(_ bridge: DashboardTicketBridge) {
         dashboardTicketBridge = bridge
+    }
+
+    /// Test-only: what the host's notifier plugin reported serving.
+    func setNotifierPluginStateForTesting(_ state: NotifierPluginStatus.State) {
+        notifierPlugin.state = state
     }
 
     private func loadVoiceProfilePreferences(profile: String, gateway: String? = nil) -> VoiceProfilePreferences {

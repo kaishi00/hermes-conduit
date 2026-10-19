@@ -623,6 +623,52 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(fenced.instructionBlock(delegation: false).contains("x</reason>"), "A reason can't close its fence")
     }
 
+    func testAnOlderCallSettingsReadNeverReplacesANewerSaveOrRead() async {
+        let suite = "HermesCallsTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.48.0", capabilities: ["hermes-calls"]))
+        var reads: [CheckedContinuation<[String: Any], Never>] = []
+        appState.hermesCallsClient = HermesCallsClient { _, method, body in
+            if method == "PUT" { return ["ok": true, "settings": body?["settings"] ?? [:]] }
+            return await withCheckedContinuation { reads.append($0) }
+        }
+        func status(perDay: Int) -> [String: Any] {
+            ["ok": true, "settings": ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": perDay]]
+        }
+        func read() async -> Task<Void, Never> {
+            let count = reads.count
+            let task = Task { await appState.refreshHermesCallsStatus() }
+            _ = await waitForHermesCalls { reads.count > count }
+            return task
+        }
+
+        let first = await read()
+        reads[0].resume(returning: status(perDay: 20))
+        await first.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 20)
+
+        // A read asked before a save answers after it.
+        let beforeSave = await read()
+        var edited = appState.activeHermesCallsStatus!.settings
+        edited.perDay = 5
+        let saved = await appState.saveHermesCallSettings(edited, profile: "default", dashboardID: appState.activeDashboardID)
+        XCTAssertTrue(saved)
+        reads[1].resume(returning: status(perDay: 20))
+        await beforeSave.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 5, "the save is newer than that read")
+
+        // Two reads answering out of order: the later one asked stays.
+        let older = await read()
+        let newer = await read()
+        reads[3].resume(returning: status(perDay: 7))
+        await newer.value
+        reads[2].resume(returning: status(perDay: 9))
+        await older.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 7, "the newer read is the host's latest")
+    }
+
     func testCallSettingsSendOnlyWhatTheHostHas() {
         let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
         XCTAssertNil(old?.decides)
