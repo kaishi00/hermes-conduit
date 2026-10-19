@@ -14,8 +14,10 @@ on:
         description: "Watch simulator name"
         default: "Apple Watch Ultra 3"
 
+# The capture jobs run the demo Hermes, its plugins and Homebrew packages, so
+# they only read; the publish job, which runs none of them, pushes the refs.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: app-store-screenshots-${{ github.ref }}
@@ -36,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Hermes and Homebrew code runs later; only the publish step gets the token.
+          # Hermes and Homebrew code runs later; only the publish job writes.
           persist-credentials: false
 
       - name: Select Xcode
@@ -173,28 +175,28 @@ jobs:
               || echo "could not cut $raw" >> failures.txt
           done
 
-      - name: Publish to a git ref
-        # Cloud sessions can't download artifacts (blob storage is blocked
-        # there) but can fetch git refs: refs/app-store-shots/<run id> holds
-        # the screenshots and small logs. Not a branch, so nothing shows in
-        # the branch list; delete old refs with git push --delete.
+      - name: Stage the git ref's files
+        # The publish job pushes these as refs/app-store-shots/<run id>.
         if: always()
         run: |
           set -euo pipefail
-          out=$(mktemp -d)
+          out="$RUNNER_TEMP/shots-ref"
+          mkdir -p "$out"
           cp -R shots "$out/" 2>/dev/null || true
           find "$out" -name '*.mov' -size +90M -delete
           mkdir -p "$out/logs"
           for f in demo-hermes/*.log results-*.log record-*.log; do
-            [ -f "$f" ] && tail -c 400000 "$f" > "$out/logs/$(basename "$f")"
+            if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
           done
-          cd "$out"
-          git init -q
-          git -c user.name=ci -c user.email=ci@localhost add -A
-          git -c user.name=ci -c user.email=ci@localhost commit -qm "App Store screenshots, run ${{ github.run_id }}"
-          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
-            "HEAD:refs/app-store-shots/${{ github.run_id }}"
-          echo "::notice::git fetch origin refs/app-store-shots/${{ github.run_id }}"
+
+      - name: Upload the git ref's files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-shots-ref
+          path: ${{ runner.temp }}/shots-ref
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Upload screenshots
         if: always()
@@ -235,7 +237,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Only the publish step needs the token, and it passes its own.
+          # Only the publish job writes.
           persist-credentials: false
 
       - name: Select Xcode
@@ -290,20 +292,25 @@ jobs:
           done
           ls -l shots/watch
 
-      - name: Publish to a git ref
+      - name: Stage the git ref's files
+        # The publish job pushes these as refs/app-store-shots/<run id>-watch.
         if: always()
         run: |
           set -euo pipefail
-          out=$(mktemp -d)
+          out="$RUNNER_TEMP/shots-ref"
+          mkdir -p "$out"
           cp -R shots "$out/" 2>/dev/null || true
           mkdir -p "$out/logs"
-          [ -f watch-build.log ] && tail -c 400000 watch-build.log > "$out/logs/watch-build.log"
-          cd "$out"
-          git init -q
-          git -c user.name=ci -c user.email=ci@localhost add -A
-          git -c user.name=ci -c user.email=ci@localhost commit -qm "App Store Watch screenshots, run ${{ github.run_id }}" --allow-empty
-          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
-            "HEAD:refs/app-store-shots/${{ github.run_id }}-watch"
+          if [ -f watch-build.log ]; then tail -c 400000 watch-build.log > "$out/logs/watch-build.log"; fi
+
+      - name: Upload the git ref's files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-shots-ref-watch
+          path: ${{ runner.temp }}/shots-ref
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Upload screenshots
         if: always()
@@ -320,3 +327,54 @@ jobs:
           name: app-store-watch-logs
           path: watch-build.log
           if-no-files-found: ignore
+
+  publish:
+    # Cloud sessions can't download artifacts (blob storage is blocked there)
+    # but can fetch git refs: refs/app-store-shots/<run id> (and <run id>-watch)
+    # holds the screenshots and small logs. Not a branch, so nothing shows in
+    # the branch list; delete old refs with git push --delete. Its own job, so
+    # nothing the capture jobs ran shares a runner with the write token: this
+    # one only commits the files they uploaded, in a git dir of its own.
+    needs: [capture, watch]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the refs' files
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: app-store-shots-ref*
+          path: refs
+
+      - name: Publish to git refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          # The token reaches git as an auth header in its environment, not in
+          # the URL or on a command line.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          failed=0
+          publish() { # <files dir> <ref> <message> [commit args]
+            local dir="$1" ref="$2" message="$3"; shift 3
+            mkdir -p "$dir"
+            # A git dir of its own: nothing in the uploaded files configures git.
+            local git=(env GIT_DIR="$RUNNER_TEMP/${dir##*/}.git" GIT_WORK_TREE="$dir"
+              git -c user.name=ci -c user.email=ci@localhost)
+            if ! { "${git[@]}" init -q && "${git[@]}" add -A && "${git[@]}" commit -qm "$message" "$@" \
+              && "${git[@]}" push -q "https://github.com/$GITHUB_REPOSITORY" "HEAD:$ref"; }; then
+              echo "::error::could not publish $ref"; failed=1; return 1
+            fi
+          }
+          publish refs/app-store-shots-ref "refs/app-store-shots/$RUN_ID" "App Store screenshots, run $RUN_ID" \
+            && echo "::notice::git fetch origin refs/app-store-shots/$RUN_ID"
+          publish refs/app-store-shots-ref-watch "refs/app-store-shots/$RUN_ID-watch" \
+            "App Store Watch screenshots, run $RUN_ID" --allow-empty
+          exit "$failed"

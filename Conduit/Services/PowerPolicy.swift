@@ -24,6 +24,14 @@ struct DeviceConditions: Equatable, Sendable {
     /// The current path is metered: cellular or a personal hotspot
     /// (`NWPath.isExpensive`).
     var expensivePath = false
+    /// The device has a network path a connection can use or bring up
+    /// (`NWPath.status` other than `.unsatisfied`: `.requiresConnection`, as
+    /// with VPN On Demand, comes up when a connection tries).
+    var pathSatisfied = true
+    /// Bumped by every path change after the first report (Wi-Fi to
+    /// cellular, a VPN coming back): an open socket may have died with the
+    /// old path.
+    var pathGeneration = 0
 
     /// How many times longer a poll waits. Low Power Mode wins over Low
     /// Data: the stretches don't multiply, so a poll never waits more than
@@ -63,6 +71,33 @@ enum PollCadence {
     static let keepaliveBackground: TimeInterval = 45
     /// No stretched poll waits longer than this.
     static let longestPoll: TimeInterval = 180
+    /// A dropped chat socket's reconnect: exponential from 1 s, capped at
+    /// 60 s with full jitter off screen (background audio, a locked
+    /// listen)...
+    static let reconnectBase: TimeInterval = 1
+    static let reconnectCap: TimeInterval = 60
+    /// ...and at 8 s while someone looks at Conduit, with the jitter in the
+    /// upper half: a gateway restarting while the app is open is noticed
+    /// within 8 s, and each step there is a cheap readiness probe first
+    /// (GatewayReadinessProbe), not a full reconnect.
+    static let reconnectCapOnScreen: TimeInterval = 8
+    /// Even the luckiest jitter waits this long, so a gateway that refuses
+    /// at once isn't asked in a tight loop.
+    static let reconnectFloor: TimeInterval = 0.5
+
+    /// The wait before reconnect attempt `attempt` (0 for the first):
+    /// anywhere up to `min(60, 2^attempt)` seconds, so devices that lost the
+    /// same gateway spread out instead of returning on one beat. `random` is
+    /// in 0..<1.
+    static func reconnectDelay(attempt: Int, random: Double, onScreen: Bool = false) -> TimeInterval {
+        let cap = onScreen ? reconnectCapOnScreen : reconnectCap
+        let ceiling = min(cap, reconnectBase * pow(2, Double(min(max(attempt, 0), 16))))
+        let jitter = min(max(random, 0), 1)
+        // On screen the wait stays in the step's upper half, so a gateway
+        // that is down is probed about every 6 s rather than 4.
+        let share = onScreen ? 0.5 + 0.5 * jitter : jitter
+        return max(reconnectFloor, ceiling * share)
+    }
 
     /// `interval` under these conditions.
     static func stretched(_ interval: TimeInterval, by conditions: DeviceConditions) -> TimeInterval {
@@ -206,9 +241,11 @@ final class WakeableSleep {
     }
 }
 
-/// Low Power Mode and the network path's Low Data and metered flags, for
-/// the whole app. One `NWPathMonitor` and one power-state observer, started
-/// at launch; readers take `current` when they schedule their next read.
+/// Low Power Mode and the network path (usable, Low Data, metered, changed),
+/// for the whole app. One `NWPathMonitor` and one power-state observer,
+/// started at launch; readers take `current` when they schedule their next
+/// read, and AppState follows path changes to reconnect and to check the
+/// chat socket.
 @MainActor
 final class DeviceConditionsMonitor: ObservableObject {
     static let shared = DeviceConditionsMonitor()
@@ -250,16 +287,32 @@ final class DeviceConditionsMonitor: ObservableObject {
         monitor.pathUpdateHandler = { [weak self] path in
             let constrained = path.isConstrained
             let expensive = path.isExpensive
-            Task { @MainActor [weak self] in
-                self?.update {
-                    $0.lowDataMode = constrained
-                    $0.expensivePath = expensive
-                }
+            let satisfied = path.status != .unsatisfied
+            // Delivered on the main queue, so reports apply in the order the
+            // monitor sent them: an older unsatisfied report can't land after
+            // a newer satisfied one.
+            MainActor.assumeIsolated {
+                self?.notePath(constrained: constrained, expensive: expensive, satisfied: satisfied)
             }
         }
-        monitor.start(queue: DispatchQueue(label: "com.milim.conduit.device-conditions"))
+        monitor.start(queue: .main)
         pathMonitor = monitor
     }
+
+    /// One path report. The monitor reports the current path first; only
+    /// the reports after it count as changes.
+    func notePath(constrained: Bool, expensive: Bool, satisfied: Bool) {
+        let isChange = sawFirstPath
+        sawFirstPath = true
+        update {
+            $0.lowDataMode = constrained
+            $0.expensivePath = expensive
+            $0.pathSatisfied = satisfied
+            if isChange { $0.pathGeneration &+= 1 }
+        }
+    }
+
+    private var sawFirstPath = false
 
     /// Publishes only a real change: every publish reaches every reader.
     func update(_ change: (inout DeviceConditions) -> Void) {
