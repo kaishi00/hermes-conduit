@@ -121,6 +121,49 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(AppState.mapsNavigatePromptID(nil))
     }
 
+    func testAnAnswerSyncedDuringABusyExchangeStillReachesTheHost() async throws {
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        // The host lists the confirmation until the answer lands; the first
+        // three exchanges wait until the test lets them answer.
+        var bodies: [[String: Any]] = []
+        var held: [CheckedContinuation<Void, Never>] = []
+        let exchange: PresentedScreensSync.Request = { _, body in
+            bodies.append(body)
+            if bodies.count <= 3 { await withCheckedContinuation { held.append($0) } }
+            return ["ok": true, "prompts": [["id": "p1", "title": "Send?", "action_label": "Send"]]]
+        }
+        func waitForExchange(_ count: Int) async {
+            while bodies.count < count || held.isEmpty { await Task.yield() }
+        }
+        // Another trigger while an exchange is on its way: it coalesces.
+        func syncAgain() async {
+            await sync.sync(scope: "host|default", profile: "default", installationID: "i", request: exchange)
+        }
+
+        let first = Task { await sync.sync(scope: "host|default", profile: "default", installationID: "i", request: exchange) }
+        await waitForExchange(1)
+        await syncAgain() // a tool started
+        held.removeFirst().resume()
+        await waitForExchange(2)
+        await syncAgain() // the tool finished
+        held.removeFirst().resume()
+        await waitForExchange(3)
+        // The user answers while the third exchange is on its way.
+        let prompt = try XCTUnwrap(sync.prompts.first)
+        sync.answer(prompt, outcome: .confirmed, via: .tap)
+        await syncAgain()
+        held.removeFirst().resume()
+        await first.value
+
+        XCTAssertEqual(bodies.count, 4, "the sync asked for after the answer runs")
+        let results = bodies.last?["results"] as? [[String: Any]]
+        XCTAssertEqual(results?.first?["id"] as? String, "p1")
+        XCTAssertEqual(results?.first?["outcome"] as? String, "confirmed")
+    }
+
     func testAnExpiredConfirmIsntShown() {
         let prompt = PresentedConfirm(id: "p1", title: "Buy it?", preview: "", actionLabel: "Buy",
                                       expiresAt: Date().addingTimeInterval(-1))

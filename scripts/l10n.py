@@ -196,6 +196,10 @@ def import_worksheets(paths, create: bool = False) -> int:
             if not translation:
                 continue
             catalog_path = item["catalog"]
+            # A worksheet is handed out and comes back from someone else, so
+            # it only names a catalog; it never chooses the file written.
+            if catalog_path not in CATALOGS:
+                raise ValueError(f"{worksheet_path}: unknown catalog {catalog_path!r}")
             if catalog_path not in catalogs:
                 catalogs[catalog_path] = load(os.path.join(REPO_ROOT, catalog_path))
             strings = catalogs[catalog_path]["strings"]

@@ -312,9 +312,16 @@ enum AnyCodable: Codable, Equatable, Sendable {
         }
     }
 
+    /// The number truncated toward zero, or nil when it isn't one or lies
+    /// outside `Int`'s range: `Int(Double)` traps on NaN, infinity and
+    /// out-of-range values, and gateway payloads can carry any JSON number.
     var intValue: Int? {
-        if case .number(let n) = self { return Int(n) }
-        return nil
+        guard case .number(let n) = self,
+              n.isFinite,
+              n >= -9_223_372_036_854_775_808.0, // Int.min == -2^63, exact as Double
+              n < 9_223_372_036_854_775_808.0    // 2^63 itself already overflows
+        else { return nil }
+        return Int(n)
     }
 
     var doubleValue: Double? {
