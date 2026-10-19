@@ -1396,6 +1396,13 @@ struct ComposerBar: View, Equatable {
     /// Queue: the message waits in the chat as "Sends when Hermes
     /// finishes" and goes once the running turn is over (#842). Text only.
     private func queueForNextTurn(_ trimmed: String) {
+        // Queue shows with an attachment drafted, as Steer does; neither
+        // takes one, and the tap says so rather than doing nothing.
+        guard attachments.isEmpty, pendingScreenshot == nil else {
+            appState.errorMessage = AppLocalization.string("Attachments can only be sent in a new message, after the current response finishes.")
+            Haptics.error()
+            return
+        }
         holdForLater(trimmed) { appState.queueForNextTurn($0, replyReference: $1) }
     }
 
