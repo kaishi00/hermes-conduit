@@ -13,17 +13,17 @@ import OSLog
 import UIKit
 import WebKit
 
-private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
-private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
-private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
+private let sessionCatalogLog = Logger(subsystem: "com.milim.relay", category: "SessionCatalog")
+private let titleGenerationLog = Logger(subsystem: "com.milim.relay", category: "TitleGeneration")
+private let sessionYoloLog = Logger(subsystem: "com.milim.relay", category: "SessionYolo")
 /// Foreground/turn-lifecycle decisions: why a refresh chose observation vs
 /// resume, and how prompt submissions were classified. Ids only — never
 /// prompt text, credentials, or message content.
-private let lifecycleLog = Logger(subsystem: "com.milim.conduit", category: "TurnLifecycle")
+private let lifecycleLog = Logger(subsystem: "com.milim.relay", category: "TurnLifecycle")
 /// Server-replacement speech retirement: which speech operations were live
 /// when the outgoing server's ownership was revoked. Ids and booleans only —
 /// never prompt text, credentials, or speech content.
-private let speechOwnershipLog = Logger(subsystem: "com.milim.conduit", category: "SpeechOwnership")
+private let speechOwnershipLog = Logger(subsystem: "com.milim.relay", category: "SpeechOwnership")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -585,20 +585,27 @@ final class AppState: ObservableObject {
                     widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 }
                 widgetLaunchCoordinator.readinessChanged()
+                // Back from a drop or a gateway restart: the list reads at
+                // once rather than waiting out a long backoff step.
+                if !oldValue { noteChatListInteraction() }
             }
             if oldValue != isConnected { schedulePendingComposerSendCheck() }
         }
     }
     @Published var isConnecting = false
     /// For status words and dots only: connecting now, or between the first
-    /// few retries after a dropped connection. A drop waits 1-5 s before
-    /// each retry with `isConnecting` false, which would otherwise read as
-    /// "Disconnected" on every short network blip. After three failed
-    /// retries the gateway is likely down, and the words say so.
+    /// few retries after a dropped connection. A drop waits a few seconds
+    /// before each early retry with `isConnecting` false, which would
+    /// otherwise read as "Disconnected" on every short network blip. After
+    /// three failed retries the gateway is likely down, and the words say
+    /// so; without a network at all they say so at once.
     var isRecoveringConnection: Bool {
         isConnecting
-            || (!isConnected && connection != nil && turnState == .reconnecting && reconnectAttempts < 3)
+            || (networkPathUsable && !isConnected && connection != nil
+                && turnState == .reconnecting && reconnectAttempts < 3)
     }
+    /// The device has a usable network path (the app's one path monitor).
+    @Published private(set) var networkPathUsable = true
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
     static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
@@ -1059,8 +1066,14 @@ final class AppState: ObservableObject {
             || serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
     }
     @Published private(set) var turnState: TurnState = .idle {
-        // A message waiting for this chat goes once it takes one.
-        didSet { if oldValue != turnState { schedulePendingComposerSendCheck() } }
+        didSet {
+            guard oldValue != turnState else { return }
+            // A message waiting for this chat goes once it takes one.
+            schedulePendingComposerSendCheck()
+            // A running turn keeps the backdrop drifting; only its edges
+            // are reported, not every streamed token.
+            InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+        }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
     /// lifecycle boundaries where the socket can die or the gateway can change
@@ -2131,6 +2144,8 @@ final class AppState: ObservableObject {
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     private var capabilityLoadGeneration: UInt64 = 0
+    /// Skill and toolset switches, written in the order flipped.
+    private let capabilityToggleWrites = CapabilityToggleWrites()
     @Published var mcpServers: [CapabilityMcpServer] = []
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
@@ -4212,6 +4227,32 @@ final class AppState: ObservableObject {
     @Published private(set) var activeChatRepliesElsewhere = false
     /// The clock of those checks; tests move it.
     var chatSyncNow: @MainActor () -> Date = { Date() }
+    /// Low Power Mode and Low Data Mode, which stretch every poll
+    /// (PowerPolicy.swift); tests set them.
+    var deviceConditions: @MainActor () -> DeviceConditions = { DeviceConditionsMonitor.shared.current }
+    /// The jitter after a failed poll, in 0..<1; tests pin it.
+    var pollJitter: @MainActor () -> Double = { Double.random(in: 0..<1) }
+    /// The reconnect's jitter, in 0..<1; tests pin it.
+    var reconnectJitter: @MainActor () -> Double = { Double.random(in: 0..<1) }
+    /// Whether the dashboard answers at all, asked before a backed-off
+    /// reconnect while Conduit is on screen. Nil skips it: tests that
+    /// supply a reconnect executor have no gateway to ask, unless they set
+    /// one.
+    var gatewayReadinessProbe: (@MainActor (String) async -> Bool)?
+    /// The app's one path monitor, followed for reconnects and the chat
+    /// socket's check (`networkPathChanged`).
+    private var deviceConditionsSubscription: AnyCancellable?
+    private var lastPathGeneration = 0
+    /// When a path change last restarted the reconnect from its first step.
+    private var lastPathReconnectAt: Date?
+    /// Bumped when a scheduled reconnect is canceled (Connection Repair, a
+    /// sign-out), so a cycle waiting on its readiness probe doesn't go on.
+    private var reconnectCycleGeneration = 0
+    /// The Chats list's poll pace, the sleep a return to the app or a tap
+    /// cuts short, and a count of catalog reads that changed the list.
+    private(set) var chatListPollPacer = ChatListPollPacer()
+    private let chatListPollSleep = WakeableSleep()
+    private var chatListCatalogGeneration = 0
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -4824,7 +4865,7 @@ final class AppState: ObservableObject {
         }
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
-        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        TranscriptImageCache.purge()
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -4858,7 +4899,7 @@ final class AppState: ObservableObject {
         // on other dashboards. Keep their files rather than rewriting only
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
-        Task.detached(priority: .utility) { TranscriptImageCache.removeAll() }
+        TranscriptImageCache.purge()
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
             // the app and its Retry up: it stays, with nothing saved in it.
@@ -5317,7 +5358,8 @@ final class AppState: ObservableObject {
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
         profileAppearanceStore: ProfileAppearanceStore? = nil,
-        presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil
+        presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil,
+        deviceConditionsUpdates: AnyPublisher<DeviceConditions, Never>? = nil
     ) {
         self.presentationCacheDebounceSuspension =
             presentationCacheDebounceSuspension
@@ -5342,6 +5384,12 @@ final class AppState: ObservableObject {
         profileDiscoveryLoaderOverride = profileDiscoveryLoader
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
         self.reconnectExecutor = reconnectExecutor
+        if reconnectExecutor == nil {
+            let probe: @MainActor (String) async -> Bool = { baseURL in
+                await GatewayReadinessProbe.answers(baseURL)
+            }
+            gatewayReadinessProbe = probe
+        }
         self.chatResumeLifecycleOperations = chatResumeLifecycleOperations
         self.groupChatOperations = groupChatOperations
         self.initialChatResumeServerIdentity = defaults
@@ -5410,6 +5458,48 @@ final class AppState: ObservableObject {
         if shouldLoadSavedConnection {
             loadSavedConnection()
         }
+        // The monitor publishes on the main actor (willSet: `current` still
+        // holds the old value, so the handler uses the one it is given).
+        let monitor = DeviceConditionsMonitor.shared
+        lastPathGeneration = monitor.current.pathGeneration
+        networkPathUsable = monitor.current.pathSatisfied
+        deviceConditionsSubscription = (deviceConditionsUpdates ?? monitor.$current.eraseToAnyPublisher())
+            .sink { [weak self] conditions in
+                MainActor.assumeIsolated { self?.deviceConditionsChanged(conditions) }
+            }
+    }
+
+    func deviceConditionsChanged(_ conditions: DeviceConditions) {
+        let wasUsable = networkPathUsable
+        if networkPathUsable != conditions.pathSatisfied { networkPathUsable = conditions.pathSatisfied }
+        guard conditions.pathGeneration != lastPathGeneration else { return }
+        lastPathGeneration = conditions.pathGeneration
+        networkPathChanged(satisfied: conditions.pathSatisfied, cameBack: !wasUsable)
+    }
+
+    /// Path reports on a churny network (handovers, a VPN reasserting) come
+    /// often; only one every this long restarts the backoff.
+    static let pathReconnectInterval: TimeInterval = 30
+
+    /// The network path changed. A usable one checks the open socket at
+    /// once. A reconnect waiting out its backoff (or the network) runs now,
+    /// from the first step, when the network came back or the last such
+    /// restart is 30 s old: the drop was most likely the old path.
+    func networkPathChanged(satisfied: Bool, cameBack: Bool = false, now: Date = Date()) {
+        guard satisfied else { return }
+        client?.networkPathChanged()
+        guard connection != nil, !isConnected, !isConnecting, reconnectTask != nil,
+              canRunTransportRecovery else { return }
+        if !cameBack, let lastPathReconnectAt,
+           now.timeIntervalSince(lastPathReconnectAt) < Self.pathReconnectInterval { return }
+        lastPathReconnectAt = now
+        let purpose = recoverySequence.takeQueuedReconnectPurpose() ?? .preserveCurrent
+        reconnectTask?()
+        reconnectTask = nil
+        reconnectAttempts = 0
+        noteConnectionStep("Network changed")
+        // Immediate: the delay doesn't depend on the path state read below.
+        scheduleReconnect(immediately: true, purpose: purpose)
     }
 
     func restoreActiveSessionState(for profile: String) {
@@ -5525,7 +5615,7 @@ final class AppState: ObservableObject {
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
                 } catch let error where SessionMutationIdentity.isRefusal(error) {
-                    sessionCatalogLog.notice("Pin upload kept on phone: \(String(describing: error), privacy: .public)")
+                    sessionCatalogLog.notice("Pin upload kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.keepPinOnPhone(upload.pinID, profile: profile, generation: generation, pinned: true)
                 } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
@@ -5540,7 +5630,7 @@ final class AppState: ObservableObject {
                     }
                 } catch {
                     // Its pending value holds off a resend until it lapses.
-                    sessionCatalogLog.notice("Pin upload failed: \(String(describing: error), privacy: .public)")
+                    sessionCatalogLog.notice("Pin upload failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
             }
         }
@@ -6002,7 +6092,7 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 // An older plugin has no tags: rows stay under their source.
-                Self.voiceHistoryLog.debug("Voice tags unavailable: \(String(describing: error), privacy: .public)")
+                Self.voiceHistoryLog.debug("Voice tags unavailable: \(LogRedaction.describing(error), privacy: .public)")
             }
             await self.drainVoiceTranscriptOutbox(profile: profile, key: key)
             self.voiceTagRefreshTask = nil
@@ -6035,7 +6125,7 @@ final class AppState: ObservableObject {
                 do {
                     try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
-                    Self.voiceHistoryLog.debug("Tagging a voice session failed: \(String(describing: error), privacy: .public)")
+                    Self.voiceHistoryLog.debug("Tagging a voice session failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
             }
         }
@@ -7246,19 +7336,25 @@ final class AppState: ObservableObject {
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
     func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
+        await latestLiveVoiceThreadReplyMessage(thread)?.message.content
+    }
+
+    /// The same reply as its message, and whether it was read from the open
+    /// chat, so a caller can tell two replies worded alike apart.
+    func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool)? {
         // Read once, without suspending: the chat on screen can change at
         // any await.
-        if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
+        if isOpenChat(thread) { return latestReplyMessageInOpenChat(thread).map { ($0, true) } }
         guard let bridge = dashboardTicketBridge else { return nil }
         // One profile for every read: a reply from another profile's history
         // is never read out. A Bot Chat's history is in the bot's profile.
         let workspace = activeProfile
         guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
               workspace == activeProfile else { return nil }
-        return reply
+        return (reply, false)
     }
 
-    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> String? {
+    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> ChatMessage? {
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
@@ -7281,12 +7377,12 @@ final class AppState: ObservableObject {
                 guard page?.honorsTailContract == true else {
                     if let full = await read(PersistedTranscriptPagination.legacyQuery),
                        let fullRows = Self.persistedMessageRows(in: full),
-                       let reply = Self.latestAssistantReply(inMessageRows: fullRows) {
+                       let reply = Self.latestAssistantMessage(inMessageRows: fullRows) {
                         return reply
                     }
                     break
                 }
-                if let reply = Self.latestAssistantReply(inMessageRows: rows) { return reply }
+                if let reply = Self.latestAssistantMessage(inMessageRows: rows) { return reply }
                 if rows.isEmpty { break }
                 offset += rows.count
             }
@@ -7301,21 +7397,32 @@ final class AppState: ObservableObject {
     /// rows. A tail page still lists its rows oldest first, as
     /// `voiceRowMessages` relies on.
     static func latestAssistantReply(inMessageRows rows: [Any]) -> String? {
-        MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from))
-            .last { message in
-                message.role == .assistant && message.tool == nil
-                    && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            }?
-            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+        latestAssistantMessage(inMessageRows: rows)?.content
+    }
+
+    /// The same reply as its message, its text trimmed.
+    static func latestAssistantMessage(inMessageRows rows: [Any]) -> ChatMessage? {
+        Self.latestReplyMessage(in: MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)))
     }
 
     /// The open chat's latest assistant reply.
     func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
+        latestReplyMessageInOpenChat(thread)?.content
+    }
+
+    /// The same reply as its message, its text trimmed.
+    func latestReplyMessageInOpenChat(_ thread: VoiceThreadTarget) -> ChatMessage? {
         guard isOpenChat(thread) else { return nil }
-        return messages.lazy
-            .filter { $0.role == .assistant && $0.tool == nil }
-            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .last { !$0.isEmpty }
+        return Self.latestReplyMessage(in: messages)
+    }
+
+    private static func latestReplyMessage(in messages: [ChatMessage]) -> ChatMessage? {
+        guard var reply = messages.last(where: { message in
+            message.role == .assistant && message.tool == nil
+                && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return nil }
+        reply.content = reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reply
     }
 
     /// The user message a just-finished turn answered: the only one since
@@ -7591,7 +7698,7 @@ final class AppState: ObservableObject {
                 // pin stays as the person set it, on the phone only, rather
                 // than flip back; the notice says why. Pinning it again asks
                 // Hermes again.
-                sessionCatalogLog.notice("Pin kept on phone: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL,
                       self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned),
                       profile == self.activeProfile else { return }
@@ -7648,11 +7755,15 @@ final class AppState: ObservableObject {
     /// through the identity index on purpose: each snapshot is the same
     /// authoritative evidence the foreground probe records, and re-recording
     /// an unchanged binding is a no-op.
-    func refreshLiveSessionStatuses() async {
+    ///
+    /// Returns false when the read failed (a gateway without the method
+    /// counts as read: there is nothing to ask).
+    @discardableResult
+    func refreshLiveSessionStatuses() async -> Bool {
         // Its own task: a slow plugin read must not hold up live status.
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
-        guard isSceneActive, let client, isConnected,
-              client !== activeListUnsupportedClient else { return }
+        guard isSceneActive, let client, isConnected else { return false }
+        guard client !== activeListUnsupportedClient else { return true }
         let profile = activeProfile
         do {
             let rows: [LiveSessionStatus]
@@ -7661,24 +7772,27 @@ final class AppState: ObservableObject {
             } else {
                 rows = try await client.activeSessions()
             }
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile, self.client === client else { return true }
             // Assigned only on a change: every publish redraws the chat list.
             if !liveSessionStatusAvailable { liveSessionStatusAvailable = true }
             activeListFailureLoggedClient = nil
             recordActiveListEvidence(rows, profile: profile)
             latestActiveList = (rows, profile, ObjectIdentifier(client), chatSyncNow())
+            return true
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
             // connection probes again. Other failures retry on the next tick.
             if isMethodUnavailable(error) {
                 activeListUnsupportedClient = client
                 if self.client === client, liveSessionStatusAvailable { liveSessionStatusAvailable = false }
+                return true
             } else if client !== activeListFailureLoggedClient {
                 activeListFailureLoggedClient = client
                 sessionCatalogLog.notice(
-                    "Live status poll failed: \(String(describing: error), privacy: .public)"
+                    "Live status poll failed: \(LogRedaction.describing(error), privacy: .public)"
                 )
             }
+            return false
         }
     }
 
@@ -7719,7 +7833,7 @@ final class AppState: ObservableObject {
             if !desktopViewsFailureLogged {
                 desktopViewsFailureLogged = true
                 sessionCatalogLog.notice(
-                    "Desktop views read failed: \(String(describing: error), privacy: .public)"
+                    "Desktop views read failed: \(LogRedaction.describing(error), privacy: .public)"
                 )
             }
             return
@@ -7950,11 +8064,11 @@ final class AppState: ObservableObject {
             do {
                 try await self.sendHostPin(session.id, pinned: false, profile: profile, using: bridge)
             } catch let error where SessionMutationIdentity.isRefusal(error) {
-                sessionCatalogLog.notice("Pin clear kept on phone: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin clear kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL else { return }
                 self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: false)
             } catch {
-                sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin clear failed: \(LogRedaction.describing(error), privacy: .public)")
             }
         }
     }
@@ -8196,6 +8310,9 @@ final class AppState: ObservableObject {
     private func cancelScheduledReconnect() {
         reconnectTask?()
         reconnectTask = nil
+        // A cycle already past its timer (awaiting the readiness probe)
+        // sees this and stops.
+        reconnectCycleGeneration &+= 1
         recoverySequence.clearQueuedReconnect()
     }
 
@@ -10684,12 +10801,16 @@ final class AppState: ObservableObject {
     func restoreNativeOAuthConnection(
         baseURL: String,
         dashboardID: UUID,
-        switchGeneration: UInt64? = nil
+        switchGeneration: UInt64? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async {
+        guard widgetLease?.isCurrent != false else { return }
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
             // A dashboard switch made meanwhile owns the flow.
             guard restoreOwnsFlow(switchGeneration) else { return }
+            // So does a newer widget launch, or the expiry of this one.
+            guard widgetLease?.isCurrent != false else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
@@ -11520,6 +11641,23 @@ final class AppState: ObservableObject {
         }
         // Mirrors cold launch: the target's own saved copy and Chats list,
         // kept while another dashboard was in use, show until it answers.
+        // A browser sign-in's OAuth grant comes first, as it does there: it
+        // mints a fresh ticket, where a saved one may already be spent, and
+        // it is all a dashboard has left once a refused session was cleared.
+        if KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil {
+            presentOfflineChatIfAvailable(dashboardID: id)
+            showLogin = false
+            isConnecting = true
+            turnState = .synchronizing
+            await restoreNativeOAuthConnection(
+                baseURL: dashboard.normalizedURL,
+                dashboardID: id,
+                switchGeneration: generation,
+                widgetLease: widgetLease
+            )
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
+            return
+        }
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
             if !credentials.requiresFaceID {
                 presentOfflineChatIfAvailable(dashboardID: id)
@@ -11693,6 +11831,9 @@ final class AppState: ObservableObject {
             requestAuthorizer: dashboardTicketBridge?.requestAuthorizer,
             transportFactory: transportFactory
         )
+        // A reconnect off screen (CarPlay, a locked listen) keeps the
+        // background keepalive.
+        client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self] event in
@@ -13184,7 +13325,7 @@ final class AppState: ObservableObject {
             ) {
             case .failure(let rejection):
                 sessionCatalogLog.fault(
-                    "Rejected contradictory resume: \(String(describing: rejection), privacy: .public); requested=\(sessionId, privacy: .public), returned=\(result.sessionId, privacy: .public)"
+                    "Rejected contradictory resume: \(rejection.logLabel, privacy: .public); requested=\(sessionId, privacy: .private(mask: .hash)), returned=\(result.sessionId, privacy: .private(mask: .hash))"
                 )
                 // Restore the ordering evidence the reconcile entry cleared:
                 // ordering evidence is conversation-owned state, so a
@@ -13491,7 +13632,7 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs = boundary.acceptedSessionIDs
                     if !acceptedSessionIDs.contains(result.sessionId) {
                         sessionCatalogLog.debug(
-                            "Skipping buffered delta dedup because resumed session \(result.sessionId, privacy: .public) is not a boundary-confirmed alias (boundary=\(boundarySessionID, privacy: .public))"
+                            "Skipping buffered delta dedup because resumed session \(result.sessionId, privacy: .private(mask: .hash)) is not a boundary-confirmed alias (boundary=\(boundarySessionID, privacy: .private(mask: .hash)))"
                         )
                     }
                 } else {
@@ -14861,8 +15002,20 @@ final class AppState: ObservableObject {
         case .schedule:
             break
         }
-        let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
-        noteConnectionStep("Reconnect scheduled in \(ConnectionTimeline.seconds(delay))")
+        // Exponential with jitter, capped at 8 s while Conduit is on screen
+        // and 60 s off it. Without a usable path no attempt can work: the
+        // timer only stands in for a path report that never comes, and the
+        // path coming back reconnects at once (networkPathChanged).
+        let pathSatisfied = deviceConditions().pathSatisfied
+        let onScreen = reconnectIsWatched
+        let delay = immediately
+            ? 0.1
+            : pathSatisfied
+                ? PollCadence.reconnectDelay(attempt: reconnectAttempts, random: reconnectJitter(), onScreen: onScreen)
+                : PollCadence.reconnectCap
+        noteConnectionStep(pathSatisfied || immediately
+            ? "Reconnect scheduled in \(ConnectionTimeline.seconds(delay))"
+            : "No network; reconnect waits for it (at most \(ConnectionTimeline.seconds(delay)))")
         // The backoff step is consumed only when the cycle actually runs.
         // A timer canceled by scene backgrounding — or a cycle dropped for
         // scene inactivity before execution — never counts as a gateway
@@ -14876,9 +15029,32 @@ final class AppState: ObservableObject {
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
             guard self.canRunTransportRecovery else { return }
+            let generation = self.reconnectCycleGeneration
             if incrementsBackoff { self.reconnectAttempts += 1 }
+            // On screen, a backed-off step asks the gateway cheaply first: a
+            // gateway still restarting costs one HEAD, not a ticket, an
+            // upgrade and its timeout.
+            if incrementsBackoff, self.reconnectIsWatched,
+               let probe = self.gatewayReadinessProbe,
+               let baseURL = self.connection?.baseUrl {
+                let answered = await probe(baseURL)
+                guard self.reconnectCycleGeneration == generation,
+                      self.reconnectTask == nil, !self.isConnected, !self.isConnecting,
+                      self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
+                if !answered {
+                    self.noteConnectionStep("Gateway not answering yet")
+                    self.scheduleReconnect(purpose: purpose)
+                    return
+                }
+            }
             await self.executeReconnect(purpose: purpose)
         }
+    }
+
+    /// Someone is looking at Conduit (the phone's screen or CarPlay's): a
+    /// returning gateway should show within seconds.
+    private var reconnectIsWatched: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive
     }
 
     private func scheduleReconnectAfterFailedSync() {
@@ -15323,6 +15499,10 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            // Polls left long while nothing moved catch up at once.
+            noteChatListInteraction()
+            openChatSync.resetIdlePace()
+            client?.setKeepaliveBackgrounded(false)
             // A message left waiting through a long time away isn't sent on
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
@@ -15509,6 +15689,8 @@ final class AppState: ObservableObject {
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
+            // Audio may keep the socket open off screen; it pings less.
+            client?.setKeepaliveBackgrounded(true)
             // The socket can die while suspended and turn edges can be missed,
             // so the local turn state must be re-confirmed against the
             // authoritative runtime registry before the next composer submit
@@ -15942,7 +16124,7 @@ final class AppState: ObservableObject {
                 // cannot stay disabled indefinitely — and a newer buffered
                 // busy edge still wins during the boundary replay.
                 lifecycleLog.notice(
-                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, transitional state normalized"
+                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → observation-only, transitional state normalized"
                 )
                 if turnState == .synchronizing || turnState == .reconnecting {
                     setRunning(false)
@@ -15972,7 +16154,7 @@ final class AppState: ObservableObject {
                     // observational adopt stands without a transcript read.
                     if !messages.isEmpty {
                         lifecycleLog.notice(
-                            "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt (unarmed)"
+                            "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → observation-only adopt (unarmed)"
                         )
                         adoptForegroundRunningState(
                             reconciliationToken: token,
@@ -16015,7 +16197,7 @@ final class AppState: ObservableObject {
                     // compact resume fast-path returns the live projection
                     // and the reconcile merges the persisted prefix.
                     lifecycleLog.notice(
-                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → authoritative attach (remote running turn)"
+                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → authoritative attach (remote running turn)"
                     )
                     await syncSession(
                         purpose: recoveryPurpose,
@@ -16662,7 +16844,7 @@ final class AppState: ObservableObject {
         guard messages.last?.id == lastLocalMessageID,
               durablePersistedRowIDs == localFrontier else {
             lifecycleLog.notice(
-                "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
+                "Foreground freshness: session=\(requestedSessionID, privacy: .private(mask: .hash)) transcript moved during read → bounded resume refresh"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -16690,7 +16872,7 @@ final class AppState: ObservableObject {
                 // (compact resume + reconcile) owns both the advancement and
                 // the live projection.
                 lifecycleLog.notice(
-                    "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
+                    "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
                 )
                 await syncSession(
                     purpose: recoveryPurpose,
@@ -16700,7 +16882,7 @@ final class AppState: ObservableObject {
                 return true
             }
             lifecycleLog.notice(
-                "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
+                "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
             )
             applyPersistedForegroundAdvancement(
                 requestedSessionID: requestedSessionID,
@@ -16715,7 +16897,7 @@ final class AppState: ObservableObject {
             )
         case let .unchanged(observedOrderingFrontier, observedNewUserBoundaries):
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=unchanged → observational adopt"
             )
             // The bounded read proved the durable conversation current (an
             // optimistic locally-owned tail is live-turn content, not
@@ -16741,7 +16923,7 @@ final class AppState: ObservableObject {
             )
         case .unresolvedTransient:
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=transient-failure → liveness adopt, freshness unresolved"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=transient-failure → liveness adopt, freshness unresolved"
             )
             adoptForegroundLiveness(
                 livenessIsRunning,
@@ -16759,7 +16941,7 @@ final class AppState: ObservableObject {
             // the conversation, hinted to skip the history request that just
             // proved absent and resume non-compact exactly once.
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=source-unavailable → single authoritative resume"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -16770,7 +16952,7 @@ final class AppState: ObservableObject {
             )
         case .inconclusive:
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=inconclusive → bounded resume refresh"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -17007,8 +17189,12 @@ final class AppState: ObservableObject {
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
-            sessions = allSessions.filter { $0.source != .cron }
-            cronSessions = allSessions.filter { $0.source == .cron }
+            let listedSessions = allSessions.filter { $0.source != .cron }
+            let listedCron = allSessions.filter { $0.source == .cron }
+            // A read that changed the list keeps the list's poll quick.
+            if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
+            sessions = listedSessions
+            cronSessions = listedCron
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
@@ -17097,6 +17283,7 @@ final class AppState: ObservableObject {
     /// Use this after database recovery or deletion outside Conduit.
     func refreshSessionCatalog() async {
         guard !isRefreshingSessionCatalog else { return }
+        noteChatListInteraction()
         isRefreshingSessionCatalog = true
         defer { isRefreshingSessionCatalog = false }
 
@@ -17109,25 +17296,72 @@ final class AppState: ObservableObject {
 
     // MARK: - One chat on two devices
 
-    /// The Chats list's poll (every 4 s while it shows): the live registry,
-    /// then what it says about the list and the open chat behind it. A chat
-    /// the registry has and the list doesn't, one started on another device,
-    /// reads the catalog again; so does a list left on screen for 30 s, for
-    /// renames and deletions made elsewhere. Reads go through the coalesced
-    /// read Back uses.
-    func chatListPollTick() async {
+    /// The Chats list's poll loop, while the list shows. Each tick says how
+    /// long to wait before the next; a return to the app, a send or a
+    /// search cuts the wait short (`noteChatListInteraction`).
+    func runChatListPolling() async {
+        chatListPollPacer.reset()
+        chatListPollSleep.clearPendingWake()
+        while !Task.isCancelled {
+            let delay = await chatListPollTick()
+            guard !Task.isCancelled else { return }
+            await chatListPollSleep.sleep(seconds: delay)
+        }
+    }
+
+    /// Something happened that the list should catch up with soon: the
+    /// next poll comes at once, then at the shortest interval.
+    func noteChatListInteraction() {
+        chatListPollPacer.reset()
+        chatListPollSleep.wake()
+    }
+
+    /// The Chats list's poll: the live registry, then what it says about
+    /// the list and the open chat behind it. A chat the registry has and
+    /// the list doesn't, one started on another device, reads the catalog
+    /// again; so does a list left on screen for 30 s, for renames and
+    /// deletions made elsewhere. Reads go through the coalesced read Back
+    /// uses. Returns the wait before the next tick: 4 s while a turn runs
+    /// or something on the list changed, then 8, 15, 30 and 60 s while
+    /// nothing moves (PollCadence), stretched in Low Power and Low Data
+    /// Mode.
+    @discardableResult
+    func chatListPollTick() async -> TimeInterval {
         // Off screen (voice or CarPlay keep the app running) nothing reads.
-        guard isSceneActive, isConnected else { return }
-        await refreshLiveSessionStatuses()
+        guard isSceneActive, isConnected else {
+            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+        }
+        let registryRead = await refreshLiveSessionStatuses()
+        var registry: Set<String>?
+        var turnRunning = turnState.isRunning
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {
-            noteActiveListForChatList(snapshot.rows)
+            let listed = chatListListedIDs()
+            // A chat started elsewhere is about to be listed: the poll
+            // stays quick to follow it.
+            if noteActiveListForChatList(snapshot.rows, listed: listed) { chatListPollPacer.reset() }
             // The open chat shows beside the list in the persistent iPad
             // sidebar, and is covered by it otherwise.
             observeOpenChat(in: snapshot, chatVisible: !showSidebar)
+            // Only the list's own chats pace it: a bot's or a cron job's
+            // runtime working all day mustn't keep it at 4 s. A chat the
+            // list doesn't have yet is read above, and the read that lists
+            // it changes the list.
+            let listedRows = snapshot.rows.filter { listed.contains($0.storedSessionId) }
+            registry = ChatListPollPacer.registryKeys(listedRows)
+            turnRunning = turnRunning || listedRows.contains(where: ChatListPollPacer.isTurnRunning)
+        } else if registryRead {
+            // A gateway without the registry answers nothing to compare:
+            // an empty one, so the list backs off.
+            registry = []
         }
         if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.fallbackInterval, now: chatSyncNow()) {
             refreshCatalogAfterLeavingChat(reportingFailure: false)
         }
+        return chatListPollPacer.next(
+            after: .init(registry: registry, turnRunning: turnRunning, catalogGeneration: chatListCatalogGeneration),
+            conditions: deviceConditions(),
+            random: pollJitter()
+        )
     }
 
     /// Back in the app with the list on screen: a read older than 10 s is
@@ -17139,7 +17373,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func noteActiveListForChatList(_ rows: [LiveSessionStatus]) {
+    /// Every id the list's chats go by.
+    private func chatListListedIDs() -> Set<String> {
         var listed = Set<String>()
         for session in sessions + cronSessions + archivedSessions {
             listed.insert(session.id)
@@ -17147,16 +17382,29 @@ final class AppState: ObservableObject {
             if let root = session.lineageRootId { listed.insert(root) }
             listed.formUnion(session.alternateIds)
         }
+        return listed
+    }
+
+    /// Returns whether it asked for a catalog read.
+    @discardableResult
+    private func noteActiveListForChatList(_ rows: [LiveSessionStatus], listed: Set<String>) -> Bool {
         let unlisted = rows.filter { !$0.storedSessionId.isEmpty && !listed.contains($0.storedSessionId) }
         // Keyed by the row's state too: a chat created on another device is
         // live before its first message makes it listable, and that message
         // (working, then a new count) asks again.
         let keys = Set(unlisted.map { "\($0.storedSessionId)|\($0.status)|\($0.messageCount ?? -1)" })
-        guard chatListCatalogFreshness.shouldRead(forUnlisted: keys, now: chatSyncNow()) else { return }
+        guard chatListCatalogFreshness.shouldRead(forUnlisted: keys, now: chatSyncNow()) else { return false }
         sessionCatalogLog.notice(
             "Chat list: \(unlisted.count, privacy: .public) live chat(s) not listed yet; reading the catalog again"
         )
         refreshCatalogAfterLeavingChat(reportingFailure: false)
+        return true
+    }
+
+    /// The open chat shows (again), or the app came back: its idle check
+    /// starts over at the shortest interval.
+    func openChatSyncBecameVisible() {
+        openChatSync.resetIdlePace()
     }
 
     /// The open chat's check while it is on screen (ChatView, every few
@@ -17170,7 +17418,7 @@ final class AppState: ObservableObject {
             setActiveChatRepliesElsewhere(false)
             return
         }
-        let due = openChatSync.checkDue(local, now: chatSyncNow())
+        let due = openChatSync.checkDue(local, now: chatSyncNow(), conditions: deviceConditions())
         // Another chat starts over without the label.
         setActiveChatRepliesElsewhere(openChatSync.repliesElsewhere)
         guard due else { return }
@@ -17238,7 +17486,7 @@ final class AppState: ObservableObject {
             break
         case .settleTurn:
             lifecycleLog.notice(
-                "Open chat: turn silent here and not running on the server → re-read session=\(local.sessionID, privacy: .public)"
+                "Open chat: turn silent here and not running on the server → re-read session=\(local.sessionID, privacy: .private(mask: .hash))"
             )
             startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: true) { appState in
                 // Nothing runs, so this resume takes no stream from another
@@ -17250,7 +17498,7 @@ final class AppState: ObservableObject {
         case .readNewRows:
             guard let row = rows.first(where: { !$0.isRunning }) ?? rows.first else { return }
             lifecycleLog.notice(
-                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .public)"
+                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .private(mask: .hash))"
             )
             startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: false) { appState in
                 // The bounded, read-only tail read a return from the
@@ -17346,6 +17594,8 @@ final class AppState: ObservableObject {
     /// command): the registry's count moving next is its own doing.
     private func noteOpenChatSentHere() {
         openChatSync.noteSentHere()
+        // The persistent iPad sidebar shows the list beside the chat.
+        noteChatListInteraction()
     }
 
     private func noteOpenChatStreamEvent() {
@@ -19532,7 +19782,7 @@ final class AppState: ObservableObject {
                 source: .notification
             ) {
                 sessionCatalogLog.fault(
-                    "Notification identity conflict: runtime \(requestedID, privacy: .public) keeps confirmed durable \(conflict.confirmedDurableID, privacy: .public); payload claimed \(durable, privacy: .public)"
+                    "Notification identity conflict: runtime \(requestedID, privacy: .private(mask: .hash)) keeps confirmed durable \(conflict.confirmedDurableID, privacy: .private(mask: .hash)); payload claimed \(durable, privacy: .private(mask: .hash))"
                 )
             }
         }
@@ -20539,7 +20789,7 @@ final class AppState: ObservableObject {
             // The one-time stale clear is submission-owned so an unsupported
             // gateway does not turn every later submit into probe chatter.
             lifecycleLog.notice(
-                "submitComposer: stale-idle probe unavailable; proceeding with send session=\(sessionId, privacy: .public)"
+                "submitComposer: stale-idle probe unavailable; proceeding with send session=\(sessionId, privacy: .private(mask: .hash))"
             )
             if isCurrentComposerSubmission(submissionContext) {
                 turnStateIsStale = false
@@ -20553,7 +20803,7 @@ final class AppState: ObservableObject {
         guard isCurrentComposerSubmission(submissionContext),
               turnState == .idle, turnStateIsStale else {
             lifecycleLog.notice(
-                "submitComposer: stale-idle probe superseded by session handoff; no state mutation session=\(sessionId, privacy: .public)"
+                "submitComposer: stale-idle probe superseded by session handoff; no state mutation session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return false
         }
@@ -20562,7 +20812,7 @@ final class AppState: ObservableObject {
         })
         if let row, row.isRunning {
             lifecycleLog.notice(
-                "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .public)"
+                "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .private(mask: .hash))"
             )
             // setRunning also clears the pending-decision restoration guard,
             // exactly like a live sessionBusy(true) edge would.
@@ -20619,7 +20869,7 @@ final class AppState: ObservableObject {
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
         lifecycleLog.notice(
-            "submitComposer: pre-send persisted evidence unresolved (freshness or local ordering debt); one bounded retry session=\(sessionId, privacy: .public)"
+            "submitComposer: pre-send persisted evidence unresolved (freshness or local ordering debt); one bounded retry session=\(sessionId, privacy: .private(mask: .hash))"
         )
         let outcome = await foregroundPersistedTailOutcome(
             sessionId: sessionId,
@@ -20640,7 +20890,7 @@ final class AppState: ObservableObject {
         }
         if turnState.isRunning {
             lifecycleLog.notice(
-                "submitComposer: conversation turned busy during pre-send freshness read → busy submission session=\(sessionId, privacy: .public)"
+                "submitComposer: conversation turned busy during pre-send freshness read → busy submission session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return .routeToBusySubmission
         }
@@ -20649,7 +20899,7 @@ final class AppState: ObservableObject {
             // unsupported gateway is in flight: neither proves the
             // transcript ordering, and neither may blind-send.
             lifecycleLog.notice(
-                "submitComposer: pre-send freshness read superseded by \(self.turnStateLogValue, privacy: .public); blocking send session=\(sessionId, privacy: .public)"
+                "submitComposer: pre-send freshness read superseded by \(self.turnStateLogValue, privacy: .public); blocking send session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return .blocked(AppLocalization.string("Unable to refresh this conversation. Try again."))
         }
@@ -20712,7 +20962,7 @@ final class AppState: ObservableObject {
                     ?? sessionId
             ) else {
                 lifecycleLog.notice(
-                    "submitComposer: pre-send read answered for a different conversation → authoritative reconcile session=\(sessionId, privacy: .public)"
+                    "submitComposer: pre-send read answered for a different conversation → authoritative reconcile session=\(sessionId, privacy: .private(mask: .hash))"
                 )
                 await syncSession(
                     purpose: .preserveCurrent,
@@ -20734,7 +20984,7 @@ final class AppState: ObservableObject {
                     persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
                 case .exceeded, .notCaughtUp, .unprovable:
                     lifecycleLog.notice(
-                        "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .public)"
+                        "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     await syncSession(
                         purpose: .preserveCurrent,
@@ -20906,7 +21156,7 @@ final class AppState: ObservableObject {
             // not send into an unresolved ordering — freshness and local
             // ordering debt alike.
             lifecycleLog.notice(
-                "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .public)"
+                "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .private(mask: .hash))"
             )
             return .blocked(AppLocalization.string("Unable to refresh this conversation. Try again."))
         }
@@ -21142,7 +21392,7 @@ final class AppState: ObservableObject {
             Task { await refreshNotifierPluginStatus() }
         }
         lifecycleLog.notice(
-            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
+            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .private(mask: .hash))"
         )
     }
 
@@ -21394,7 +21644,7 @@ final class AppState: ObservableObject {
                     // Staged, but the reply named no path to point the agent
                     // at: the send goes on without telling it.
                     lifecycleLog.notice(
-                        "file.attach gave no reference; the prompt can't name the file session=\(sessionId, privacy: .public)"
+                        "file.attach gave no reference; the prompt can't name the file session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                 }
             } catch {
@@ -21429,7 +21679,7 @@ final class AppState: ObservableObject {
             // for session A must never mutate turn state that now belongs to
             // session B.
             lifecycleLog.notice(
-                "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
+                "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .private(mask: .hash))"
             )
             if chatTakeoverMatches(sessionId) {
                 dismissChatTakeover()
@@ -21529,7 +21779,7 @@ final class AppState: ObservableObject {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
-                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .public)"
+                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .private(mask: .hash))"
                 )
                 let (resolution, reconnected, recoveryEvidence) = await reconcileAmbiguousPromptSubmission(
                     requestedSessionID: sessionId,
@@ -21618,7 +21868,7 @@ final class AppState: ObservableObject {
                     // not cleared as though settlement were proven), and let
                     // the next authoritative registry/stream edge settle it.
                     lifecycleLog.notice(
-                        "prompt.submit accepted (durable transcript); registry starting — liveness unresolved session=\(sessionId, privacy: .public)"
+                        "prompt.submit accepted (durable transcript); registry starting — liveness unresolved session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
                         if recoveryMayStampLifecycle {
@@ -21647,7 +21897,7 @@ final class AppState: ObservableObject {
                     // persisted but did not re-anchor the ordering frontier,
                     // so an unobserved boundary leaves debt.
                     lifecycleLog.notice(
-                        "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .public)"
+                        "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
                         if recoveryMayStampLifecycle {
@@ -21673,7 +21923,7 @@ final class AppState: ObservableObject {
                     // Authoritative evidence shows Hermes did not accept the
                     // prompt: restore the unsent state exactly once below.
                     lifecycleLog.notice(
-                        "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .public)"
+                        "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext),
                        recoveryMayStampLifecycle {
@@ -21684,7 +21934,7 @@ final class AppState: ObservableObject {
                     // conservative about duplicate delivery: restore rather
                     // than re-send blindly.
                     lifecycleLog.notice(
-                        "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .public)"
+                        "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                 }
                 // Presentation writes below are submission-owned too: A's
@@ -22217,7 +22467,7 @@ final class AppState: ObservableObject {
             recordSessionYoloWrite(for: [sessionId, persistedSessionID])
         } catch {
             sessionYoloLog.error(
-                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)"
             )
         }
     }
@@ -22922,7 +23172,7 @@ final class AppState: ObservableObject {
                 catalog: sessions + cronSessions
             ) else {
                 sessionCatalogLog.notice(
-                    "Rejected contradictory recovery resume; requested=\(sessionID, privacy: .public), recovered=\(recoveredSessionID, privacy: .public)"
+                    "Rejected contradictory recovery resume; requested=\(sessionID, privacy: .private(mask: .hash)), recovered=\(recoveredSessionID, privacy: .private(mask: .hash))"
                 )
                 throw originalError
             }
@@ -23261,10 +23511,10 @@ final class AppState: ObservableObject {
         case .hydrated(let hydrated):
             transcript = hydrated
         case .unavailable:
-            sessionCatalogLog.debug("No persisted-history source after /compress; backfill stays disabled for \(requestedSessionID, privacy: .public)")
+            sessionCatalogLog.debug("No persisted-history source after /compress; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         case .failed(let error):
-            sessionCatalogLog.notice("Persisted-history rehydration after /compress failed; backfill stays disabled until the next sync: \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.notice("Persisted-history rehydration after /compress failed; backfill stays disabled until the next sync: \(LogRedaction.message(error), privacy: .public)")
             return
         }
         // Identity gate, same rule as the resume path: a response the
@@ -23275,7 +23525,7 @@ final class AppState: ObservableObject {
             requestedSessionId: requestedSessionID,
             resumedSessionId: requestedSessionID
         ) else {
-            sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .public)")
+            sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         }
         persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
@@ -24037,7 +24287,7 @@ final class AppState: ObservableObject {
                 // The deferred read only tops up a list the dashboard already
                 // gave; the gateway's list must not replace it.
                 if yieldsToNewerReads { throw error }
-                sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(error.localizedDescription, privacy: .public)")
+                sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(LogRedaction.message(error), privacy: .public)")
                 // Keep older dashboard installations usable; the gateway is
                 // still an authoritative fallback when the history endpoint is
                 // unavailable.
@@ -24226,10 +24476,10 @@ final class AppState: ObservableObject {
             // silently become a full-transcript WebSocket transport (the
             // giant-payload path compact resume exists to eliminate).
             if Self.historySourceIsUnavailable(error) {
-                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
+                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
                 return .unavailable
             }
-            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
+            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
             return .failed(error)
         case .payload(let response):
             guard let rawMessages = Self.persistedMessageRows(in: response) else {
@@ -24479,10 +24729,10 @@ final class AppState: ObservableObject {
             // render-to-tap race during a session switch).
             sessionCatalogLog.debug("""
                 Older-page backfill rejected ownership of an otherwise-actionable window: \
-                requested=\(window.requestedSessionID, privacy: .public) \
-                resolved=\(window.resolvedSessionID ?? "none", privacy: .public) \
-                runtime=\(window.runtimeSessionID ?? "none", privacy: .public) \
-                active=\(self.activeSessionId ?? "none", privacy: .public) \
+                requested=\(window.requestedSessionID, privacy: .private(mask: .hash)) \
+                resolved=\(window.resolvedSessionID ?? "none", privacy: .private(mask: .hash)) \
+                runtime=\(window.runtimeSessionID ?? "none", privacy: .private(mask: .hash)) \
+                active=\(self.activeSessionId ?? "none", privacy: .private(mask: .hash)) \
                 windowProfile=\(window.profile, privacy: .public) \
                 activeProfile=\(self.activeProfile, privacy: .public)
                 """)
@@ -24538,7 +24788,7 @@ final class AppState: ObservableObject {
                 // A malformed page is a backfill dead end, not a chat
                 // failure: stop offering older pages rather than erroring
                 // the already-hydrated conversation.
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned a malformed payload; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned a malformed payload; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24559,7 +24809,7 @@ final class AppState: ObservableObject {
                  windowAliasIds: catalogAliasIDs(for: current.trustedSessionIDs),
                  conversationAliasIds: knownSessionIDs(for: returnedId)
                ) {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned foreign session \(returnedId, privacy: .public); discarding and retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned foreign session \(returnedId, privacy: .private(mask: .hash)); discarding and retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24571,7 +24821,7 @@ final class AppState: ObservableObject {
             // and prepending them would break chronology. That response
             // retires the affordance instead.
             guard let page, page.honorsTailContract else {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) lost the tail contract; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) lost the tail contract; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24580,7 +24830,7 @@ final class AppState: ObservableObject {
             // IDs that cannot survive across pages — refuse it before it can
             // silently corrupt dedup.
             guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned rows without durable IDs; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned rows without durable IDs; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24653,7 +24903,7 @@ final class AppState: ObservableObject {
             // reads, a temporarily cold bridge — stays retryable through
             // another explicit tap. A failed backfill never loops on its
             // own.
-            sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)")
             current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
             return false
         }
@@ -25903,49 +26153,50 @@ final class AppState: ObservableObject {
 
     func toggleSkill(name: String, enabled: Bool) async {
         let profile = activeProfile
+        let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
         guard let dashboardTicketBridge else { return }
-        do {
+        // After every switch flipped before it; a failure puts back what
+        // Hermes last confirmed, unless a newer flip is on its way.
+        let outcome = await capabilityToggleWrites.send("\(profile)|skill|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/skills/toggle",
                 method: "PUT",
                 body: ["name": name, "enabled": enabled, "profile": profile]
             )
-        } catch {
-            // Revert on failure
-            guard profile == activeProfile else { return }
-            if let index = skills.firstIndex(where: { $0.name == name }) {
-                skills[index].enabled = !enabled
-            }
-            errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
         }
+        guard let error = outcome.error, profile == activeProfile else { return }
+        if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
+            skills[index].enabled = restore
+        }
+        errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
     }
 
     func toggleToolset(name: String, enabled: Bool) async {
         let profile = activeProfile
+        let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
         guard let dashboardTicketBridge else { return }
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
-        do {
+        // In the same order as skill switches: Hermes rewrites one config.
+        let outcome = await capabilityToggleWrites.send("\(profile)|toolset|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/tools/toolsets/\(encodedName)",
                 method: "PUT",
                 body: ["enabled": enabled, "profile": profile]
             )
-        } catch {
-            // Revert on failure
-            guard profile == activeProfile else { return }
-            if let index = toolsets.firstIndex(where: { $0.name == name }) {
-                toolsets[index].enabled = !enabled
-            }
-            errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
         }
+        guard let error = outcome.error, profile == activeProfile else { return }
+        if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
+            toolsets[index].enabled = restore
+        }
+        errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
     }
 
     private func decodeCapabilitySkill(_ value: Any) -> CapabilitySkill? {
@@ -26607,7 +26858,7 @@ final class AppState: ObservableObject {
             // Do not spend a title-generation request when we cannot confirm
             // the user's setting through the authenticated dashboard.
             titleGenerationLog.error(
-                "Could not read title settings for \(profile, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Could not read title settings for \(profile, privacy: .public): \(LogRedaction.message(error), privacy: .public)"
             )
             return nil
         }
@@ -26682,7 +26933,7 @@ final class AppState: ObservableObject {
                           self.client === client else { return }
                     self.applyRecoveredSessionTitle(existingTitle, sessionIDs: [sessionId])
                     titleGenerationLog.notice(
-                        "Used Hermes title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
+                        "Used Hermes title for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public)"
                     )
                     return
                 }
@@ -26710,13 +26961,13 @@ final class AppState: ObservableObject {
                       self.client === client else { return }
                 self.applyRecoveredSessionTitle(title, sessionIDs: [sessionId])
                 titleGenerationLog.notice(
-                    "Generated title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
+                    "Generated title for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public)"
                 )
             } catch {
                 // Automatic naming is cosmetic. A failed recovery must not
                 // interrupt the chat or surface an unrelated error.
                 titleGenerationLog.error(
-                    "Title recovery failed for \(sessionId, privacy: .public) in \(profile, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Title recovery failed for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public): \(LogRedaction.message(error), privacy: .public)"
                 )
             }
         }

@@ -120,13 +120,13 @@ final class ConversationIdentityIndex {
                 source: source
             )
             conversationIdentityLog.fault(
-                "Identity conflict: runtime \(normalizedRuntime, privacy: .public) confirmed for \(confirmed, privacy: .public), incoming evidence (\(source.rawValue, privacy: .public)) claims \(normalizedDurable, privacy: .public) — keeping confirmed mapping"
+                "Identity conflict: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) confirmed for \(confirmed, privacy: .private(mask: .hash)), incoming evidence (\(source.rawValue, privacy: .public)) claims \(normalizedDurable, privacy: .private(mask: .hash)) — keeping confirmed mapping"
             )
             return conflict
         }
         runtimeToDurable[normalizedProfile, default: [:]][normalizedRuntime] = normalizedDurable
         conversationIdentityLog.debug(
-            "Confirmed alias: runtime \(normalizedRuntime, privacy: .public) → durable \(normalizedDurable, privacy: .public) (\(source.rawValue, privacy: .public))"
+            "Confirmed alias: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) → durable \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public))"
         )
         return nil
     }
@@ -162,14 +162,14 @@ final class ConversationIdentityIndex {
                 source: source
             )
             conversationIdentityLog.fault(
-                "Authoritative rebind: runtime \(normalizedRuntime, privacy: .public) \(confirmed, privacy: .public) → \(normalizedDurable, privacy: .public) (\(source.rawValue, privacy: .public)); suspended work keeps its captured sets"
+                "Authoritative rebind: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) \(confirmed, privacy: .private(mask: .hash)) → \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public)); suspended work keeps its captured sets"
             )
             runtimeToDurable[normalizedProfile]?[normalizedRuntime] = normalizedDurable
             return conflict
         }
         runtimeToDurable[normalizedProfile, default: [:]][normalizedRuntime] = normalizedDurable
         conversationIdentityLog.debug(
-            "Confirmed alias: runtime \(normalizedRuntime, privacy: .public) → durable \(normalizedDurable, privacy: .public) (\(source.rawValue, privacy: .public))"
+            "Confirmed alias: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) → durable \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public))"
         )
         return nil
     }
@@ -206,7 +206,7 @@ final class ConversationIdentityIndex {
                 if let confirmed = runtimeToDurable[normalizedProfile]?[runtimeID],
                    confirmed != stored {
                     conversationIdentityLog.fault(
-                        "Identity conflict: runtime \(runtimeID, privacy: .public) confirmed for \(confirmed, privacy: .public), catalog row \(stored, privacy: .public) claims it — \(claimedInSnapshot.contains(runtimeID) ? "ignored, earlier row in this snapshot won" : "routing identity changed")"
+                        "Identity conflict: runtime \(runtimeID, privacy: .private(mask: .hash)) confirmed for \(confirmed, privacy: .private(mask: .hash)), catalog row \(stored, privacy: .private(mask: .hash)) claims it — \(claimedInSnapshot.contains(runtimeID) ? "ignored, earlier row in this snapshot won" : "routing identity changed")"
                     )
                 }
                 guard !claimedInSnapshot.contains(runtimeID) else { continue }

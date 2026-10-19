@@ -10,6 +10,9 @@
 //  Nothing is taken or sent while a layer is off or sharing is paused.
 //  A fix for a message never holds the message up for long: the send
 //  waits at most `talkingWait`, and the fix goes on its own after that.
+//  A message uses a fix iOS took minutes ago while the phone was still, and
+//  sends nothing when the host already has that place from a recent
+//  message (ContextUploadPolicy).
 //
 
 import CoreLocation
@@ -84,11 +87,15 @@ final class LocationSharingController: ObservableObject {
     /// AppState+Location supplies it; tests supply their own.
     var requestProvider: ((LocationBinding) async -> LocationSyncEngine.Request?)?
     var now: () -> Date = Date.init
+    var deviceConditions: @MainActor () -> DeviceConditions = { DeviceConditionsMonitor.shared.current }
 
     private var unsent: LocationUnsent
     private var sendChain: Task<Bool, Never>?
     private var callWatch: Task<Void, Never>?
     private var lastCallFix: CLLocation?
+    /// The last fix the host took with a message or a call, so the same
+    /// place isn't sent again with every message.
+    private(set) var lastTalkingUpload: LocationTalkingUpload?
     private var activated = false
 
     init(engine: LocationSyncEngine? = nil, config: LocationSharedConfig? = nil, unsent: LocationUnsent? = nil) {
@@ -172,6 +179,7 @@ final class LocationSharingController: ObservableObject {
         writeConfig()
         unsent = LocationUnsent()
         saveUnsent()
+        lastTalkingUpload = nil
         voiceCallEnded()
         reconfigureMonitors()
     }
@@ -339,12 +347,57 @@ final class LocationSharingController: ObservableObject {
             saveUnsent()
         }
         let precision = settings.precision(for: source)
-        let location = await fixes.currentFix(
-            accuracy: LocationFixProvider.desiredAccuracy(for: precision),
-            maxAge: source.isTalking ? 30 : 120,
-            timeout: source.isTalking ? .seconds(8) : .seconds(15)
-        )
+        let accuracy = LocationFixProvider.desiredAccuracy(for: precision)
+        let location: CLLocation?
+        if source == .message, let known = recentFixForMessage(accuracy: accuracy) {
+            location = known
+        } else {
+            location = await fixes.currentFix(
+                accuracy: accuracy,
+                maxAge: source.isTalking ? ContextUploadPolicy.messageFixFreshAge : 120,
+                timeout: source.isTalking ? .seconds(8) : .seconds(15)
+            )
+        }
+        // The place the host already has from a message moments ago: the
+        // message goes without sending it again (or looking up its area).
+        if source == .message, events.isEmpty, unsent.fix == nil, let location,
+           !messageFixIsNews(LocationRawFix(location), precision: precision) {
+            return true
+        }
         return await share(location, source: source, events: events)
+    }
+
+    /// A fix iOS took a few minutes ago while the phone was still, instead
+    /// of asking Core Location again for every message.
+    private func recentFixForMessage(accuracy: CLLocationAccuracy) -> CLLocation? {
+        guard let known = fixes.lastKnownFix else { return nil }
+        let reusable = ContextUploadPolicy.reusesFix(
+            age: now().timeIntervalSince(known.timestamp), accuracy: known.horizontalAccuracy,
+            speed: known.speed, wanted: accuracy)
+        return reusable ? known : nil
+    }
+
+    /// Whether a message's fix says more than the last one the host took.
+    func messageFixIsNews(_ fix: LocationRawFix, precision: LocationPrecision) -> Bool {
+        ContextUploadPolicy.messageFixIsNews(fix, precision: precision, host: talkingHost, last: lastTalkingUpload,
+                                             now: now(), conditions: deviceConditions())
+    }
+
+    private var talkingHost: LocationTalkingUpload.Host {
+        LocationTalkingUpload.Host(keyAgreements: engine.keyAgreements, generation: engine.state.generation)
+    }
+
+    /// The host took `fix`: remembered (in memory) when it came with a
+    /// message or a call.
+    func noteSent(_ fix: LocationFixRecord?, at date: Date) {
+        guard let fix else { return }
+        guard fix.source.isTalking else {
+            // A newer fix from elsewhere is the host's latest now.
+            lastTalkingUpload = nil
+            return
+        }
+        lastTalkingUpload = LocationTalkingUpload(fix: fix.raw, precision: settings.precision(for: fix.source),
+                                                  host: talkingHost, sentAt: date)
     }
 
     @discardableResult
@@ -426,6 +479,7 @@ final class LocationSharingController: ObservableObject {
         let sentPlaces = config.places
         let outcome = await engine.send(batch, config: config, request: request)
         guard outcome != .failed else { return false }
+        if outcome == .sent { noteSent(batch.fix, at: at) }
         // The host has these choices (or won't take them: retrying the same
         // batch wouldn't help). A change made meanwhile stays pending.
         if config.settingsPending, config.settings == sentSettings, config.places == sentPlaces {
@@ -494,7 +548,10 @@ final class LocationSharingController: ObservableObject {
             // Sharing off: turning it on again asks each voice mode again.
             if !config.settings.isOn { config.voiceReaders = nil }
         }
-        if layer == .talking { voiceCallEnded() }
+        if layer == .talking {
+            voiceCallEnded()
+            lastTalkingUpload = nil
+        }
         reconfigureMonitors()
         await flush(settingsOnly: true)
     }
@@ -532,6 +589,7 @@ final class LocationSharingController: ObservableObject {
             unsent.fix = nil
             unsent.events = []
             saveUnsent()
+            lastTalkingUpload = nil
             voiceCallEnded()
         }
         await flush(settingsOnly: true)
@@ -637,6 +695,7 @@ final class LocationSharingController: ObservableObject {
     func wipe(everything: Bool) async throws {
         guard let request = await hostRequest() else { throw DashboardTicketBridgeError.notReady }
         try await engine.wipe(deviceID: config.deviceID, everything: everything, request: request)
+        lastTalkingUpload = nil
         unsent.fix = nil
         unsent.events = []
         saveUnsent()

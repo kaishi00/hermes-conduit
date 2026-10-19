@@ -137,6 +137,108 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.keyRequests, 2)
     }
 
+    func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
+        let source = FakeHealthSource()
+        let host = FakeHealthHost()
+        var now = Self.healthDate("2026-10-13T12:00:00Z")
+        let engine = makeHealthEngine(source: source, now: { now })
+        let preferences = healthPreferences(history: .days30)
+        func windows(since count: Int) -> [String] {
+            host.batches.dropFirst(count).flatMap { ($0["windows"] as? [[String: Any]] ?? []).map {
+                "\($0["metric"] as? String ?? "")/\($0["grain"] as? String ?? "")"
+            } }
+        }
+
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.recentWholeAt, now)
+        XCTAssertFalse(engine.state.recentWindows?.isEmpty ?? true)
+
+        // Nothing changed in Apple Health: nothing goes.
+        var sent = host.batches.count
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, sent)
+
+        // New steps: only the steps windows go again.
+        source.sums[.steps] = 250
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(windows(since: sent), ["steps/day", "steps/hour"])
+
+        // The host kept a newer computation of some window: those go again.
+        source.sums[.steps] = 300
+        host.staleWindows = 1
+        sent = host.batches.count
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(windows(since: sent), ["steps/day", "steps/hour"])
+        host.staleWindows = 0
+        sent = host.batches.count
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(windows(since: sent), ["steps/day", "steps/hour"], "Not taken, so sent again")
+        sent = host.batches.count
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, sent)
+
+        // Nothing new for a quarter hour: an empty upload, so the host
+        // knows this phone still shares.
+        now += ContextUploadPolicy.healthKeepalive
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, sent + 1)
+        XCTAssertEqual((host.batches.last?["windows"] as? [Any])?.count, 0)
+        XCTAssertEqual(host.batches.last?["categories"] as? [String], ["activity", "sleep", "workouts"])
+        sent = host.batches.count
+
+        // Low Data Mode: still only what changed, even past six hours (and
+        // the empty upload that says so).
+        now += ContextUploadPolicy.healthWholeResend
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture,
+                              options: HealthPassOptions(lowData: true), request: host.handle)
+        XCTAssertEqual(host.batches.count, sent + 1)
+        XCTAssertTrue(windows(since: sent).isEmpty)
+        sent = host.batches.count
+
+        // Otherwise every six hours, and on Sync now, everything goes again.
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        let whole = windows(since: sent)
+        XCTAssertTrue(whole.contains("steps/day") && whole.contains("sleep/night") && whole.count > 2, "\(whole)")
+        sent = host.batches.count
+        now += 60
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture,
+                              options: HealthPassOptions(resendRecent: true), request: host.handle)
+        XCTAssertEqual(windows(since: sent).count, whole.count)
+
+        // Another choice of what's shared: every window again.
+        sent = host.batches.count
+        var fewer = preferences
+        fewer.categories = [.activity, .workouts]
+        now += 60
+        _ = await engine.sync(preferences: fewer, deadline: .distantFuture, request: host.handle)
+        XCTAssertFalse(windows(since: sent).isEmpty)
+        XCTAssertFalse(windows(since: sent).contains("sleep/night"))
+
+        // A host that lost the key starts over: everything goes.
+        sent = host.batches.count
+        host.forgetKey()
+        now += 60
+        _ = await engine.sync(preferences: fewer, deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(windows(since: sent).contains("steps/hour"))
+    }
+
+    func testLowDataModeLeavesOlderHistoryForLater() async throws {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        let preferences = healthPreferences(history: .days30)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture,
+                              options: HealthPassOptions(lowData: true), request: host.handle)
+        let cursor = try XCTUnwrap(engine.state.backfillCursor)
+        XCTAssertGreaterThan(cursor, try XCTUnwrap(engine.state.historyStart), "Recent days only")
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "The rest once off Low Data")
+    }
+
     func testUnreadableHealthStateKeepsTheDeviceID() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-state-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
@@ -203,12 +305,14 @@ extension HermesVoiceGatewayTimeoutTests {
         return calendar
     }
 
-    private func makeHealthEngine(source: FakeHealthSource, keys box: HealthKeyBox = HealthKeyBox()) -> HealthSyncEngine {
+    private func makeHealthEngine(source: FakeHealthSource, keys box: HealthKeyBox = HealthKeyBox(),
+                                  now: @escaping () -> Date = { HermesVoiceGatewayTimeoutTests.healthDate("2026-10-13T12:00:00Z") })
+        -> HealthSyncEngine {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let keys = HealthSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         return HealthSyncEngine(source: source, store: HealthSyncStateStore(url: folder.appendingPathComponent("state.json")),
-                                keys: keys, calendar: Self.healthCalendar, now: { Self.healthDate("2026-10-13T12:00:00Z") })
+                                keys: keys, calendar: Self.healthCalendar, now: now)
     }
 
     private func healthPreferences(history: HealthHistoryDepth) -> HealthSyncPreferences {
@@ -220,7 +324,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     private func date(_ text: String) -> Date { Self.healthDate(text) }
 
-    private static func healthDate(_ text: String) -> Date {
+    nonisolated fileprivate static func healthDate(_ text: String) -> Date {
         ISO8601DateFormatter().date(from: text)!
     }
 
@@ -238,11 +342,13 @@ private final class HealthKeyBox {
 /// Apple Health stand-in: one bucket per range, one workout, no sleep.
 private final class FakeHealthSource: HealthDataSource {
     var isAvailable: Bool { true }
+    /// A metric's sum other than 100, as when a reading arrives.
+    var sums: [HealthMetric: Double] = [:]
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {}
 
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket] {
         [HealthBucket(start: from, end: calendar.date(byAdding: grain == .hour ? .hour : .day, value: 1, to: from) ?? to,
-                      sum: metric.aggregation == .sum ? 100 : nil)]
+                      sum: metric.aggregation == .sum ? (sums[metric] ?? 100) : nil)]
     }
 
     func sleepSegments(from: Date, to: Date) async throws -> [HealthSleepSegment] { [] }
@@ -269,6 +375,8 @@ private final class FakeHealthHost {
     private(set) var batches: [[String: Any]] = []
     private(set) var wiped: [String] = []
     var ingestError: Error?
+    /// health_store's count of windows it kept a newer computation of.
+    var staleWindows = 0
 
     func forgetKey() {
         session = nil
@@ -307,7 +415,7 @@ private final class FakeHealthHost {
                                            batchID: try XCTUnwrap(body["batch_id"] as? String))
             let plaintext = try ChaChaPoly.open(box, using: session, authenticating: aad)
             batches.append(try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any]))
-            return ["ok": true]
+            return ["ok": true, "stale_windows": staleWindows]
         }
         if path == "\(base)/wipe" {
             wiped.append(try XCTUnwrap(body?["device_id"] as? String))

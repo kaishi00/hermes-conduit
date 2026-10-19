@@ -71,10 +71,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["calendar"] as? String, "full")
         XCTAssertNotNil(host.batches.last?["focus"], "Focus goes when shared")
 
-        // Nothing changed: no events section, and the key is reused.
+        // Nothing changed: nothing goes, and the key is reused.
+        let sent = host.batches.count
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.keyRequests, 1)
-        XCTAssertNil(host.batches.last?["events"])
+        XCTAssertEqual(host.batches.count, sent)
 
         // One changed, one gone.
         source.events = [phoneEvent("e_1", "Dentist (moved)")]
@@ -89,6 +90,81 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.keyRequests, 2)
         XCTAssertEqual((host.batches.last?["events"] as? [String: Any])?["full"] as? Bool, true)
+    }
+
+    func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {
+        let source = FakePhoneCalendarSource()
+        source.events = [phoneEvent("e_1", "Dentist")]
+        let host = FakePhoneHost()
+        var now = Date(timeIntervalSince1970: 1_760_400_000)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
+        let defaults = UserDefaults(suiteName: "phone-sync-\(UUID().uuidString)")!
+        let keys = PhoneKeyBox()
+        let engine = makePhoneEngine(source: source, folder: folder, defaults: defaults, keys: keys, now: { now })
+        // Phone status off: its own 15-minute refresh would post anyway.
+        var preferences = phonePreferences()
+        preferences.status = false
+        engine.savePreferences(preferences)
+
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 1)
+
+        // Nothing new: only the status read, no upload.
+        now += 60
+        let quiet = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(quiet, .synced)
+        XCTAssertEqual(host.batches.count, 1)
+        XCTAssertEqual(host.statusRequests, 2)
+
+        // A change Hermes asked for still arrives: the status says it waits.
+        host.changes = [["id": "ch_add", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]]]
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 1)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_add"])
+
+        // Relaunched on the same state (as its writer leaves it): still
+        // nothing to send.
+        XCTAssertTrue(PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")).save(engine.state))
+        let relaunched = makePhoneEngine(source: source, folder: folder, defaults: defaults, keys: keys, now: { now })
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 1)
+
+        // While the user is there (a message), a quarter hour is enough.
+        now += 14 * 60
+        _ = await relaunched.sync(deadline: .distantFuture, keepalive: ContextUploadPolicy.phoneKeepalive(for: .messageSent),
+                                  request: host.handle)
+        XCTAssertEqual(host.batches.count, 2)
+        XCTAssertNil(host.batches.last?["events"])
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, keepalive: ContextUploadPolicy.phoneKeepalive(for: .messageSent),
+                                  request: host.handle)
+        XCTAssertEqual(host.batches.count, 2)
+
+        // In the background, once the last upload is a few hours old.
+        now += ContextUploadPolicy.phoneKeepalive - 120
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 2)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 3)
+        XCTAssertNil(host.batches.last?["events"])
+        XCTAssertNotNil(host.batches.last?["sharing"])
+
+        // Sharing narrowed: the host must hear it at once.
+        var narrower = relaunched.preferences
+        narrower.details = !narrower.details
+        relaunched.savePreferences(narrower)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 4)
+
+        // An older plugin's status doesn't say what's waiting: every pass posts.
+        host.reportsPending = false
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 5)
     }
 
     func testPhoneChangesAskUnlessTheUserChoseAddWithoutAsking() async throws {
@@ -451,10 +527,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(people.first?["relation"] as? String, "wife")
         XCTAssertEqual(people.first?["birthday"] as? String, "--04-12")
 
-        // Nothing changed: neither list goes again.
+        // Nothing changed: neither list goes again (nor anything else).
+        var sent = host.batches.count
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertNil(host.batches.last?["alarms"])
-        XCTAssertNil(host.batches.last?["contacts"])
+        XCTAssertEqual(host.batches.count, sent)
 
         // A timer goes straight in with "Add without asking"; a cancellation asks.
         host.changes = [
@@ -482,8 +558,9 @@ extension HermesVoiceGatewayTimeoutTests {
         // AlarmKit unreadable for a pass: nothing is sent, the host keeps its list.
         alarms.list = [["id": "a_new", "kind": "alarm"]]
         alarms.unreadable = true
+        sent = host.batches.count
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertNil(host.batches.last?["alarms"])
+        XCTAssertTrue(host.batches.dropFirst(sent).allSatisfy { $0["alarms"] == nil })
         alarms.unreadable = false
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual((host.batches.last?["alarms"] as? [[String: Any]])?.count, 1)
@@ -556,20 +633,21 @@ extension HermesVoiceGatewayTimeoutTests {
     // MARK: Helpers
 
     private func makePhoneEngine(source: FakePhoneCalendarSource,
-                                 alarms: PhoneAlarmSource = FakePhoneAlarmSource()) -> PhoneSyncEngine {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
+                                 alarms: PhoneAlarmSource = FakePhoneAlarmSource(),
+                                 folder given: URL? = nil, defaults givenDefaults: UserDefaults? = nil,
+                                 keys box: PhoneKeyBox = PhoneKeyBox(),
+                                 now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_760_400_000) }) -> PhoneSyncEngine {
+        let folder = given ?? FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
-        let defaults = UserDefaults(suiteName: "phone-sync-\(UUID().uuidString)")!
+        let defaults = givenDefaults ?? UserDefaults(suiteName: "phone-sync-\(UUID().uuidString)")!
         PhoneFocusSnapshot(active: true, label: "Work", holdCalls: true, at: Date(timeIntervalSince1970: 1_760_000_000))
             .save(to: defaults)
-        let box = PhoneKeyBox()
         let keys = PhoneSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(), alarmSource: alarms,
                                store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
-                               keys: keys, defaults: defaults, calendar: calendar,
-                               now: { Date(timeIntervalSince1970: 1_760_400_000) })
+                               keys: keys, defaults: defaults, calendar: calendar, now: now)
     }
 
     private func phonePreferences() -> PhoneSyncPreferences {
@@ -673,10 +751,12 @@ private final class FakePhoneHost {
     private let hostKey = Curve25519.KeyAgreement.PrivateKey()
     private var keys: PhoneSyncCrypto.SessionKey?
     private(set) var keyRequests = 0
+    private(set) var statusRequests = 0
     private(set) var batches: [[String: Any]] = []
     private(set) var reported: [[String: Any]] = []
     var changes: [[String: Any]] = []
     var ignoreResults = false
+    var reportsPending = true
 
     func forgetKey() {
         keys = nil
@@ -685,8 +765,18 @@ private final class FakePhoneHost {
     func handle(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
         let base = PhoneSyncEngine.base
         if path.hasPrefix("\(base)/status") {
+            statusRequests += 1
             var answer: [String: Any] = ["generation": "g1"]
-            if let keys { answer["device"] = ["kid": keys.kid] }
+            if let keys {
+                // phone_store status: the changes still waiting, unless an
+                // older plugin's.
+                var device: [String: Any] = ["kid": keys.kid]
+                if reportsPending {
+                    let answered = Set(reported.compactMap { $0["id"] as? String })
+                    device["pending"] = changes.filter { !answered.contains($0["id"] as? String ?? "") }.count
+                }
+                answer["device"] = device
+            }
             return answer
         }
         if path == "\(base)/key" {

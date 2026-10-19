@@ -40,6 +40,9 @@ struct ConduitWatchApp: App {
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             call.scenePhaseChanged(phase)
+            // A suspended app sends nothing: the call log's waiting lines
+            // go first.
+            if phase == .background { WatchCallLog.shared.sendBatch() }
         }
     }
 }

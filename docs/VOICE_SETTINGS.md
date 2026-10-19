@@ -3,6 +3,9 @@
 How Conduit's Voice settings map onto the Hermes profile configuration, and
 what the provider endpoint overrides do and do not change.
 
+To keep your voice on your own machines (a speech server for Classic voice
+or Local Live), see [Use your own voice server](OWN_VOICE_SERVER.md).
+
 ## Where TTS requests run
 
 All speech synthesis is relayed through the user's Hermes host: Conduit calls
@@ -113,7 +116,9 @@ Every voice mode lets you cut in by speaking when you wear headphones, AirPods o
 
 Grok Live sometimes speaks a tool call as text ("<tool_call>…") instead of calling it. Conduit stops the speech at the markup, keeps it out of the transcript, and tells Grok after its turn that nothing ran, so it can call the tool properly. Grok is told to say a job has started only once start_job answers. A call whose arguments aren't valid JSON runs nothing and gets an error saying so. Diagnostics & logs (Last connection) shows the last Grok Live call's tool steps: the setup, which functions xAI took, each call's name and how it was answered (started, error…), and any markup that was cut. It never shows what was said or a call's arguments.
 
-Classic Voice, Gemini Live and Grok Live close the microphone while the agent talks on the speaker, in the car or over AirPlay (plus a short echo tail), because their microphone would hear the agent and it would keep interrupting itself. Use the Interrupt button there instead.
+Classic Voice, Gemini Live and Grok Live close the microphone while the agent talks on the speaker, in the car or over AirPlay (plus a short echo tail), because their microphone would hear the agent and it would keep interrupting itself. Use the Interrupt button there instead; on the CarPlay screen it's Stop, which stops the reply and listens in one tap.
+
+In the car, a phone call, Siri or another app that takes the audio ends a Classic Voice conversation; once the audio comes back, CarPlay listens again on its own.
 
 "Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.
 

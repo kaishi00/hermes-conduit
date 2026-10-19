@@ -57,4 +57,34 @@ final class LogRedactionTests: XCTestCase {
             "{NSErrorFailingURLStringKey=<url>, NSErrorFailingURLKey=<url>}"
         )
     }
+
+    /// Static source contract: nothing named like a session id is logged
+    /// .public, and every logger uses the app's one subsystem.
+    func testSourcesLogSessionIdsHashedOnOneSubsystem() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // ConduitTests
+            .deletingLastPathComponent() // repo root
+        let publicSessionID = try NSRegularExpression(
+            pattern: #"(?i)session_?id[^,)\n]*, privacy: \.public\)"#
+        )
+        var offenders: [String] = []
+        var scanned = 0
+        for folder in ["Conduit", "Shared", "ConduitWatch", "ConduitNotificationService", "ConduitLocationPush"] {
+            let enumerator = FileManager.default.enumerator(at: root.appendingPathComponent(folder), includingPropertiesForKeys: nil)
+            while let file = enumerator?.nextObject() as? URL {
+                guard file.pathExtension == "swift" else { continue }
+                let source = try String(contentsOf: file, encoding: .utf8)
+                scanned += 1
+                let range = NSRange(source.startIndex..., in: source)
+                if publicSessionID.firstMatch(in: source, range: range) != nil {
+                    offenders.append("\(file.lastPathComponent): a session id logged .public")
+                }
+                if source.contains(#"subsystem: "com.milim.conduit""#) {
+                    offenders.append("\(file.lastPathComponent): subsystem com.milim.conduit")
+                }
+            }
+        }
+        XCTAssertGreaterThan(scanned, 100, "the sources were not found from \(root.path)")
+        XCTAssertEqual(offenders, [])
+    }
 }

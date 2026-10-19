@@ -546,6 +546,42 @@ extension NotificationE2ETests {
         XCTAssertEqual(keyRequests, 1)
     }
 
+    @MainActor
+    func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: false, talking: true),
+                                                   unsent: LocationUnsent())
+        var now = LocationFixtures.at
+        var conditions = DeviceConditions()
+        controller.now = { now }
+        controller.deviceConditions = { conditions }
+        let here = LocationRawFix(latitude: 51.5321, longitude: -0.0755, accuracy: 15, timestamp: now)
+        let precision = controller.settings.precision(for: .message)
+
+        XCTAssertTrue(controller.messageFixIsNews(here, precision: precision), "Nothing sent yet")
+        controller.noteSent(LocationFixRecord(source: .message, raw: here), at: now)
+        now += 5 * 60
+        XCTAssertFalse(controller.messageFixIsNews(here, precision: precision))
+        now += 6 * 60
+        XCTAssertTrue(controller.messageFixIsNews(here, precision: precision), "Ten minutes on: sent again")
+        conditions.lowPowerMode = true
+        XCTAssertFalse(controller.messageFixIsNews(here, precision: precision), "Low Power Mode waits longer")
+
+        // A visit's fix is the host's latest now: the next message's goes.
+        controller.noteSent(LocationFixRecord(source: .visit, raw: here), at: now)
+        XCTAssertNil(controller.lastTalkingUpload)
+        XCTAssertTrue(controller.messageFixIsNews(here, precision: precision))
+
+        // A forgotten key drops the host's fix.
+        controller.noteSent(LocationFixRecord(source: .call, raw: here), at: now)
+        XCTAssertFalse(controller.messageFixIsNews(here, precision: precision))
+        engine.forgetHost()
+        XCTAssertTrue(controller.messageFixIsNews(here, precision: precision))
+    }
+
     func testACachedFixAnswersPreciseOnlyWhenCloseToTheAskedAccuracy() {
         XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyNearestTenMeters), 20)
         XCTAssertEqual(LocationFixProvider.acceptableCachedAccuracy(for: kCLLocationAccuracyHundredMeters), 100)

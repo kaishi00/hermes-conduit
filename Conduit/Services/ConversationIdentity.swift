@@ -71,6 +71,18 @@ enum ResumeIdentityRejection: Error, Equatable {
     case foreignDurableOwnership(returned: String, ownerSessionID: String)
 }
 
+extension ResumeIdentityRejection {
+    /// The case alone, for a public log line: the ids it carries are
+    /// session ids, which are logged hashed.
+    var logLabel: String {
+        switch self {
+        case .durableContradiction: return "durableContradiction"
+        case .foreignRuntimeOwnership: return "foreignRuntimeOwnership"
+        case .foreignDurableOwnership: return "foreignDurableOwnership"
+        }
+    }
+}
+
 /// Admission gate for adopting a resume result into the selected
 /// conversation. A rejected claim must not be adopted into
 /// conversation-owned state — `activeSessionId`, selected conversation

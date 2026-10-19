@@ -326,6 +326,11 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                 continue
             }
             readinessResponseEnding = false
+            // Stopped first, so no audio already queued plays on; the
+            // check's own response is said by no one.
+            if !readinessResponseOpen, LocalLiveProtocol.stopsPlayback(data) {
+                onEvent?(.interrupted)
+            }
             for frame in GrokLiveProtocol.decode(data) {
                 // A frame can end this connection.
                 guard id == connectionID else { return }

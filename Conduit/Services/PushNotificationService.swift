@@ -449,7 +449,7 @@ final class PushNotificationService: ObservableObject {
         didSet {
             guard let relayMeta else { return }
             // A relay that sends locates now (or no longer) gets the token.
-            if relayMeta.supportsLocationPush != oldValue?.supportsLocationPush { queueVoIPTokenUpdate() }
+            if relayMeta.supportsLocationPush != oldValue?.supportsLocationPush { queueRegistrationUpdate() }
             NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
                 listed: Set(relayMeta.gateways.map(\.id)),
                 previous: NotificationSharedSettings.knownGatewayIDs,
@@ -609,6 +609,10 @@ final class PushNotificationService: ObservableObject {
     }
     private let bundleID = "com.milim.relay"
     private var registration: StoredRegistration?
+    /// Sends a registration update to the relay; tests answer it instead.
+    var sendRegistrationUpdate: @MainActor (URLRequest) async throws -> (Data, URLResponse) = {
+        try await URLSession.shared.data(for: $0)
+    }
     private var deviceToken: String?
     private var tokenContinuation: CheckedContinuation<String, Error>?
     /// Registration proof: the relay pushes a one-time nonce to the device
@@ -1229,9 +1233,11 @@ final class PushNotificationService: ObservableObject {
 
     func setPreference(_ keyPath: WritableKeyPath<ConduitNotificationPreferences, Bool>, enabled: Bool) async {
         preferences[keyPath: keyPath] = enabled
-        guard registration != nil else { return }
+        // Queued behind any update on its way: two quick switches never
+        // race, so the relay can't end on the older preferences.
+        guard let update = queueRegistrationUpdate() else { return }
         do {
-            try await updateRegistration()
+            try await update.value
         } catch {
             lastError = UserFacingError.message(for: error)
         }
@@ -1343,9 +1349,7 @@ final class PushNotificationService: ObservableObject {
         deviceToken = token
         tokenContinuation?.resume(returning: token)
         tokenContinuation = nil
-        if registration != nil {
-            Task { try? await updateRegistration() }
-        }
+        queueRegistrationUpdate(force: true)
     }
 
     func didFailToRegister(_ error: Error) {
@@ -1507,7 +1511,7 @@ final class PushNotificationService: ObservableObject {
     /// relay learns it with the registration.
     func updateVoIPToken(_ token: String?) {
         voipToken = token
-        queueVoIPTokenUpdate()
+        queueRegistrationUpdate()
     }
 
     /// The Apple Watch's own PushKit token, which calls from Hermes ring on
@@ -1533,14 +1537,14 @@ final class PushNotificationService: ObservableObject {
         watchEngine = engine
         UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
         UserDefaults.standard.set(engine, forKey: Self.watchEngineKey)
-        queueVoIPTokenUpdate()
+        queueRegistrationUpdate()
     }
 
     func updateWatchCallVoices(_ voices: WatchCallVoices) {
         guard voices != watchCallVoices else { return }
         watchCallVoices = voices
         UserDefaults.standard.set(try? JSONEncoder().encode(voices), forKey: Self.watchCallVoicesKey)
-        queueVoIPTokenUpdate()
+        queueRegistrationUpdate()
     }
 
     /// The APNs token for the agent's on-demand locate (the Location Push
@@ -1551,7 +1555,7 @@ final class PushNotificationService: ObservableObject {
     func updateLocationToken(_ token: String?) {
         guard token != locationToken else { return }
         locationToken = token
-        queueVoIPTokenUpdate()
+        queueRegistrationUpdate()
     }
 
     /// The token the relay gets: only one whose relay says it sends locates.
@@ -1572,21 +1576,27 @@ final class PushNotificationService: ObservableObject {
         return watch
     }
 
-    private func queueVoIPTokenUpdate() {
-        guard registration != nil else { return }
-        // One after another, each sending the tokens as they are by then. An
-        // update still on its way may carry another token, so whether this
-        // one is new is decided when its turn comes.
-        let previous = voipTokenUpdate
-        voipTokenUpdate = Task {
-            await previous?.value
-            guard let registration,
-                  registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
+    /// Every registration update goes through here, one after another,
+    /// each sending the tokens and preferences as they are by then. An
+    /// update still on its way may carry other ones, so whether this one has
+    /// anything new is decided when its turn comes; `force` (a new device
+    /// token) sends regardless.
+    @discardableResult
+    private func queueRegistrationUpdate(deviceToken: String? = nil, force: Bool = false) -> Task<Void, Error>? {
+        guard registration != nil else { return nil }
+        let previous = registrationUpdate
+        let update = Task {
+            _ = await previous?.result
+            guard let registration else { return }
+            guard force || deviceToken != nil || registration.preferences != preferences
+                    || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
                     || registration.locationToken != relayLocationToken else { return }
-            try? await updateRegistration()
+            try await updateRegistration(deviceToken: deviceToken)
         }
+        registrationUpdate = update
+        return update
     }
-    private var voipTokenUpdate: Task<Void, Never>?
+    private var registrationUpdate: Task<Void, Error>?
 
     /// A "Hermes wants to talk" notification Conduit posted itself (#449).
     func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
@@ -1905,7 +1915,7 @@ final class PushNotificationService: ObservableObject {
 
     private func register(deviceToken: String) async throws {
         if registration != nil {
-            try await updateRegistration(deviceToken: deviceToken)
+            try await queueRegistrationUpdate(deviceToken: deviceToken)?.value
             return
         }
         // No registration yet, so `relayURL` is the configured relay.
@@ -1940,7 +1950,7 @@ final class PushNotificationService: ObservableObject {
         // A PushKit token that came while this was on its way goes next
         // (at first launch both arrive together).
         if self.voipToken != voipToken || ringingWatchVoIPToken != watchToken || relayLocationToken != locationToken {
-            queueVoIPTokenUpdate()
+            queueRegistrationUpdate()
         }
     }
 
@@ -1952,16 +1962,19 @@ final class PushNotificationService: ObservableObject {
         let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
         let locationToken = relayLocationToken
         let locationChange: VoIPTokenChange = registration.locationToken == locationToken ? .keep : (locationToken.map(VoIPTokenChange.set) ?? .clear)
-        var body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences, voipToken: voipChange, watchVoipToken: watchChange, locationToken: locationChange)
+        // What the relay keeps once this lands, rather than whatever the
+        // preferences are by then.
+        let sentPreferences = preferences
+        var body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: sentPreferences, voipToken: voipChange, watchVoipToken: watchChange, locationToken: locationChange)
         let path = "/v1/installations/\(registration.installationID)"
-        var (data, response) = try await URLSession.shared.data(for: jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
+        var (data, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
         // A new device token needs the same proof as registering it.
         if Self.requiresTokenProof(response: response, data: data), let token = body.deviceToken {
             body.tokenProof = try await proveDeviceToken(token)
-            (data, response) = try await URLSession.shared.data(for: jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
+            (data, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
         }
         try validate(response: response, data: data)
-        self.registration?.preferences = preferences
+        self.registration?.preferences = sentPreferences
         let installation = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation
         // Another update sent a newer token meanwhile, and this one may
         // have landed after it: the newer token goes again, last.
@@ -1982,7 +1995,9 @@ final class PushNotificationService: ObservableObject {
             newerToken = newerToken || (locates && locationToken != relayLocationToken)
         }
         persistRegistration()
-        if newerToken { queueVoIPTokenUpdate() }
+        // A switch flipped meanwhile goes next, if no update queued since
+        // has sent it already.
+        if newerToken || preferences != sentPreferences { queueRegistrationUpdate() }
     }
 
     private func jsonRequest<Body: Encodable>(path: String, method: String, body: Body, credential: String? = nil) throws -> URLRequest {

@@ -39,6 +39,9 @@ final class LocationFixProvider: NSObject, CLLocationManagerDelegate {
 
     // MARK: Fixes
 
+    /// The last position iOS has, however old: nothing is asked of it.
+    var lastKnownFix: CLLocation? { manager.location }
+
     /// A position at about `accuracy`, no older than `maxAge`, or nil when
     /// none comes within `timeout`.
     func currentFix(accuracy: CLLocationAccuracy, maxAge: TimeInterval = 60, timeout: Duration = .seconds(10)) async -> CLLocation? {

@@ -677,6 +677,56 @@ final class KanbanV3DTests: XCTestCase {
 
     // MARK: - Polling fallback
 
+    func testTheStreamSaysWhenItIsConnectedSoThePollCanBackOff() async throws {
+        var changes: [Bool] = []
+        let gates = SleeperGate()
+        let coordinator = KanbanEventStreamCoordinator(
+            configuration: .init(stamp: stamp(), boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
+            socketFactory: { _ in MockSocket() },
+            ticketMinter: { "t" },
+            sleeper: gates.sleeper,
+            heartbeatIntervalNanoseconds: noHeartbeatInterval,
+            pinger: { _ in true },
+            onConnectionChange: { changes.append($0) },
+            onBatch: { _ in .completed }
+        )
+        coordinator.start()
+        await drain()
+        XCTAssertEqual(changes, [true], "Connected once the socket is confirmed")
+        coordinator.stop()
+        XCTAssertEqual(changes, [true, false], "Retired: polls take over")
+        coordinator.stop()
+        XCTAssertEqual(changes, [true, false], "Reported once")
+    }
+
+    func testADroppedStreamSaysSoAndSaysAgainWhenItReconnects() async throws {
+        var changes: [Bool] = []
+        var sockets = 0
+        let gates = SleeperGate()
+        let coordinator = KanbanEventStreamCoordinator(
+            configuration: .init(stamp: stamp(), boardSlug: "alpha", initialCursor: 10, baseURL: "https://a.test"),
+            socketFactory: { _ in
+                sockets += 1
+                // The first socket drops right after it is confirmed.
+                return sockets == 1 ? MockSocket(scripts: [.fail(URLError(.networkConnectionLost))]) : MockSocket()
+            },
+            ticketMinter: { "t" },
+            sleeper: gates.sleeper,
+            heartbeatIntervalNanoseconds: noHeartbeatInterval,
+            pinger: { _ in true },
+            onConnectionChange: { changes.append($0) },
+            onBatch: { _ in .completed }
+        )
+        coordinator.start()
+        await gates.waitUntilHeld(1)
+        XCTAssertEqual(changes, [true, false], "The drop hands the board back to its poll")
+        await gates.releaseAll()
+        await drain()
+        XCTAssertEqual(changes, [true, false, true])
+        coordinator.stop()
+        XCTAssertEqual(changes, [true, false, true, false])
+    }
+
     func testPollingConstantsRemainUnchanged() {
         XCTAssertEqual(KanbanPollingPolicy.boardIntervalNanoseconds, 8_000_000_000)
         XCTAssertEqual(KanbanPollingPolicy.detailIntervalNanoseconds, 4_000_000_000)

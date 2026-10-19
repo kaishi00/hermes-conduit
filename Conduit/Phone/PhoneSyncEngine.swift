@@ -7,14 +7,16 @@
 //  last pass, then trade results for the changes Hermes is waiting on.
 //
 //  EventKit has no change history, so the phone remembers a hash of each
-//  item it last sent and uploads only the difference; everything goes whole
-//  again once a day, when the user changes what's shared, or when the host's
-//  store is new. Hashes move only after the host took the batch, so a lost
-//  answer just means the next pass sends it again (the host's writes are
-//  idempotent). Changes Hermes asks for come back from the exchange: new
-//  items apply straight away when the user chose "Add without asking",
-//  everything else waits for the user's answer on a card (or, in a live
-//  voice call, out loud).
+//  item it last sent and uploads only the difference, and nothing at all
+//  when nothing changed (the host's status says what's waiting; a keepalive
+//  still goes every few hours); everything goes whole again once a day,
+//  when the user changes what's shared, or when the host's store is new.
+//  Hashes move only after the host took the batch, so a lost answer just
+//  means the next pass sends it again (the host's writes are idempotent).
+//  Changes Hermes asks for come back from the exchange: new items apply
+//  straight away when the user chose "Add without asking", everything else
+//  waits for the user's answer on a card (or, in a live voice call, out
+//  loud).
 //
 
 import CryptoKit
@@ -35,6 +37,12 @@ struct PhoneSyncState: Codable, Equatable {
     var alarmsHash: String?
     var contactsHash: String?
     var lastFullSync: Date?
+    /// The time zone and sharing the last upload the host took reported,
+    /// hashed, and when it went: a pass with nothing new sends nothing
+    /// until the keepalive (ContextUploadPolicy). Optional so a state file
+    /// from before still reads.
+    var frameHash: String?
+    var lastIngest: Date?
     var lastSync: Date?
     var lastAttempt: Date?
     var pause: PhoneSyncPause?
@@ -60,6 +68,8 @@ struct PhoneSyncState: Codable, Equatable {
         contactsHash = nil
         lastFullSync = nil
         fingerprint = nil
+        frameHash = nil
+        lastIngest = nil
     }
 }
 
@@ -244,7 +254,10 @@ final class PhoneSyncEngine: ObservableObject {
 
     /// Runs a pass, or joins the one already running and runs once more
     /// after it, so what changed meanwhile isn't missed.
-    func sync(deadline: Date, request: @escaping Request) async -> Outcome {
+    /// `keepalive`: how old the last upload may be before one goes with
+    /// nothing new (ContextUploadPolicy.phoneKeepalive(for:)).
+    func sync(deadline: Date, keepalive: TimeInterval = ContextUploadPolicy.phoneKeepalive,
+              request: @escaping Request) async -> Outcome {
         let turnOffs = self.turnOffs
         if let current = running {
             _ = await current.value
@@ -252,7 +265,7 @@ final class PhoneSyncEngine: ObservableObject {
             if running == current { running = nil }
             if let newer = running { return await newer.value }
         }
-        let task = Task { await self.pass(deadline: deadline, request: request) }
+        let task = Task { await self.pass(deadline: deadline, keepalive: keepalive, request: request) }
         running = task
         isSyncing = true
         let outcome = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
@@ -324,7 +337,7 @@ final class PhoneSyncEngine: ObservableObject {
 
     // MARK: The pass
 
-    private func pass(deadline: Date, request: @escaping Request) async -> Outcome {
+    private func pass(deadline: Date, keepalive: TimeInterval, request: @escaping Request) async -> Outcome {
         let preferences = self.preferences
         guard preferences.isOn, let destination = preferences.destination else { return .off }
         guard readStateIfNeeded() else { return .unfinished }
@@ -338,9 +351,10 @@ final class PhoneSyncEngine: ObservableObject {
         lastError = nil
         defer { persist() }
         do {
-            let key = try await ensureKey(request: request)
+            let (key, hostPending) = try await ensureKey(request: request)
             try checkTime(deadline)
-            let pending = try await upload(preferences: preferences, key: key, request: request)
+            let pending = try await upload(preferences: preferences, key: key, hostPending: hostPending,
+                                           keepalive: keepalive, request: request)
             try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
@@ -384,16 +398,19 @@ final class PhoneSyncEngine: ObservableObject {
         if now() >= deadline { throw DeadlineReached() }
     }
 
-    private func ensureKey(request: Request) async throws -> PhoneSyncCrypto.SessionKey {
+    /// The agreed key, and the changes the host has waiting when its status
+    /// says (nil from a plugin whose status doesn't, or with a new key).
+    private func ensureKey(request: Request) async throws -> (PhoneSyncCrypto.SessionKey, Int?) {
         let status = try await request("\(Self.base)/status?device_id=\(state.deviceID)", "GET", nil)
         let generation = status["generation"] as? String
-        let hostKid = (status["device"] as? [String: Any])?["kid"] as? String
+        let device = status["device"] as? [String: Any]
+        let hostKid = device?["kid"] as? String
         if let generation, let known = state.generation, known != generation {
             state.forgetSent()
         }
         if let key = keys.load(), key.kid == hostKid {
             state.generation = generation ?? state.generation
-            return key
+            return (key, (device?["pending"] as? NSNumber)?.intValue)
         }
         let devicePrivate = Curve25519.KeyAgreement.PrivateKey()
         let answer = try await request("\(Self.base)/key", "POST", [
@@ -409,7 +426,7 @@ final class PhoneSyncEngine: ObservableObject {
         keys.save(key)
         state.forgetSent()
         state.generation = (answer["generation"] as? String) ?? generation
-        return key
+        return (key, nil)
     }
 
     /// The calendar window this pass shares.
@@ -421,7 +438,10 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     /// Sends what changed; the number of changes the host has waiting.
-    private func upload(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey, request: Request) async throws -> Int {
+    /// Nothing changed: nothing goes (until the keepalive), and the count
+    /// is the one the host's status gave.
+    private func upload(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey, hostPending: Int?,
+                        keepalive: TimeInterval, request: Request) async throws -> Int {
         let currentNow = now()
         let full = state.fingerprint != preferences.fingerprint
             || state.lastFullSync.map { currentNow.timeIntervalSince($0) > PhoneSyncLimits.fullSyncInterval } ?? true
@@ -494,8 +514,7 @@ final class PhoneSyncEngine: ObservableObject {
 
         if preferences.status {
             var status = await statusSource.snapshot()
-            let comparable = status.filter { $0.key != "at" }
-            let hash = Self.hash(comparable)
+            let hash = Self.hash(Self.comparableStatus(status))
             let stale = state.statusSentAt.map { currentNow.timeIntervalSince($0) > PhoneSyncLimits.statusRefresh } ?? true
             if full || hash != state.statusHash || stale {
                 status["at"] = PhoneDates.format(currentNow)
@@ -540,11 +559,21 @@ final class PhoneSyncEngine: ObservableObject {
             newContactsHash = nil
         }
 
-        let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        batch["batch_id"] = batchID
-        let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
-        let answer = try await request("\(Self.base)/ingest", "POST", body)
-        // Taken: what was sent is now what the host has.
+        let frame = Self.hash(Self.frame(of: batch))
+        let send = ContextUploadPolicy.phoneIngestNeeded(
+            carriesNews: Self.carriesNews(batch), frame: frame, lastFrame: state.frameHash,
+            lastPosted: state.lastIngest, hostReportsPending: hostPending != nil, keepalive: keepalive, now: currentNow)
+        var pending = hostPending ?? 0
+        if send {
+            let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            batch["batch_id"] = batchID
+            let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
+            let answer = try await request("\(Self.base)/ingest", "POST", body)
+            pending = (answer["pending"] as? NSNumber)?.intValue ?? 0
+            state.frameHash = frame
+            state.lastIngest = currentNow
+        }
+        // Taken (or nothing to take): what was read is now what the host has.
         state.eventHashes = newEventHashes
         state.reminderHashes = newReminderHashes
         state.calendarsHash = newCalendarsHash
@@ -556,7 +585,34 @@ final class PhoneSyncEngine: ObservableObject {
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
         persist()
-        return (answer["pending"] as? NSNumber)?.intValue ?? 0
+        return pending
+    }
+
+    /// The status as far as sending it again goes: its time is left out,
+    /// and the battery counts in 5% steps above 20% (the 15-minute refresh
+    /// still brings the exact level), so a phone in use doesn't upload
+    /// with every percent it loses.
+    nonisolated static func comparableStatus(_ status: [String: Any]) -> [String: Any] {
+        var comparable = status.filter { $0.key != "at" }
+        if let battery = (comparable["battery"] as? NSNumber)?.doubleValue, battery > 0.2 {
+            comparable["battery"] = (battery * 20).rounded(.down) / 20
+        }
+        return comparable
+    }
+
+    /// What every upload carries besides its sections. Any other key counts
+    /// as news, so a section added later always goes (fails safe).
+    nonisolated static let frameKeys: Set<String> = ["sent_at", "time_zone", "sharing", "batch_id"]
+
+    /// The time zone and sharing an upload reports; `sent_at` changes every
+    /// time and says nothing new.
+    nonisolated static func frame(of batch: [String: Any]) -> [String: Any] {
+        batch.filter { $0.key == "time_zone" || $0.key == "sharing" }
+    }
+
+    /// Whether an upload has a section to send.
+    nonisolated static func carriesNews(_ batch: [String: Any]) -> Bool {
+        batch.keys.contains { !frameKeys.contains($0) }
     }
 
     /// The sharing as it really is: access taken away in the Settings app
@@ -621,11 +677,7 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     nonisolated static func hash(_ value: Any) -> String {
-        // Anything JSON can't spell still hashes by its description, never
-        // all to the same empty value.
-        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]))
-            ?? Data(String(describing: value).utf8)
-        return SHA256.hash(data: data).prefix(12).map { String(format: "%02x", $0) }.joined()
+        ContextFingerprint.of(value)
     }
 
     // MARK: Changes from Hermes

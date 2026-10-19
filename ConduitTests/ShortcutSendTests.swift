@@ -22,7 +22,7 @@ private final class FakeHermes {
     var submitOutcome: PromptSubmissionOutcome = .accepted
     /// One list per poll; the last one repeats.
     var polls: [[LiveSessionStatus]] = []
-    var replies: [String?] = []
+    var replies: [ShortcutReply?] = []
     var replyReads = 0
     /// iOS ends the run while it waits.
     var cancelsSleep = false
@@ -156,7 +156,7 @@ extension ScreenQuestionTests {
         let hermes = FakeHermes()
         let chats = shortcutChats()
         hermes.polls = [[liveRow("run-1", "working")], [liveRow("run-1", "working")], [liveRow("run-1", "idle")]]
-        hermes.replies = ["It will rain at 4."]
+        hermes.replies = [ShortcutReply(text: "It will rain at 4.")]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Weather?", wait: true), deadline: hermes.now.addingTimeInterval(25))
 
         XCTAssertEqual(outcome, .answered("It will rain at 4."))
@@ -168,7 +168,7 @@ extension ScreenQuestionTests {
         let hermes = FakeHermes()
         let chats = shortcutChats()
         hermes.polls = [[liveRow("run-1", "idle")], [liveRow("run-1", "idle")], [liveRow("run-1", "working")], [liveRow("run-1", "idle")]]
-        hermes.replies = [nil, nil, "Done."]
+        hermes.replies = [nil, nil, ShortcutReply(text: "Done.")]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Go", wait: true), deadline: hermes.now.addingTimeInterval(25))
 
         XCTAssertEqual(outcome, .answered("Done."))
@@ -182,10 +182,38 @@ extension ScreenQuestionTests {
         let deadline = hermes.now.addingTimeInterval(25)
         _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Log"), deadline: deadline)
         hermes.polls = [[liveRow("resumed-1", "working")], [liveRow("resumed-1", "idle")]]
-        hermes.replies = ["Old reply."]
+        hermes.replies = [ShortcutReply(text: "Old reply.", rowID: 7)]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("two", chat: "Log", wait: true), deadline: hermes.now.addingTimeInterval(25))
 
         XCTAssertEqual(outcome, .stillWorking)
+    }
+
+    @MainActor
+    func testANewReplyWordedLikeTheOldOneIsStillTheAnswer() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home"), deadline: deadline)
+        hermes.polls = [[liveRow("resumed-1", "working")], [liveRow("resumed-1", "idle")]]
+        // Read before sending, then the new turn's reply: a row of its own.
+        hermes.replies = [ShortcutReply(text: "Done.", rowID: 7), ShortcutReply(text: "Done.", rowID: 9)]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home", wait: true), deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .answered("Done."))
+    }
+
+    func testARepliesIdentityDecidesBeforeItsWording() {
+        let saved = ShortcutReply(text: "Done.", rowID: 7)
+        XCTAssertTrue(ShortcutReply(text: "Done.", rowID: 7).mayBe(saved))
+        XCTAssertFalse(ShortcutReply(text: "Done.", rowID: 9).mayBe(saved), "a newer row")
+        XCTAssertFalse(ShortcutReply(text: "Done.", openChatID: "live").mayBe(ShortcutReply(text: "Done.", rowID: 7, openChatID: "7")),
+                       "streaming in the open chat after a saved reply")
+        XCTAssertFalse(ShortcutReply(text: "Done.", openChatID: "b").mayBe(ShortcutReply(text: "Done.", openChatID: "a")))
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "a").mayBe(ShortcutReply(text: "Done.", openChatID: "a")))
+        // The streamed reply was saved since: only its text can say.
+        XCTAssertTrue(ShortcutReply(text: "Done.", rowID: 7, openChatID: "7").mayBe(ShortcutReply(text: "Done.", openChatID: "live")))
+        XCTAssertFalse(ShortcutReply(text: "On it.", rowID: 7).mayBe(ShortcutReply(text: "Done.")))
+        XCTAssertTrue(ShortcutReply(text: "Done.").mayBe(ShortcutReply(text: "Done.")))
     }
 
     @MainActor
@@ -266,7 +294,7 @@ extension ScreenQuestionTests {
         let chats = shortcutChats()
         // Never seen running: idle, idle, then the reply is there.
         hermes.polls = [[liveRow("run-1", "idle")]]
-        hermes.replies = [nil, nil, "Quick answer."]
+        hermes.replies = [nil, nil, ShortcutReply(text: "Quick answer.")]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Hi", wait: true), deadline: hermes.now.addingTimeInterval(25))
         XCTAssertEqual(outcome, .answered("Quick answer."))
     }
@@ -276,7 +304,7 @@ extension ScreenQuestionTests {
         let hermes = FakeHermes()
         let chats = shortcutChats()
         hermes.polls = [[liveRow("run-1", "working")]]
-        hermes.replies = ["Made it."]
+        hermes.replies = [ShortcutReply(text: "Made it.")]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Long", wait: true), deadline: hermes.now.addingTimeInterval(25))
         XCTAssertEqual(outcome, .answered("Made it."))
         XCTAssertEqual(hermes.replyReads, 1, "Read once, at the end")

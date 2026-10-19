@@ -267,6 +267,25 @@ extension MessageNormalizerTests {
         )
     }
 
+    func testAPictureLoadedAcrossASignOutIsNotKept() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageCacheTests-\(UUID().uuidString)", isDirectory: true)
+        defer { TranscriptImageCache.removeAll(in: directory) }
+        let key = TranscriptImageCache.key(dashboard: "d1", profile: "default", path: "/root/.hermes/images/a.png")
+        let png = "data:image/png;base64,iVBORw0KGgo="
+
+        // The load started, then sign-out purged the cache before its write.
+        let started = TranscriptImageCache.generation
+        await TranscriptImageCache.purge(in: directory).value
+        XCTAssertNil(TranscriptImageCache.store(dataURL: png, for: key, in: directory, generation: started))
+        XCTAssertNil(TranscriptImageCache.cachedFile(for: key, in: directory))
+
+        // A load that starts after it keeps its picture.
+        let next = TranscriptImageCache.generation
+        XCTAssertNotNil(TranscriptImageCache.store(dataURL: png, for: key, in: directory, generation: next))
+        XCTAssertNotNil(TranscriptImageCache.cachedFile(for: key, in: directory))
+    }
+
     func testPictureCacheDropsTheOldestPastItsBudget() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TranscriptImageCacheTests-\(UUID().uuidString)", isDirectory: true)
