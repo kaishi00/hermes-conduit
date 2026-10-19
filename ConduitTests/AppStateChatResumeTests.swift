@@ -7317,3 +7317,105 @@ private final class SessionOpenGates {
         gates[sessionID]?.resume()
     }
 }
+
+// MARK: - A profile switch a newer navigation supersedes
+
+extension AppStateChatResumeTests {
+    private enum SupersededSwitchConnect {
+        case connects
+        case fails
+    }
+
+    /// Default connected; a switch to "work" whose mint or connect waits on
+    /// `gate`. Each mint gets a fresh ticket.
+    private func supersededSwitchHarness(
+        gateMint: Bool,
+        connect: SupersededSwitchConnect = .connects,
+        gate: ControlledSuspension
+    ) -> (appState: AppState, defaults: UserDefaults, mints: () -> Int) {
+        var mintCount = 0
+        var connectCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount += 1
+                    guard !gateMint, connectCount == 1 else { return }
+                    await gate.suspend()
+                    if connect == .fails { throw HermesError.connectionClosed }
+                },
+                loadCatalog: { _, _ in [] },
+                mintTicket: { _ in
+                    mintCount += 1
+                    if gateMint, mintCount == 1 { await gate.suspend() }
+                    return "ticket-\(mintCount)"
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        let saved = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.appState.connection = saved
+        harness.appState.client = HermesClient(connection: saved, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.showLogin = false
+        harness.appState.runtime.approvalsMode = "off"
+        harness.appState.runtime.yolo = true
+        return (harness.appState, harness.defaults, { mintCount })
+    }
+
+    func testASwitchSupersededWhileMintingLeavesThePreviousProfileAsItWas() async {
+        let gate = ControlledSuspension()
+        let (appState, _, _) = supersededSwitchHarness(gateMint: true, gate: gate)
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()   // a notification opens meanwhile
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertFalse(appState.isProfileSwitching)
+        XCTAssertEqual(appState.runtime.approvalsMode, "off", "the profile still active keeps its approval mode")
+        XCTAssertEqual(appState.runtime.yolo, true)
+    }
+
+    func testASwitchSupersededWhileConnectingStillFinishesSwitching() async {
+        let gate = ControlledSuspension()
+        let (appState, defaults, _) = supersededSwitchHarness(gateMint: false, gate: gate)
+        let previousClient = appState.client
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "work")
+        XCTAssertFalse(appState.client === previousClient)
+        XCTAssertTrue(appState.isConnected, "the work profile's client is connected")
+        XCTAssertEqual(defaults.string(forKey: "conduit.activeProfile"), "work", "a cold launch opens the profile switched to")
+    }
+
+    func testASwitchSupersededWhoseConnectFailsGoesBackToThePreviousProfile() async {
+        let gate = ControlledSuspension()
+        let (appState, defaults, mints) = supersededSwitchHarness(gateMint: false, connect: .fails, gate: gate)
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "default", "a failed client is never left as the work profile's")
+        XCTAssertEqual(appState.runtime.approvalsMode, "off")
+        XCTAssertEqual(appState.runtime.yolo, true)
+        XCTAssertNotEqual(defaults.string(forKey: "conduit.activeProfile"), "work")
+        XCTAssertGreaterThanOrEqual(mints(), 2, "the previous profile reconnects")
+    }
+}

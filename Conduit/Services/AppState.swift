@@ -25142,6 +25142,14 @@ final class AppState: ObservableObject {
         runtime.approvalsMode = nil
         runtime.yolo = false
         lastReportedSessionYolo = nil
+        func restorePreviousApprovalState() {
+            runtime.approvalsMode = previousApprovalsMode
+            runtime.yolo = previousYolo
+            lastReportedSessionYolo = previousLastReportedSessionYolo
+        }
+        // Set once the target's client and identity are installed: from
+        // then on a superseded switch still finishes or rolls back.
+        var adoptedTarget = false
 
         do {
             let ticket: String
@@ -25154,9 +25162,7 @@ final class AppState: ObservableObject {
                 // Nothing has changed over yet: the previous profile keeps
                 // its approval state and, unless a newer navigation owns the
                 // chat, its turn state.
-                runtime.approvalsMode = previousApprovalsMode
-                runtime.yolo = previousYolo
-                lastReportedSessionYolo = previousLastReportedSessionYolo
+                restorePreviousApprovalState()
                 if chatViewportTransitionIsCurrent(generation: transitionGeneration),
                    turnState == .synchronizing {
                     turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
@@ -25165,6 +25171,9 @@ final class AppState: ObservableObject {
                 return false
             }
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                // A newer navigation owns the chat, and nothing has changed
+                // over yet: the previous profile keeps its approval state.
+                restorePreviousApprovalState()
                 return false
             }
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
@@ -25172,6 +25181,7 @@ final class AppState: ObservableObject {
             let nextClient = makeClient(connection: freshConnection, profile: target)
 
             markChatViewportReplacement()
+            adoptedTarget = true
             connection = freshConnection
             client = nextClient
             clearPendingDecisionRestorationGuard()
@@ -25218,11 +25228,10 @@ final class AppState: ObservableObject {
             }
             try await connectChatResumeClient(nextClient)
             // The new profile is connected and already active: an expired
-            // widget launch still finishes the switch (the caller stops
-            // before opening anything), or the old socket and a half-switched
-            // profile would be left behind.
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
-                  self.client === nextClient else { return false }
+            // widget launch or a newer navigation still finishes the switch
+            // (only the chat is theirs), or the old socket and a
+            // half-switched profile would be left behind.
+            guard self.client === nextClient else { return false }
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
@@ -25237,6 +25246,10 @@ final class AppState: ObservableObject {
                 KeychainHelper.saveConnection(freshConnection, dashboardID: dashboardID)
             }
             persistActiveProfile(target)
+            // A newer navigation opens and syncs its own chat.
+            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+                return false
+            }
 
             await syncSession(
                 purpose: .preserveCurrent,
@@ -25266,17 +25279,23 @@ final class AppState: ObservableObject {
             Task { await loadChatResumeSlashCommands() }
             return true
         } catch {
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            let ownsChat = chatViewportTransitionIsCurrent(generation: transitionGeneration)
+            // Superseded before anything changed over: only the approval
+            // state was neutralized. Once the target was installed, its
+            // failed client is rolled back even when a newer navigation owns
+            // the chat; only the chat and the error are left to that one.
+            guard ownsChat || adoptedTarget else {
+                restorePreviousApprovalState()
                 return false
             }
-            errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: error))")
+            if ownsChat {
+                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: error))")
+            }
             clearPendingDecisionRestorationGuard()
             // The pre-switch reset neutralized the approval state; restore it
             // with the rest of the previous profile or a failed switch loses
             // the floor while the previous profile is still the active one.
-            runtime.approvalsMode = previousApprovalsMode
-            runtime.yolo = previousYolo
-            lastReportedSessionYolo = previousLastReportedSessionYolo
+            restorePreviousApprovalState()
             sessions = previousSessions
             cronSessions = previousCronSessions
             archivedSessions = previousArchivedSessions
@@ -25299,7 +25318,7 @@ final class AppState: ObservableObject {
             client = nil
             isConnected = false
             turnState = .reconnecting
-            finishChatViewportTransition(generation: transitionGeneration)
+            if ownsChat { finishChatViewportTransition(generation: transitionGeneration) }
             await reconnect()
             return false
         }
