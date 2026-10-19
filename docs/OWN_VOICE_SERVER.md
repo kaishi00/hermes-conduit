@@ -12,7 +12,8 @@ network.
 
 ## What you need
 
-- Hermes with the Conduit plugin (conduit_push) **0.42 or later**.
+- Hermes with the Conduit plugin (conduit_push) **0.42 or later** (0.48 or
+  later for Local Live on the Apple Watch).
 - A speech server that speaks the OpenAI Realtime WebSocket protocol. The
   tested one is Hugging Face
   [speech-to-speech](https://github.com/huggingface/speech-to-speech)
