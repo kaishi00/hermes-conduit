@@ -253,13 +253,13 @@ extension HermesVoiceGatewayTimeoutTests {
     func testSpeechServerSpeechDoesNotReadMarkdownMarks() async throws {
         let socket = SpeechServerSocket()
         let stream = SpeechServerSpeechStream(socket: socket, onStart: { _ in }, onPCM16: { _, _ in })
+        defer { stream.cancel() }
         try await stream.append("The capital is **Québec**. More")
         let sent = await Self.speechServerEventually { socket.sentTypes.count >= 3 }
         XCTAssertTrue(sent)
         let item = try XCTUnwrap(socket.sentObjects[1]["item"] as? [String: Any])
         let content = try XCTUnwrap(item["content"] as? [[String: Any]])
         XCTAssertEqual(content.first?["text"] as? String, "The capital is Québec.")
-        stream.cancel()
     }
 
     func testSpeechServerSpeechFailsWhenTheServerAnswersInsteadOfReadingBack() async throws {
