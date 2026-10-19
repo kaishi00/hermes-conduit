@@ -207,7 +207,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(memory.isDone(key, 2))
     }
 
-    func testAStoppedStepTimerDoesNotScheduleItsNotification() async {
+    func testAStoppedStepTimerDoesNotScheduleItsNotification() async throws {
         let defaults = UserDefaults(suiteName: "RichStepsTimerTests")!
         defaults.removePersistentDomain(forName: "RichStepsTimerTests")
         // Each start waits at the settings call, and (when held) inside the add,
@@ -226,16 +226,11 @@ extension AppStateVoiceCapabilityTests {
             },
             remove: { $0.forEach { pending.removeValue(forKey: $0) } })
         let memory = RichStepsMemory(defaults: defaults, notifier: notifier)
-        func until(_ ready: () -> Bool, _ what: String) async {
-            var turns = 0
-            while !ready(), turns < 10_000 { await Task.yield(); turns += 1 }
-            XCTAssertTrue(ready(), what)
-        }
         func id(_ number: Int) -> String { "\(RichStepsMemory.notificationPrefix)k-\(number)" }
 
         // Stopped while asking for permission.
         let first = memory.startTimer("k", 1, seconds: 60, text: "Simmer.", title: nil)
-        await until({ asks.count == 1 }, "asking")
+        try await until({ asks.count == 1 }, "asking")
         memory.stopTimer("k", 1)
         asks.removeFirst().resume(returning: true)
         await first.value
@@ -243,10 +238,10 @@ extension AppStateVoiceCapabilityTests {
 
         // Start, stop and start again while asking: only the timer that runs gets one.
         let stale = memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
-        await until({ asks.count == 1 }, "asking")
+        try await until({ asks.count == 1 }, "asking")
         memory.stopTimer("k", 2)
         let running = memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
-        await until({ asks.count == 2 }, "asking again")
+        try await until({ asks.count == 2 }, "asking again")
         asks.removeFirst().resume(returning: true)
         await stale.value
         XCTAssertEqual(added, [], "the stopped start adds nothing")
@@ -261,9 +256,9 @@ extension AppStateVoiceCapabilityTests {
         // Stopped while the add is in flight: the request is taken back.
         holdAdds = true
         let stopped = memory.startTimer("k", 3, seconds: 60, text: "Chill.", title: nil)
-        await until({ asks.count == 1 }, "asking")
+        try await until({ asks.count == 1 }, "asking")
         asks.removeFirst().resume(returning: true)
-        await until({ adds.count == 1 }, "adding")
+        try await until({ adds.count == 1 }, "adding")
         memory.stopTimer("k", 3)
         adds.removeFirst().resume()
         await stopped.value
@@ -272,19 +267,65 @@ extension AppStateVoiceCapabilityTests {
         // Stopped and started again while the first add is in flight: the old
         // request lands first and is taken back; the new timer's request stays.
         let old = memory.startTimer("k", 4, seconds: 60, text: "Bake.", title: nil)
-        await until({ asks.count == 1 }, "asking")
+        try await until({ asks.count == 1 }, "asking")
         asks.removeFirst().resume(returning: true)
-        await until({ adds.count == 1 }, "adding")
+        try await until({ adds.count == 1 }, "adding")
         memory.stopTimer("k", 4)
         holdAdds = false
         let restarted = memory.startTimer("k", 4, seconds: 90, text: "Bake.", title: nil)
-        await until({ asks.count == 1 }, "asking again")
+        try await until({ asks.count == 1 }, "asking again")
         asks.removeFirst().resume(returning: true)
         adds.removeFirst().resume()
         await old.value
         await restarted.value
         XCTAssertEqual(pending[id(4)], 90, "the restarted timer's notification is the one scheduled")
         memory.stopTimer("k", 4)
+    }
+
+    func testAStoppedStepTimerWhoseAddFailsLeavesNotificationsOn() async throws {
+        let defaults = UserDefaults(suiteName: "RichStepsTimerFailureTests")!
+        defaults.removePersistentDomain(forName: "RichStepsTimerFailureTests")
+        var adds: [CheckedContinuation<Void, Never>] = []
+        struct Refused: Error {}
+        let notifier = RichStepsMemory.Notifier(
+            allowed: { true },
+            add: { _ in
+                await withCheckedContinuation { adds.append($0) }
+                throw Refused()
+            },
+            remove: { _ in })
+        let memory = RichStepsMemory(defaults: defaults, notifier: notifier)
+
+        // Stopped while its add is in flight, then the add fails: that timer
+        // isn't running, so its failure doesn't say notifications are off.
+        let stopped = memory.startTimer("k", 1, seconds: 60, text: "Simmer.", title: nil)
+        try await until({ adds.count == 1 }, "adding")
+        memory.stopTimer("k", 1)
+        adds.removeFirst().resume()
+        await stopped.value
+        XCTAssertFalse(memory.notificationsOff, "a stopped timer's failed add")
+        XCTAssertTrue(memory.scheduling.isEmpty, "a finished scheduling task isn't kept")
+
+        // The running timer's failed add still does.
+        let running = memory.startTimer("k", 2, seconds: 60, text: "Rest.", title: nil)
+        try await until({ adds.count == 1 }, "adding")
+        adds.removeFirst().resume()
+        await running.value
+        XCTAssertTrue(memory.notificationsOff, "the running timer's failed add")
+        XCTAssertTrue(memory.scheduling.isEmpty)
+        memory.stopTimer("k", 2)
+    }
+
+    /// Yields until `ready`; on a timeout, fails the test and stops it, instead of
+    /// letting it go on to trap on a continuation that never came.
+    private func until(_ ready: () -> Bool, _ what: String,
+                       file: StaticString = #filePath, line: UInt = #line) async throws {
+        var turns = 0
+        while !ready(), turns < 10_000 { await Task.yield(); turns += 1 }
+        guard ready() else {
+            XCTFail("Timed out \(what)", file: file, line: line)
+            throw CancellationError()
+        }
     }
 
     func testRichCardsComeFromConduitShowsSavedAnswer() throws {

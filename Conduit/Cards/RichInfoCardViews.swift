@@ -878,7 +878,8 @@ final class RichStepsMemory: ObservableObject {
     private let defaults: UserDefaults
     private let notifier: Notifier
     /// Each timer's last scheduling task, so a later start's request lands after an earlier one's.
-    private var scheduling: [String: Task<Void, Never>] = [:]
+    /// Dropped when it finishes; the token tells it apart from a newer start's.
+    private(set) var scheduling: [String: (token: UUID, task: Task<Void, Never>)] = [:]
 
     /// Asks to notify and schedules the timer's notification.
     struct Notifier {
@@ -956,8 +957,11 @@ final class RichStepsMemory: ObservableObject {
         content.sound = .default
         let request = UNNotificationRequest(identifier: id, content: content,
                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false))
-        let earlier = scheduling[id]
+        let earlier = scheduling[id]?.task
+        let token = UUID()
         let task = Task { @MainActor in
+            // Done: forget this task unless a newer start replaced it.
+            defer { if scheduling[id]?.token == token { scheduling[id] = nil } }
             // The countdown runs on the card either way; without permission
             // the card says no notification will come.
             let allowed = await notifier.allowed()
@@ -973,7 +977,8 @@ final class RichStepsMemory: ObservableObject {
             do {
                 try await notifier.add(request)
             } catch {
-                notificationsOff = true
+                // Only the start that is still current says so.
+                if timers[id] == end { notificationsOff = true }
             }
             // Stopped or started again while it was being added: take it back.
             // A newer start waits for this task, so its own request goes in after.
@@ -981,7 +986,7 @@ final class RichStepsMemory: ObservableObject {
                 notifier.remove([id])
             }
         }
-        scheduling[id] = task
+        scheduling[id] = (token, task)
         return task
     }
 
