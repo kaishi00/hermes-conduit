@@ -30823,9 +30823,11 @@ enum KeychainHelper {
         delete(account: scopedAccount(dashboardCookieKey, dashboardID: dashboardID))
     }
 
-    static func saveNativeOAuthTokens(_ tokens: NativeOAuthTokenSet, dashboardID: UUID) {
-        guard let data = try? JSONEncoder().encode(tokens) else { return }
-        save(
+    /// Whether the tokens were stored.
+    @discardableResult
+    static func saveNativeOAuthTokens(_ tokens: NativeOAuthTokenSet, dashboardID: UUID) -> Bool {
+        guard let data = try? JSONEncoder().encode(tokens) else { return false }
+        return save(
             data,
             account: scopedAccount(nativeOAuthTokensKey, dashboardID: dashboardID),
             accessibility: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -30915,22 +30917,23 @@ enum KeychainHelper {
         )
     }
 
+    /// Whether the record was written.
+    @discardableResult
     private static func save(
         _ data: Data,
         account: String,
         accessibility: CFString = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    ) {
+    ) -> Bool {
         let query = scopedQuery(account: account)
         // Accessibility belongs to a Keychain item at creation. Including it
         // in every update can reject an otherwise valid cookie update.
         let updateStatus = backend.update(data, for: query)
-        if updateStatus == errSecSuccess { return }
-        if updateStatus == errSecItemNotFound {
-            var insert = query
-            insert[kSecValueData as String] = data
-            insert[kSecAttrAccessible as String] = accessibility
-            _ = backend.add(insert)
-        }
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+        var insert = query
+        insert[kSecValueData as String] = data
+        insert[kSecAttrAccessible as String] = accessibility
+        return backend.add(insert) == errSecSuccess
     }
 
     static func loadConnection() -> HermesConnection? {

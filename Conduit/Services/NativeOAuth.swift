@@ -336,6 +336,9 @@ final class NativeOAuthSession {
     private var tokens: NativeOAuthTokenSet
     private var refreshTask: Task<NativeOAuthTokenSet, Error>?
     private var isInvalidated = false
+    /// The Keychain copy a refresh couldn't overwrite. The server has
+    /// rotated past it, so the live tokens stay the session's grant.
+    private var unsavedOver: NativeOAuthTokenSet?
 
     init?(baseURL: String, dashboardID: UUID, cloudflareAccess: CloudflareAccessCredentials?) {
         guard let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) else { return nil }
@@ -351,8 +354,10 @@ final class NativeOAuthSession {
     }
 
     /// Compares the live grant without exposing it to callers or diagnostics.
+    /// A Keychain copy left behind by a refresh whose save failed still
+    /// matches: rebuilding from it would bring back a retired grant.
     func matchesStoredTokens(_ storedTokens: NativeOAuthTokenSet) -> Bool {
-        !isInvalidated && tokens == storedTokens
+        !isInvalidated && (tokens == storedTokens || unsavedOver == storedTokens)
     }
 
     func invalidate() {
@@ -491,8 +496,16 @@ final class NativeOAuthSession {
             do {
                 let refreshed = try await self.client.refresh(current)
                 guard !self.isInvalidated else { throw CancellationError() }
+                // The server rotated the grant: the new tokens are the only
+                // live ones whether or not they reach the Keychain.
                 self.tokens = refreshed
-                KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID)
+                if KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID)
+                    || KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID) {
+                    self.unsavedOver = nil
+                } else {
+                    self.unsavedOver = self.unsavedOver ?? current
+                    nativeOAuthLogger.error("OAuth refresh: rotated tokens not saved; kept for this run")
+                }
                 return refreshed
             } catch NativeOAuthError.requestFailed(let status) where status == 400 || status == 401 {
                 guard !self.isInvalidated else { throw CancellationError() }
