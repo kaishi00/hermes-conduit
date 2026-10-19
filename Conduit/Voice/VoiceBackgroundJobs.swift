@@ -1111,12 +1111,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return chatMatches[number - 1]
     }
 
-    /// `markdown` within the card limit; a code fence the cut leaves open
-    /// is closed with a matching fence, so the rest doesn't render as code.
-    static func clippedScreenMarkdown(_ markdown: String) -> String {
-        guard markdown.count > maximumScreenCardCharacters else { return markdown }
+    /// `markdown` within `limit` (the card limit by default); a code fence
+    /// the cut leaves open is closed with a matching fence, so the rest
+    /// doesn't render as code.
+    static func clippedScreenMarkdown(_ markdown: String, limit: Int = maximumScreenCardCharacters) -> String {
+        guard markdown.count > limit else { return markdown }
         // Room for a closing fence, so the card stays within the limit.
-        var lines = String(markdown.prefix(maximumScreenCardCharacters - 16)).components(separatedBy: "\n")
+        var lines = String(markdown.prefix(limit - 16)).components(separatedBy: "\n")
         // A last line cut mid-way may be half a fence; drop it.
         if lines.count > 1 { lines.removeLast() }
         // Read fences as MarkdownText does: a line starting ``` or ~~~

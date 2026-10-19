@@ -87,6 +87,99 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(turns.first?["at"] as? Double, 10)
     }
 
+    func testVoiceHistorySaveGoesInPartsTheHostTakes() async throws {
+        // The plugin takes at most 500 turns and 1 MiB per save
+        // (plugin_api VOICE_MAX_TURNS, VOICE_MAX_BODY_BYTES).
+        let turns = (0..<1_201).map {
+            VoiceTranscriptTurn(index: $0, role: $0 % 2 == 0 ? .user : .assistant, text: "Turn \($0)", at: Date(timeIntervalSince1970: 10))
+        }
+        let script = ScriptedVoiceHistoryRequests()
+        script.responses = [
+            .success(["ok": true, "session_id": "row-1", "written": 500]),
+            .success(["ok": true, "session_id": "row-1", "written": 1_000]),
+            .success(["ok": true, "session_id": "row-1", "written": 1_201]),
+        ]
+        let client = VoiceHistoryClient(request: script.request)
+        let result = try await client.save(
+            VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: nil, title: "Long call", turns: turns),
+            profile: "default"
+        )
+        XCTAssertEqual(result, VoiceTranscriptSaveResult(sessionID: "row-1", written: 1_201))
+        XCTAssertEqual(script.calls.count, 3)
+        let sent = script.calls.map { ($0.body?["turns"] as? [[String: Any]] ?? []).compactMap { $0["index"] as? Int } }
+        XCTAssertEqual(sent.map(\.count), [500, 500, 201])
+        XCTAssertEqual(sent.flatMap { $0 }, Array(0..<1_201))
+        XCTAssertEqual(script.calls.map { $0.body?["call_id"] as? String }, ["c1", "c1", "c1"])
+        // The first save makes the row; the rest append to it.
+        XCTAssertEqual(script.calls.map { $0.body?["session_id"] as? String }, [nil, "row-1", "row-1"])
+        XCTAssertEqual(script.calls.first?.body?["title"] as? String, "Long call")
+
+        // A call kept with a chat goes to the chat each time.
+        let chat = ScriptedVoiceHistoryRequests()
+        chat.responses = [
+            .success(["ok": true, "chat_id": "chat-1", "written": 500]),
+            .success(["ok": true, "chat_id": "chat-1", "written": 600]),
+        ]
+        let chatResult = try await VoiceHistoryClient(request: chat.request).save(
+            VoiceTranscriptSaveRequest(callID: "c2", engine: .gptLive, sessionID: nil, title: nil,
+                                       turns: Array(turns.prefix(600)), chatID: "chat-1", chatProfile: "coder"),
+            profile: "default"
+        )
+        XCTAssertEqual(chatResult, VoiceTranscriptSaveResult(sessionID: nil, written: 600, chatID: "chat-1"))
+        XCTAssertEqual(chat.calls.map { $0.body?["chat_id"] as? String }, ["chat-1", "chat-1"])
+        XCTAssertEqual(chat.calls.map(\.path), Array(repeating: DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "coder"), count: 2))
+
+        // Long turns: every body stays under 1 MiB.
+        let long = (0..<40).map {
+            VoiceTranscriptTurn(index: $0, role: .assistant, text: String(repeating: "é", count: 16_000), at: Date(timeIntervalSince1970: 10))
+        }
+        let sized = ScriptedVoiceHistoryRequests()
+        sized.responses = (1...40).map { .success(["ok": true, "session_id": "row-2", "written": $0]) }
+        _ = try await VoiceHistoryClient(request: sized.request).save(
+            VoiceTranscriptSaveRequest(callID: "c3", engine: .gptLive, sessionID: "row-2", title: nil, turns: long),
+            profile: "default"
+        )
+        XCTAssertGreaterThan(sized.calls.count, 1)
+        for call in sized.calls {
+            let bytes = try JSONSerialization.data(withJSONObject: try XCTUnwrap(call.body)).count
+            XCTAssertLessThan(bytes, 1024 * 1024)
+        }
+        XCTAssertEqual(sized.calls.flatMap { ($0.body?["turns"] as? [[String: Any]] ?? []).compactMap { $0["index"] as? Int } }, Array(0..<40))
+
+        // A part the host refuses fails the save: retried, the host skips
+        // the turns it already has.
+        let failing = ScriptedVoiceHistoryRequests()
+        failing.responses = [
+            .success(["ok": true, "session_id": "row-3", "written": 500]),
+            .failure(DashboardTicketBridgeError.http(status: 503, detail: "busy")),
+        ]
+        do {
+            _ = try await VoiceHistoryClient(request: failing.request).save(
+                VoiceTranscriptSaveRequest(callID: "c4", engine: .gptLive, sessionID: nil, title: "Long call", turns: turns),
+                profile: "default"
+            )
+            XCTFail("A refused part fails the save")
+        } catch {}
+        XCTAssertEqual(failing.calls.count, 2)
+    }
+
+    func testRecorderClipsAScreenTurnToWhatTheHostKeeps() throws {
+        let recorder = RecorderHarness().makeRecorder()
+        let markdown = "Here's the script:\n\n```swift\n" + String(repeating: "let value = 42\n", count: 1_300)
+        let card = VoiceScreenCard(id: UUID(), title: "Script", markdown: markdown,
+                                   callAnchor: VoiceJobCallAnchor(callID: UUID(), transcriptIndex: 0), shownAt: Date())
+        recorder.screen(card)
+        let text = try XCTUnwrap(recorder.turns.last?.text)
+        // plugin_api VOICE_MAX_TURN_CHARS
+        XCTAssertLessThanOrEqual(text.count, 16_000)
+        XCTAssertTrue(text.hasPrefix("Script\n\nHere's the script:"))
+        XCTAssertTrue(text.hasSuffix("\n```"), "The cut closes the code block it left open")
+
+        // Spoken lines are as they were.
+        recorder.note("Short line")
+        XCTAssertEqual(recorder.turns.last?.text, "Short line")
+    }
+
     func testVoiceHistoryMapsThePluginsStatuses() {
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 404, detail: "")), .pluginMissing)
         XCTAssertEqual(VoiceHistoryClient.mapped(.http(status: 501, detail: "")), .unsupported)
