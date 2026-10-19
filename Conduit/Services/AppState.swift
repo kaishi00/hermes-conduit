@@ -2144,6 +2144,8 @@ final class AppState: ObservableObject {
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     private var capabilityLoadGeneration: UInt64 = 0
+    /// Skill and toolset switches, written in the order flipped.
+    private let capabilityToggleWrites = CapabilityToggleWrites()
     @Published var mcpServers: [CapabilityMcpServer] = []
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
@@ -26165,49 +26167,50 @@ final class AppState: ObservableObject {
 
     func toggleSkill(name: String, enabled: Bool) async {
         let profile = activeProfile
+        let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
         guard let dashboardTicketBridge else { return }
-        do {
+        // After every switch flipped before it; a failure puts back what
+        // Hermes last confirmed, unless a newer flip is on its way.
+        let outcome = await capabilityToggleWrites.send("\(profile)|skill|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/skills/toggle",
                 method: "PUT",
                 body: ["name": name, "enabled": enabled, "profile": profile]
             )
-        } catch {
-            // Revert on failure
-            guard profile == activeProfile else { return }
-            if let index = skills.firstIndex(where: { $0.name == name }) {
-                skills[index].enabled = !enabled
-            }
-            errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
         }
+        guard let error = outcome.error, profile == activeProfile else { return }
+        if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
+            skills[index].enabled = restore
+        }
+        errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
     }
 
     func toggleToolset(name: String, enabled: Bool) async {
         let profile = activeProfile
+        let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
         guard let dashboardTicketBridge else { return }
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
-        do {
+        // In the same order as skill switches: Hermes rewrites one config.
+        let outcome = await capabilityToggleWrites.send("\(profile)|toolset|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/tools/toolsets/\(encodedName)",
                 method: "PUT",
                 body: ["enabled": enabled, "profile": profile]
             )
-        } catch {
-            // Revert on failure
-            guard profile == activeProfile else { return }
-            if let index = toolsets.firstIndex(where: { $0.name == name }) {
-                toolsets[index].enabled = !enabled
-            }
-            errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
         }
+        guard let error = outcome.error, profile == activeProfile else { return }
+        if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
+            toolsets[index].enabled = restore
+        }
+        errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
     }
 
     private func decodeCapabilitySkill(_ value: Any) -> CapabilitySkill? {
