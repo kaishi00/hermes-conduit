@@ -1,6 +1,9 @@
 import Foundation
 import UIKit
 import UserNotifications
+import os
+
+private let pushTokenLogger = Logger(subsystem: "com.milim.relay", category: "PushToken")
 
 struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
@@ -1449,6 +1452,8 @@ final class PushNotificationService: ObservableObject {
     /// and a relay still sending to the old one gets 200 from Apple while
     /// nothing reaches this phone (notifier #119).
     func refreshDeviceTokenAtLaunch() {
+        // Turning notifications on later asks for the token itself.
+        guard registration != nil else { return }
         if becomeActiveObserver == nil {
             becomeActiveObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
@@ -1467,6 +1472,14 @@ final class PushNotificationService: ObservableObject {
     }
 
     func didFailToRegister(_ error: Error) {
+        if tokenContinuation == nil {
+            // A launch or return-to-front refresh: the next return asks again.
+            pushTokenLogger.error("Push token refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
+        failTokenRequest(error)
+    }
+
+    private func failTokenRequest(_ error: Error) {
         tokenContinuation?.resume(throwing: error)
         tokenContinuation = nil
     }
@@ -2022,7 +2035,7 @@ final class PushNotificationService: ObservableObject {
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             // No-op if the token already arrived (continuation is nil).
-            self?.didFailToRegister(PushNotificationError.tokenTimeout)
+            self?.failTokenRequest(PushNotificationError.tokenTimeout)
         }
         defer { timeoutTask.cancel() }
         return try await withCheckedThrowingContinuation { continuation in
