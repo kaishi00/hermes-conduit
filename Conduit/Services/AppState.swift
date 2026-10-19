@@ -150,6 +150,11 @@ struct ChatResumeLifecycleOperations {
     var titleBotChat: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
     /// Test seam: the WebSocket transport for clients built by makeClient; nil = URLSession.
     var makeTransport: (@MainActor () -> any HermesWebSocketTransport)?
+    /// Test seam for the `session.create` of the automatic resume's fresh
+    /// chat (`createAndReconcileSession` without a widget lease): client and
+    /// cwd in, the created ids out. Not an init parameter: tests set it on
+    /// the value.
+    var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -14263,6 +14268,8 @@ final class AppState: ObservableObject {
             let created: (sessionId: String, storedSessionId: String?, profile: String?)
             if widgetLease != nil, let widgetSessionCreatorOverride {
                 created = try await widgetSessionCreatorOverride(client, cwd)
+            } else if let createSession = chatResumeLifecycleOperations.createSession {
+                created = try await createSession(client, cwd)
             } else {
                 created = try await client.createSession(
                     model: runtime.model.isEmpty ? nil : runtime.model,
