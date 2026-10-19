@@ -17,7 +17,8 @@ network.
 - A speech server that speaks the OpenAI Realtime WebSocket protocol. The
   tested one is Hugging Face
   [speech-to-speech](https://github.com/huggingface/speech-to-speech)
-  (`speech-to-speech serve`). It can run on the Hermes machine or another
+  (`speech-to-speech serve`), a third-party project: review what it exposes
+  on your network before you run it. It can run on the Hermes machine or another
   one on your network (an LXC, a GPU box, a Mac).
 - For Local Live, the speech server must be able to reach your Hermes
   dashboard the way your phone does (LAN, Tailscale or a public domain).
@@ -50,8 +51,8 @@ Conduit saves this as `voice.speech_server` in the profile's `config.yaml`:
 voice:
   speech_server:
     url: ws://192.168.1.20:8765/v1/realtime
-    api_key: ""        # optional
-    api_key_file: ""   # optional: read the key from a file instead
+    # api_key: ...       optional, written only when you set a key
+    # api_key_file: ...  optional: read the key from a file instead
 ```
 
 With only this step, Classic voice listens through your server.
@@ -106,7 +107,8 @@ working as it does today.
 - **"Hasn't asked for words yet"**: the server's model address or key is
   wrong, or the server wasn't restarted after you changed them. Copy the
   setup block again.
-- **Local Live unavailable**: the plugin is older than 0.42, or Hermes lacks
+- **Local Live unavailable**: the plugin is older than 0.42 (0.48 on the
+  Apple Watch), or Hermes lacks
   the dashboard token-route support the key needs. Update Hermes and the
   plugin.
 - **The reply hears itself on the speaker**: use headphones for now. Echo
