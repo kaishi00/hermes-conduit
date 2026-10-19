@@ -4157,6 +4157,12 @@ final class AppState: ObservableObject {
     /// that its requested session no longer exists. Callers use this to
     /// retire a saved automatic-return target instead of retrying it forever.
     private var reconciliationSessionWasNotFound = false
+    /// Catalog rows `session.resume` answered 4007 for during an automatic
+    /// resume, per dashboard and profile, for this app run. The catalog can
+    /// keep listing a conversation the gateway no longer resumes; without
+    /// this, the retry after a failed fresh-chat create would select and
+    /// probe the same dead rows again.
+    private var deadResumeRowIDs: [String: Set<String>] = [:]
     private var reconciliation: Reconciliation?
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
@@ -12935,11 +12941,16 @@ final class AppState: ObservableObject {
             // earlier snapshot did not know — healing and the candidate filter
             // must both see that answer, not the one that prompted the refresh.
             let ownership = botOwnership
+            // A row this run already found dead (`session.resume` 4007) is
+            // not offered again, however long the catalog keeps listing it.
+            let deadRowIDs = deadResumeRowIDs[
+                Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)
+            ] ?? []
             let resumeCandidates = BotChatHygiene.ordinaryResumeCandidates(
                 allSessions,
                 roster: botRoster,
                 botOwnedSessionIDs: ownership.botOwnedIDs
-            )
+            ).filter { !Self.resumeRow($0, isAmong: deadRowIDs) }
             let storedReferenceAliases = Self.aliasesForStoredReference(
                 storedReference,
                 catalog: allSessions
@@ -13030,7 +13041,7 @@ final class AppState: ObservableObject {
                     runtimeSessionID: target.storedSessionId != nil ? target.id : nil,
                     acceptedSessionIDs: acceptedTargetIDs
                 )
-                let succeeded = await reconcile(
+                var succeeded = await reconcile(
                     sessionId: target.id,
                     using: client,
                     token: token,
@@ -13041,6 +13052,51 @@ final class AppState: ObservableObject {
                     requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
                     historySourceUnavailable: historySourceUnavailable
                 )
+                if !succeeded, purpose == .automaticReturn {
+                    succeeded = await resumeByStoredIDAfterNotFound(
+                        target,
+                        acceptedSessionIDs: acceptedTargetIDs,
+                        conversationIdentity: targetIdentity,
+                        using: client,
+                        profile: profile,
+                        token: token,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID,
+                        requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                        historySourceUnavailable: historySourceUnavailable
+                    )
+                }
+                if !succeeded,
+                   purpose == .automaticReturn,
+                   reconciliationSessionWasNotFound,
+                   resumeRecoveryOwnsViewport(
+                    token: token,
+                    profile: profile,
+                    client: client,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+                   ) {
+                    // The catalog LISTS a row `session.resume` answers 4007
+                    // for: the same authoritative evidence the missing-saved-
+                    // session branch below recovers from, which only runs when
+                    // the row is absent from the catalog. Retrying it would
+                    // loop forever behind the read-only saved copy ("Failed
+                    // to restore this conversation"); retire it instead.
+                    return await retireUnresumableResumeTargets(
+                        targetIDs.union([target.storedSessionId].compactMap { $0 }),
+                        candidates: resumeCandidates,
+                        using: client,
+                        profile: profile,
+                        dashboardID: dashboardID,
+                        purpose: purpose,
+                        token: token,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID,
+                        requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                        historySourceUnavailable: historySourceUnavailable
+                    )
+                }
                 if !succeeded,
                    purpose == .automaticReturn,
                    !reconciliationWasIdentityRejected,
@@ -13118,7 +13174,7 @@ final class AppState: ObservableObject {
                             runtimeSessionID: fallback.storedSessionId != nil ? fallback.id : nil,
                             acceptedSessionIDs: fallbackIDs
                         )
-                        let fallbackSucceeded = await reconcile(
+                        var fallbackSucceeded = await reconcile(
                             sessionId: fallback.id,
                             using: client,
                             token: token,
@@ -13129,8 +13185,49 @@ final class AppState: ObservableObject {
                             requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
                             historySourceUnavailable: historySourceUnavailable
                         )
+                        if !fallbackSucceeded {
+                            fallbackSucceeded = await resumeByStoredIDAfterNotFound(
+                                fallback,
+                                acceptedSessionIDs: fallbackIDs,
+                                conversationIdentity: fallbackIdentity,
+                                using: client,
+                                profile: profile,
+                                token: token,
+                                automaticWorkToken: automaticWorkToken,
+                                automaticSyncOperationID: automaticOperationID,
+                                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                                historySourceUnavailable: historySourceUnavailable
+                            )
+                        }
                         if fallbackSucceeded, errorMessage == handledMissingSessionError {
                             errorMessage = nil
+                        }
+                        if !fallbackSucceeded,
+                           reconciliationSessionWasNotFound,
+                           resumeRecoveryOwnsViewport(
+                            token: token,
+                            profile: profile,
+                            client: client,
+                            automaticWorkToken: automaticWorkToken,
+                            automaticSyncOperationID: automaticOperationID,
+                            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+                           ) {
+                            // The fallback is gone too: keep walking the
+                            // catalog instead of stopping on a dead row with
+                            // nothing scheduled.
+                            return await retireUnresumableResumeTargets(
+                                fallbackIDs.union([fallback.storedSessionId].compactMap { $0 }),
+                                candidates: resumeCandidates,
+                                using: client,
+                                profile: profile,
+                                dashboardID: dashboardID,
+                                purpose: purpose,
+                                token: token,
+                                automaticWorkToken: automaticWorkToken,
+                                automaticSyncOperationID: automaticOperationID,
+                                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                                historySourceUnavailable: historySourceUnavailable
+                            )
                         }
                         if !fallbackSucceeded,
                            !reconciliationWasIdentityRejected,
@@ -13256,6 +13353,251 @@ final class AppState: ObservableObject {
             return .superseded
         }
         return .automaticIntentInvalidated
+    }
+
+    /// Recovery for automatic-resume targets `session.resume` authoritatively
+    /// reports missing (code 4007) although the catalog lists them, so the
+    /// missing-saved-session branch of `performSyncSession` (which needs the
+    /// row ABSENT from the catalog) never ran. Without it a cold launch stayed
+    /// on the read-only saved copy and retried the same dead row forever.
+    /// Same recovery as that branch: forget the saved pointer if it names a
+    /// dead row, then open the next catalog row, and a fresh chat when none
+    /// resumes. A row that is itself missing is skipped, never retried; any
+    /// other failure is not evidence the row is dead, so it keeps the usual
+    /// retry instead of creating a chat.
+    ///
+    /// Ported from Marceswan/hermes-conduit, where it first shipped for
+    /// macOS only.
+    private func retireUnresumableResumeTargets(
+        _ deadIDs: Set<String>,
+        candidates: [SessionSummary],
+        using client: HermesClient,
+        profile: String,
+        dashboardID: UUID?,
+        purpose: ChatResumeSyncPurpose,
+        token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        automaticSyncOperationID: UUID?,
+        requiredViewportTransitionGeneration: UInt64?,
+        historySourceUnavailable: Bool
+    ) async -> ChatResumeSyncExecutionOutcome {
+        let deadRowKey = Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)
+        var dead = deadIDs
+        deadResumeRowIDs[deadRowKey, default: []].formUnion(dead)
+        let handledError = errorMessage
+        if let saved = chatResumeCoordinator.lastSessionID(for: profile), dead.contains(saved) {
+            // Clears whatever kind the reference recorded: the
+            // conversation's authoritative absence is not evidence about
+            // which surface it belonged to.
+            chatResumeCoordinator.rememberSession(nil, for: profile)
+        }
+        // Its agents go with it, whichever conversation (or new chat) is
+        // opened instead.
+        keepDelegateAgents(of: [])
+        // A catalog full of rows the gateway cannot resume (a profile
+        // mis-tag, a pruned state.db) must not cost one resume plus one
+        // history request per row: after `deadResumeRowProbeLimit` more dead
+        // rows, create a fresh chat.
+        var probes = 0
+        while probes < Self.deadResumeRowProbeLimit {
+            guard resumeRecoveryOwnsViewport(
+                token: token,
+                profile: profile,
+                client: client,
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID,
+                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+            ) else {
+                return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+            }
+            let remaining = candidates.filter { !Self.resumeRow($0, isAmong: dead) }
+            guard let fallback = selectChatResumeTarget(
+                in: remaining,
+                profile: profile,
+                purpose: purpose,
+                currentSessionID: nil,
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID
+            ) else { break }
+            probes += 1
+            let fallbackIDs = Set([fallback.id] + fallback.alternateIds)
+            let fallbackIdentity = ConversationIdentity(
+                profile: profile,
+                durableSessionID: fallback.storedSessionId ?? fallback.id,
+                runtimeSessionID: fallback.storedSessionId != nil ? fallback.id : nil,
+                acceptedSessionIDs: fallbackIDs
+            )
+            var fallbackSucceeded = await reconcile(
+                sessionId: fallback.id,
+                using: client,
+                token: token,
+                acceptedSessionIDs: fallbackIDs,
+                conversationIdentity: fallbackIdentity,
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID,
+                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                historySourceUnavailable: historySourceUnavailable
+            )
+            if !fallbackSucceeded {
+                fallbackSucceeded = await resumeByStoredIDAfterNotFound(
+                    fallback,
+                    acceptedSessionIDs: fallbackIDs,
+                    conversationIdentity: fallbackIdentity,
+                    using: client,
+                    profile: profile,
+                    token: token,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticSyncOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    historySourceUnavailable: historySourceUnavailable
+                )
+            }
+            if fallbackSucceeded {
+                if errorMessage == handledError { errorMessage = nil }
+                return .completed
+            }
+            if reconciliationSessionWasNotFound {
+                dead.formUnion(fallbackIDs)
+                dead.formUnion([fallback.storedSessionId].compactMap { $0 })
+                deadResumeRowIDs[deadRowKey, default: []].formUnion(dead)
+                continue
+            }
+            if !reconciliationWasIdentityRejected,
+               resumeRecoveryOwnsViewport(
+                token: token,
+                profile: profile,
+                client: client,
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID,
+                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+               ) {
+                // A dead row is not a visible preserve-current target for
+                // the retry: it returns to the saved conversation, or the
+                // newest live one when the pointer was retired above.
+                activeSessionId = nil
+                scheduleReconnectAfterFailedSync()
+            }
+            return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+        }
+        guard resumeRecoveryOwnsViewport(
+            token: token,
+            profile: profile,
+            client: client,
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID,
+            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+        ) else {
+            return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+        }
+        // The create is a reconciliation like `createNewSession`'s: the
+        // failed resume above left `.reconnecting`, and a New Chat tapped now
+        // must wait for this `session.create` rather than start a second one.
+        turnState = .synchronizing
+        await createAndReconcileSession(
+            using: client,
+            profile: profile,
+            token: token,
+            resumePurpose: purpose,
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID,
+            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+        )
+        return automaticChatResumeWorkIsCurrent(
+            automaticWorkToken,
+            syncOperationID: automaticSyncOperationID
+        ) ? .completed : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+    }
+
+    /// `session.resume` just answered 4007 for `row.id`. When the row names a
+    /// different stored id, that 4007 can mean only that Hermes dropped the
+    /// RUNTIME (a gateway restart, idle reaping): it resumes by the stored
+    /// id, the durable identity (#446). Resumes once more by the stored id,
+    /// with the same accepted ids and identity, before anything treats the
+    /// row as dead. Returns whether that resume succeeded. Afterwards
+    /// `reconciliationSessionWasNotFound` describes the LAST resume, so a
+    /// caller retires the row only when its stored id is missing too. A row
+    /// without a distinct stored id, any other failure, or a sync that lost
+    /// ownership is left exactly as it was (false, nothing resumed).
+    private func resumeByStoredIDAfterNotFound(
+        _ row: SessionSummary,
+        acceptedSessionIDs: Set<String>,
+        conversationIdentity: ConversationIdentity,
+        using client: HermesClient,
+        profile: String,
+        token: UUID,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        automaticSyncOperationID: UUID?,
+        requiredViewportTransitionGeneration: UInt64?,
+        historySourceUnavailable: Bool
+    ) async -> Bool {
+        guard reconciliationSessionWasNotFound,
+              let storedID = row.storedSessionId,
+              !storedID.isEmpty,
+              storedID != row.id,
+              resumeRecoveryOwnsViewport(
+                token: token,
+                profile: profile,
+                client: client,
+                automaticWorkToken: automaticWorkToken,
+                automaticSyncOperationID: automaticSyncOperationID,
+                requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
+              ) else { return false }
+        let handledError = errorMessage
+        let succeeded = await reconcile(
+            sessionId: storedID,
+            using: client,
+            token: token,
+            acceptedSessionIDs: acceptedSessionIDs,
+            conversationIdentity: conversationIdentity,
+            automaticWorkToken: automaticWorkToken,
+            automaticSyncOperationID: automaticSyncOperationID,
+            requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+            historySourceUnavailable: historySourceUnavailable
+        )
+        // The runtime id's "Failed to restore this conversation" was handled
+        // by this resume; the conversation is on screen.
+        if succeeded, errorMessage == handledError { errorMessage = nil }
+        return succeeded
+    }
+
+    /// Further dead catalog rows the recovery above probes before it gives up
+    /// on the catalog and creates a fresh chat.
+    private static let deadResumeRowProbeLimit = 3
+
+    private static func deadResumeRowKey(dashboardID: UUID?, profile: String) -> String {
+        "\(dashboardID?.uuidString ?? "-")|\(profile)"
+    }
+
+    /// Whether any identity of `row` (its id, aliases or stored id) is in `ids`.
+    private static func resumeRow(_ row: SessionSummary, isAmong ids: Set<String>) -> Bool {
+        guard !ids.isEmpty else { return false }
+        if ids.contains(row.id) { return true }
+        if row.alternateIds.contains(where: { ids.contains($0) }) { return true }
+        if let stored = row.storedSessionId, ids.contains(stored) { return true }
+        return false
+    }
+
+    /// The ownership fences every step of the dead-row recovery re-checks
+    /// after an await: the same automatic intent, viewport transition,
+    /// reconciliation, profile and client this sync started with.
+    private func resumeRecoveryOwnsViewport(
+        token: UUID,
+        profile: String,
+        client: HermesClient,
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        automaticSyncOperationID: UUID?,
+        requiredViewportTransitionGeneration: UInt64?
+    ) -> Bool {
+        guard automaticChatResumeWorkIsCurrent(
+                automaticWorkToken,
+                syncOperationID: automaticSyncOperationID
+              ),
+              chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+              token == reconciliationToken,
+              profile == activeProfile,
+              let activeClient = self.client,
+              activeClient === client else { return false }
+        return true
     }
 
     func beginReconciliation() -> UUID {
