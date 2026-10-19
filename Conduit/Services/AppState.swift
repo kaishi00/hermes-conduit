@@ -13109,22 +13109,38 @@ final class AppState: ObservableObject {
 
     private func invalidateReconciliation() {
         let wasReconciling = activeChatScrollSessionIdentity.isReconciling
+        let closed = reconciliation
         reconciliationToken = UUID()
         reconciliation = nil
         refreshActiveChatScrollSessionIdentity(
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
-        releaseHeldSideAgentCompletions()
+        releaseHeldSideAgentCompletions(closing: closed)
     }
 
     /// Shows the side-agent answers held while the reconciliation was open,
-    /// after any transcript it committed.
-    private func releaseHeldSideAgentCompletions() {
+    /// after any transcript it committed. An answer addressed to an id the
+    /// closed reconciliation accepted for the active conversation (a resume
+    /// that rotated the runtime id before the catalog learned it) is shown
+    /// there, as it would have been while the boundary was open; one from
+    /// another conversation still isn't.
+    private func releaseHeldSideAgentCompletions(closing closed: Reconciliation?) {
         guard reconciliation == nil, !heldSideAgentCompletions.isEmpty else { return }
         let held = heldSideAgentCompletions
         heldSideAgentCompletions = []
-        held.forEach { applyStreamEvent($0) }
+        let aliases = closed?.acceptedSessionIDs ?? []
+        for event in held {
+            guard case .sideAgentComplete(let sessionId, let kind, let taskId, let text, let question) = event,
+                  let activeSessionId, sessionId != activeSessionId,
+                  !eventBelongsToActiveSession(sessionId),
+                  aliases.contains(activeSessionId), aliases.contains(sessionId) else {
+                applyStreamEvent(event)
+                continue
+            }
+            applyStreamEvent(.sideAgentComplete(sessionId: activeSessionId, kind: kind, taskId: taskId,
+                                                text: text, question: question))
+        }
     }
 
     @discardableResult
@@ -13155,7 +13171,7 @@ final class AppState: ObservableObject {
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
-        releaseHeldSideAgentCompletions()
+        releaseHeldSideAgentCompletions(closing: activeReconciliation)
         return true
     }
 

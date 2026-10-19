@@ -672,6 +672,45 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(harness.appState.errorMessage)
     }
 
+    func testSideAgentAnswerToTheRotatedRuntimeIDLandsAfterTheResume() async {
+        // A /background answer addressed to the old runtime id lands while
+        // the resume that rotates it is open. Hermes keeps no copy, so it
+        // must show once the boundary closes, though the refreshed catalog
+        // no longer lists the old id. One from another conversation doesn't.
+        var duringResume: (() -> Void)?
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("unrelated"), self.session("stored-a")] },
+            openSession: { _, id, _ in
+                duringResume?()
+                return SessionResumeResult(
+                    sessionId: id == "stored-a" ? "runtime-new" : id,
+                    storedSessionId: id == "stored-a" ? "stored-a" : nil,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        harness.appState.sessions = [self.session("stored-a", alternateIDs: ["runtime-old"])]
+        harness.appState.activeSessionId = "runtime-old"
+        harness.store.setLastSessionID("stored-a", for: "default")
+        duringResume = {
+            duringResume = nil
+            harness.appState.handleStreamEvent(.sideAgentComplete(
+                sessionId: "runtime-old", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil))
+            harness.appState.handleStreamEvent(.sideAgentComplete(
+                sessionId: "unrelated", kind: .background, taskId: "bg_2", text: "Not this chat.", question: nil))
+        }
+
+        await harness.appState.syncSession()
+
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new")
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .system }.map(\.content),
+                       ["[bg bg_1]\nLogs are clean."])
+    }
+
     func testRuntimeOnlyConversationEstablishesDurableKeyFromResume() async {
         // A runtime-only conversation (no catalog row, no established
         // durable id) whose resume response names its stored key: the key is
