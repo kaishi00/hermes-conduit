@@ -1105,6 +1105,16 @@ enum ProfileSettingValue: Equatable {
     static func numberText(_ value: Double) -> String {
         value.rounded() == value && abs(value) < 1e15 ? String(Int64(value)) : String(value)
     }
+
+    /// What someone typed in a number field. The decimal pad shows a comma in
+    /// locales like fr-CA, so "0,8" reads as 0.8 as well as "0.8"; spaces
+    /// around the number are ignored.
+    static func parseNumber(_ raw: String) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let value = Double(trimmed) { return value }
+        guard !trimmed.contains("."), trimmed.filter({ $0 == "," }).count == 1 else { return nil }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
+    }
 }
 
 /// The gateway's `GET /api/config/schema`: every config key it knows, by dot

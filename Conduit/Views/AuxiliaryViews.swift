@@ -2619,7 +2619,7 @@ struct ProfileConfigSettingsPage: View {
         let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
         switch field.control {
         case .number:
-            guard let number = Double(raw) else {
+            guard let number = ProfileSettingValue.parseNumber(raw) else {
                 fieldErrors[field.key] = AppLocalization.string("Enter a valid number for \(field.label).")
                 return
             }
