@@ -175,7 +175,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     /// The Watch's answer to Hermes' approval request `id`, on this stream.
     func sendApprovalAnswer(id: String, approve: Bool) async throws {
         try await waitForStart()
-        try await seal(Data(WatchAudioBridgeWire.approvalAnswer(id: id, approve: approve).utf8), kind: .event)
+        try await seal(try WatchAudioBridgeWire.approvalAnswer(id: id, approve: approve), kind: .event)
     }
 
     func receive() async throws -> Data {

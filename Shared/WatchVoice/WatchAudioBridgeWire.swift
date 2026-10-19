@@ -227,14 +227,13 @@ enum WatchAudioBridgeWire {
         }
     }
 
-    /// Hermes' approval choices, as the host takes them.
-    static let approveOnce = "once"
-    static let deny = "deny"
+    /// Hermes' approval choices, as the host takes them: a job's answer's.
+    static let approveOnce = WatchJobAnswer.approve
+    static let deny = WatchJobAnswer.deny
 
     /// The Watch's answer to the request `id`, sent as an event.
-    static func approvalAnswer(id: String, approve: Bool) -> String {
-        let message: [String: Any] = ["type": "conduit.approval.answer", "id": id, "choice": approve ? approveOnce : deny]
-        return (try? WatchToolSeal.json(message)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    static func approvalAnswer(id: String, approve: Bool) throws -> Data {
+        try WatchToolSeal.json(["type": "conduit.approval.answer", "id": id, "choice": approve ? approveOnce : deny])
     }
 
     struct Started: Equatable {

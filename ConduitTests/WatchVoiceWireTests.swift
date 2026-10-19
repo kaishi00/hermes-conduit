@@ -1101,9 +1101,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(WatchAudioBridgeWire.approvalFrame(Data(#"{"type":"response.done"}"#.utf8)))
         XCTAssertNil(WatchAudioBridgeWire.approvalFrame(Data(#"{"type":"conduit.approval","command":"no id"}"#.utf8)))
 
-        let answer = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(WatchAudioBridgeWire.approvalAnswer(id: "a1", approve: true).utf8)) as? [String: String])
+        let answer = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.approvalAnswer(id: "a1", approve: true)) as? [String: String])
         XCTAssertEqual(answer, ["type": "conduit.approval.answer", "id": "a1", "choice": "once"])
-        let denied = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(WatchAudioBridgeWire.approvalAnswer(id: "a1", approve: false).utf8)) as? [String: String])
+        let denied = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.approvalAnswer(id: "a1", approve: false)) as? [String: String])
         XCTAssertEqual(denied["choice"], "deny")
 
         let card = WatchJobAnswer.Approval(grantID: "", jobID: "", title: "Delete the build folder", requestID: "a1",

@@ -2246,11 +2246,19 @@ final class WatchDirectCallModel: ObservableObject {
             return
         }
         let id = approval.requestID
-        Task { @MainActor in
+        Task { @MainActor [weak self, weak socket] in
+            guard let socket else { return }
             do {
                 try await socket.sendApprovalAnswer(id: id, approve: approve && approval.canApproveOnce)
             } catch {
                 WatchCallLog.shared.note("directCallApproval", ["kind": "unsent"])
+                // The answer never left: the card comes back for another
+                // try, unless the stream changed (the host shows the new one
+                // what is still pending) or another request took its place.
+                guard let self, self.callApprovalSocket === socket,
+                      !self.approvals.contains(where: \.isCallRequest) else { return }
+                self.approvals.insert(approval, at: 0)
+                self.pendingApproval = self.approvals.first
             }
         }
     }
@@ -3238,6 +3246,7 @@ final class WatchDirectCallModel: ObservableObject {
         relayRunning = [:]
         relayJobsRunning = 0
         approvals = []
+        callApprovalSocket = nil
         pendingApproval = nil
         newsInFlight = false
         nextNewsAt = 0
@@ -3296,6 +3305,7 @@ final class WatchDirectCallModel: ObservableObject {
         jobsGrant = nil
         jobsMovedTo = [:]
         approvals = []
+        callApprovalSocket = nil
         pendingApproval = nil
         stopPathMonitor()
         // A restart still waiting on its activation is over too.
