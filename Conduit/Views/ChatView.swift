@@ -42,6 +42,8 @@ struct ChatView: View {
     /// Not observable on purpose: one stable instance rows read when built
     /// and write when tapped (see ChatRowDisclosure).
     @State private var rowDisclosure = ChatRowDisclosure()
+    /// A run of steps opened or closed: its rows join or leave the stack.
+    @State private var stepToggleRevision: UInt64 = 0
     /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
     /// both weakly, so the engine never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
@@ -113,6 +115,27 @@ struct ChatView: View {
     private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
         _ = viewportInputs.targetsRevision
         return scrollEngine.targets
+    }
+
+    /// The rows the transcript lays out: a step that draws nothing (hidden,
+    /// or inside a collapsed run) is left out, or the stack would space it
+    /// like any row (ChatStepPlacement.drawsRow). Its scroll target stays.
+    /// Without such a step, the targets themselves, uncopied.
+    private var drawnMessageScrollTargets: [ChatMessageScrollTarget] {
+        let targets = chatMessageScrollTargets
+        _ = stepToggleRevision
+        let preferences = appState.displayPreferences
+        let isBusy = appState.isBusy
+        let draws: (ChatMessageScrollTarget) -> Bool = { target in
+            target.step?.drawsRow(
+                messageID: target.id,
+                preferences: preferences,
+                isBusy: isBusy,
+                disclosure: rowDisclosure
+            ) ?? true
+        }
+        guard targets.contains(where: { !draws($0) }) else { return targets }
+        return targets.filter(draws)
     }
 
     private var bottomAnchor: String {
@@ -381,7 +404,7 @@ struct ChatView: View {
                 // deep sessions. Row identity (target.id) and the transcript
                 // order needed by row geometry (target.order, maintained by
                 // the scroll-target cache) are unchanged.
-                ForEach(chatMessageScrollTargets) { target in
+                ForEach(drawnMessageScrollTargets) { target in
                     MessageBubble(
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
@@ -436,6 +459,7 @@ struct ChatView: View {
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
             .environment(\.chatRowDisclosure, rowDisclosure)
+            .onReceive(rowDisclosure.groupToggles.$revision) { stepToggleRevision = $0 }
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }

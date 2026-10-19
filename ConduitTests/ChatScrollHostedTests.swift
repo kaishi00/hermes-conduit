@@ -513,6 +513,36 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertTrue(mounted.engine.isFollowingLatest)
     }
 
+    /// A finished run of steps shows as one collapsed line. Its other
+    /// steps draw nothing, so they must not add the transcript's row
+    /// spacing each: the reply sits one spacing below the line, not seven.
+    func testACollapsedRunOfStepsSitsOneRowSpacingAboveTheReply() throws {
+        let steps = (0..<7).map { index in
+            ChatMessage(
+                id: "step-\(index)",
+                role: .tool,
+                content: "",
+                timestamp: "2026-01-01T00:00:0\(index)Z",
+                tool: ToolActivity(id: "step-\(index)", name: "web_search", input: #"{"query": "q\#(index)"}"#, output: "ok", status: .complete)
+            )
+        }
+        let messages = [ChatMessage(id: "ask", role: .user, content: "Look it up.", timestamp: "2026-01-01T00:00:00Z")]
+            + steps
+            + [ChatMessage(id: "reply", role: .assistant, content: "Here it is.", timestamp: "2026-01-01T00:00:09Z")]
+        let mounted = try mount(messages)
+        settle(mounted.host.view, seconds: 0.4)
+
+        let header = try XCTUnwrap(mounted.engine.rowFrame(for: "step-0"), "the run's line is laid out")
+        let reply = try XCTUnwrap(mounted.engine.rowFrame(for: "reply"), "the reply is laid out")
+        XCTAssertGreaterThan(header.maxY - header.minY, 1, "the run shows as one line")
+        XCTAssertEqual(
+            reply.minY - header.maxY,
+            ChatStepStyle.transcriptRowSpacing,
+            accuracy: 1,
+            "one row spacing between the collapsed run and the reply"
+        )
+    }
+
     /// Eric's report: opening a Thinking or tool row at the bottom of the
     /// chat jumped far down. A row growing in place (as an opening one does)
     /// after the reader taps it keeps its top where it was.

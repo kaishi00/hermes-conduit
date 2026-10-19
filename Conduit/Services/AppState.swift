@@ -783,6 +783,8 @@ final class AppState: ObservableObject {
     /// (older than the route): its writes skip the read until a write is
     /// refused for missing identity, which clears the mark.
     private var hostsWithoutMutationSnapshot: Set<String> = []
+    /// Tests and the UI fixture: stands in for Hermes creating a chat, for
+    /// a widget's New Chat and the app's own alike.
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
         didSet {
@@ -14261,7 +14263,7 @@ final class AppState: ObservableObject {
               widgetLease?.isCurrent != false else { return }
         do {
             let created: (sessionId: String, storedSessionId: String?, profile: String?)
-            if widgetLease != nil, let widgetSessionCreatorOverride {
+            if let widgetSessionCreatorOverride {
                 created = try await widgetSessionCreatorOverride(client, cwd)
             } else {
                 created = try await client.createSession(
@@ -20357,10 +20359,7 @@ final class AppState: ObservableObject {
         guard !showsPendingNewChat, !isStartingNewChat else { return }
         if canStartNewChatNow {
             isStartingNewChat = true
-            Task {
-                await createNewSession()
-                isStartingNewChat = false
-            }
+            Task { await createNewSessionMarkingStart() }
             return
         }
         guard canQueueNewChat, let dashboardID = activeDashboardID,
@@ -20942,7 +20941,14 @@ final class AppState: ObservableObject {
         context: ComposerSubmissionContext? = nil,
         onBusy: (() -> Void)? = nil
     ) async -> Bool {
-        let submissionContext = context ?? composerSubmissionContext()
+        var submissionContext = context ?? composerSubmissionContext()
+        // The canvas a closed chat leaves (archive, delete) has no chat
+        // behind it: the first message starts one, as New Chat would, and
+        // goes into it rather than nowhere.
+        if composerSubmissionStartsChat(text: text, attachments: attachments, context: submissionContext) {
+            guard let started = await startChatForComposerSubmission() else { return false }
+            submissionContext = started
+        }
         let sent = await performComposerSubmission(
             text: text,
             attachments: attachments,
@@ -20959,6 +20965,45 @@ final class AppState: ObservableObject {
             noteOpenChatSentHere()
         }
         return sent
+    }
+
+    /// Nothing is on screen to send into: no chat, nor one on its way.
+    /// A slash command runs as before; it needs no chat.
+    private func composerSubmissionStartsChat(
+        text: String,
+        attachments: [Attachment],
+        context: ComposerSubmissionContext
+    ) -> Bool {
+        guard context.sessionID == nil, composerChatOnScreen == .none,
+              isCurrentComposerSubmission(context), composerIsEnabled else { return false }
+        return !(attachments.isEmpty && Self.parseSlashCommand(text) != nil)
+    }
+
+    /// Starts the chat a message sent from the empty canvas goes into, and
+    /// the submission context for it. Nil, with the reason shown, when no
+    /// chat could start: the composer then keeps the message.
+    private func startChatForComposerSubmission() async -> ComposerSubmissionContext? {
+        guard canStartNewChatNow, !isStartingNewChat else {
+            // Said only when the connection is what's missing, over any
+            // older message: this one is why the message didn't go. A
+            // chat starting, a sync or a profile switch passes on its own.
+            if !isConnected || client == nil {
+                errorMessage = AppLocalization.string("Connect to Hermes to start a conversation.")
+            }
+            return nil
+        }
+        await createNewSessionMarkingStart()
+        // A chat that didn't start has already said why (createNewSession).
+        guard activeSessionId != nil else { return nil }
+        return composerSubmissionContext()
+    }
+
+    /// Creates a chat as New Chat does, marked as starting until it is
+    /// done, so neither New Chat nor a send starts a second one meanwhile.
+    private func createNewSessionMarkingStart() async {
+        isStartingNewChat = true
+        defer { isStartingNewChat = false }
+        await createNewSession()
     }
 
     private func performComposerSubmission(

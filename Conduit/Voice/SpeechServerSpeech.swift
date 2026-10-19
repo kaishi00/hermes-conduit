@@ -207,7 +207,8 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     // MARK: Responses
 
     private func enqueue(_ text: String) {
-        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Markdown marks are written, not said, as for on-device speech.
+        let words = PreviewText.plain(text).trimmingCharacters(in: .whitespacesAndNewlines)
         // Punctuation or emoji alone has nothing to read back or check.
         guard !Self.comparable(words).isEmpty else { return }
         queued.append(words)
