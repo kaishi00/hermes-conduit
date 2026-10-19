@@ -82,6 +82,26 @@ extension MarkdownLargeDocumentTests {
         guard case .unavailable = outcome else { return XCTFail("The web view gets its chance") }
     }
 
+    func testRemoteImage_APictureShownAgainIsNotDownloadedAgain() async {
+        let url = URL(string: "https://example.test/\(UUID().uuidString).png")!
+        let png = remoteTestPNG(width: 40, height: 20)
+        var downloads = 0
+        let download: (URL) async -> BoundedDownloadResult = { _ in
+            downloads += 1
+            return .downloaded(png, URLResponse())
+        }
+
+        guard case .image = await BoundedRemoteImage.load(url, maxPixelSize: 600, download: download),
+              case .image = await BoundedRemoteImage.load(url, maxPixelSize: 600, download: download) else {
+            return XCTFail("A picture within bounds loads")
+        }
+
+        XCTAssertEqual(downloads, 1)
+        XCTAssertNotNil(BoundedRemoteImage.cachedImage(url, maxPixelSize: 600))
+        // Another size is its own picture.
+        XCTAssertNil(BoundedRemoteImage.cachedImage(url, maxPixelSize: 360))
+    }
+
     // MARK: - MEDIA: recognition
 
     func testMediaPreview_GatewayMediaPathStillRecognizesImages() {

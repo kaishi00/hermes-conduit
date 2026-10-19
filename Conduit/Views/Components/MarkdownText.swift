@@ -2166,13 +2166,17 @@ private struct RemoteMarkdownImage: View {
         }
         .task(id: url) {
             guard isGatewayMedia else {
-                remoteOutcome = nil
                 // A URL that isn't RFC-valid goes to the web view, which
                 // escapes it.
                 guard let remoteURL = URL(string: url) else {
                     remoteOutcome = .unavailable
                     return
                 }
+                if let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) {
+                    remoteOutcome = .image(cached)
+                    return
+                }
+                remoteOutcome = nil
                 let outcome = await BoundedRemoteImage.load(remoteURL, maxPixelSize: Self.remoteMaxPixelSize)
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }

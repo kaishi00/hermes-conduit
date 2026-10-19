@@ -618,6 +618,10 @@ private struct ArtifactThumbnail: View {
         if item.path == nil, let url = item.url {
             // A web image: fetched and downsampled within bounds, like the
             // same picture in the chat.
+            if let cached = BoundedRemoteImage.cachedImage(url, maxPixelSize: 360) {
+                image = cached
+                return
+            }
             image = nil
             guard case .image(let thumbnail) = await BoundedRemoteImage.load(url, maxPixelSize: 360),
                   !Task.isCancelled else { return }

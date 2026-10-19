@@ -32,11 +32,35 @@ enum BoundedRemoteImage {
         maxPixelSize: CGFloat,
         download: (URL) async -> BoundedDownloadResult = { await MediaPreviewPresenter.boundedDownloadResult($0) }
     ) async -> Outcome {
+        if let image = cachedImage(url, maxPixelSize: maxPixelSize) { return .image(image) }
         switch await download(url) {
-        case .downloaded(let data, _): return decode(data, maxPixelSize: maxPixelSize)
+        case .downloaded(let data, _):
+            let outcome = decode(data, maxPixelSize: maxPixelSize)
+            if case .image(let image) = outcome {
+                let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4
+                cache.setObject(image, forKey: cacheKey(url, maxPixelSize), cost: cost)
+            }
+            return outcome
         case .tooLarge: return .tooLarge
         case .failed: return .unavailable
         }
+    }
+
+    /// A picture already loaded at this size: a row scrolled back into view
+    /// shows it at once instead of downloading it again.
+    static func cachedImage(_ url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        cache.object(forKey: cacheKey(url, maxPixelSize))
+    }
+
+    /// Downsampled pictures only, bounded by their decoded size.
+    private static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 64 * 1024 * 1024
+        return cache
+    }()
+
+    private static func cacheKey(_ url: URL, _ maxPixelSize: CGFloat) -> NSString {
+        NSString(string: "\(Int(maxPixelSize))\u{0}\(url.absoluteString)")
     }
 
     /// The picture downsampled to `maxPixelSize` on its longer side. The
