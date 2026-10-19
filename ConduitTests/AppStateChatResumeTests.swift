@@ -7121,6 +7121,9 @@ final class AppStateChatResumeTests: XCTestCase {
             sessionYoloStore: sessionYoloStore,
             conversationIdentityIndex: conversationIdentityIndex
         )
+        // Each backoff step at its cap, on a usable path, whatever this Mac's.
+        appState.reconnectJitter = { 1 }
+        appState.deviceConditions = { DeviceConditions() }
         return (appState, coordinator, store, recoverySequence, cacheClearSpy, defaults, suite)
     }
 

@@ -6,6 +6,7 @@
     "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media or status for the others), plus title and live, source on every type but map, place and places, and needs on steps; a card without its type's field is dropped.",
     "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
     "A place card keeps only its first place.",
+    "A place's or person's photo is kept only when its url is https.",
     "A chart keeps only the series with one value per label; a pie keeps only its first series, and no value of a pie may be negative. A chart with no series left is dropped.",
     "A weather card needs a source and at least one of now, hours or days (an empty list counts as none); a day whose low is above its high is dropped.",
     "A comparison keeps only its first recommended option.",
