@@ -1324,6 +1324,58 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertNotEqual(harness.controller.state, .listening)
     }
 
+    /// A voice mode picked during the wait (in the car, or in the phone's
+    /// settings, which leaves the interrupted conversation as it was) is
+    /// the driver's choice: the resume never starts that mode's live call.
+    func testAModeSwitchDuringTheWaitStartsNoLiveCall() async {
+        let harness = await interruptedConversation(delay: .milliseconds(80))
+        defer { harness.coordinator.handleDisconnect() }
+        Self.postInterruptionEnded(shouldResume: true)
+        harness.appState.setGPTLiveEnabled(true)
+        await Self.settle()
+        XCTAssertFalse(harness.appState.gptLiveController.isActive, "no live call the driver didn't ask for")
+        XCTAssertTrue(harness.controller.failedForAudioInterruption, "the resume left it alone")
+    }
+
+    /// Listen, New Chat or a picked chat during the wait is the driver's
+    /// start: the resume doesn't prepare a second conversation beside it.
+    func testADriversStartDuringTheWaitIsTheOnlyOne() async {
+        for start in ["listen", "newChat"] {
+            let harness = await interruptedConversation(delay: .milliseconds(80))
+            harness.appState.isConnected = false
+            var waits = 0
+            harness.coordinator.connectionWaiter = { appState in
+                waits += 1
+                try? await Task.sleep(for: .milliseconds(250))
+                appState.isConnected = true
+                return true
+            }
+            Self.postInterruptionEnded(shouldResume: true)
+            if start == "listen" { harness.coordinator.startListeningTurn() } else { harness.coordinator.startNewChat() }
+            try? await Task.sleep(for: .milliseconds(700))
+            XCTAssertEqual(waits, 1, "one prepare, the driver's (\(start))")
+            harness.coordinator.handleDisconnect()
+        }
+    }
+
+    /// Classic voice with its output muted has no spoken reply to stop:
+    /// the car keeps Mute while Hermes answers.
+    func testStopIsOfferedOnlyWhileTheReplyIsSpokenAloud() async {
+        let harness = makeHarness()
+        defer { harness.coordinator.handleDisconnect() }
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        XCTAssertTrue(harness.coordinator.controls.canStopReply)
+        harness.controller.setOutputMuted(true)
+        for _ in 0..<50 where harness.coordinator.controls.canStopReply { await Task.yield() }
+        XCTAssertFalse(harness.coordinator.controls.canStopReply)
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .responding, controls: harness.coordinator.controls), [.mute, .end])
+        harness.controller.setOutputMuted(false)
+        for _ in 0..<50 where !harness.coordinator.controls.canStopReply { await Task.yield() }
+        XCTAssertTrue(harness.coordinator.controls.canStopReply)
+    }
+
     /// A conversation in the car that an interruption ended, the car's
     /// screen up and the phone's down.
     private func interruptedConversation(delay: Duration = .milliseconds(10)) async -> Harness {
