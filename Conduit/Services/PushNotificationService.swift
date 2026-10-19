@@ -1429,11 +1429,20 @@ final class PushNotificationService: ObservableObject {
         // the next time Conduit comes to the front.
         guard registration?.deviceToken != token, let update = queueRegistrationUpdate(deviceToken: token) else { return }
         Task { [weak self] in
-            if case .failure(let error) = await update.result {
-                self?.lastError = UserFacingError.message(for: error)
+            guard let self else { return }
+            switch await update.result {
+            case .failure(let error):
+                lastError = UserFacingError.message(for: error)
+                tokenUpdateError = lastError
+            case .success:
+                // A retry that lands clears the failure it left, not another.
+                if tokenUpdateError != nil, lastError == tokenUpdateError { lastError = nil }
+                tokenUpdateError = nil
             }
         }
     }
+
+    private var tokenUpdateError: String?
 
     /// Asks iOS for this launch's push token, and again each time Conduit
     /// comes to the front. The token can change (a restore, a new phone),

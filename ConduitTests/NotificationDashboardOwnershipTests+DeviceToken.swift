@@ -45,7 +45,7 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(sent, ["abcd", "1234"])
     }
 
-    func testAPushTokenTheRelayRefusesShowsInSettingsAndGoesAgain() async throws {
+    func testAPushTokenTheRelayRefusesShowsInSettingsUntilItGoes() async throws {
         let stored: [String: Any] = [
             "credential": "credential-1",
             "installationID": "installation-1",
@@ -71,7 +71,7 @@ extension NotificationDashboardOwnershipTests {
         // Coming back to the front delivers the same token again, and it goes.
         status = 200
         service.didReceiveDeviceToken(Data([0xab, 0xcd]))
-        try await waitUntil { self.savedDeviceToken() == "abcd" }
+        try await waitUntil { self.savedDeviceToken() == "abcd" && service.lastError == nil }
         XCTAssertEqual(attempts, 2)
     }
 
