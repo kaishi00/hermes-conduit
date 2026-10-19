@@ -86,6 +86,25 @@ final class AppStateMultiDashboardTests: XCTestCase {
         SavedDashboard(id: UUID(), label: label, normalizedURL: url)
     }
 
+    // MARK: - Agent settings scope
+
+    func testAgentSettingsScopeTellsApartDashboardsWhosePathsDifferInCase() {
+        let upper = dashboard("Tenant", "https://hermes.example/Tenant")
+        let lower = dashboard("tenant", "https://hermes.example/tenant")
+        let registry = SavedDashboardRegistry(activeDashboardID: upper.id, dashboards: [upper, lower])
+        let onUpper = makeAppState(registry: registry)
+        onUpper.connection = HermesConnection(baseUrl: upper.normalizedURL, ticket: "ticket")
+        var lowerRegistry = registry
+        lowerRegistry.activeDashboardID = lower.id
+        let onLower = makeAppState(registry: lowerRegistry)
+        onLower.connection = HermesConnection(baseUrl: lower.normalizedURL, ticket: "ticket")
+
+        // Answers waiting to be sent are kept by this scope: one dashboard's
+        // must never go to (and be cleared by) the other.
+        XCTAssertNotNil(onUpper.agentSettingsScope)
+        XCTAssertNotEqual(onUpper.agentSettingsScope, onLower.agentSettingsScope)
+    }
+
     // MARK: - Adoption
 
     func testAdoptDashboardRegistersAndActivatesNewDashboard() {

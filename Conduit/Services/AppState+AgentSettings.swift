@@ -18,10 +18,11 @@ import Foundation
 
 extension AppState {
     /// Where review items and unsent answers belong: this dashboard and
-    /// profile.
+    /// profile. The dashboard by its id: two dashboards' URLs can differ
+    /// only in the case of their path.
     var agentSettingsScope: String? {
-        guard let baseUrl = connection?.baseUrl.lowercased() else { return nil }
-        return "\(baseUrl)|\(activeProfile)"
+        guard let baseUrl = connection?.baseUrl else { return nil }
+        return "\(activeDashboardID?.uuidString ?? baseUrl)|\(activeProfile)"
     }
 
     /// Syncs when the host's plugin serves it; silent otherwise.
