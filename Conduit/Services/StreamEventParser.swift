@@ -175,6 +175,17 @@ enum StreamEventParser {
             let max = payload?["context_max"]?.intValue ?? 0
             return .contextUpdate(sessionId: sessionId, percent: percent, used: used, max: max)
 
+        case "session.usage":
+            // Hermes' live usage tick, about once a second while a turn
+            // runs: the context fields sit under `usage`, and are all
+            // absent while the window is unknown. An unknown window is
+            // no reading, not an empty one.
+            guard let usage = payload?["usage"]?.objectValue,
+                  let max = usage["context_max"]?.intValue, max > 0 else { return nil }
+            let used = usage["context_used"]?.intValue ?? 0
+            let percent = usage["context_percent"]?.doubleValue ?? (Double(used) / Double(max) * 100)
+            return .contextUpdate(sessionId: sessionId, percent: percent, used: used, max: max)
+
         case "cwd.update", "workspace.update":
             let cwd = payload?["cwd"]?.stringValue ?? ""
             return .cwdUpdate(sessionId: sessionId, cwd: cwd)

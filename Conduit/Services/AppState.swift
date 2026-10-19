@@ -14974,6 +14974,12 @@ final class AppState: ObservableObject {
     }
 
     private func normalizedContextPercent(_ percent: Double, used: Int?, max: Int?) -> Double {
+        // The counts are unambiguous; a percent of 1 or less could be a
+        // fraction or a small 0-100 reading (Hermes sends 0-100, so 1% of a
+        // large window would otherwise fill the meter).
+        if let used, used > 0, let capacity = max, capacity > 0 {
+            return min(Swift.max((Double(used) / Double(capacity)) * 100, 0), 100)
+        }
         if percent > 0 {
             let normalized = (0...1).contains(percent) ? percent * 100 : percent
             return min(Swift.max(normalized, 0), 100)

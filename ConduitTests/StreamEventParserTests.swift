@@ -323,6 +323,58 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(max, 0)
     }
 
+    // MARK: - session.usage
+
+    /// Hermes pushes live usage as `session.usage` once a second during a
+    /// turn, with the context fields nested under `payload.usage`.
+    func testSessionUsageMapsNestedContextFields() {
+        let event = parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"model": "m", "input": 900, "output": 40, "context_used": 45000, "context_max": 100000, "context_percent": 45, "context_source": "provider_usage"}}}
+        """#)
+        guard case .contextUpdate(let sessionId, let percent, let used, let max) = event else {
+            return XCTFail("Expected contextUpdate, got \(String(describing: event))")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(percent, 45)
+        XCTAssertEqual(used, 45000)
+        XCTAssertEqual(max, 100000)
+    }
+
+    /// Hermes omits the context fields while the window is unknown (no
+    /// compressor yet, or nothing sent): that must not zero the meter.
+    func testSessionUsageWithoutContextFieldsIsIgnored() {
+        XCTAssertNil(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"model": "m", "input": 0, "output": 0, "calls": 0}}}
+        """#))
+        XCTAssertNil(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"context_used": 10, "context_max": 0, "context_percent": 0}}}
+        """#))
+    }
+
+    /// Hermes' `context_percent` is 0-100, so a session at 1% of a large
+    /// window must read 1%, not a full meter.
+    @MainActor
+    func testSessionUsageAtOnePercentDoesNotFillTheMeter() throws {
+        let suite = "StreamEventParserTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        let event = try XCTUnwrap(parse(#"""
+        {"type": "session.usage", "session_id": "s1", "payload": {"usage": {"context_used": 10000, "context_max": 1000000, "context_percent": 1}}}
+        """#))
+
+        state.handleStreamEvent(event)
+
+        XCTAssertEqual(state.runtime.contextUsed, 10000)
+        XCTAssertEqual(state.runtime.contextMax, 1_000_000)
+        XCTAssertEqual(state.runtime.contextPercent, 1, accuracy: 0.001)
+    }
+
     // MARK: - cwd.update
 
     func testCwdUpdate() {
