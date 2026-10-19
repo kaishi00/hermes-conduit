@@ -619,6 +619,20 @@ class UnitBatchParallelismTests(unittest.TestCase):
                 [('OnlyTests', 1.0)], 1, default_cfg()),
             (1, [['OnlyTests']]))
 
+    def test_overfull_lane_at_max_lanes_hands_light_classes_on(self):
+        # LPT at the lane maximum puts one heavy class alone in a lane and
+        # every light class in the other, past the per-job policy. The
+        # suite fits: the lightest classes move to the lane with room.
+        cfg = default_cfg(unit_max_batches_per_job=1, max_lanes=2)
+        items = [('HeavyTests', 100.0)] + [
+            ('L{0:02d}Tests'.format(i), 1.0) for i in range(13)]
+        n, lanes = planner.enforce_batches_per_job(items, 2, cfg)
+        self.assertEqual(n, 2)
+        self.assertTrue(all(len(lane) <= 7 for lane in lanes), lanes)
+        self.assertEqual(sorted(c for lane in lanes for c in lane),
+                         sorted(name for name, _s in items))
+        self.assertEqual(lanes, planner.enforce_batches_per_job(items, 2, cfg)[1])
+
     def test_policy_bounds_can_make_the_plan_fail_closed(self):
         # An inventory too large for the configured lane maximum cannot
         # satisfy the per-job policy within bounds: planning must fail
