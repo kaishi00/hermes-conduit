@@ -10659,7 +10659,7 @@ final class AppState: ObservableObject {
         }
         #endif
         guard let activeID = savedDashboardRegistry.activeDashboardID,
-              let dashboard = savedDashboardRegistry.dashboard(with: activeID) else {
+              let dashboard = dashboardForSignIn(activeID) else {
             // No saved dashboards (clean install) or none selected: present
             // the sign-in / add-dashboard flow.
             showLogin = true
@@ -11223,7 +11223,9 @@ final class AppState: ObservableObject {
                 savedCredentials: savedCredentialsForDashboard(at: anchor),
                 savedCloudflareAccess: dashboardScopedCloudflareAccess(for: anchor)
             )
-            plan.perform(appState: self)
+            // Already connected at the tested address, as that address's
+            // dashboard: nothing is left to move.
+            plan.perform(appState: self, movingSavedDashboard: false)
         case .browserSignIn(_, let baseURL, _):
             // Existing browser-auth semantics: no reusable password exists,
             // stale native credentials are cleared, the activated dashboard
@@ -11421,6 +11423,9 @@ final class AppState: ObservableObject {
         if let existing = savedDashboardRegistry.dashboardID(atNormalizedURL: normalized) {
             return existing
         }
+        // A dashboard added here is its own, even at an address another
+        // saved dashboard was moving to: that dashboard stays where it is.
+        dropPendingDashboardMoves(toNormalizedURL: normalized)
         var registry = savedDashboardRegistry
         let id = UUID()
         let label = SavedDashboardLabel.derive(from: normalized, existingLabels: registry.dashboards.map(\.label))
@@ -11455,6 +11460,13 @@ final class AppState: ObservableObject {
     /// connection to this dashboard is recognized as same-server.
     @discardableResult
     func adoptDashboard(forNormalizedURL normalized: String) -> UUID {
+        // The selected dashboard connecting at the address edited for it
+        // in Settings is that dashboard, moved, not a second one.
+        if savedDashboardRegistry.dashboardID(atNormalizedURL: normalized) == nil,
+           let activeID = savedDashboardRegistry.activeDashboardID,
+           savedDashboardRegistry.dashboard(with: activeID)?.pendingURL == normalized {
+            settlePendingDashboardMove(activeID)
+        }
         let id = registerDashboard(forNormalizedURL: normalized)
         if savedDashboardRegistry.activeDashboardID != id {
             var registry = savedDashboardRegistry
@@ -11468,6 +11480,86 @@ final class AppState: ObservableObject {
             defaults.set(id.uuidString, forKey: Self.chatResumeServerIdentityKey)
         }
         return id
+    }
+
+    /// Saves an address edited in Settings for the dashboard's next sign-in
+    /// (`SavedDashboard.pendingURL`). Its current address cancels a move
+    /// saved before.
+    func stageDashboardMove(_ id: UUID, toNormalizedURL url: String) {
+        guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].pendingURL = url == registry.dashboards[index].normalizedURL ? nil : url
+        guard registry != savedDashboardRegistry else { return }
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+    }
+
+    /// The saved dashboard as its next sign-in reaches it: an address edited
+    /// in Settings takes effect now, unless it's the dashboard in use.
+    func dashboardForSignIn(_ id: UUID) -> SavedDashboard? {
+        if id == activeDashboardID && (isConnected || isConnecting) {
+            return savedDashboardRegistry.dashboard(with: id)
+        }
+        return settlePendingDashboardMove(id)
+    }
+
+    /// Moves the dashboard to the address saved for it in Settings. What the
+    /// old address signed in with can't reconnect at the new one: its ticket
+    /// and cookie mirror go, so does a password saved for it, and a browser
+    /// grant from another origin. A same-origin Cloudflare token follows
+    /// (the plan's path-move rule). Keychain first, registry last: a move
+    /// cut short is retried. An address another dashboard took meanwhile
+    /// keeps it, and this one stays where it is.
+    @discardableResult
+    func settlePendingDashboardMove(_ id: UUID) -> SavedDashboard? {
+        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return nil }
+        guard let newURL = dashboard.pendingURL else { return dashboard }
+        if savedDashboardRegistry.dashboard(atNormalizedURL: newURL) != nil {
+            dropPendingDashboardMoves(toNormalizedURL: newURL)
+            return savedDashboardRegistry.dashboard(with: id)
+        }
+        let oldURL = dashboard.normalizedURL
+        let sameOrigin = LoginCloudflareHandoff.sameOrigin(oldURL, newURL)
+        KeychainHelper.clearSavedSession(dashboardID: id)
+        if !sameOrigin {
+            KeychainHelper.clearNativeOAuthTokens(dashboardID: id)
+        }
+        if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+           Self.normalizedDashboardURL(credentials.baseURL) != newURL {
+            KeychainHelper.clearCredentials(dashboardID: id)
+        }
+        if sameOrigin,
+           let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: oldURL), access.isConfigured {
+            KeychainHelper.saveCloudflareAccess(access, origin: newURL, dashboardID: id)
+        }
+        guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return nil }
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].normalizedURL = newURL
+        registry.dashboards[index].pendingURL = nil
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+        return registry.dashboards[index]
+    }
+
+    /// Cancels the moves saved for this address. The password saved for a
+    /// move would send that dashboard's next sign-in here: it goes too.
+    private func dropPendingDashboardMoves(toNormalizedURL url: String) {
+        var registry = savedDashboardRegistry
+        for index in registry.dashboards.indices where registry.dashboards[index].pendingURL == url {
+            let id = registry.dashboards[index].id
+            if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+               Self.normalizedDashboardURL(credentials.baseURL) == url {
+                KeychainHelper.clearCredentials(dashboardID: id)
+            }
+            registry.dashboards[index].pendingURL = nil
+        }
+        guard registry != savedDashboardRegistry else { return }
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+    }
+
+    private static func normalizedDashboardURL(_ url: String) -> String {
+        (try? ConnectionURLPolicy.normalizedBaseURL(url)) ?? url.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The origin-matched Cloudflare token for the dashboard reached at this
@@ -11536,11 +11628,12 @@ final class AppState: ObservableObject {
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
-        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        guard savedDashboardRegistry.dashboard(with: id) != nil else { return }
         if id == activeDashboardID && (isConnected || isConnecting) {
             // Already there: a same-dashboard reconnect is not a switch.
             return
         }
+        guard let dashboard = dashboardForSignIn(id) else { return }
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
