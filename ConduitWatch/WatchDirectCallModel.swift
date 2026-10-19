@@ -408,6 +408,8 @@ final class WatchDirectCallModel: ObservableObject {
     private weak var callApprovalSocket: WatchGrokBridgeSocket?
     /// The call's own requests on the card, and those the host settled.
     private var callApprovals = WatchCallApprovals()
+    /// The stream the card's request came on (WatchCallApprovals.stream).
+    private var callApprovalStream = 0
     private var newsInFlight = false
     private var nextNewsAt: TimeInterval = 0
     /// Jobs this call started through the relay, for the user's cap.
@@ -892,11 +894,12 @@ final class WatchDirectCallModel: ObservableObject {
                 }
                 // A request shown on the last stream may have been settled
                 // since (answered in the chat, timed out): the host shows
-                // the new stream whatever is still pending.
-                self?.dropCallApprovals()
+                // the new stream whatever is still pending, and the last
+                // stream's frames no longer count.
+                let approvalStream = self?.beginCallApprovals() ?? 0
                 socket.onApproval = { [weak self, weak socket] frame in
                     guard let self, let socket else { return }
-                    self.callApproval(frame, from: socket)
+                    self.callApproval(frame, from: socket, stream: approvalStream)
                 }
                 return socket
             }
@@ -2197,9 +2200,16 @@ final class WatchDirectCallModel: ObservableObject {
     /// in its chat: shown before any job's (the call waits on it), and
     /// answered on the call's stream. The host shows one at a time, its
     /// oldest, and takes it away once it's answered, withdrawn or timed out.
-    private func callApproval(_ frame: WatchAudioBridgeWire.ApprovalFrame, from socket: WatchGrokBridgeSocket) {
-        if case .show = frame { callApprovalSocket = socket }
-        if callApprovals.apply(frame, to: &approvals) {
+    private func callApproval(_ frame: WatchAudioBridgeWire.ApprovalFrame, from socket: WatchGrokBridgeSocket, stream: Int) {
+        guard stream == callApprovals.stream else {
+            WatchCallLog.shared.note("directCallApproval", ["kind": "staleStream"])
+            return
+        }
+        if case .show = frame {
+            callApprovalSocket = socket
+            callApprovalStream = stream
+        }
+        if callApprovals.apply(frame, from: stream, to: &approvals) {
             approvalsShown += 1
             WKInterfaceDevice.current().play(.notification)
         }
@@ -2217,10 +2227,11 @@ final class WatchDirectCallModel: ObservableObject {
         ])
     }
 
-    private func dropCallApprovals() {
+    private func beginCallApprovals() -> Int {
         callApprovalSocket = nil
-        callApprovals.reset(&approvals)
+        let stream = callApprovals.begin(&approvals)
         pendingApproval = approvals.first
+        return stream
     }
 
     /// The card leaves the screen at once; the host shows it again if
@@ -2234,6 +2245,7 @@ final class WatchDirectCallModel: ObservableObject {
         }
         let id = approval.requestID
         let tappedIn = callID
+        let stream = callApprovalStream
         Task { @MainActor [weak self, weak socket] in
             guard let socket else { return }
             do {
@@ -2247,7 +2259,7 @@ final class WatchDirectCallModel: ObservableObject {
                 // what is still pending), the host settled the request
                 // meanwhile, or another request took its place.
                 guard let self, self.callApprovalSocket === socket,
-                      self.callApprovals.restore(approval, to: &self.approvals) else { return }
+                      self.callApprovals.restore(approval, from: stream, to: &self.approvals) else { return }
                 self.pendingApproval = self.approvals.first
                 WKInterfaceDevice.current().play(.notification)
             }
@@ -3238,7 +3250,8 @@ final class WatchDirectCallModel: ObservableObject {
         relayJobsRunning = 0
         approvals = []
         callApprovalSocket = nil
-        callApprovals = WatchCallApprovals()
+        // A stream number of its own: a closed call's late frames never match.
+        _ = callApprovals.begin(&approvals)
         pendingApproval = nil
         newsInFlight = false
         nextNewsAt = 0
@@ -3298,7 +3311,8 @@ final class WatchDirectCallModel: ObservableObject {
         jobsMovedTo = [:]
         approvals = []
         callApprovalSocket = nil
-        callApprovals = WatchCallApprovals()
+        // A stream number of its own: a closed call's late frames never match.
+        _ = callApprovals.begin(&approvals)
         pendingApproval = nil
         stopPathMonitor()
         // A restart still waiting on its activation is over too.

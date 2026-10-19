@@ -1120,44 +1120,58 @@ extension HermesVoiceGatewayTimeoutTests {
         let job = WatchJobAnswer.Approval(grantID: "G", jobID: "watch-1", title: "Clean", requestID: "j1", command: "rm x", description: "")
         var approvals = [job]
         var calls = WatchCallApprovals()
+        var stream = calls.begin(&approvals)
 
-        XCTAssertTrue(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: true), to: &approvals))
+        XCTAssertTrue(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: true), from: stream, to: &approvals))
         XCTAssertEqual(approvals.map(\.requestID), ["a1", "j1"], "the call's request comes first")
         // The same request shown again (its choices changed) is no new tap on the wrist.
-        XCTAssertFalse(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: false), to: &approvals))
+        XCTAssertFalse(calls.apply(.show(id: "a1", command: "rm -rf build", description: "Delete it", canApproveOnce: false), from: stream, to: &approvals))
         XCTAssertEqual(approvals.first?.canApproveOnce, false)
         XCTAssertEqual(approvals.count, 2)
         // The next one takes its place.
-        XCTAssertTrue(calls.apply(.show(id: "a2", command: "ls", description: "List", canApproveOnce: true), to: &approvals))
+        XCTAssertTrue(calls.apply(.show(id: "a2", command: "ls", description: "List", canApproveOnce: true), from: stream, to: &approvals))
         XCTAssertEqual(approvals.map(\.requestID), ["a2", "j1"])
 
         // Tapped (off the screen), then the send failed: back for another try.
         let tapped = approvals.removeFirst()
-        XCTAssertTrue(calls.restore(tapped, to: &approvals))
+        XCTAssertTrue(calls.restore(tapped, from: stream, to: &approvals))
         XCTAssertEqual(approvals.map(\.requestID), ["a2", "j1"])
 
         // Settled by the host while the answer was on its way: stays away.
         let again = approvals.removeFirst()
-        calls.apply(.done(id: "a2", resolved: true), to: &approvals)
-        XCTAssertFalse(calls.restore(again, to: &approvals))
+        calls.apply(.done(id: "a2", resolved: true), from: stream, to: &approvals)
+        XCTAssertFalse(calls.restore(again, from: stream, to: &approvals))
         XCTAssertEqual(approvals.map(\.requestID), ["j1"], "a job's card is next")
         // Not taken: the host shows it again, so the screen waits for that.
-        calls.apply(.done(id: "a3", resolved: false), to: &approvals)
+        calls.apply(.done(id: "a3", resolved: false), from: stream, to: &approvals)
         XCTAssertEqual(approvals.map(\.requestID), ["j1"])
         // Withdrawn, then shown again by the host: pending again.
-        calls.apply(.gone(id: "a4"), to: &approvals)
+        calls.apply(.gone(id: "a4"), from: stream, to: &approvals)
         XCTAssertTrue(calls.settled.contains("a4"))
-        calls.apply(.show(id: "a4", command: "c", description: "d", canApproveOnce: true), to: &approvals)
+        calls.apply(.show(id: "a4", command: "c", description: "d", canApproveOnce: true), from: stream, to: &approvals)
         XCTAssertFalse(calls.settled.contains("a4"))
 
         // A newer request on screen keeps a failed send's card away; a job's card is never "restored".
-        XCTAssertFalse(calls.restore(WatchJobAnswer.Approval(grantID: "", jobID: "", title: "t", requestID: "a5", command: "c", description: ""), to: &approvals))
-        XCTAssertFalse(WatchCallApprovals().restore(job, to: &approvals))
+        XCTAssertFalse(calls.restore(WatchJobAnswer.Approval(grantID: "", jobID: "", title: "t", requestID: "a5", command: "c", description: ""), from: stream, to: &approvals))
+        var fresh = WatchCallApprovals()
+        var other: [WatchJobAnswer.Approval] = []
+        let freshStream = fresh.begin(&other)
+        XCTAssertFalse(fresh.restore(job, from: freshStream, to: &other), "a job's card isn't the call's")
 
-        // A new stream: the host shows it whatever is still pending.
-        calls.reset(&approvals)
+        // A new stream: the host shows it whatever is still pending, and
+        // the replaced stream's late frames count no more.
+        let old = stream
+        stream = calls.begin(&approvals)
         XCTAssertEqual(approvals.map(\.requestID), ["j1"])
         XCTAssertTrue(calls.settled.isEmpty)
+        XCTAssertFalse(calls.apply(.show(id: "a6", command: "c", description: "d", canApproveOnce: true), from: old, to: &approvals))
+        XCTAssertEqual(approvals.map(\.requestID), ["j1"], "the old stream's request doesn't claim the card")
+        XCTAssertTrue(calls.apply(.show(id: "a6", command: "c", description: "d", canApproveOnce: true), from: stream, to: &approvals))
+        let shown = approvals.removeFirst()
+        XCTAssertFalse(calls.restore(shown, from: old, to: &approvals), "nor does an answer sent on it")
+        XCTAssertTrue(calls.restore(shown, from: stream, to: &approvals))
+        calls.reset(&approvals)
+        XCTAssertEqual(approvals.map(\.requestID), ["j1"])
     }
 
     /// A Watch call ends on the same spoken goodbye as the phone's call:

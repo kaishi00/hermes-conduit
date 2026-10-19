@@ -345,11 +345,24 @@ struct WatchCallApprovals {
     /// Requests the host said are over (answered, withdrawn, timed out):
     /// an answer that couldn't be sent never brings one of them back.
     private(set) var settled: Set<String> = []
+    /// The call's current stream: frames a replaced stream still delivers
+    /// (it closes a moment after the next opens) are none of the card's.
+    private(set) var stream = 0
 
-    /// Applies the host's frame to `approvals`; true when it put up a
-    /// request that wasn't on screen (worth a tap on the wrist).
+    /// A new stream (the host shows it whatever is still pending): the
+    /// card starts over, and only this stream's frames count from now.
+    mutating func begin(_ approvals: inout [WatchJobAnswer.Approval]) -> Int {
+        reset(&approvals)
+        stream &+= 1
+        return stream
+    }
+
+    /// Applies the host's frame from `stream` to `approvals`; true when it
+    /// put up a request that wasn't on screen (worth a tap on the wrist).
+    /// A replaced stream's frame changes nothing.
     @discardableResult
-    mutating func apply(_ frame: WatchAudioBridgeWire.ApprovalFrame, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+    mutating func apply(_ frame: WatchAudioBridgeWire.ApprovalFrame, from stream: Int, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        guard stream == self.stream else { return false }
         switch frame {
         case .show(let id, let command, let description, let canApproveOnce):
             settled.remove(id)
@@ -372,15 +385,14 @@ struct WatchCallApprovals {
     /// The card the user answered, back after its answer couldn't be sent;
     /// false when it stays away: the host settled it meanwhile, or another
     /// request took its place.
-    func restore(_ approval: WatchJobAnswer.Approval, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
-        guard approval.isCallRequest, !settled.contains(approval.requestID),
+    func restore(_ approval: WatchJobAnswer.Approval, from stream: Int, to approvals: inout [WatchJobAnswer.Approval]) -> Bool {
+        guard stream == self.stream, approval.isCallRequest, !settled.contains(approval.requestID),
               !approvals.contains(where: \.isCallRequest) else { return false }
         approvals.insert(approval, at: 0)
         return true
     }
 
-    /// A new stream (the host shows it whatever is still pending) or the
-    /// call's end.
+    /// The call's end (and the start of each stream).
     mutating func reset(_ approvals: inout [WatchJobAnswer.Approval]) {
         settled = []
         approvals.removeAll { $0.isCallRequest }
