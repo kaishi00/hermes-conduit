@@ -170,9 +170,16 @@ final class VoiceHistoryClient {
     func save(_ save: VoiceTranscriptSaveRequest, profile: String) async throws -> VoiceTranscriptSaveResult {
         var part = save
         var result: VoiceTranscriptSaveResult?
+        // Every part goes where the first did: a row the first part makes
+        // with a chat's profile is in that profile, not the call's.
+        var target = profile
+        if save.sessionID == nil, let chatID = save.chatID, !chatID.isEmpty,
+           let chatProfile = save.chatProfile, !chatProfile.isEmpty {
+            target = chatProfile
+        }
         for turns in Self.parts(save.turns, maxTurns: Self.maxTurnsPerSave, maxBytes: Self.maxBytesPerSave) {
             part.turns = turns
-            let saved = try await saveOnce(part, profile: profile)
+            let saved = try await saveOnce(part, target: target)
             result = saved
             if let sessionID = saved.sessionID {
                 part.sessionID = sessionID
@@ -203,18 +210,16 @@ final class VoiceHistoryClient {
         return parts
     }
 
-    private func saveOnce(_ save: VoiceTranscriptSaveRequest, profile: String) async throws -> VoiceTranscriptSaveResult {
+    private func saveOnce(_ save: VoiceTranscriptSaveRequest, target: String) async throws -> VoiceTranscriptSaveResult {
         var body: [String: Any] = [
             "call_id": save.callID,
             "engine": save.engine.rawValue,
             "turns": save.turns.map(\.payload)
         ]
-        var target = profile
         if let sessionID = save.sessionID {
             body["session_id"] = sessionID
         } else if let chatID = save.chatID, !chatID.isEmpty {
             body["chat_id"] = chatID
-            if let chatProfile = save.chatProfile, !chatProfile.isEmpty { target = chatProfile }
         }
         if let title = save.title, !title.isEmpty { body["title"] = title }
         let response = try await send(Self.sessionsPath, profile: target, method: "POST", body: body)
@@ -449,14 +454,13 @@ final class VoiceTranscriptRecorder {
 
     /// `text` within what the plugin keeps, cut here so a code block the
     /// cut leaves open is closed (a screen turn can hold 20,000 characters).
+    /// Cut in code points, as the plugin counts, in one pass.
     static func clipped(_ text: String) -> String {
-        var clipped = text
-        var limit = maxTurnCharacters
-        while clipped.unicodeScalars.count > maxTurnCharacters, limit > 16 {
-            clipped = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(text, limit: limit)
-            limit -= max(1, clipped.unicodeScalars.count - maxTurnCharacters)
-        }
-        return clipped
+        guard text.unicodeScalars.count > maxTurnCharacters else { return text }
+        // Room for a closing fence, so the turn stays within the limit.
+        var cut = String.UnicodeScalarView()
+        cut.append(contentsOf: text.unicodeScalars.prefix(maxTurnCharacters - 16))
+        return VoiceBackgroundJobSupervisor.closingCutFence(String(cut))
     }
 
     /// Saves whatever the host doesn't have. Saves run one at a time, in

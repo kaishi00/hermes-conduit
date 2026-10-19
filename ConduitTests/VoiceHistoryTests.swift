@@ -129,6 +129,21 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(chat.calls.map { $0.body?["chat_id"] as? String }, ["chat-1", "chat-1"])
         XCTAssertEqual(chat.calls.map(\.path), Array(repeating: DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "coder"), count: 2))
 
+        // A plugin that makes a row for the chat's first part: the rest
+        // append to that row in the chat's profile, where it is.
+        let rowed = ScriptedVoiceHistoryRequests()
+        rowed.responses = [
+            .success(["ok": true, "session_id": "row-9", "written": 500]),
+            .success(["ok": true, "session_id": "row-9", "written": 600]),
+        ]
+        _ = try await VoiceHistoryClient(request: rowed.request).save(
+            VoiceTranscriptSaveRequest(callID: "c5", engine: .gptLive, sessionID: nil, title: nil,
+                                       turns: Array(turns.prefix(600)), chatID: "chat-1", chatProfile: "coder"),
+            profile: "default"
+        )
+        XCTAssertEqual(rowed.calls.map { $0.body?["session_id"] as? String }, [nil, "row-9"])
+        XCTAssertEqual(rowed.calls.map(\.path), Array(repeating: DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "coder"), count: 2))
+
         // Long turns: every body stays under 1 MiB.
         let long = (0..<40).map {
             VoiceTranscriptTurn(index: $0, role: .assistant, text: String(repeating: "é", count: 16_000), at: Date(timeIntervalSince1970: 10))
@@ -174,6 +189,17 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertLessThanOrEqual(text.count, 16_000)
         XCTAssertTrue(text.hasPrefix("Script\n\nHere's the script:"))
         XCTAssertTrue(text.hasSuffix("\n```"), "The cut closes the code block it left open")
+
+        // The cut counts code points, as the plugin does: 9,000 "é" written
+        // as "e" plus a combining accent are 18,000 code points.
+        let accents = String(repeating: "e\u{0301}", count: 9_000)
+        let clipped = VoiceTranscriptRecorder.clipped(accents)
+        XCTAssertLessThanOrEqual(clipped.unicodeScalars.count, VoiceTranscriptRecorder.maxTurnCharacters)
+        XCTAssertTrue(accents.hasPrefix(clipped))
+        // One character longer than the limit on its own is cut too.
+        let one = "e" + String(repeating: "\u{0301}", count: 20_000)
+        XCTAssertLessThanOrEqual(VoiceTranscriptRecorder.clipped(one).unicodeScalars.count, VoiceTranscriptRecorder.maxTurnCharacters)
+        XCTAssertEqual(VoiceTranscriptRecorder.clipped("Short"), "Short")
 
         // Spoken lines are as they were.
         recorder.note("Short line")
