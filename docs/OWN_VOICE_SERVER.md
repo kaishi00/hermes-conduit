@@ -27,7 +27,7 @@ network.
 
 | | Classic on your server | Local Live |
 |---|---|---|
-| What happens | Every time you finish speaking, Hermes answers with its full agent: model, tools and memory. | The same, but as a continuous call you can talk over. |
+| What happens | Every time you finish speaking, Hermes answers with its full agent: model, tools and memory. | The same, but as one continuous call instead of separate turns. |
 | Feels like | Talking to Hermes, turn by turn. First words take as long as a typed message would. | The same timing as Classic for now. Agent mode, below, is what makes it feel like a phone call. |
 | Server setup | Steps 1 and 2 | Steps 1 to 3 |
 
