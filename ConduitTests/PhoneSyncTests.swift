@@ -10,11 +10,36 @@
 //
 
 import CryptoKit
+import EventKit
 import XCTest
 @testable import Conduit
 
 @MainActor
 extension HermesVoiceGatewayTimeoutTests {
+    func testPhoneItemsLeaveOutALinkTooLongForTheHost() throws {
+        // phone_store MAX_URL_CHARS: a longer url refuses the whole upload.
+        let store = EKEventStore()
+        let long = try XCTUnwrap(URL(string: "https://example.com/r?u=" + String(repeating: "a", count: 1_000)))
+        let short = try XCTUnwrap(URL(string: "https://example.com/meet"))
+        let event = EKEvent(eventStore: store)
+        event.calendar = EKCalendar(for: .event, eventStore: store)
+        event.title = "Standup"
+        event.startDate = Date(timeIntervalSince1970: 1_760_400_000)
+        event.endDate = Date(timeIntervalSince1970: 1_760_401_800)
+        event.url = long
+        XCTAssertNil(try XCTUnwrap(EventKitPhoneSource.json(event, details: true, emails: false))["url"])
+        event.url = short
+        XCTAssertEqual(try XCTUnwrap(EventKitPhoneSource.json(event, details: true, emails: false))["url"] as? String, short.absoluteString)
+
+        let reminder = EKReminder(eventStore: store)
+        reminder.calendar = EKCalendar(for: .reminder, eventStore: store)
+        reminder.title = "Read the doc"
+        reminder.url = long
+        XCTAssertNil(try XCTUnwrap(EventKitPhoneSource.json(reminder, details: true))["url"])
+        reminder.url = short
+        XCTAssertEqual(try XCTUnwrap(EventKitPhoneSource.json(reminder, details: true))["url"] as? String, short.absoluteString)
+    }
+
     // The notifier's tests/phone_vector.json: both sides must agree.
     func testPhoneSealingMatchesTheNotifierVector() throws {
         let raw = try XCTUnwrap(NotificationE2E.base64URLDecoded("ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"))

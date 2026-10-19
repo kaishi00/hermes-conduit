@@ -200,7 +200,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         if !alarms.isEmpty { value["alarms_min"] = Array(alarms.prefix(5)) }
         if details {
             if let notes = event.notes, !notes.isEmpty { value["notes"] = String(notes.prefix(PhoneSyncLimits.notesChars)) }
-            if let url = event.url { value["url"] = url.absoluteString }
+            if let url = Self.sharedURL(event.url) { value["url"] = url }
             let attendees = (event.attendees ?? []).prefix(30).map { person -> [String: Any] in
                 var entry: [String: Any] = [
                     "name": String((person.name ?? "").prefix(100)),
@@ -215,6 +215,14 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             if !attendees.isEmpty { value["attendees"] = attendees }
         }
         return value
+    }
+
+    /// An item's link, left out when it's longer than the host takes: one
+    /// over phone_store's MAX_URL_CHARS refuses the whole upload, and a cut
+    /// link wouldn't open.
+    static func sharedURL(_ url: URL?) -> String? {
+        guard let text = url?.absoluteString, text.unicodeScalars.count <= PhoneSyncLimits.urlChars else { return nil }
+        return text
     }
 
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]] {
@@ -269,7 +277,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         }
         if details {
             if let notes = reminder.notes, !notes.isEmpty { value["notes"] = String(notes.prefix(PhoneSyncLimits.notesChars)) }
-            if let url = reminder.url { value["url"] = url.absoluteString }
+            if let url = Self.sharedURL(reminder.url) { value["url"] = url }
         }
         return value
     }

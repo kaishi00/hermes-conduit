@@ -108,6 +108,21 @@ extension NotificationE2ETests {
 
     // MARK: Precision
 
+    func testAreaNamesFitWhatTheHostTakes() {
+        // location_store MAX_AREA_CHARS: a longer field refuses the whole batch.
+        let long = String(repeating: "Ä", count: 120)
+        let area = LocationArea(name: long, locality: "London", region: long + "🇬🇧", country: "United Kingdom", countryCode: "GB")
+        let json = area.json
+        for key in ["name", "region"] {
+            let value = json[key] as? String ?? ""
+            XCTAssertEqual(value.unicodeScalars.count, 80, key)
+            XCTAssertTrue(long.hasPrefix(value), key)
+        }
+        XCTAssertEqual(json["locality"] as? String, "London")
+        XCTAssertEqual(json["country"] as? String, "United Kingdom")
+        XCTAssertEqual(json["country_code"] as? String, "GB")
+    }
+
     func testPlacesPrecisionNamesThePlaceAndNothingElse() {
         let json = LocationFixtures.json(LocationFixtures.fix(latitude: 51.5322, longitude: -0.0754), .places)
         XCTAssertEqual(json["place_id"] as? String, "p_home")
