@@ -28,7 +28,7 @@ network.
 | | Classic on your server | Local Live |
 |---|---|---|
 | What happens | Every time you finish speaking, Hermes answers with its full agent: model, tools and memory. | The same, but as one continuous call instead of separate turns. |
-| Feels like | Talking to Hermes, turn by turn. First words take as long as a typed message would. | The same timing as Classic for now. Agent mode, below, is what makes it feel like a phone call. |
+| Feels like | Talking to Hermes, turn by turn. First words take as long as a typed message would. | The same timing as Classic. |
 | Server setup | Steps 1 and 2 | Steps 1 to 3 |
 
 ## Step 1: tell Hermes where the server is
@@ -52,7 +52,7 @@ voice:
   speech_server:
     url: ws://192.168.1.20:8765/v1/realtime
     # api_key: ...       optional, written only when you set a key
-    # api_key_file: ...  optional: read the key from a file (plugin 0.47.1+)
+    # api_key_file: ...  optional, added by hand: read the key from a file (plugin 0.47.1+)
 ```
 
 With only this step, Classic voice listens through your server.
@@ -113,7 +113,7 @@ working as it does today.
   setup block again.
 - **Local Live unavailable**: the plugin is older than 0.42 (0.48 on the
   Apple Watch), or Hermes lacks
-  the dashboard token-route support the key needs. Update Hermes and the
+  the dashboard token-route support the model address's key needs. Update Hermes and the
   plugin.
 - **The reply hears itself on the speaker**: use headphones for now. Echo
   cancellation and talking over the reply on the speaker are being worked on
