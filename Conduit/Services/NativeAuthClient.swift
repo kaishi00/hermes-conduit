@@ -614,7 +614,7 @@ enum NativeAuthCookiePolicy {
         return cookies.filter { cookie in
             if let expires = cookie.expiresDate, expires <= now { return false }
             if cookie.isSecure && !isSecureRequest { return false }
-            guard canonicalDomain(cookie.domain) == host else { return false }
+            guard domainMatches(cookie.domain, host: host) else { return false }
 
             let cookiePath = cookie.path.isEmpty ? "/" : cookie.path
             guard requestPath.hasPrefix(cookiePath) else { return false }
@@ -626,6 +626,20 @@ enum NativeAuthCookiePolicy {
         }.sorted { lhs, rhs in
             lhs.path.count > rhs.path.count
         }
+    }
+
+    /// RFC 6265 5.1.3, as the dashboard's page would send it: a host-only
+    /// cookie for exactly its host, a Domain cookie (leading dot) for that
+    /// domain and its subdomains. An auth proxy in front of the dashboard
+    /// (oauth2-proxy with `cookie_domain`) sets its session for the parent
+    /// domain; requests made without the page (CarPlay with the phone
+    /// locked) must carry it too, or the proxy sends them to sign-in.
+    /// The cookies come from this dashboard's own stores only.
+    private static func domainMatches(_ cookieDomain: String, host: String) -> Bool {
+        let domain = cookieDomain.lowercased()
+        guard domain.hasPrefix(".") else { return domain == host }
+        let bare = String(domain.dropFirst())
+        return !bare.isEmpty && (host == bare || host.hasSuffix(domain))
     }
 
     private static func canonicalDomain(_ domain: String) -> String {
