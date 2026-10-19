@@ -106,6 +106,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     /// The host's refusal, as the session reads a server's close.
     private var refusal: GeminiLiveServerClose?
     private var pingTimer: Timer?
+    private var pings = WatchPingWatchdog()
     private var startTimer: Timer?
     private let bridge: WatchGrokBridge
 
@@ -310,7 +311,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             startTimer = nil
             pingTimer?.invalidate()
             pingTimer = WatchVoiceMain.timer(every: Self.pingInterval, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.socket?.ping { _ in } }
+                MainActor.assumeIsolated { self?.pingIfDue() }
             }
             let waiters = startWaiters
             startWaiters = []
@@ -330,6 +331,22 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             }
             fail(Failure.closed)
         }
+    }
+
+    /// A ping unanswered or failed twice in a row: the socket died without
+    /// closing, and the session rejoins as for any closed socket.
+    private func pingIfDue() {
+        guard let socket, failure == nil else { return }
+        guard !pings.pingDue() else { return silent() }
+        socket.ping { [weak self] ok in
+            guard let self, self.failure == nil else { return }
+            if self.pings.answered(ok: ok) { self.silent() }
+        }
+    }
+
+    private func silent() {
+        onNote?("bridgeSocketSilent", ["misses": pings.misses])
+        fail(Failure.closed)
     }
 
     private func deliver(_ data: Data) {
