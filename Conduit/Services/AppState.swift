@@ -20396,6 +20396,9 @@ final class AppState: ObservableObject {
             }
 
             activeSessionTitle = title
+            // The branch is another conversation: the parent's agents stay
+            // with the parent.
+            keepDelegateAgents(of: knownSessionIDs(for: branched.sessionId))
             let token = beginReconciliation()
             let reconciled = await reconcile(
                 sessionId: branched.sessionId,

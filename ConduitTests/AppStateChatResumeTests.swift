@@ -4429,6 +4429,10 @@ final class AppStateChatResumeTests: XCTestCase {
                 openSession: { _, sessionID, _ in
                     SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
                 },
+                branchSession: { _, _, _, _, _ in
+                    (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
+                },
+                setSessionTitle: { _, _, _ in },
                 refreshContext: { _, _ in }
             )
         )
@@ -4452,6 +4456,15 @@ final class AppStateChatResumeTests: XCTestCase {
         _ = await harness.appState.openSession(second.id)
         XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-b"], "opening the same conversation again keeps its agents")
 
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+        ]
+        await harness.appState.branchFromAssistantMessage("assistant")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "a branch is its own conversation: the parent's agents stay with the parent")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: "branch-runtime", activity: delegateAgent("agent-c")))
         harness.appState.setActiveProfileForTesting("work")
         XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "another profile never sees them")
         XCTAssertEqual(harness.appState.activeAgents, 0)
