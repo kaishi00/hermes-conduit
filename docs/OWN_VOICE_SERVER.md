@@ -73,7 +73,7 @@ speech-to-speech serve --llm_backend chat-completions \
   --num_pipelines 2
 ```
 
-`serve` listens on `127.0.0.1` only. When it runs on another machine than
+`serve` listens on `127.0.0.1` only. When it runs on a different machine from
 Hermes, add `--host 0.0.0.0` (or that machine's LAN address) and keep the
 port closed to anything outside your network.
 
