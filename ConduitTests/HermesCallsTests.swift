@@ -1063,6 +1063,41 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(waitingOutcomes(defaults), [])
     }
 
+    /// A delivery asked for another server while one runs (the user
+    /// switched dashboards mid-upload) still goes, even when the running
+    /// one stops early because its server is no longer the active one.
+    func testADeliveryAskedForAnotherServerMeanwhileStillGoes() async throws {
+        final class Hold {
+            var release: CheckedContinuation<Void, Never>?
+            var sent: [String] = []
+        }
+        let defaults = try outcomeDefaults()
+        let home = UUID(), other = UUID()
+        try recordOutcome(.missed, outcomeTarget(id: "call-home", dashboard: home), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-other", dashboard: other), in: defaults)
+        let hold = Hold()
+        let parked = AwaitableCounter()
+        let first = Task { @MainActor in
+            await HermesCallOutcomeOutbox.deliver(dashboard: home.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { _, _ in
+                await withCheckedContinuation { continuation in
+                    hold.release = continuation
+                    parked.increment()
+                }
+                // Another server since.
+                throw DashboardTicketBridgeError.notReady
+            }
+        }
+        await parked.waitUntil(1)
+        await HermesCallOutcomeOutbox.deliver(dashboard: other.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { entry, _ in
+            hold.sent.append(entry.callID)
+        }
+        hold.release?.resume()
+        await first.value
+
+        XCTAssertEqual(hold.sent, ["call-other"], "The other server's call goes once the running delivery stops")
+        XCTAssertEqual(waitingOutcomes(defaults), ["call-home"], "The first server's call waits for it")
+    }
+
     func testOnlyACallTheUserDidntPickUpIsReported() {
         XCTAssertEqual(HermesCallOutcome.of(.declined, answered: false), .declined)
         XCTAssertNil(HermesCallOutcome.of(.declined, answered: true), "Hung up after answering")
