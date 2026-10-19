@@ -911,19 +911,30 @@ struct LargeCodeBlockView: View {
     @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
     @State private var copied = false
-    @State private var slices: [String]?
-    /// (hasMoreLines, lineCount) computed once off-main; whole-block scans
-    /// must not run per body evaluation.
-    @State private var lineStats: (hasMore: Bool, count: Int)?
+    @State private var slices: LargeCodeBlockResult<[String]>?
+    /// (hasMoreLines, lineCount) computed once per source off-main; whole-block
+    /// scans must not run per body evaluation.
+    @State private var lineStats: LargeCodeBlockResult<(hasMore: Bool, count: Int)>?
+
+    /// `expanded` starts the block open, as if Show all had been tapped.
+    init(source: String, language: String, usesAccentSurface: Bool, expanded: Bool = false) {
+        self.source = source
+        self.language = language
+        self.usesAccentSurface = usesAccentSurface
+        _expanded = State(initialValue: expanded)
+    }
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
 
     var body: some View {
+        let sourceIdentity = LargeCodeBlockResult<Void>.sourceIdentity(of: source)
         VStack(alignment: .leading, spacing: 0) {
             header
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    if let slices {
+                    // While a changed source is re-sliced the previous slices
+                    // stay up rather than collapsing to the preview.
+                    if let slices = slices?.value {
                         ForEach(0..<slices.count, id: \.self) { index in
                             LargeCodeSliceView(
                                 source: slices[index],
@@ -945,12 +956,12 @@ struct LargeCodeBlockView: View {
                             language: normalizedLanguage,
                             usesAccentSurface: usesAccentSurface
                         )
-                        if lineStats?.hasMore == true {
+                        if lineStats?.value.hasMore == true {
                             Button {
                                 disclosure?.willToggle(nil, to: true)
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
                             } label: {
-                                Label("Show all \(lineStats?.count ?? 0) lines", systemImage: "chevron.down")
+                                Label("Show all \(lineStats?.value.count ?? 0) lines", systemImage: "chevron.down")
                                     .font(.caption.weight(.semibold))
                             }
                             .tint(usesAccentSurface ? .white : .conduitAccent)
@@ -972,10 +983,12 @@ struct LargeCodeBlockView: View {
                     lineWidth: 1
                 )
         }
-        .task(id: "stats-\(source.utf8.count)") {
-            // One-time whole-block scans, off the MainActor and cancellation
-            // cooperative with this view's lifecycle.
-            guard lineStats == nil else { return }
+        .task(id: "stats-\(sourceIdentity)") {
+            // One whole-block scan per source, off the MainActor and
+            // cancellation cooperative with this view's lifecycle. A block in
+            // the streaming tail keeps this view while its source grows, so a
+            // result is only reused for the source it was computed from.
+            guard lineStats?.needsRecompute(for: sourceIdentity) ?? true else { return }
             let currentSource = source
             let stats = await MarkdownCodeSlicer.lineStats(
                 source: currentSource,
@@ -983,10 +996,10 @@ struct LargeCodeBlockView: View {
                 previewByteBudget: MarkdownLargeDocumentPolicy.codePreviewBytes
             )
             guard !Task.isCancelled else { return }
-            lineStats = stats
+            lineStats = LargeCodeBlockResult(sourceIdentity: sourceIdentity, value: stats)
         }
-        .task(id: expanded ? "full-\(source.utf8.count)" : "preview") {
-            guard expanded, slices == nil else { return }
+        .task(id: expanded ? "full-\(sourceIdentity)" : "preview") {
+            guard expanded, slices?.needsRecompute(for: sourceIdentity) ?? true else { return }
             let currentSource = source
             let maxLines = MarkdownLargeDocumentPolicy.codeSliceLineCount
             let maxBytes = MarkdownLargeDocumentPolicy.codeSliceBytes
@@ -996,7 +1009,7 @@ struct LargeCodeBlockView: View {
                 maxBytes: maxBytes
             )
             guard !Task.isCancelled, expanded, let result else { return }
-            slices = result
+            slices = LargeCodeBlockResult(sourceIdentity: sourceIdentity, value: result)
         }
     }
 
@@ -1024,6 +1037,23 @@ struct LargeCodeBlockView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055))
+    }
+}
+
+/// A whole-block result of `LargeCodeBlockView` (line statistics, expanded
+/// slices) kept with the source it was computed from, so a changed source —
+/// a block still streaming in, or an edit of the same length — is computed
+/// again instead of keeping the first result.
+struct LargeCodeBlockResult<Value> {
+    let sourceIdentity: String
+    let value: Value
+
+    static func sourceIdentity(of source: String) -> String {
+        "\(source.utf8.count)-\(source.hashValue)"
+    }
+
+    func needsRecompute(for sourceIdentity: String) -> Bool {
+        self.sourceIdentity != sourceIdentity
     }
 }
 

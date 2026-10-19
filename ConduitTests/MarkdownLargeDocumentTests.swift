@@ -876,6 +876,84 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         XCTAssertTrue(final.contains("newmarker"), "new source must render; rendered: \(final)")
         XCTAssertFalse(final.contains("OLDOLDOLDOLDOLDOLDOLD"), "stale preparation from the old source must not appear; rendered: \(final)")
     }
+
+    /// A large code block in the streaming tail keeps its view while its
+    /// source grows (blocks render by index), so an expanded block must
+    /// re-slice for the new source instead of keeping the first slices.
+    @MainActor
+    func testExpandedLargeCodeBlockFollowsSourceChanges() throws {
+        var first = ""
+        var row = 0
+        while first.utf8.count < MarkdownLargeDocumentPolicy.codeBlockThresholdBytes + 2_000 {
+            first += "let row\(row) = compute(\"token\", \(row)) // filler comment\n"
+            row += 1
+        }
+        first += "let firstend = 0"
+        let grown = first + "\nlet tailmarker = 1"
+
+        let state = LargeCodeBlockHostState(source: first)
+        let host = UIHostingController(rootView: LargeCodeBlockHostView(state: state))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+
+        func rendered() -> String {
+            host.view.recursiveSubviewsForTests
+                .compactMap { ($0 as? UITextView)?.attributedText?.string }
+                .joined(separator: "\n")
+        }
+        func pump(until marker: String) {
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline, !rendered().contains(marker) {
+                pumpForSwiftUICommit(host: host)
+            }
+        }
+
+        pump(until: "firstend")
+        XCTAssertTrue(rendered().contains("firstend"), "the expanded block renders its whole first source")
+
+        state.source = grown
+        pump(until: "tailmarker")
+        XCTAssertTrue(rendered().contains("tailmarker"), "the expanded block renders the lines added to its source")
+    }
+
+    func testLargeCodeBlockResultsBelongToTheirSource() {
+        let source = String(repeating: "let value = 1\n", count: 3_000)
+        let grown = source + "let more = 2\n"
+        let sameLength = String(source.dropLast(2)) + "2\n"
+        let identity = LargeCodeBlockResult<Int>.sourceIdentity(of: source)
+        let stats = LargeCodeBlockResult(sourceIdentity: identity, value: 3_001)
+
+        XCTAssertFalse(stats.needsRecompute(for: LargeCodeBlockResult<Int>.sourceIdentity(of: String(source))))
+        XCTAssertTrue(
+            stats.needsRecompute(for: LargeCodeBlockResult<Int>.sourceIdentity(of: grown)),
+            "a result for the source must not be reused once lines are added"
+        )
+        XCTAssertEqual(sameLength.utf8.count, source.utf8.count)
+        XCTAssertTrue(
+            stats.needsRecompute(for: LargeCodeBlockResult<Int>.sourceIdentity(of: sameLength)),
+            "an equal-length edit is a different source"
+        )
+    }
+}
+
+@MainActor
+private final class LargeCodeBlockHostState: ObservableObject {
+    @Published var source: String
+    init(source: String) { self.source = source }
+}
+
+private struct LargeCodeBlockHostView: View {
+    @ObservedObject var state: LargeCodeBlockHostState
+
+    var body: some View {
+        LargeCodeBlockView(source: state.source, language: "swift", usesAccentSurface: false, expanded: true)
+    }
 }
 
 @MainActor
