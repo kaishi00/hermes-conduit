@@ -1421,7 +1421,20 @@ final class PushNotificationService: ObservableObject {
         deviceToken = token
         tokenContinuation?.resume(returning: token)
         tokenContinuation = nil
-        queueRegistrationUpdate(force: true)
+        // Every launch asks for the token; only a new one goes to the relay,
+        // which shares one budget for device changes across all phones.
+        // Registrations saved before the token was recorded send it once.
+        if registration?.deviceToken != token {
+            queueRegistrationUpdate(deviceToken: token)
+        }
+    }
+
+    /// Asks iOS for this launch's push token. The token can change (a
+    /// restore, a new phone), and a relay still sending to the old one gets
+    /// 200 from Apple while nothing reaches this phone (notifier #119).
+    func refreshDeviceTokenAtLaunch() {
+        guard registration != nil else { return }
+        UIApplication.shared.registerForRemoteNotifications()
     }
 
     func didFailToRegister(_ error: Error) {
@@ -2008,7 +2021,7 @@ final class PushNotificationService: ObservableObject {
         }
         try validate(response: response, data: data)
         let responseBody = try JSONDecoder().decode(RegistrationResponse.self, from: data)
-        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString)
+        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString, deviceToken: deviceToken)
         // Only a relay that rings (0.9+) keeps it; an older one is asked
         // again at the next update.
         registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
@@ -2047,6 +2060,7 @@ final class PushNotificationService: ObservableObject {
         }
         try validate(response: response, data: data)
         self.registration?.preferences = sentPreferences
+        if let token = body.deviceToken { self.registration?.deviceToken = token }
         let installation = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation
         // Another update sent a newer token meanwhile, and this one may
         // have landed after it: the newer token goes again, last.
@@ -2152,6 +2166,9 @@ private struct StoredRegistration: Codable {
     /// The relay that issued `credential`. Optional so registrations saved
     /// before it was recorded still decode.
     var relayURL: String?
+    /// The APNs token the relay last accepted. Nil for registrations saved
+    /// before it was recorded.
+    var deviceToken: String? = nil
     /// The PushKit token the relay rings (#449); nil when it has none.
     var voipToken: String? = nil
     /// The Apple Watch's PushKit token the relay rings too.
