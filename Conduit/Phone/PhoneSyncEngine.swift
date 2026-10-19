@@ -565,11 +565,18 @@ final class PhoneSyncEngine: ObservableObject {
             lastPosted: state.lastIngest, hostReportsPending: hostPending != nil, keepalive: keepalive, now: currentNow)
         var pending = hostPending ?? 0
         if send {
-            let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-            batch["batch_id"] = batchID
-            let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
-            let answer = try await request("\(Self.base)/ingest", "POST", body)
-            pending = (answer["pending"] as? NSNumber)?.intValue ?? 0
+            // A large upload goes in parts the host takes. Nothing below
+            // counts as sent until it took the last one, so a refused part
+            // sends the whole pass again (a full one starting over).
+            let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
+                                                     maxBytes: PhoneSyncLimits.batchBytes)
+            for var part in parts {
+                let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+                part["batch_id"] = batchID
+                let body = try await Self.sealBatch(part, key: key, deviceID: state.deviceID, batchID: batchID)
+                let answer = try await request("\(Self.base)/ingest", "POST", body)
+                pending = (answer["pending"] as? NSNumber)?.intValue ?? 0
+            }
             state.frameHash = frame
             state.lastIngest = currentNow
         }
@@ -660,6 +667,76 @@ final class PhoneSyncEngine: ObservableObject {
         guard !full, !truncated else { return Section(upsert: upsert, delete: [], hashes: hashes) }
         let delete = sent.keys.filter { hashes[$0] == nil }.sorted()
         return Section(upsert: upsert, delete: delete, hashes: hashes)
+    }
+
+    /// An upload as parts the host takes, each with at most `maxItems` items
+    /// (what phone_store counts against MAX_ITEMS: calendars, upserts,
+    /// deletions, alarms and people) and about `maxBytes` of JSON. The first
+    /// part is the upload with as many event and reminder upserts as fit: it
+    /// carries every other section, each section's `full` and every deletion.
+    /// The others only add upserts (never `full`) under the same `sent_at`,
+    /// which the host applies after the first. An upload that fits is one part.
+    nonisolated static func parts(of batch: [String: Any], maxItems: Int, maxBytes: Int) -> [[String: Any]] {
+        func size(_ value: Any) -> Int {
+            (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]))?.count ?? 0
+        }
+        func count(_ value: Any?) -> Int { (value as? [Any])?.count ?? 0 }
+        var head = batch
+        var upserts: [(section: String, item: [String: Any])] = []
+        var later = batch.filter { frameKeys.contains($0.key) }
+        for section in ["events", "reminders"] {
+            guard var body = batch[section] as? [String: Any] else { continue }
+            upserts += (body["upsert"] as? [[String: Any]] ?? []).map { (section, $0) }
+            body["upsert"] = [[String: Any]]()
+            head[section] = body
+            var more: [String: Any] = ["full": false, "upsert": [[String: Any]](), "delete": [String]()]
+            more["from"] = body["from"]
+            more["to"] = body["to"]
+            later[section] = more
+        }
+        let events = head["events"] as? [String: Any]
+        let reminders = head["reminders"] as? [String: Any]
+        var items = count(head["calendars"]) + count(events?["delete"]) + count(reminders?["delete"])
+            + count(head["alarms"]) + count(head["contacts"])
+        var bytes = size(head)
+        var base = head
+        var taken: [String: [[String: Any]]] = [:]
+        var parts: [[String: Any]] = []
+        func close() {
+            var part = base
+            for (section, list) in taken {
+                var body = part[section] as? [String: Any] ?? [:]
+                body["upsert"] = list
+                part[section] = body
+            }
+            // A later part has only the sections it adds to.
+            if !parts.isEmpty {
+                part = part.filter { frameKeys.contains($0.key) || taken[$0.key] != nil }
+            }
+            parts.append(part)
+        }
+        for (section, item) in upserts {
+            let itemBytes = size(item) + 1
+            // A later part takes at least one item, however large.
+            let startedEmpty = !parts.isEmpty && taken.isEmpty
+            if !startedEmpty, items + 1 > maxItems || bytes + itemBytes > maxBytes {
+                close()
+                base = later
+                taken = [:]
+                items = 0
+                bytes = size(later)
+            }
+            taken[section, default: []].append(item)
+            items += 1
+            bytes += itemBytes
+        }
+        close()
+        return parts
+    }
+
+    nonisolated private static func partsInBackground(_ batch: [String: Any], maxItems: Int,
+                                                      maxBytes: Int) async -> [[String: Any]] {
+        parts(of: batch, maxItems: maxItems, maxBytes: maxBytes)
     }
 
     /// A full upload can be thousands of items, so it's serialized and

@@ -448,4 +448,11 @@ enum PhoneSyncLimits {
     /// Status goes again after this long even when nothing changed, so its
     /// age on the host stays honest.
     static let statusRefresh: TimeInterval = 15 * 60
+    /// The most one upload carries (the notifier's phone_store MAX_ITEMS);
+    /// a larger one goes in parts.
+    static let batchItems = 5_000
+    /// The JSON one upload carries. Sealed, it grows by a third as base64,
+    /// and the notifier refuses bodies over 4 MiB
+    /// (plugin_api PHONE_MAX_INGEST_BODY_BYTES).
+    static let batchBytes = 3_000_000
 }

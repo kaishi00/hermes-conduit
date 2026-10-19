@@ -92,6 +92,70 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((host.batches.last?["events"] as? [String: Any])?["full"] as? Bool, true)
     }
 
+    func testALargePhoneSnapshotGoesInPartsTheHostTakes() async throws {
+        // The fake host refuses what the notifier does: bodies over 4 MiB and
+        // batches over 5,000 items.
+        let notes = String(repeating: "n", count: 2_000)
+        let source = FakePhoneCalendarSource()
+        source.events = (0..<4_000).map { index in
+            var event = phoneEvent("e_\(index)", "Meeting \(index)")
+            if index < 2_000 { event["notes"] = notes }
+            return event
+        }
+        source.reminderItems = (0..<1_000).map { ["id": "r_\($0)", "calendar_id": "c_1", "title": "Task \($0)", "completed": false] }
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+
+        let synced = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(synced, .synced)
+        let parts = host.batches
+        XCTAssertGreaterThan(parts.count, 1)
+        for part in parts {
+            XCTAssertEqual(part["sent_at"] as? String, parts.first?["sent_at"] as? String, "One pass: the host takes every part")
+            XCTAssertNotNil(part["sharing"])
+        }
+        // Only the first part replaces what the host has; the rest add to it.
+        XCTAssertEqual((parts.first?["events"] as? [String: Any])?["full"] as? Bool, true)
+        XCTAssertEqual((parts.first?["reminders"] as? [String: Any])?["full"] as? Bool, true)
+        XCTAssertNotNil(parts.first?["calendars"])
+        XCTAssertNotNil(parts.first?["status"])
+        for part in parts.dropFirst() {
+            XCTAssertNotEqual((part["events"] as? [String: Any])?["full"] as? Bool, true)
+            XCTAssertNotEqual((part["reminders"] as? [String: Any])?["full"] as? Bool, true)
+            XCTAssertNil(part["calendars"])
+            XCTAssertNil(part["status"])
+        }
+        func ids(_ section: String) -> [String] {
+            parts.flatMap { ($0[section] as? [String: Any])?["upsert"] as? [[String: Any]] ?? [] }.compactMap { $0["id"] as? String }
+        }
+        XCTAssertEqual(ids("events"), source.events.compactMap { $0["id"] as? String })
+        XCTAssertEqual(ids("reminders"), source.reminderItems.compactMap { $0["id"] as? String })
+
+        // A small change still goes as one upload.
+        source.events[0]["title"] = "Moved"
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, parts.count + 1)
+        XCTAssertEqual(((host.batches.last?["events"] as? [String: Any])?["upsert"] as? [[String: Any]])?.count, 1)
+
+        // A part the host doesn't take: nothing counts as sent, so the next
+        // pass starts over whole.
+        let other = makePhoneEngine(source: source)
+        other.savePreferences(phonePreferences())
+        host.forgetKey()
+        host.failIngest = 2
+        let failed = await other.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNotEqual(failed, .synced)
+        XCTAssertTrue(other.state.eventHashes.isEmpty, "Nothing is recorded as sent before the last part")
+        XCTAssertNil(other.state.lastFullSync)
+        host.failIngest = nil
+        let retried = host.batches.count
+        let again = await other.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(again, .synced)
+        XCTAssertEqual((host.batches[retried]["events"] as? [String: Any])?["full"] as? Bool, true)
+        XCTAssertEqual(other.state.eventHashes.count, 4_000)
+    }
+
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {
         let source = FakePhoneCalendarSource()
         source.events = [phoneEvent("e_1", "Dentist")]
@@ -757,9 +821,24 @@ private final class FakePhoneHost {
     var changes: [[String: Any]] = []
     var ignoreResults = false
     var reportsPending = true
+    /// The serialized size of each upload's body.
+    private(set) var ingestBodyBytes: [Int] = []
+    /// Answers this upload (1-based, counted from when it's set) with a 503.
+    var failIngest: Int? { didSet { ingestsSinceFail = 0 } }
+    private var ingestsSinceFail = 0
 
     func forgetKey() {
         keys = nil
+    }
+
+    /// What phone_store counts against MAX_ITEMS.
+    static func items(in batch: [String: Any]) -> Int {
+        let events = batch["events"] as? [String: Any] ?? [:]
+        let reminders = batch["reminders"] as? [String: Any] ?? [:]
+        return (batch["calendars"] as? [Any] ?? []).count + (events["upsert"] as? [Any] ?? []).count
+            + (events["delete"] as? [Any] ?? []).count + (reminders["upsert"] as? [Any] ?? []).count
+            + (reminders["delete"] as? [Any] ?? []).count + (batch["alarms"] as? [Any] ?? []).count
+            + (batch["contacts"] as? [Any] ?? []).count
     }
 
     func handle(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
@@ -805,9 +884,24 @@ private final class FakePhoneHost {
         let sealed = try XCTUnwrap(NotificationE2E.base64URLDecoded(try XCTUnwrap(body["ct"] as? String)))
         let box = try ChaChaPoly.SealedBox(combined: nonce + sealed)
         if path == "\(base)/ingest" {
+            ingestsSinceFail += 1
+            if let failIngest, ingestsSinceFail == failIngest {
+                throw DashboardTicketBridgeError.http(status: 503, detail: "busy")
+            }
+            let size = try JSONSerialization.data(withJSONObject: body).count
+            ingestBodyBytes.append(size)
+            // plugin_api PHONE_MAX_INGEST_BODY_BYTES
+            if size > 4 * 1024 * 1024 {
+                throw DashboardTicketBridgeError.http(status: 413, detail: "Request body is too large")
+            }
             let aad = PhoneSyncCrypto.ingestAAD(kid: keys.kid, deviceID: deviceID, batchID: try XCTUnwrap(body["batch_id"] as? String))
             let plaintext = try ChaChaPoly.open(box, using: SymmetricKey(data: keys.ingest), authenticating: aad)
-            batches.append(try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any]))
+            let batch = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+            // phone_store MAX_ITEMS
+            if Self.items(in: batch) > 5_000 {
+                throw DashboardTicketBridgeError.http(status: 413, detail: "At most 5000 items per batch")
+            }
+            batches.append(batch)
             return ["ok": true, "pending": changes.count]
         }
         if path == "\(base)/exchange" {
