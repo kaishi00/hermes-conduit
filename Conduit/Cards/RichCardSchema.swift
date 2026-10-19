@@ -23,7 +23,8 @@
 //  - then the schema's rules: a card keeps only its type's fields and needs
 //    its type's own; a route only on a map whose places all survived,
 //    naming places in the list, from one to another; a place card keeps
-//    its first place; a chart keeps the series that fit its labels (one,
+//    its first place; a place's or person's photo needs an https url; a
+//    chart keeps the series that fit its labels (one,
 //    never negative, for a pie); a forecast needs a source and something
 //    to show, and drops a day whose low is above its high; a comparison
 //    recommends one option at most; media needs a source and https links,
@@ -271,6 +272,8 @@ struct RichCardSchema {
                 var person = person
                 if let phone = person["phone"] as? String, !isPhone(phone) { person["phone"] = nil }
                 if let email = person["email"] as? String, !isEmail(email) { person["email"] = nil }
+                // The phone loads photos over https only.
+                if let photo = person["photo"] as? [String: Any], !isHTTPS(photo["url"]) { person["photo"] = nil }
                 return person
             }
         default:
@@ -284,7 +287,12 @@ struct RichCardSchema {
         var places = card["places"] as? [Any] ?? []
         if type == "place" {
             places = Array(places.prefix(1))
-            card["places"] = places
+        }
+        // The phone loads photos over https only.
+        card["places"] = places.map { place -> Any in
+            guard var place = place as? [String: Any], let photo = place["photo"] as? [String: Any], !isHTTPS(photo["url"]) else { return place }
+            place["photo"] = nil
+            return place
         }
         guard let route = card.removeValue(forKey: "route") as? [String: Any], type == "map" else { return }
         let survived = (raw["places"] as? [Any])?.count == places.count

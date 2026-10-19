@@ -197,6 +197,74 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(status, "refused")
     }
 
+    func testASyncForAnotherProfileDuringASyncStillRuns() async {
+        let fake = FakeAgentSettings()
+        let sync = AgentSettingsSync(defaults: agentDefaults())
+        var activeProfile = "a"
+        var held: CheckedContinuation<Void, Never>?
+        let request: AgentSettingsSync.Request = { path, body in
+            let answer = try await fake.request(path, body)
+            if fake.paths.count == 1 { await withCheckedContinuation { held = $0 } }
+            return answer
+        }
+
+        let first = Task {
+            await sync.sync(scope: "h|a", profile: "a", catalog: fake.catalog,
+                            isCurrent: { activeProfile == "a" }, request: request)
+        }
+        while held == nil { await Task.yield() }
+        // The user switches profile while profile a's sync is on its way.
+        activeProfile = "b"
+        await sync.sync(scope: "h|b", profile: "b", catalog: fake.catalog,
+                        isCurrent: { activeProfile == "b" }, request: request)
+        held?.resume()
+        await first.value
+
+        XCTAssertEqual(fake.paths, [
+            "/api/plugins/conduit_push/conduit-settings?profile=a",
+            "/api/plugins/conduit_push/conduit-settings?profile=b",
+        ], "the coalesced round syncs the profile now in use")
+    }
+
+    func testAnAnswerSyncedDuringABusySyncStillReachesHermes() async {
+        let fake = FakeAgentSettings()
+        let sync = AgentSettingsSync(defaults: agentDefaults())
+        // Hermes lists the request until it hears the answer; the first
+        // three syncs wait until the test lets them answer.
+        var held: [CheckedContinuation<Void, Never>] = []
+        let request: AgentSettingsSync.Request = { [self] path, body in
+            fake.responses = [["ok": true, "pending": [pending("req-memory-1", "voice.gemini.memory", true, from: false)]]]
+            let answer = try await fake.request(path, body)
+            if fake.bodies.count <= 3 { await withCheckedContinuation { held.append($0) } }
+            return answer
+        }
+        func waitForSync(_ count: Int) async {
+            while fake.bodies.count < count || held.isEmpty { await Task.yield() }
+        }
+        func syncAgain() async {
+            await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: request)
+        }
+
+        let first = Task { await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: request) }
+        await waitForSync(1)
+        await syncAgain()
+        held.removeFirst().resume()
+        await waitForSync(2)
+        await syncAgain()
+        held.removeFirst().resume()
+        await waitForSync(3)
+        // The user dismisses the change while the third sync is on its way.
+        sync.resolve(sync.review, apply: false, scope: "h|default", catalog: fake.catalog)
+        await syncAgain()
+        held.removeFirst().resume()
+        await first.value
+
+        XCTAssertEqual(fake.bodies.count, 4, "the sync asked for after the answer runs")
+        let results = fake.bodies.last?["results"] as? [[String: Any]]
+        XCTAssertEqual(results?.first?["id"] as? String, "req-memory-1")
+        XCTAssertEqual(results?.first?["status"] as? String, "dismissed")
+    }
+
     func testDismissingAChangeLeavesTheSettingAndTellsHermes() async {
         let fake = FakeAgentSettings()
         fake.responses = [["ok": true, "pending": [pending("req-memory-1", "voice.gemini.memory", true, from: false)]]]
