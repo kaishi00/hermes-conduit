@@ -929,51 +929,75 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
         outbox.store(in: defaults)
     }
 
+    /// What `deliver` was asked for: one dashboard's outcomes, sent its way.
+    private struct Delivery {
+        let dashboard: String?
+        let activeProfile: String
+        let takesOutcomes: Bool
+        let defaults: UserDefaults
+        let now: () -> Date
+        let send: @MainActor (Entry, String) async throws -> Void
+    }
+
     @MainActor private static var isDelivering = false
-    @MainActor private static var deliversAgain = false
+    /// Asked for while one runs: the newest per dashboard, each sent with
+    /// its own dashboard, profile and `send`.
+    @MainActor private static var waiting: [Delivery] = []
 
     /// Sends what waits for `dashboard`, oldest first, through `send`
     /// (given each one's profile, `activeProfile` if it has none). A host
     /// whose plugin doesn't take outcomes (`takesOutcomes` false) or refuses
     /// one drops it: it never will. Anything else (offline, a busy host)
     /// keeps it and the rest for the next connection. One delivery at a
-    /// time; one asked for meanwhile runs once it's done.
+    /// time; one asked for meanwhile runs once it's done, even when that
+    /// one stopped early.
     @MainActor
     static func deliver(
         dashboard: String?,
         activeProfile: String,
         takesOutcomes: Bool,
         defaults: UserDefaults,
-        now: () -> Date = { Date() },
-        send: @MainActor (Entry, String) async throws -> Void
+        now: @escaping () -> Date = { Date() },
+        send: @escaping @MainActor (Entry, String) async throws -> Void
     ) async {
+        let delivery = Delivery(dashboard: dashboard, activeProfile: activeProfile, takesOutcomes: takesOutcomes, defaults: defaults, now: now, send: send)
         guard !isDelivering else {
-            deliversAgain = true
+            // Another dashboard's request is its own; the same one's newer
+            // request replaces the older.
+            waiting.removeAll { $0.dashboard == dashboard }
+            waiting.append(delivery)
             return
         }
         isDelivering = true
         defer { isDelivering = false }
-        repeat {
-            deliversAgain = false
-            var outbox = load(from: defaults)
-            outbox.prune(now: now())
-            outbox.store(in: defaults)
-            for entry in outbox.entries where (entry.dashboard ?? dashboard) == dashboard {
-                if takesOutcomes {
-                    do {
-                        try await send(entry, entry.profile ?? activeProfile)
-                    } catch {
-                        // Offline or a busy host: this one and the rest wait.
-                        guard refusesForGood(error) else { return }
-                        hermesCallsLogger.notice("Hermes call outcome dropped for \(entry.callID, privacy: .public): \(LogRedaction.describing(error), privacy: .public)")
-                    }
+        var next: Delivery? = delivery
+        while let current = next {
+            await deliverOnce(current)
+            next = waiting.isEmpty ? nil : waiting.removeFirst()
+        }
+    }
+
+    @MainActor
+    private static func deliverOnce(_ delivery: Delivery) async {
+        let dashboard = delivery.dashboard, defaults = delivery.defaults
+        var outbox = load(from: defaults)
+        outbox.prune(now: delivery.now())
+        outbox.store(in: defaults)
+        for entry in outbox.entries where (entry.dashboard ?? dashboard) == dashboard {
+            if delivery.takesOutcomes {
+                do {
+                    try await delivery.send(entry, entry.profile ?? delivery.activeProfile)
+                } catch {
+                    // Offline or a busy host: this one and the rest wait.
+                    guard refusesForGood(error) else { return }
+                    hermesCallsLogger.notice("Hermes call outcome dropped for \(entry.callID, privacy: .public): \(LogRedaction.describing(error), privacy: .public)")
                 }
-                // Read again: others may have been recorded meanwhile.
-                var current = load(from: defaults)
-                current.entries.removeAll { $0.dashboard == entry.dashboard && $0.callID == entry.callID }
-                current.store(in: defaults)
             }
-        } while deliversAgain
+            // Read again: others may have been recorded meanwhile.
+            var current = load(from: defaults)
+            current.entries.removeAll { $0.dashboard == entry.dashboard && $0.callID == entry.callID }
+            current.store(in: defaults)
+        }
     }
 
     /// The host refused it as it is (or answered without taking it):

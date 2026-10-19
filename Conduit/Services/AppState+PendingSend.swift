@@ -22,6 +22,9 @@ struct ComposerRestoreRequest: Equatable, Identifiable {
     let focuses: Bool
     /// The waiting message they come from: its file goes once they're back.
     let pending: PendingComposerSend?
+    /// The shared draft they come from (#812): it leaves the share inbox
+    /// once they're in the composer, so a draft is never only in memory.
+    var sharedDraftID: UUID? = nil
 }
 
 /// The chat the composer types into right now.
@@ -195,6 +198,7 @@ extension AppState {
         guard let index = composerRestoreRequests.firstIndex(where: { $0.id == id }) else { return }
         let request = composerRestoreRequests.remove(at: index)
         if let pending = request.pending { removePendingComposerSendFile(pending) }
+        if let sharedDraftID = request.sharedDraftID { sharedDraftReachedComposer(sharedDraftID) }
     }
 
     func dismissComposerNotice() {

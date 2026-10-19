@@ -16,6 +16,12 @@ enum WidgetLaunchUITestFixture {
     static let deferredTalkOutcomeID = "widgetUITestTalkDeferred"
     static let recoveryOutcomeID = "widgetUITestRecovery"
     static let diagnosticID = "widgetUITestDiagnostic"
+    /// A draft shared from another app (#812), staged in a scratch inbox
+    /// before launch: "resume" for the seeded conversation, "newChat" for a
+    /// new one. The app picks it up through the same path as a real share.
+    static let shareDraftArgument = "-CONDUIT_UI_TEST_SHARE_DRAFT"
+    static let sharedDraftText = "Shared from another app: https://example.com/article"
+    static let sharedDraftFileName = "shared-note.png"
 
     private static let dashboardID = UUID(uuidString: "8D516B21-6B3C-4F5A-A0D6-6F6E8B73A901")!
     fileprivate static let profile = "work"
@@ -35,9 +41,16 @@ enum WidgetLaunchUITestFixture {
         return url
     }
 
+    static func shareDraftMode(arguments: [String]) -> String? {
+        guard ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+              let index = arguments.firstIndex(of: shareDraftArgument),
+              arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
+    }
+
     static func createAppStateIfEnabled() -> AppState? {
         let arguments = ProcessInfo.processInfo.arguments
-        guard launchURL(arguments: arguments) != nil else { return nil }
+        guard launchURL(arguments: arguments) != nil || shareDraftMode(arguments: arguments) != nil else { return nil }
 
         let suiteName = "WidgetLaunchUITestFixture"
         guard let defaults = UserDefaults(suiteName: suiteName) else { return nil }
@@ -126,12 +139,42 @@ enum WidgetLaunchUITestFixture {
             return (createdSessionID, createdSessionID, profile)
         }
         appState.activeSessionId = currentSessionID
+        if let mode = shareDraftMode(arguments: arguments) {
+            appState.shareDraftInboxOverride = stageShareDraft(mode: mode, workspace: workspace)
+        }
         return appState
+    }
+
+    /// Writes one shared draft (text and a small picture) the way the share
+    /// extension does, into a scratch inbox the fixture's AppState reads.
+    private static func stageShareDraft(mode: String, workspace: WidgetWorkspaceID) -> ShareDraftInbox? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ConduitUITestShareInbox", isDirectory: true)
+        try? FileManager.default.removeItem(at: directory)
+        let inbox = ShareDraftInbox(directory: directory)
+        guard let staging = try? inbox.beginStaging() else { return nil }
+        let picture = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).pngData { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        guard (try? picture.write(to: staging.url.appendingPathComponent("1.png"))) != nil else { return nil }
+        let target: ShareDraftTarget = mode == "resume"
+            ? .conversation(WidgetConversationReference(kind: .dashboard, scopeProfile: profile, botName: nil, botLabel: nil, sessionID: sessionID, isUnverified: false))
+            : .newChat
+        let envelope = ShareDraftEnvelope(
+            createdAt: Date(),
+            workspace: workspace,
+            target: target,
+            text: sharedDraftText,
+            attachments: [ShareDraftAttachment(storedName: "1.png", displayName: sharedDraftFileName, typeIdentifier: "public.png", byteCount: Int64(picture.count))]
+        )
+        guard (try? inbox.commit(envelope, from: staging)) != nil else { return nil }
+        return inbox
     }
 
     fileprivate static func isEnabled(arguments: [String]) -> Bool {
         ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1"
-            && launchURL(arguments: arguments) != nil
+            && (launchURL(arguments: arguments) != nil || shareDraftMode(arguments: arguments) != nil)
     }
 
     private static func holdReadiness(arguments: [String]) -> Bool {
@@ -153,7 +196,12 @@ enum WidgetLaunchUITestFixture {
     }
 
     fileprivate static func isRequestedWorkspaceSelected(_ appState: AppState) -> Bool {
-        guard let url = launchURL(arguments: ProcessInfo.processInfo.arguments),
+        let arguments = ProcessInfo.processInfo.arguments
+        if launchURL(arguments: arguments) == nil, shareDraftMode(arguments: arguments) != nil {
+            // A shared draft names the fixture's own workspace.
+            return appState.activeDashboardID == dashboardID && appState.activeProfile == profile
+        }
+        guard let url = launchURL(arguments: arguments),
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let dashboard = components.queryItems?.first(where: { $0.name == "dashboard" })?.value,
               let requestedDashboardID = UUID(uuidString: dashboard),

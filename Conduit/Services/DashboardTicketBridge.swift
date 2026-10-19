@@ -581,6 +581,8 @@ final class DashboardTicketBridge: NSObject {
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
+    /// Sends a request without the page in place of URLSession. Test seam.
+    var loadWithoutPageForTesting: (@MainActor (URLRequest) async throws -> (Data, URLResponse))?
     /// Observes the hidden page's load lifecycle for AppState's connection
     /// timeline (#417). Every request waits on this page, so when it becomes
     /// ready is the first thing a slow launch needs to show.
@@ -914,7 +916,7 @@ final class DashboardTicketBridge: NSObject {
         let timeout = max(1_000, timeoutMilliseconds)
         let responseLimit = max(1_024, maxResponseBytes)
 
-        return try await withTaskCancellationHandler(operation: {
+        let response: [String: Any] = try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
                     continuation.resume(throwing: CancellationError())
@@ -1061,6 +1063,11 @@ final class DashboardTicketBridge: NSObject {
                 self?.cancelPendingRequest(id: id)
             }
         })
+        // An answer already on its way when the bridge was invalidated (a
+        // dashboard switch) is the old dashboard's: its caller would apply
+        // it to the dashboard now showing.
+        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        return response
     }
 
     /// Cancels the Swift-side deadline and resumes the pending request, if

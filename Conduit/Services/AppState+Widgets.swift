@@ -2,7 +2,7 @@ import Foundation
 import WidgetKit
 
 extension AppState {
-    private var widgetStore: WidgetSnapshotStore? {
+    var widgetStore: WidgetSnapshotStore? {
         widgetSnapshotStoreOverride ?? WidgetSnapshotStore.production
     }
 

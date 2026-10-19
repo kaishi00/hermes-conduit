@@ -72,9 +72,10 @@ final class ComposerDraftStore {
         order.reversed()
     }
 
-    func saveIfMissing(_ draft: ComposerDraft, for key: ComposerDraftKey) {
-        guard drafts[key] == nil else { return }
-        save(draft, for: key)
+    /// A submission that failed goes back into its chat's draft, above
+    /// anything typed there since: neither is lost.
+    func restoreFailedSubmission(_ draft: ComposerDraft, for key: ComposerDraftKey) {
+        save(self.draft(for: key).restoring(draft), for: key)
     }
 
     func migrateDraft(from source: ComposerDraftKey, to destination: ComposerDraftKey) {

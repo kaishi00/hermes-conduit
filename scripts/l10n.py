@@ -54,7 +54,7 @@ CATALOGS = (
 # The Swift sources whose call sites each Localizable catalog serves, for
 # the worksheet's "where" hints.
 SITE_ROOTS = {
-    "Conduit/Localizable.xcstrings": ("Conduit", "Shared"),
+    "Conduit/Localizable.xcstrings": ("Conduit", "Shared", "ConduitShareExtension"),
     "ConduitWatch/Localizable.xcstrings": ("ConduitWatch", "Shared"),
 }
 

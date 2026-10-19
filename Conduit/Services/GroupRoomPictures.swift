@@ -47,6 +47,38 @@ enum GroupRoomPictures {
         return revision
     }
 
+    /// The rooms a refresh must leave as they are: those set or removed
+    /// here since it began (their generation moved on from `started`), and
+    /// those whose change was still on its way when it began, whose answer
+    /// may land before the refresh ends.
+    static func changed(
+        started: [String: Int],
+        generations: [String: Int],
+        changingAtStart: Set<String>
+    ) -> Set<String> {
+        Set(generations.keys.filter { generations[$0] != started[$0] }).union(changingAtStart)
+    }
+
+    /// A refresh's pictures merged into the ones on hand now. `listed` is
+    /// the host's revisions, `fetched` what the refresh downloaded, and
+    /// `changed` the rooms whose picture was set or removed here since the
+    /// refresh began: those keep what they have, whatever the refresh saw.
+    static func merged(
+        data: [String: Data],
+        revisions: [String: String],
+        listed: [String: String],
+        fetched: [String: (data: Data, revision: String)],
+        changed: Set<String>
+    ) -> (data: [String: Data], revisions: [String: String]) {
+        var data = data.filter { listed[$0.key] != nil || changed.contains($0.key) }
+        var revisions = revisions.filter { listed[$0.key] != nil || changed.contains($0.key) }
+        for (roomID, picture) in fetched where !changed.contains(roomID) {
+            data[roomID] = picture.data
+            revisions[roomID] = picture.revision
+        }
+        return (data, revisions)
+    }
+
     /// A square JPEG of `uploadEdge` px, center-cropped, as a `PUT` body.
     static func uploadBody(for image: UIImage) -> (body: Data, jpeg: Data)? {
         let pixelWidth = image.size.width * image.scale
@@ -139,22 +171,36 @@ extension AppState {
         guard canSetGroupRoomPictures, let bridge = dashboardTicketBridge else { return }
         let dashboard = activeDashboardID
         let epoch = groupRoomEpoch
+        // A picture set or removed while this runs stays as the user left it.
+        let started = groupRoomPictureGenerations
+        let changingAtStart = Set(groupRoomPicturesChanging.keys)
         guard let listed = try? await bridge.requestJSON(path: GroupRoomPictures.listPath),
               let revisions = GroupRoomPictures.revisions(from: listed),
               activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
-        var data = groupRoomPictureData.filter { revisions[$0.key] != nil }
-        var known = groupRoomPictureRevisions.filter { revisions[$0.key] != nil }
         let liveRooms = Set(groupRooms.map(\.roomID))
-        for (roomID, revision) in revisions where known[roomID] != revision && liveRooms.contains(roomID) {
+        var fetched: [String: (data: Data, revision: String)] = [:]
+        for (roomID, revision) in revisions
+        where groupRoomPictureRevisions[roomID] != revision && liveRooms.contains(roomID) {
             guard let path = GroupRoomPictures.path(for: roomID),
                   let answer = try? await bridge.requestJSON(path: path),
                   let picture = GroupRoomPictures.picture(from: answer) else { continue }
             guard activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
-            data[roomID] = picture.data
-            known[roomID] = picture.revision
+            fetched[roomID] = picture
         }
-        if data != groupRoomPictureData { groupRoomPictureData = data }
-        groupRoomPictureRevisions = known
+        let changed = GroupRoomPictures.changed(
+            started: started,
+            generations: groupRoomPictureGenerations,
+            changingAtStart: changingAtStart
+        )
+        let merged = GroupRoomPictures.merged(
+            data: groupRoomPictureData,
+            revisions: groupRoomPictureRevisions,
+            listed: revisions,
+            fetched: fetched,
+            changed: changed
+        )
+        if merged.data != groupRoomPictureData { groupRoomPictureData = merged.data }
+        groupRoomPictureRevisions = merged.revisions
     }
 
     /// Sets the room's picture, or removes it with nil. Failures land in
@@ -166,6 +212,16 @@ extension AppState {
         }
         let dashboard = activeDashboardID
         let epoch = groupRoomEpoch
+        // The latest change to the room wins, whichever answer comes last.
+        let generation = (groupRoomPictureGenerations[roomID] ?? 0) + 1
+        groupRoomPictureGenerations[roomID] = generation
+        groupRoomPicturesChanging[roomID, default: 0] += 1
+        defer {
+            let left = (groupRoomPicturesChanging[roomID] ?? 1) - 1
+            groupRoomPicturesChanging[roomID] = left > 0 ? left : nil
+        }
+        // A newer change to the room has taken over: this one fails quietly.
+        var superseded: Bool { groupRoomPictureGenerations[roomID] != generation }
         do {
             if let image {
                 // Scaling and encoding a large photo stays off the main actor.
@@ -173,6 +229,7 @@ extension AppState {
                     GroupRoomPictures.uploadBody(for: image)
                 }.value
                 guard let upload else {
+                    if superseded { return }
                     errorMessage = AppLocalization.string("That picture could not be used.")
                     return
                 }
@@ -182,7 +239,8 @@ extension AppState {
                     encodedBody: upload.body,
                     timeoutMilliseconds: GroupRoomPictures.uploadTimeoutMilliseconds
                 )
-                guard activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
+                guard activeDashboardID == dashboard, groupRoomEpoch == epoch,
+                      groupRoomPictureGenerations[roomID] == generation else { return }
                 guard let revision = GroupRoomPictures.storedRevision(from: answer) else {
                     errorMessage = AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
                     return
@@ -191,13 +249,15 @@ extension AppState {
                 groupRoomPictureRevisions[roomID] = revision
             } else {
                 _ = try await bridge.requestJSON(path: path, method: "DELETE")
-                guard activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
+                guard activeDashboardID == dashboard, groupRoomEpoch == epoch,
+                      groupRoomPictureGenerations[roomID] == generation else { return }
                 groupRoomPictureData.removeValue(forKey: roomID)
                 groupRoomPictureRevisions.removeValue(forKey: roomID)
             }
         } catch is CancellationError {
             return
         } catch {
+            if superseded { return }
             errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))")
         }
     }
