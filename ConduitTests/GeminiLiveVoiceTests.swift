@@ -1834,6 +1834,22 @@ extension VoiceConversationControllerTests {
         output.stop()
     }
 
+    /// A session notification seen between calls (an interruption or a
+    /// media reset while idle) never stops the next call's echo-cancelling
+    /// audio: each call's audio is a lifetime of its own.
+    func testEchoCancellingAudioIgnoresANotificationSeenBeforeTheCallStarted() {
+        var lifetime = LiveVoiceAudioLifetime()
+        lifetime.begin()
+        let duringCall = lifetime.id
+        XCTAssertTrue(lifetime.accepts(duringCall), "The call's own notification stops it")
+        lifetime.end()
+        XCTAssertFalse(lifetime.accepts(duringCall), "An earlier call's notification is stale")
+        let whileIdle = lifetime.id
+        lifetime.begin()
+        XCTAssertFalse(lifetime.accepts(whileIdle), "Seen while idle: not the new call's")
+        XCTAssertTrue(lifetime.accepts(lifetime.id))
+    }
+
     func testGeminiLivePromptsAnAcknowledgementOnlyWhenTheModelStayedSilent() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, _, _, _) = makeGeminiController(clock: { current })
