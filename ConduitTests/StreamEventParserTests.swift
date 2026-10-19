@@ -108,7 +108,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"message_id": "msg-42", "content": "Final answer", "reasoning": "because"}}
         """#)
-        guard case .messageComplete(let sessionId, let messageId, let content, let reasoning) = event else {
+        guard case .messageComplete(let sessionId, let messageId, let content, let reasoning, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(sessionId, "s1")
@@ -117,11 +117,53 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(reasoning, "because")
     }
 
+    /// `response_previewed` / `response_reused` say the final text is one an
+    /// interim already delivered.
+    func testMessageCompleteReadsAlreadyShownFlags() {
+        for (flags, expected) in [
+            ("", false),
+            (#", "response_previewed": true"#, true),
+            (#", "response_reused": true"#, true),
+            (#", "response_previewed": false, "response_reused": false"#, false),
+        ] {
+            let event = parse(#"""
+            {"type": "message.complete", "session_id": "s1", "payload": {"text": "Done"\#(flags)}}
+            """#)
+            guard case .messageComplete(_, _, let content, _, let alreadyShown) = event else {
+                return XCTFail("Expected messageComplete for \(flags)")
+            }
+            XCTAssertEqual(content, "Done")
+            XCTAssertEqual(alreadyShown, expected, flags)
+        }
+    }
+
+    // MARK: - message.interim
+
+    func testMessageInterimCarriesAlreadyStreamed() {
+        guard case .messageInterim(let sessionId, let text, let streamed) = parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "Checking the logs.", "already_streamed": true}}
+        """#) else { return XCTFail("Expected messageInterim") }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(text, "Checking the logs.")
+        XCTAssertTrue(streamed)
+
+        guard case .messageInterim(_, _, let unstreamed) = parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "Commentary", "already_streamed": false}}
+        """#) else { return XCTFail("Expected messageInterim") }
+        XCTAssertFalse(unstreamed)
+    }
+
+    func testEmptyMessageInterimIsIgnored() {
+        XCTAssertNil(parse(#"""
+        {"type": "message.interim", "session_id": "s1", "payload": {"text": "  ", "already_streamed": false}}
+        """#))
+    }
+
     func testMessageCompleteFallsBackToIdField() {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"id": "alt-id"}}
         """#)
-        guard case .messageComplete(_, let messageId, _, _) = event else {
+        guard case .messageComplete(_, let messageId, _, _, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(messageId, "alt-id")
@@ -131,7 +173,7 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "message.complete", "session_id": "s1", "payload": {"rendered": "<p>html</p>"}}
         """#)
-        guard case .messageComplete(_, _, let content, _) = event else {
+        guard case .messageComplete(_, _, let content, _, _) = event else {
             return XCTFail("Expected messageComplete")
         }
         XCTAssertEqual(content, "<p>html</p>")

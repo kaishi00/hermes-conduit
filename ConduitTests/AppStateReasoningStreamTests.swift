@@ -277,6 +277,93 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertLessThan(reasoningIndex, assistantIndex)
     }
 
+    // MARK: - Interim commentary
+
+    /// A gateway frame as HermesClient hands it to AppState.
+    private func frame(_ json: String) throws -> StreamEvent {
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try XCTUnwrap(StreamEventParser.parse(params: AnyCodable.from(object)))
+    }
+
+    private func assistantRows(in state: AppState) -> [String] {
+        state.messages.filter { $0.role == .assistant }.map(\.content)
+    }
+
+    /// Commentary Hermes delivers only as `message.interim` (Codex-runtime
+    /// commentary, `already_streamed: false`) stays above the final answer.
+    func testUnstreamedInterimCommentaryStaysAboveTheAnswer() throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(try frame(#"""
+        {"type": "message.interim", "session_id": "stored-a", "payload": {"text": "Looking at the logs first.", "already_streamed": false}}
+        """#))
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "read_file", toolInput: nil, toolID: "t1"))
+        state.handleStreamEvent(.toolComplete(sessionId: "stored-a", toolName: "read_file", toolOutput: "ok", toolID: "t1"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "All clear."))
+        state.handleStreamEvent(try frame(#"""
+        {"type": "message.complete", "session_id": "stored-a", "payload": {"text": "All clear.", "status": "complete"}}
+        """#))
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+
+        XCTAssertEqual(assistantRows(in: state), ["Looking at the logs first.", "All clear."])
+        let commentary = try XCTUnwrap(state.messages.firstIndex { $0.content == "Looking at the logs first." })
+        let tool = try XCTUnwrap(state.messages.firstIndex { $0.role == .tool })
+        XCTAssertLessThan(commentary, tool)
+    }
+
+    /// Streamed commentary beside a tool call (`already_streamed: true`) is
+    /// sealed once and kept when the turn completes, instead of vanishing
+    /// with the partials.
+    func testStreamedInterimCommentaryIsKeptOnce() throws {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Checking "))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "the logs."))
+        state.handleStreamEvent(try frame(#"""
+        {"type": "message.interim", "session_id": "stored-a", "payload": {"text": "Checking the logs.", "already_streamed": true}}
+        """#))
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "read_file", toolInput: nil, toolID: "t1"))
+        state.handleStreamEvent(.toolComplete(sessionId: "stored-a", toolName: "read_file", toolOutput: "ok", toolID: "t1"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Done."))
+        state.handleStreamEvent(try frame(#"""
+        {"type": "message.complete", "session_id": "stored-a", "payload": {"text": "Done.", "status": "complete"}}
+        """#))
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+
+        XCTAssertEqual(assistantRows(in: state), ["Checking the logs.", "Done."])
+        XCTAssertFalse(state.messages.contains { $0.role == .partial })
+    }
+
+    /// A final answer Hermes marks as already delivered (`response_previewed`
+    /// / `response_reused`: the turn ended on the text it sealed as an
+    /// interim) settles onto that row and is not painted a second time.
+    func testPreviewedFinalAnswerIsNotPaintedTwice() throws {
+        for flags in [#""response_previewed": true, "response_reused": true"#, #""response_previewed": true"#, #""response_reused": true"#] {
+            let state = makeAppState()
+            installActiveSession(state, id: "stored-a")
+
+            state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+            state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Here it is."))
+            state.handleStreamEvent(try frame(#"""
+            {"type": "message.interim", "session_id": "stored-a", "payload": {"text": "Here it is.", "already_streamed": true}}
+            """#))
+            state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "todo", toolInput: nil, toolID: "t1"))
+            state.handleStreamEvent(.toolComplete(sessionId: "stored-a", toolName: "todo", toolOutput: "ok", toolID: "t1"))
+            state.handleStreamEvent(try frame(#"""
+            {"type": "message.complete", "session_id": "stored-a", "payload": {"text": "Here it is.", "status": "complete", \#(flags)}}
+            """#))
+            XCTAssertEqual(state.streamingText, "", flags)
+            state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+
+            XCTAssertEqual(assistantRows(in: state), ["Here it is."], flags)
+        }
+    }
+
     func testToolStartFlushesPendingReasoningAndPreservesOrdering() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")

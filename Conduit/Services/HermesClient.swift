@@ -375,7 +375,14 @@ enum StreamEvent {
     case messageStart(sessionId: String)
     case messageDelta(sessionId: String, text: String)
     case reasoningDelta(sessionId: String, text: String)
-    case messageComplete(sessionId: String, messageId: String?, content: String?, reasoning: String?)
+    /// `alreadyShown`: Hermes says the final text is one this turn already
+    /// delivered as `message.interim` (`response_previewed` /
+    /// `response_reused`), so it adds no new text.
+    case messageComplete(sessionId: String, messageId: String?, content: String?, reasoning: String?, alreadyShown: Bool = false)
+    /// `message.interim`: assistant commentary (text beside tool calls, or an
+    /// answer before a verification nudge) sealed as its own row.
+    /// `alreadyStreamed` means its text already arrived as deltas.
+    case messageInterim(sessionId: String, text: String, alreadyStreamed: Bool)
     /// The agent reacted to a message (its `react_to_message` tool). The
     /// reaction is already persisted; this only paints it now. `role` names
     /// the reacted row's role so a live row with no `rowId` yet can match.

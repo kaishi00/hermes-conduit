@@ -50,7 +50,24 @@ enum StreamEventParser {
                 ?? payload?["text"]?.stringValue
                 ?? payload?["rendered"]?.stringValue
             let reasoning = payload?["reasoning"]?.stringValue
-            return .messageComplete(sessionId: sessionId, messageId: messageId, content: content, reasoning: reasoning)
+            let alreadyShown = payload?["response_previewed"]?.boolValue == true
+                || payload?["response_reused"]?.boolValue == true
+            return .messageComplete(
+                sessionId: sessionId,
+                messageId: messageId,
+                content: content,
+                reasoning: reasoning,
+                alreadyShown: alreadyShown
+            )
+
+        case "message.interim":
+            let text = payload?["text"]?.stringValue ?? ""
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return .messageInterim(
+                sessionId: sessionId,
+                text: text,
+                alreadyStreamed: payload?["already_streamed"]?.boolValue == true
+            )
 
         case "message.reaction":
             guard let rowId = HermesClient.exactIntValue(payload?["row_id"]), rowId > 0 else { return nil }

@@ -1927,7 +1927,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // too: the liveness poll then settles the job, as finished
                 // rather than cancelled.
                 return
-            case .messageComplete(_, _, let content, _):
+            case .messageComplete(_, _, let content, _, _):
                 if Self.isInterruptionNotice(content) { return }
                 guard followUp == .accepted else {
                     jobs[index].heldCompletion = content
@@ -1944,7 +1944,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             default:
                 break
             }
-        } else if case .messageComplete(_, _, let content, _) = event, Self.isInterruptionNotice(content) {
+        } else if case .messageComplete(_, _, let content, _, _) = event, Self.isInterruptionNotice(content) {
             // A notice for a reply cut off by a correction is never a result.
             return
         }
@@ -1957,7 +1957,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .approval, .clarify, .inputPrompt:
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
-        case .messageComplete(_, let messageID, let content, _):
+        case .messageComplete(_, let messageID, let content, _, _):
             // A replay of a voice turn's own completion, once it no longer
             // owns the chat, is not a typed turn.
             if before.isThreadTurn { rememberChatTurn(messageID, reply: content) }
@@ -1997,7 +1997,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// user typed it (here or on another device). The call is told what was
     /// asked and answered, as context it can use, not something to say.
     private func noteUnownedChatTurn(_ event: StreamEvent, sessionID: String) {
-        guard case .messageComplete(_, let messageID, let content, _) = event,
+        guard case .messageComplete(_, let messageID, let content, _, _) = event,
               let thread = liveThread, backend.threadOwnsSession(thread, sessionID) else { return }
         let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { return }
@@ -2139,7 +2139,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private static func sessionID(for event: StreamEvent) -> String? {
         switch event {
         case .messageStart(let id), .messageDelta(let id, _), .reasoningDelta(let id, _),
-             .messageComplete(let id, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
+             .messageComplete(let id, _, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
              .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
             return id
