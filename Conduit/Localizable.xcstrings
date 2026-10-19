@@ -298538,6 +298538,662 @@
         }
       }
     },
+    "Couldn't reach the push relay to check compatibility." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay war nicht erreichbar, um die Kompatibilität zu prüfen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo contactar con el relay push para comprobar la compatibilidad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre le relais push pour vérifier la compatibilité."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat menghubungi relai push untuk memeriksa kompatibilitas."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere il relay push per verificare la compatibilità."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "互換性を確認するためにプッシュリレーに接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호환성을 확인하기 위해 푸시 릴레이에 연결하지 못했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z przekaźnikiem push, aby sprawdzić zgodność."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar a retransmissão de push para verificar a compatibilidade."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с push-ретранслятором, чтобы проверить совместимость."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uyumluluğu denetlemek için bildirim aktarıcısına ulaşılamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接推送中继以检查兼容性。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線推播中繼以檢查相容性。"
+          }
+        }
+      }
+    },
+    "The push relay no longer knows this iPhone. Turn notifications off and on again in Settings > Notifications." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay kennt dieses iPhone nicht mehr. Schalte Mitteilungen unter Einstellungen > Mitteilungen aus und wieder ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push ya no reconoce este iPhone. Desactiva y vuelve a activar las notificaciones en Ajustes > Notificaciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push ne reconnaît plus cet iPhone. Désactivez puis réactivez les notifications dans Réglages > Notifications."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak lagi mengenali iPhone ini. Matikan lalu nyalakan lagi notifikasi di Pengaturan > Notifikasi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non riconosce più questo iPhone. Disattiva e riattiva le notifiche in Impostazioni > Notifiche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーがこのiPhoneを認識できなくなりました。設定 > 通知 で通知をオフにしてから、もう一度オンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 iPhone을 더 이상 알지 못해요. 설정 > 알림에서 알림을 껐다가 다시 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie rozpoznaje już tego iPhone'a. Wyłącz i ponownie włącz powiadomienia w Ustawieniach > Powiadomienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não reconhece mais este iPhone. Desative e ative novamente as notificações em Ajustes > Notificações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор больше не узнаёт этот iPhone. Выключите и снова включите уведомления в разделе «Настройки» > «Уведомления»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı bu iPhone'u artık tanımıyor. Ayarlar > Bildirimler'de bildirimleri kapatıp yeniden açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继已不再识别这台 iPhone。请在“设置”>“通知”中关闭通知后再重新打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼已不再識別這支 iPhone。請在「設定」>「通知」中關閉通知後再重新開啟。"
+          }
+        }
+      }
+    },
+    "The push relay can't send to this build of Conduit. Check the relay's APNs settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay kann nicht an diesen Build von Conduit senden. Prüfe die APNs-Einstellungen des Relays."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no puede enviar a esta compilación de Conduit. Revisa los ajustes de APNs del relay."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push ne peut pas envoyer à cette version de Conduit. Vérifiez les réglages APNs du relais."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak dapat mengirim ke build Conduit ini. Periksa pengaturan APNs relai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non può inviare a questa build di Conduit. Controlla le impostazioni APNs del relay."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーはこのビルドのConduitに送信できません。リレーのAPNs設定を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 Conduit 빌드로 보낼 수 없어요. 릴레이의 APNs 설정을 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie może wysyłać do tej kompilacji Conduit. Sprawdź ustawienia APNs przekaźnika."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não pode enviar para esta versão do Conduit. Verifique as configurações de APNs da retransmissão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор не может отправлять в эту сборку Conduit. Проверьте настройки APNs ретранслятора."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı Conduit'in bu sürümüne gönderemiyor. Aktarıcının APNs ayarlarını kontrol edin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继无法发送到此版本的 Conduit。请检查中继的 APNs 设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼無法傳送到此版本的 Conduit。請檢查中繼的 APNs 設定。"
+          }
+        }
+      }
+    },
+    "The push relay couldn't confirm this iPhone's push token. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay konnte das Push-Token dieses iPhones nicht bestätigen. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no pudo confirmar el token push de este iPhone. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push n'a pas pu confirmer le jeton push de cet iPhone. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak dapat mengonfirmasi token push iPhone ini. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non è riuscito a confermare il token push di questo iPhone. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーがこのiPhoneのプッシュトークンを確認できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 iPhone의 푸시 토큰을 확인하지 못했어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie mógł potwierdzić tokenu push tego iPhone'a. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não conseguiu confirmar o token de push deste iPhone. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор не смог подтвердить push-токен этого iPhone. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı bu iPhone'un bildirim belirtecini doğrulayamadı. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继无法确认这台 iPhone 的推送令牌。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼無法確認這支 iPhone 的推播權杖。請再試一次。"
+          }
+        }
+      }
+    },
+    "The push relay has no room for this iPhone. Ask whoever runs it to make room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay hat keinen Platz für dieses iPhone. Bitte die Person, die es betreibt, Platz zu schaffen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no tiene espacio para este iPhone. Pide a quien lo gestiona que haga espacio."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push n'a plus de place pour cet iPhone. Demandez à la personne qui le gère de faire de la place."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak punya ruang untuk iPhone ini. Minta pengelolanya untuk menyediakan ruang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non ha spazio per questo iPhone. Chiedi a chi lo gestisce di fare spazio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーにこのiPhoneを追加する空きがありません。運営者に空きを作るよう依頼してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이에 이 iPhone을 위한 자리가 없어요. 운영자에게 자리를 만들어 달라고 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie ma miejsca dla tego iPhone'a. Poproś osobę, która go prowadzi, o zwolnienie miejsca."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não tem espaço para este iPhone. Peça a quem a administra para liberar espaço."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В push-ретрансляторе нет места для этого iPhone. Попросите его владельца освободить место."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısında bu iPhone için yer yok. İşleten kişiden yer açmasını isteyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继已没有空间容纳这台 iPhone。请联系其运营者腾出空间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼已沒有空間容納這支 iPhone。請聯絡其營運者騰出空間。"
+          }
+        }
+      }
+    },
+    "The push relay is busy. Try again in a minute." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay ist ausgelastet. Versuch es in einer Minute noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push está ocupado. Inténtalo de nuevo en un minuto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push est occupé. Réessayez dans une minute."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push sedang sibuk. Coba lagi dalam satu menit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push è occupato. Riprova tra un minuto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーが混み合っています。1分後にもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 바빠요. 1분 후에 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push jest zajęty. Spróbuj ponownie za minutę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push está ocupada. Tente novamente em um minuto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор занят. Попробуйте ещё раз через минуту."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı meşgul. Bir dakika sonra yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继正忙。请一分钟后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼正忙。請一分鐘後再試。"
+          }
+        }
+      }
+    },
+    "Push relay request failed (%@)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an das Push-Relay fehlgeschlagen (%@)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error en la solicitud al relay push (%@)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de la requête au relais push (%@)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permintaan relai push gagal (%@)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiesta al relay push non riuscita (%@)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーへのリクエストに失敗しました（%@）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이 요청에 실패했어요(%@)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Żądanie do przekaźnika push nie powiodło się (%@)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falha na solicitação à retransmissão de push (%@)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос к push-ретранслятору не выполнен (%@)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı isteği başarısız oldu (%@)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继请求失败（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼請求失敗（%@）。"
+          }
+        }
+      }
+    },
+    "That answer is too long to send from a notification card. Open the chat in Conduit and answer there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Antwort ist zu lang, um sie aus einer Mitteilungskarte zu senden. Öffne den Chat in Conduit und antworte dort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esa respuesta es demasiado larga para enviarla desde una tarjeta de notificación. Abre el chat en Conduit y responde allí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette réponse est trop longue pour être envoyée depuis une carte de notification. Ouvrez la discussion dans Conduit et répondez-y."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawaban itu terlalu panjang untuk dikirim dari kartu notifikasi. Buka obrolan di Conduit dan jawab di sana."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa risposta è troppo lunga per essere inviata da una scheda di notifica. Apri la chat in Conduit e rispondi da lì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この回答は長すぎて通知カードから送信できません。Conduitでチャットを開いて、そこで回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 답변은 알림 카드에서 보내기에는 너무 길어요. Conduit에서 채팅을 열고 그곳에서 답하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta odpowiedź jest za długa, by wysłać ją z karty powiadomienia. Otwórz czat w Conduit i odpowiedz tam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essa resposta é longa demais para enviar de um cartão de notificação. Abra o chat no Conduit e responda lá."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот ответ слишком длинный для отправки из карточки уведомления. Откройте чат в Conduit и ответьте там."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu yanıt bir bildirim kartından gönderilemeyecek kadar uzun. Sohbeti Conduit'te açıp orada yanıtlayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个回答太长，无法从通知卡片发送。请在 Conduit 中打开该对话并在那里回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個回答太長，無法從通知卡片傳送。請在 Conduit 中打開該聊天，並在那裡回答。"
+          }
+        }
+      }
+    },
     "Connect to Hermes to start a conversation." : {
       "localizations" : {
         "de" : {

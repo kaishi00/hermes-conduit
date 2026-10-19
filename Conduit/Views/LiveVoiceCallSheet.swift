@@ -199,7 +199,9 @@ struct LiveVoiceCallSheet: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 12) {
+        // Room between the chat link and the buttons beside it, so a tap
+        // meant for the chat doesn't minimise or close the call (#698).
+        HStack(spacing: 24) {
             Button {
                 // The sheet's dismissal minimises a running call; a waiting
                 // one hangs up.
@@ -550,6 +552,9 @@ private struct CallChatTitleLink<Title: View>: View {
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
+                // The whole title column takes the tap, not just the name:
+                // a short name was a small target beside the chevron (#698).
+                .frame(maxWidth: .infinity)
                 // A 44 pt tap target without moving the header: the padding
                 // widens the hit area and the negative padding takes the
                 // space back.

@@ -459,6 +459,9 @@ final class PushNotificationService: ObservableObject {
         }
     }
     @Published private(set) var isFetchingMeta = false
+    /// The last metadata fetch didn't get an answer (`relayMeta` keeps the
+    /// one before, if any).
+    @Published private(set) var relayMetaFetchFailed = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
     @Published private(set) var relayNotice: String?
@@ -841,6 +844,7 @@ final class PushNotificationService: ObservableObject {
     func refreshMeta() async {
         guard let registration else {
             relayMeta = nil
+            relayMetaFetchFailed = false
             isFetchingMeta = false
             return
         }
@@ -856,18 +860,32 @@ final class PushNotificationService: ObservableObject {
             )
         } catch {
             relayMeta = nil
+            // Never asked, so not an older relay: Settings says it can't reach it.
+            relayMetaFetchFailed = true
             return
         }
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                relayMeta = nil
-                return
-            }
-            relayMeta = try JSONDecoder().decode(RelayMetaInfo.self, from: data)
-        } catch {
-            relayMeta = nil
+        var status: Int?
+        var fetched: RelayMetaInfo?
+        if let (data, response) = try? await URLSession.shared.data(for: request) {
+            status = (response as? HTTPURLResponse)?.statusCode
+            if status == 200 { fetched = try? JSONDecoder().decode(RelayMetaInfo.self, from: data) }
         }
+        relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
+        relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        // The relay answers again: an update that failed while it couldn't
+        // (a cleared location token) goes now. Nothing changed, nothing sent.
+        if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
+    }
+
+    /// The relay's metadata after a fetch: what it said; nil from a relay
+    /// without the route (404, it predates version reporting); and after a
+    /// failure (offline, a relay error, an unreadable answer) the last one
+    /// it said. A passing outage mustn't read as an older relay: without
+    /// `location-push` the next registration update would clear the
+    /// location-push token, and locates and Maps wakes would stop.
+    nonisolated static func relayMetaAfterFetch(previous: RelayMetaInfo?, status: Int?, fetched: RelayMetaInfo?) -> RelayMetaInfo? {
+        if status == 200, let fetched { return fetched }
+        return status == 404 ? nil : previous
     }
 
     /// Outcome of answering ONE question of a batch relay decision
@@ -904,6 +922,8 @@ final class PushNotificationService: ObservableObject {
         case transport(String)
         case server(Int)
         case insecureTransport
+        /// Longer than the relay takes (413 `answer_too_large`).
+        case answerTooLarge
 
         var errorDescription: String? {
             switch self {
@@ -915,6 +935,8 @@ final class PushNotificationService: ObservableObject {
                 return AppLocalization.string("Your answer wasn't accepted. Open the chat in Conduit and answer there.")
             case .insecureTransport:
                 return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.")
+            case .answerTooLarge:
+                return AppLocalization.string("That answer is too long to send from a notification card. Open the chat in Conduit and answer there.")
             }
         }
     }
@@ -1061,6 +1083,24 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
+    /// The relay takes a plaintext clarify answer of at most this many
+    /// UTF-16 units once trimmed (relay MAX_ANSWER_CHARS). Sealed, an answer
+    /// this long also stays under its sealed-answer cap.
+    nonisolated static let maximumDecisionAnswerCharacters = 2_000
+
+    /// Why `answer` can't go through the relay, checked before it's sealed.
+    nonisolated static func decisionAnswerError(_ answer: String) -> RelayDecisionError? {
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.utf16.count > maximumDecisionAnswerCharacters ? .answerTooLarge : nil
+    }
+
+    /// A refused answer: the relay says 413 `answer_too_large` for one
+    /// over its limits.
+    nonisolated static func decisionError(status: Int, data: Data) -> RelayDecisionError {
+        if status == 413 { return .answerTooLarge }
+        return .server(status)
+    }
+
     /// Shared relay decision POST. Contract: 200 = accepted (body may carry
     /// `remaining`), 404 = unknown decision, 409 = already locked, 410 =
     /// decision released by the native path.
@@ -1069,6 +1109,7 @@ final class PushNotificationService: ObservableObject {
         body: [String: String]
     ) async throws -> RelayRespondOutcome {
         guard let registration else { throw RelayDecisionError.unregistered }
+        if let answer = body["answer"], let error = Self.decisionAnswerError(answer) { throw error }
         var request = URLRequest(url: try authenticatedRelayURL("/v1/decisions/\(requestId)/respond"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1097,7 +1138,7 @@ final class PushNotificationService: ObservableObject {
             case 410:
                 return .released
             default:
-                throw RelayDecisionError.server(http.statusCode)
+                throw Self.decisionError(status: http.statusCode, data: data)
             }
         } catch let error as RelayDecisionError {
             throw error
@@ -1198,6 +1239,7 @@ final class PushNotificationService: ObservableObject {
         await revokeInstallation(previous)
         removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
+        relayMetaFetchFailed = false
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
@@ -1292,6 +1334,10 @@ final class PushNotificationService: ObservableObject {
     var installationID: String? { registration?.installationID }
 
     static let pairPath = "/api/plugins/conduit_push/pair"
+    /// Past the host's own wait: it claims the code at the relay with a
+    /// 15 s timeout (plugin_api PAIR_TIMEOUT_S), then writes the pairing.
+    /// Giving up first would leave the host paired with no key handed over.
+    static let pairTimeoutMilliseconds = 25_000
 
     /// Who a profile's notifications go to, from the plugin's
     /// `GET /e2e?profile=` answer.
@@ -1420,7 +1466,7 @@ final class PushNotificationService: ObservableObject {
     /// The relay wants proof that this phone holds the device token (0.16+).
     nonisolated static func requiresTokenProof(response: URLResponse, data: Data) -> Bool {
         guard (response as? HTTPURLResponse)?.statusCode == 403 else { return false }
-        return (try? JSONDecoder().decode(RelayErrorCode.self, from: data))?.error == "token_proof_required"
+        return (try? JSONDecoder().decode(RelayErrorBody.self, from: data))?.error == "token_proof_required"
     }
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
@@ -2019,8 +2065,33 @@ final class PushNotificationService: ObservableObject {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let detail = (try? JSONDecoder().decode(RelayError.self, from: data).message) ?? AppLocalization.string("Push relay request failed.")
-            throw PushNotificationError.relay(detail)
+            throw PushNotificationError.relay(Self.relayErrorMessage(data: data))
+        }
+    }
+
+    /// What a relay refusal means, from its `{"error": "<code>"}` body
+    /// (relay/src/server.mjs): a known code as a sentence, another code
+    /// named, and a `message` (no relay sends one today) as it is.
+    nonisolated static func relayErrorMessage(data: Data) -> String {
+        let body = try? JSONDecoder().decode(RelayErrorBody.self, from: data)
+        switch body?.error {
+        case "unauthorized":
+            return AppLocalization.string("The push relay no longer knows this iPhone. Turn notifications off and on again in Settings > Notifications.")
+        case "invalid_topic", "production_only":
+            return AppLocalization.string("The push relay can't send to this build of Conduit. Check the relay's APNs settings.")
+        case "invalid_device_token", "token_proof_required", "token_proof_invalid":
+            return AppLocalization.string("The push relay couldn't confirm this iPhone's push token. Try again.")
+        case "installation_limit_reached", "gateway_limit_reached":
+            return AppLocalization.string("The push relay has no room for this iPhone. Ask whoever runs it to make room.")
+        case "rate_limited":
+            return AppLocalization.string("The push relay is busy. Try again in a minute.")
+        case "answer_too_large":
+            return RelayDecisionError.answerTooLarge.errorDescription ?? ""
+        case let code? where !code.isEmpty:
+            return AppLocalization.string("Push relay request failed (\(code)).")
+        default:
+            if let message = body?.message, !message.isEmpty { return message }
+            return AppLocalization.string("Push relay request failed.")
         }
     }
 
@@ -2156,8 +2227,11 @@ private struct PairingResponse: Decodable {
     enum CodingKeys: String, CodingKey { case pairingCode = "pairing_code", expiresAt = "expires_at" }
 }
 
-private struct RelayError: Decodable { let message: String? }
-private struct RelayErrorCode: Decodable { let error: String? }
+/// A relay refusal: `error` is its code; `message` only as a fallback.
+private struct RelayErrorBody: Decodable {
+    let error: String?
+    let message: String?
+}
 
 private enum PushNotificationError: LocalizedError {
     case permissionDenied

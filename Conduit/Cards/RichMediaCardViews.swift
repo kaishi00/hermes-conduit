@@ -500,7 +500,7 @@ private struct RichPersonRow: View {
                         RichPersonAction(title: Text("Message"), symbol: "message.fill") { openURL(url) }
                     }
                 }
-                if let email = person.email, let url = URL(string: "mailto:\(email)") {
+                if let email = person.email, let url = RichPerson.mailtoURL(email) {
                     RichPersonAction(title: Text("Email"), symbol: "envelope.fill") { openURL(url) }
                 }
                 if let url = person.url {

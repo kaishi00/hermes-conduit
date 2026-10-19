@@ -124,7 +124,7 @@
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>When you share reminders, Conduit sends the lists you choose to your own Hermes server so your agent can see what's on them, and adds or completes reminders when you approve them. Nothing goes to Conduit's developer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Conduit uses on-device Apple speech recognition to turn your voice into text when you select On this iPhone.</string>
+	<string>Conduit uses Apple speech recognition to turn your voice into text. Voice conversations and wake phrases are always recognized on your iPhone. Dictation is too when your language supports it; otherwise Apple may process your dictation on its servers.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

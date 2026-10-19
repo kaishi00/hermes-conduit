@@ -11,6 +11,15 @@ final class GroupRoomFilesClient {
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
 
+    /// The largest file /room-files takes (plugin_api ROOM_FILE_MAX_BYTES).
+    static let maximumMegabytes = 50
+
+    /// The room composer's staging limit: the user's attachment limit, but
+    /// never more than the room route takes.
+    static func stagingLimit(preference: Int) -> Int {
+        min(preference, maximumMegabytes)
+    }
+
     /// At least the minimum, plus about 1 s for every 64 KB of body (about
     /// 0.5 Mbit/s), so a slow link can still finish a large upload.
     static func timeoutMilliseconds(forBodyBytes count: Int) -> Int {

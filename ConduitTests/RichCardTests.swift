@@ -166,6 +166,16 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
     }
 
+    func testAnEmailActionOnlyAddressesTheEmail() throws {
+        XCTAssertEqual(RichPerson.mailtoURL("first.last+tag@example.co.uk")?.absoluteString,
+                       "mailto:first.last+tag@example.co.uk")
+        // Whatever the schema lets through, the tail of an address never becomes mailto: headers.
+        let crafted = try XCTUnwrap(RichPerson.mailtoURL("bo@example.com?cc=eve%40evil.example&subject=Hi#more"))
+        XCTAssertNil(crafted.query, "no cc, subject or body")
+        XCTAssertNil(crafted.fragment)
+        XCTAssertEqual(crafted.scheme, "mailto")
+    }
+
     func testADoneStatusShowsAndReadsAsComplete() throws {
         // The bar and VoiceOver read the same value: a done card is full whatever progress it was last given.
         let done = try XCTUnwrap(RichStatus(json: ["state": "Delivered", "phase": "done", "progress": 0.4]))

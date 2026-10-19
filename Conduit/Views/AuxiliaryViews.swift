@@ -3206,6 +3206,10 @@ private struct NotificationsSettingsDetail: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                    } else if notifications.relayMetaFetchFailed {
+                        Text("Couldn't reach the push relay to check compatibility.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } else {
                         Text("Compatibility unknown. Your relay predates version reporting; decision cards may not be available until it updates.")
                             .font(.footnote)

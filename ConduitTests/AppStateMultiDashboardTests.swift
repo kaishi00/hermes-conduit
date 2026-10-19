@@ -1417,4 +1417,71 @@ extension AppStateMultiDashboardTests {
 
         XCTAssertTrue(vpsRequests.sent.isEmpty, "the Mac's tags were sent to the VPS: \(vpsRequests.sent.map(\.path))")
     }
+
+    /// A reconnect to the same dashboard (a new bridge) isn't a switch: the
+    /// rest of the call's job tags still go, since tags aren't retried.
+    func testQueuedVoiceTagsGoOnAfterAReconnectToTheSameDashboard() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: mac.uuidString, profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(
+                callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Start two jobs", at: Date())]
+            ),
+            queuedAt: Date(),
+            jobSessionIDs: ["job-1", "job-2"]
+        ))
+        outbox.store(in: defaults)
+
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 1])
+        await save.value
+        try await held.waitForRequests(2)   // the first job's tag
+
+        let reconnected = HeldDashboardRequests(baseURL: held.bridge.baseURL, dashboardID: mac)
+        appState.installDashboardTicketBridgeForTesting(reconnected.bridge)   // the Mac reconnects
+        addTeardownBlock { @MainActor in reconnected.releaseAll() }
+        try await held.answer()   // the first tag's answer lands after it
+        try await reconnected.waitForRequests(1)
+
+        XCTAssertEqual(reconnected.sent.map(\.path), ["/api/plugins/conduit_push/voice/tags"], "the second job's tag still goes to the Mac")
+    }
+
+    /// A switch that lands right after the closing save: the jobs' tags and
+    /// the chat link can't go to the Mac now, so the call stays queued for
+    /// it, and the Mac's next save run files them.
+    func testACallSavedJustBeforeASwitchStillFilesItsJobsLater() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.beginVoiceCallRecordingForTesting(engine: .geminiLive, turns: [
+            VoiceConversationTranscriptEntry(speaker: .user, text: "Look into the logs"),
+            VoiceConversationTranscriptEntry(speaker: .assistant, text: "On it."),
+        ], jobs: ["job-1"])
+
+        appState.closeGeminiLiveConversation()
+        try await held.waitForRequests(1)   // the closing save
+        appState.selectDashboardTarget(vps.id)   // the switch lands before the save's answer is applied
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 2])
+        func queued() -> [VoiceTranscriptOutbox.Entry] {
+            VoiceTranscriptOutbox.load(from: defaults).entries.filter { $0.request.sessionID == "row-1" }
+        }
+        for _ in 0..<100 where queued().isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(queued().map(\.dashboard), [mac.uuidString], "kept for the Mac")
+        XCTAssertEqual(queued().first?.jobSessionIDs, ["job-1"])
+        XCTAssertEqual(held.sent.count, 1, "nothing more went out after the switch")
+
+        // Back on the Mac: the save is a replay the host skips, then the job is filed.
+        appState.selectDashboardTarget(mac)
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 2])
+        await save.value
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.map(\.path).last, "/api/plugins/conduit_push/voice/tags")
+        XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
+    }
 }

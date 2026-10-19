@@ -546,7 +546,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
-        let limit = attachmentLimitMegabytes
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -569,7 +569,7 @@ struct GroupRoomComposer: View {
             Haptics.error()
             return
         }
-        let limit = attachmentLimitMegabytes
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -583,7 +583,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importCapturedPhoto(_ image: UIImage) {
-        let limit = attachmentLimitMegabytes
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {

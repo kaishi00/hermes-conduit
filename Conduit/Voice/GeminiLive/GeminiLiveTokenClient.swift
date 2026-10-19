@@ -74,6 +74,9 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     static let webSearchTimeoutMilliseconds = 25_000
     /// Past the host's 12 s bound on a memory recall, for the same reason.
     static let memoryRecallTimeoutMilliseconds = 15_000
+    /// Past the host's 15 s timeout to Google when it mints a token, so a
+    /// slow mint isn't spent for nothing.
+    static let tokenTimeoutMilliseconds = 20_000
 
     /// The authenticated dashboard request, injected so tests can script
     /// responses. Production binds it to `DashboardTicketBridge.requestJSON`.
@@ -123,7 +126,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func freshToken() async throws -> GeminiLiveToken {
         let response: [String: Any]
         do {
-            response = try await fetch(scoped(Self.tokenPath), "POST", [:])
+            response = try await fetch(scoped(Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
             throw error
