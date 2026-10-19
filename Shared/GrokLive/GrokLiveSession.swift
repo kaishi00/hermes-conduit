@@ -57,6 +57,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     private var socket: GeminiLiveSocket?
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
+    /// The connection's capture, upsampled as one stream.
+    private var inputUpsampler = GrokInputUpsampler()
     private var receiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var hasConnectedOnce = false
@@ -136,7 +138,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     }
 
     func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message)
+        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
         guard state == .ready, let socket else {
             onFailure?()
             return
@@ -300,6 +302,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         socket?.close()
         socket = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropResponseState()
     }
 
