@@ -417,6 +417,8 @@ final class LoginFlowModel: ObservableObject {
             }
         }
         appState.lastConnectionFailure = nil
+        // Its sign-in goes to the address edited for it in Settings.
+        let dashboard = appState.dashboardForSignIn(dashboard.id) ?? dashboard
         let cloudflare = appState.dashboardScopedCloudflareAccess(for: dashboard.normalizedURL)
         do {
             let route = try await LoginRoute.discover(using: makeTransport(dashboard.normalizedURL, cloudflare))

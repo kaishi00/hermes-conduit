@@ -381,7 +381,7 @@ struct GroupApprovalCard: View {
                     Text(memberName)
                         .font(.subheadline.weight(.semibold))
                     if !approval.description.isEmpty {
-                        Text(approval.description)
+                        Text(verbatim: ApprovalDisplayText.revealingHidden(approval.description))
                             .font(.subheadline)
                             .textSelection(.enabled)
                     }
@@ -395,11 +395,15 @@ struct GroupApprovalCard: View {
                 }
             }
             if !approval.command.isEmpty {
-                Text(approval.command)
-                    .font(.caption.monospaced())
-                    .lineLimit(5)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ApprovalCommandBox(
+                    maxHeight: ApprovalCommandBox<EmptyView>.maxLines
+                        * UIFont.preferredFont(forTextStyle: .caption1).lineHeight
+                ) {
+                    Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                     .padding(10)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
@@ -555,7 +559,7 @@ struct GroupUserBubble<Footer: View>: View {
                 .padding(.vertical, 10)
                 .background(
                     LinearGradient(
-                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        colors: [.conduitUserBubble, .conduitUserBubbleShade],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),

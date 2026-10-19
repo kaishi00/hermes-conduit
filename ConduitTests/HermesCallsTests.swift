@@ -623,6 +623,52 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(fenced.instructionBlock(delegation: false).contains("x</reason>"), "A reason can't close its fence")
     }
 
+    func testAnOlderCallSettingsReadNeverReplacesANewerSaveOrRead() async {
+        let suite = "HermesCallsTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.48.0", capabilities: ["hermes-calls"]))
+        var reads: [CheckedContinuation<[String: Any], Never>] = []
+        appState.hermesCallsClient = HermesCallsClient { _, method, body in
+            if method == "PUT" { return ["ok": true, "settings": body?["settings"] ?? [:]] }
+            return await withCheckedContinuation { reads.append($0) }
+        }
+        func status(perDay: Int) -> [String: Any] {
+            ["ok": true, "settings": ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": perDay]]
+        }
+        func read() async -> Task<Void, Never> {
+            let count = reads.count
+            let task = Task { await appState.refreshHermesCallsStatus() }
+            _ = await waitForHermesCalls { reads.count > count }
+            return task
+        }
+
+        let first = await read()
+        reads[0].resume(returning: status(perDay: 20))
+        await first.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 20)
+
+        // A read asked before a save answers after it.
+        let beforeSave = await read()
+        var edited = appState.activeHermesCallsStatus!.settings
+        edited.perDay = 5
+        let saved = await appState.saveHermesCallSettings(edited, profile: "default", dashboardID: appState.activeDashboardID)
+        XCTAssertTrue(saved)
+        reads[1].resume(returning: status(perDay: 20))
+        await beforeSave.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 5, "the save is newer than that read")
+
+        // Two reads answering out of order: the later one asked stays.
+        let older = await read()
+        let newer = await read()
+        reads[3].resume(returning: status(perDay: 7))
+        await newer.value
+        reads[2].resume(returning: status(perDay: 9))
+        await older.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 7, "the newer read is the host's latest")
+    }
+
     func testCallSettingsSendOnlyWhatTheHostHas() {
         let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
         XCTAssertNil(old?.decides)
@@ -1063,6 +1109,41 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(waitingOutcomes(defaults), [])
     }
 
+    /// A delivery asked for another server while one runs (the user
+    /// switched dashboards mid-upload) still goes, even when the running
+    /// one stops early because its server is no longer the active one.
+    func testADeliveryAskedForAnotherServerMeanwhileStillGoes() async throws {
+        final class Hold {
+            var release: CheckedContinuation<Void, Never>?
+            var sent: [String] = []
+        }
+        let defaults = try outcomeDefaults()
+        let home = UUID(), other = UUID()
+        try recordOutcome(.missed, outcomeTarget(id: "call-home", dashboard: home), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-other", dashboard: other), in: defaults)
+        let hold = Hold()
+        let parked = AwaitableCounter()
+        let first = Task { @MainActor in
+            await HermesCallOutcomeOutbox.deliver(dashboard: home.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { _, _ in
+                await withCheckedContinuation { continuation in
+                    hold.release = continuation
+                    parked.increment()
+                }
+                // Another server since.
+                throw DashboardTicketBridgeError.notReady
+            }
+        }
+        await parked.waitUntil(1)
+        await HermesCallOutcomeOutbox.deliver(dashboard: other.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { entry, _ in
+            hold.sent.append(entry.callID)
+        }
+        hold.release?.resume()
+        await first.value
+
+        XCTAssertEqual(hold.sent, ["call-other"], "The other server's call goes once the running delivery stops")
+        XCTAssertEqual(waitingOutcomes(defaults), ["call-home"], "The first server's call waits for it")
+    }
+
     func testOnlyACallTheUserDidntPickUpIsReported() {
         XCTAssertEqual(HermesCallOutcome.of(.declined, answered: false), .declined)
         XCTAssertNil(HermesCallOutcome.of(.declined, answered: true), "Hung up after answering")
@@ -1156,6 +1237,36 @@ extension VoiceConversationControllerTests {
         )
         XCTAssertEqual(HermesRingSettler.result(status: 409, data: Data("{}".utf8)), .failed)
         XCTAssertEqual(HermesRingSettler.result(status: 404, data: Data(#"{"error":"unknown_ring"}"#.utf8)), .failed, "The relay forgot it")
+    }
+
+    /// A settle sent but never answered (it timed out, or the connection
+    /// dropped) may have reached the relay, which then forwarded the
+    /// Watch's start to the iPhone: the Watch still fetches its handoff.
+    /// One the relay refused (it forgot the ring) or never got is a failure.
+    func testASettleThatGotNoAnswerMayStillHaveHandedTheCallOff() async throws {
+        let ring = HermesRing(id: Self.ringID, token: Self.ringToken, url: try XCTUnwrap(URL(string: "https://push.example/v1/rings/\(Self.ringID)/settled")))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HermesRingSettleStubProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { HermesRingSettleStubProtocol.error = nil }
+        func settle(failingWith error: URLError) async -> HermesRingSettleResult {
+            HermesRingSettleStubProtocol.error = error
+            return await HermesRingSettler.settle(ring, by: .watch, outcome: .answered, start: "c2VhbGVk", session: session)
+        }
+
+        let timedOut = await settle(failingWith: URLError(.timedOut))
+        XCTAssertEqual(timedOut, .unconfirmed, "Sent, no answer: the relay may have it")
+        XCTAssertTrue(timedOut.mayFetchHandoff)
+        let dropped = await settle(failingWith: URLError(.networkConnectionLost))
+        XCTAssertEqual(dropped, .unconfirmed)
+        let unreachable = await settle(failingWith: URLError(.cannotConnectToHost))
+        XCTAssertEqual(unreachable, .failed, "Never reached the relay")
+        XCTAssertFalse(unreachable.mayFetchHandoff)
+
+        XCTAssertTrue(HermesRingSettleResult.settled.mayFetchHandoff)
+        XCTAssertFalse(HermesRingSettler.result(status: 404, data: Data(#"{"error":"unknown_ring"}"#.utf8)).mayFetchHandoff, "The relay forgot it")
+        XCTAssertFalse(HermesRingSettler.result(status: 410, data: Data()).mayFetchHandoff)
+        XCTAssertFalse(HermesRingSettleResult.alreadySettled(.answered, by: .phone).mayFetchHandoff)
     }
 
     func testACallAnsweredOrDeclinedOnTheWatchIsReportedAsTheUserLeftIt() {
@@ -1445,9 +1556,9 @@ extension VoiceConversationControllerTests {
         var voices = WatchCallVoices()
         voices.note(.localLive, ready: true, scope: "d|default")
         // Local Live on the phone (0.42), before the Watch could use it.
-        let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["local-live", "watch-audio", "hermes-calls"])
+        let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "hermes-calls"])
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: phoneOnly), ["localLive": false])
-        let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["local-live", "watch-audio", "watch-local-live", "hermes-calls"])
+        let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "watch-local-live", "hermes-calls"])
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["localLive": true])
     }
 
@@ -1458,4 +1569,16 @@ extension VoiceConversationControllerTests {
                        "The host runs its turns in a chat of its own: the iPhone answers instead")
         XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.geminiLive.rawValue), "Not checked yet: rings, as before")
     }
+}
+
+/// Fails every settle with `error`, as a timeout or a dropped connection.
+private final class HermesRingSettleStubProtocol: URLProtocol {
+    static var error: URLError?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: Self.error ?? URLError(.badServerResponse))
+    }
+    override func stopLoading() {}
 }

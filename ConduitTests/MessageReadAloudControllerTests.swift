@@ -798,28 +798,21 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(stored, [.faster])
     }
 
-    func testFollowAlongTracksThePlayingReplyAndEndsWithIt() async throws {
+    func testPlayerShowsThePlayingReplyAndEndsWithIt() async throws {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsPCM: true)
         gateway.pauseAfterEmission = true
         let controller = makeController(playback: playback, gateway: gateway)
 
         controller.toggle(messageID: "message-a", content: "First sentence here. Second sentence here.")
-        let reading = try XCTUnwrap(controller.nowReading)
-        XCTAssertEqual(reading.messageID, "message-a")
-        XCTAssertEqual(reading.script.segments.map(\.text), ["First sentence here.", "Second sentence here."])
-        XCTAssertNil(controller.followAlongIndex(), "no highlight before audio plays")
+        XCTAssertEqual(controller.nowReading?.messageID, "message-a")
 
         await waitUntil { controller.state == .playing(messageID: "message-a") }
-        XCTAssertEqual(controller.followAlongIndex(), 0)
-        // Still streaming, so the typical pace places 3 s in the second sentence.
-        playback.playedSeconds = 3
-        XCTAssertEqual(controller.followAlongIndex(), 1)
+        XCTAssertEqual(controller.nowReading?.messageID, "message-a")
 
         gateway.streams.last?.releaseAppendForTest()
         await waitUntil { controller.state == .idle }
         XCTAssertNil(controller.nowReading)
-        XCTAssertNil(controller.followAlongIndex())
     }
 }
 
@@ -858,8 +851,6 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     private(set) var startedRates: [Float] = []
     var keepsRateAdjustable = false
     private(set) var changedRates: [Float] = []
-    var playedSeconds: TimeInterval = 0
-    var receivedSeconds: TimeInterval = 0
 
     func changeRate(_ rate: Float) {
         changedRates.append(rate)

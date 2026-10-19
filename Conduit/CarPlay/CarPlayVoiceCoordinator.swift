@@ -225,6 +225,10 @@ final class CarPlayVoiceCoordinator {
     /// Rotated by the End button. A start still waiting for Hermes (or for
     /// its chat to open) when End was tapped never goes on to start (#378).
     private(set) var voiceStartRequest: UInt64 = 0
+    /// Bumped by every start the driver asks for (Listen, New Chat, a
+    /// picked chat, a replayed job, a shortcut), however it ends: a resume after an interruption that
+    /// sees it change leaves the conversation to the driver.
+    private(set) var driverStartRequest: UInt64 = 0
     /// A list is pushed over the voice screen. A conversation that starts
     /// meanwhile (from the phone, say) brings the voice screen back (#378).
     private(set) var isBrowsing = false
@@ -400,13 +404,19 @@ final class CarPlayVoiceCoordinator {
         guard Self.resumesAfterInterruption(controller) else { return }
         let generation = connectionGeneration
         let startRequest = voiceStartRequest
+        let driverRequest = driverStartRequest
         let delay = resumeAfterInterruptionDelay
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             // Still the same drive and conversation, and nothing the driver
-            // did meanwhile (End, Listen) moved it on.
+            // did meanwhile (End, Listen, another voice mode) moved it on: a
+            // resume never starts a live call, nor a second listen beside
+            // the driver's.
             guard let self, self.isCurrent(generation), self.isConnected, self.voiceStartRequest == startRequest,
-                  !self.phoneScreenProvider(), Self.resumesAfterInterruption(controller) else { return }
+                  !self.phoneScreenProvider(), self.driverStartRequest == driverRequest,
+                  CarPlayVoiceMode.current(in: appState) == .classic,
+                  appState.voiceConversationController === controller,
+                  Self.resumesAfterInterruption(controller) else { return }
             await self.performStartListeningTurn(generation: generation)
         }
     }
@@ -623,21 +633,27 @@ final class CarPlayVoiceCoordinator {
         case .grokLive: beginObservingGeminiLive(appState.grokLiveController)
         }
         let muted: AnyPublisher<Bool, Never>
+        // Classic voice with its output muted says nothing aloud: there is
+        // no spoken reply for Stop to stop, so the car keeps Mute.
+        var silent: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher()
         switch mode {
-        case .classic: muted = appState.voiceConversationController.$isMicrophonePaused.eraseToAnyPublisher()
+        case .classic:
+            muted = appState.voiceConversationController.$isMicrophonePaused.eraseToAnyPublisher()
+            silent = appState.voiceConversationController.$isOutputMuted.eraseToAnyPublisher()
         case .geminiLive: muted = appState.geminiLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .gptLive: muted = appState.gptLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .grokLive: muted = appState.grokLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         }
         controlsObservation?.cancel()
         controlsObservation = muted
-            .removeDuplicates()
-            .sink { [weak self] isMuted in
+            .combineLatest(silent)
+            .removeDuplicates { $0 == $1 }
+            .sink { [weak self] isMuted, isSilent in
                 guard let self else { return }
                 var updated = self.controls
                 updated.isClassic = mode == .classic
                 updated.isMicrophoneMuted = isMuted
-                updated.canStopReply = mode != .gptLive
+                updated.canStopReply = mode != .gptLive && !isSilent
                 self.updateControls(updated)
             }
     }
@@ -1178,6 +1194,7 @@ final class CarPlayVoiceCoordinator {
     /// attached to it, as a call started from that chat on the phone is.
     func openChat(_ row: CarPlayChatRow) {
         returnToVoiceScreen()
+        driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             await self?.performOpenChat(row, generation: generation)
@@ -1253,6 +1270,7 @@ final class CarPlayVoiceCoordinator {
     /// this starts (or the one already open).
     func replayJob(_ jobID: UUID) {
         returnToVoiceScreen()
+        driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
@@ -1273,6 +1291,7 @@ final class CarPlayVoiceCoordinator {
     /// this opens speaks the result when the job is done.
     func runShortcut(_ shortcut: CarPlayShortcut) {
         returnToVoiceScreen()
+        driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             await self?.performRunShortcut(shortcut, generation: generation)
@@ -1357,6 +1376,7 @@ final class CarPlayVoiceCoordinator {
     /// path — never forces Continuous Conversation on and never creates a
     /// parallel session decision.
     func startListeningTurn() {
+        driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             await self?.performStartListeningTurn(generation: generation)
@@ -1447,6 +1467,7 @@ final class CarPlayVoiceCoordinator {
     /// fresh prepare a wake phrase uses. A live mode has no chat to continue,
     /// so the button falls back to Listen there.
     func startNewChat() {
+        driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             await self?.performStartNewChat(generation: generation)

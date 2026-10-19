@@ -10,11 +10,36 @@
 //
 
 import CryptoKit
+import EventKit
 import XCTest
 @testable import Conduit
 
 @MainActor
 extension HermesVoiceGatewayTimeoutTests {
+    func testPhoneItemsLeaveOutALinkTooLongForTheHost() throws {
+        // phone_store MAX_URL_CHARS: a longer url refuses the whole upload.
+        let store = EKEventStore()
+        let long = try XCTUnwrap(URL(string: "https://example.com/r?u=" + String(repeating: "a", count: 1_000)))
+        let short = try XCTUnwrap(URL(string: "https://example.com/meet"))
+        let event = EKEvent(eventStore: store)
+        event.calendar = EKCalendar(for: .event, eventStore: store)
+        event.title = "Standup"
+        event.startDate = Date(timeIntervalSince1970: 1_760_400_000)
+        event.endDate = Date(timeIntervalSince1970: 1_760_401_800)
+        event.url = long
+        XCTAssertNil(try XCTUnwrap(EventKitPhoneSource.json(event, details: true, emails: false))["url"])
+        event.url = short
+        XCTAssertEqual(try XCTUnwrap(EventKitPhoneSource.json(event, details: true, emails: false))["url"] as? String, short.absoluteString)
+
+        let reminder = EKReminder(eventStore: store)
+        reminder.calendar = EKCalendar(for: .reminder, eventStore: store)
+        reminder.title = "Read the doc"
+        reminder.url = long
+        XCTAssertNil(try XCTUnwrap(EventKitPhoneSource.json(reminder, details: true))["url"])
+        reminder.url = short
+        XCTAssertEqual(try XCTUnwrap(EventKitPhoneSource.json(reminder, details: true))["url"] as? String, short.absoluteString)
+    }
+
     // The notifier's tests/phone_vector.json: both sides must agree.
     func testPhoneSealingMatchesTheNotifierVector() throws {
         let raw = try XCTUnwrap(NotificationE2E.base64URLDecoded("ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"))
@@ -592,6 +617,44 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(PhonePerson.isDialable("+44 7700-900123"))
         XCTAssertFalse(PhonePerson.isDialable("1-800-FLOWERS"), "The host takes only dialling signs")
         XCTAssertFalse(PhonePerson.isDialable("--- ..."))
+    }
+
+    /// An update that names another calendar or list moves the item there,
+    /// or fails: one that's gone or can't be changed is never silently
+    /// skipped while the rest of the change is applied.
+    func testPhoneUpdateMovesOrRefusesItsNamedCalendar() throws {
+        let calendars = ["work": true, "shared": false]
+        func destination(_ id: String?) throws -> Bool? {
+            try EventKitPhoneSource.moveDestination(id, find: { calendars[$0] }, isWritable: { $0 })
+        }
+        XCTAssertNil(try destination(nil), "No calendar named: it stays where it is")
+        XCTAssertEqual(try destination("work"), true)
+        XCTAssertThrowsError(try destination("deleted")) { error in
+            guard case PhoneCalendarSourceError.notFound = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertThrowsError(try destination("shared")) { error in
+            guard case PhoneCalendarSourceError.readOnly = error else { return XCTFail("\(error)") }
+        }
+    }
+
+    /// An all-day event lasts whole calendar days: a day with a clock
+    /// change (23 or 25 hours) never stretches it into the next date.
+    func testPhoneAllDayEventEndsOnItsOwnDayAcrossAClockChange() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        func day(_ year: Int, _ month: Int, _ day: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(from: DateComponents(year: year, month: month, day: day)))
+        }
+        // New on the 23-hour day the clocks go forward: ends at the next midnight.
+        XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 3, 29), previousLength: nil, calendar: calendar), try day(2026, 3, 30))
+        // A one-day event moved onto it keeps one day.
+        XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 3, 29), previousLength: 86_400, calendar: calendar), try day(2026, 3, 30))
+        // One moved off the 25-hour day the clocks go back keeps one day too.
+        XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 11, 2), previousLength: 25 * 3600, calendar: calendar), try day(2026, 11, 3))
+        // A week across the change keeps its seven days.
+        XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 3, 26), previousLength: 7 * 86_400, calendar: calendar), try day(2026, 4, 2))
+        // A short timed event made all-day: one day.
+        XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 3, 29), previousLength: 3600, calendar: calendar), try day(2026, 3, 30))
     }
 
     func testPhoneVoiceCallsSetAlarmsAndTimers() async throws {

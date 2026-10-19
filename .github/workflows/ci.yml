@@ -161,7 +161,7 @@ jobs:
             && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             # grep reads all its input (no -q): stopping at the first match could
             # kill printf with SIGPIPE, which pipefail would read as "no match".
-            if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
+            if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|ConduitShareExtension|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
               spec=project-tests.yml
             fi
           fi

@@ -80,6 +80,18 @@ extension ProfileModelDefaultsTests {
         XCTAssertEqual(ProfileSettingValue.list(["git status", "ls"]).textValue, "git status\nls")
     }
 
+    func testNumberFieldsReadADecimalComma() {
+        XCTAssertEqual(ProfileSettingValue.parseNumber("0,8"), 0.8)
+        XCTAssertEqual(ProfileSettingValue.parseNumber("0.8"), 0.8)
+        XCTAssertEqual(ProfileSettingValue.parseNumber(" 300 "), 300)
+        XCTAssertEqual(ProfileSettingValue.parseNumber("-1,5"), -1.5)
+        XCTAssertNil(ProfileSettingValue.parseNumber("1,000.5"))
+        XCTAssertNil(ProfileSettingValue.parseNumber("1,2,3"))
+        XCTAssertNil(ProfileSettingValue.parseNumber(","))
+        XCTAssertNil(ProfileSettingValue.parseNumber(""))
+        XCTAssertNil(ProfileSettingValue.parseNumber("abc"))
+    }
+
     func testListEditorDropsBlankLines() {
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries("  git status \n\n ls -la\n"), ["git status", "ls -la"])
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries(""), [])

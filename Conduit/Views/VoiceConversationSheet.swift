@@ -389,6 +389,8 @@ extension VoiceConversationSheet {
                 }
                 v2Controls
             }
+            // A wide window keeps the call to a readable column.
+            .readableContentWidth(ReadableWidth.call)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
         // VoiceOver hears the conversation change state, not every word.

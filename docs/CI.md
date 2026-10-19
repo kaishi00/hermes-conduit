@@ -53,11 +53,11 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 - **The app without its Watch app and extensions.** The smoke job generates
   the project from `project-tests.yml`, an xcodegen overlay of `project.yml`
   whose only change is that the Conduit target no longer embeds the Apple
-  Watch app and the three app extensions. No test runs them, and the Watch app
+  Watch app and the app extensions. No test runs them, and the Watch app
   is a second platform compiled from scratch. The smoke job builds the full
   app instead when the PR touches those targets' sources (`ConduitWatch/`,
   `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
-  `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
+  `ConduitShareExtension/`, `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
   spec). `Conduit/Localizable.xcstrings` is left
   out on purpose: the app target compiles the same catalog in the slim build,
   and nearly every PR edits it. Every push to `main` builds the full app too,
@@ -881,15 +881,20 @@ overhead cannot reappear as a near-timeout. What the gate classifies and
 reports from is unchanged: the console log, the `.xcresult` bundle (kept for
 every failing or retried attempt) and the extraction tokens.
 
-**Finalize grace.** When a watchdog expires but the log already carries
-xcodebuild's terminal result marker (`** TEST EXECUTE SUCCEEDED/FAILED **`),
-the test session has ENDED and the process is only writing its xcresult.
-Killing there converts a completed run into a timeout (run #500) and can
-truncate the result bundle, so the deadline is extended once by a bounded
-`XCODEBUILD_FINALIZE_GRACE_S` (default 180 s) and the process may exit on its
-own. The verdict still comes exclusively from the real exit status - the
-marker never declares success on its own - and a process that outlives the
-grace is killed and classified as a timeout exactly as before.
+**Finalize grace.** As soon as the log says the test session has ENDED -
+XCTest's top-level summary (`Test Suite 'Selected tests' passed/failed at`,
+`'All tests'` for an unfiltered run) is the last top-level suite line, or
+xcodebuild printed `** TEST EXECUTE SUCCEEDED/FAILED **` - the process is only
+finalizing (writing its xcresult, collecting diagnostics), and the watchdog's
+deadline becomes now + `XCODEBUILD_FINALIZE_GRACE_S` (default 180 s). That
+extends a nearly spent budget, so a completed run is not converted into a
+timeout (run #500) or a truncated result bundle, and shortens a large one, so
+a hung finalize step cannot spend the rest of the batch's budget. A retry
+iteration (`-retry-tests-on-failure`) prints a new `started` line after a
+failed summary and goes back on the test budget. The verdict still comes
+exclusively from the real exit status - the marker never declares success on
+its own - and a process that outlives the grace is killed and classified as a
+timeout exactly as before.
 
 Every `simctl` operation is deadline-bounded; the process-group watchdog kill
 (xcodebuild + xctest + simulator agents) is preserved from the previous

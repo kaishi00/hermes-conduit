@@ -306,7 +306,7 @@ struct VoiceSettingsView: View {
             gemini: geminiLive?.enabled == true,
             gpt: gptLive?.enabled == true,
             grok: grokLive?.enabled == true,
-            local: localLive?.enabled == true
+            local: localLive?.enabled == true && localLive?.agent == true
         ))
         _appleSpeechAvailability = State(initialValue: appleSpeechAvailability)
         _continuousConversation = State(initialValue: continuousConversation)
@@ -737,7 +737,7 @@ struct VoiceSettingsView: View {
             case .gemini: return AppLocalization.string("Gemini Live")
             case .gpt: return AppLocalization.string("GPT-Live")
             case .grok: return AppLocalization.string("Grok Live")
-            case .local: return AppLocalization.string("Local Live")
+            case .local: return AppLocalization.string("Local")
             }
         }
 
@@ -752,14 +752,16 @@ struct VoiceSettingsView: View {
             case .grok:
                 return AppLocalization.string("A real-time conversation with Grok through your Hermes server's SuperGrok sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
             case .local:
-                return AppLocalization.string("A real-time conversation through a speech server you run, with Hermes answering each turn. Needs the Hermes notifier plugin.")
+                return AppLocalization.string("A real-time conversation through a speech server you run, with a fast model of your choosing that hands the work to Hermes. Needs the Hermes notifier plugin.")
             }
         }
     }
 
     /// The mode the profile's saved preferences say is on.
     private var modelVoiceMode: VoiceMode {
-        Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true, local: localLive?.enabled == true)
+        // Local Live without agent mode is Classic's hands-free option.
+        Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true,
+                  local: localLive?.enabled == true && localLive?.agent == true)
     }
 
     private static func mode(gemini: Bool, gpt: Bool, grok: Bool, local: Bool) -> VoiceMode {
@@ -807,6 +809,7 @@ struct VoiceSettingsView: View {
         switch voiceMode {
         case .classic:
             privateVoiceSection
+            localHandsFreeSection
         case .gemini:
             if let geminiLive {
                 GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false)
@@ -824,7 +827,33 @@ struct VoiceSettingsView: View {
             }
         case .local:
             if localLive != nil {
-                LocalLiveSettingsSection(service: service)
+                LocalLiveSettingsSection(service: service, agent: true)
+            }
+        }
+    }
+
+    /// Classic's hands-free call on the user's own speech server: one
+    /// Hermes turn per utterance, the way Local Live first worked.
+    @ViewBuilder
+    private var localHandsFreeSection: some View {
+        if let localLive {
+            let on = localLive.enabled && !localLive.agent
+            ConduitSettingsSection(title: AppLocalization.string("Hands-free calls"), symbol: "phone.and.waveform", tint: .conduitAura) {
+                Toggle(AppLocalization.string("Hands-free on your speech server"), isOn: Binding(
+                    get: { on },
+                    set: { wanted in
+                        if wanted { localLive.setAgent(false) }
+                        localLive.setEnabled(wanted)
+                    }
+                ))
+                .accessibilityIdentifier("voice.localHandsFree")
+                Text(AppLocalization.string("Voice opens a call through your own speech server instead, and every utterance goes to Hermes as a turn in the call's chat. For quicker replies, pick Local under Voice mode."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if on {
+                LocalLiveSettingsSection(service: service, agent: false)
             }
         }
     }
@@ -1142,7 +1171,9 @@ struct VoiceSettingsView: View {
         case .gemini: geminiLive?.setEnabled(true)
         case .gpt: gptLive?.setEnabled(true)
         case .grok: grokLive?.setEnabled(true)
-        case .local: localLive?.setEnabled(true)
+        case .local:
+            localLive?.setAgent(true)
+            localLive?.setEnabled(true)
         }
     }
 

@@ -351,8 +351,9 @@ struct WatchTranscriptLine: View {
 
 // MARK: - Approval
 
-/// A job asks to run a command (Hermes' approval settings decide which
-/// need one). Approve allows this one command only.
+/// A job, or Hermes in a Local Live call, asks to run a command (Hermes'
+/// approval settings decide which need one). Approve allows this one
+/// command only.
 struct WatchApprovalCard: View {
     @EnvironmentObject private var call: WatchVoiceCall
     let approval: WatchJobAnswer.Approval
@@ -379,13 +380,21 @@ struct WatchApprovalCard: View {
                     .padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
-                Button {
-                    call.answerApproval(approval, approve: true)
-                } label: {
-                    Label("Approve once", systemImage: "checkmark")
-                        .frame(maxWidth: .infinity)
+                if approval.canApproveOnce {
+                    Button {
+                        call.answerApproval(approval, approve: true)
+                    } label: {
+                        Label("Approve once", systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .tint(.green)
+                } else {
+                    // More requests wait, or the command is too long to show
+                    // whole: approving here could approve what wasn't read.
+                    Text("To approve it, open the chat in Conduit on your iPhone.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
-                .tint(.green)
                 Button(role: .destructive) {
                     call.answerApproval(approval, approve: false)
                 } label: {

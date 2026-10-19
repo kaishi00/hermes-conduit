@@ -48,6 +48,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertTrue(harness.appState.compressingSessionIDs.isEmpty)
     }
 
+    /// The compressed transcript holds only Hermes' rows. The chat's own
+    /// notes, which Hermes never stores, stay: here the row they followed
+    /// was compressed away, so they land after the new tail.
+    func testCompressionKeepsTheChatsLocalNotes() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in Self.compressedResult() }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.messages = [
+            ChatMessage(id: "m1", role: .user, content: "Old question", timestamp: "2026-09-13T07:00:00Z")
+        ]
+        harness.appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: origin.id, kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "what did we decide?"))
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+
+        XCTAssertEqual(harness.appState.messages.map(\.content), [
+            "Summary carrier",
+            "Tail answer",
+            "[btw \"what did we decide?\"]\nShip on Friday.",
+            "Compressed 13 → 4 messages"
+        ])
+    }
+
     func testCompactAliasRoutesIdentically() async throws {
         let recorder = SlashCallRecorder()
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
@@ -1539,6 +1566,99 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: Hermes didn't answer in time. Check that your Hermes server is running, then try again.")
     }
 
+    // MARK: - Side agents (/background, /btw)
+
+    /// A gateway frame as HermesClient hands it to AppState.
+    private func frame(_ json: String) throws -> StreamEvent {
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try XCTUnwrap(StreamEventParser.parse(params: AnyCodable.from(object)))
+    }
+
+    /// `/btw` and `/background` start Hermes' side agents with their own
+    /// RPCs: through `slash.exec` the slash worker prints the answer after
+    /// the call has returned, so it never reached the chat.
+    func testSideAgentCommandsUseTheirOwnRPCs() async throws {
+        let recorder = SlashCallRecorder()
+        let started = SideAgentRecorder()
+        var operations = ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                return .object(["type": .string("exec"), "output": .string("")])
+            }
+        )
+        operations.startSideAgent = { _, kind, sessionID, text in
+            started.calls.append((kind, sessionID, text))
+            return kind == .btw ? "btw_1" : "bg_1"
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/btw what did we decide?")
+        _ = await harness.appState.submitComposer(text: "/bg summarize the logs")
+        _ = await harness.appState.submitComposer(text: "/background check the build")
+
+        XCTAssertEqual(recorder.slashExecCount, 0)
+        XCTAssertEqual(started.calls.map(\.kind), [.btw, .background, .background])
+        XCTAssertEqual(started.calls.map(\.text), ["what did we decide?", "summarize the logs", "check the build"])
+        XCTAssertEqual(Set(started.calls.map(\.sessionID)), ["composer-origin"])
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .system }.count, 3, "each start says where the answer will land")
+    }
+
+    /// A gateway without the side-agent RPCs keeps the old slash path, and
+    /// a command without text goes there too for its usage line.
+    func testSideAgentCommandFallsBackToSlashExec() async throws {
+        let recorder = SlashCallRecorder()
+        let started = SideAgentRecorder()
+        var operations = ChatResumeLifecycleOperations(
+            executeSlash: { _, _, command in
+                recorder.recordSlashExec(command: command)
+                return .object(["type": .string("exec"), "output": .string("legacy output")])
+            }
+        )
+        operations.startSideAgent = { _, kind, sessionID, text in
+            started.calls.append((kind, sessionID, text))
+            throw RpcError(code: -32601, message: "unknown method: prompt.btw")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/btw what did we decide?")
+        _ = await harness.appState.submitComposer(text: "/background")
+
+        XCTAssertEqual(started.calls.count, 1, "no text: nothing to start")
+        XCTAssertEqual(recorder.slashExecCommands, ["btw what did we decide?", "background"])
+        XCTAssertEqual(harness.appState.messages.last?.content, "legacy output")
+    }
+
+    /// The answers arrive later as `btw.complete` / `background.complete`
+    /// and land in the chat as a note, without touching the running turn.
+    func testSideAgentAnswersLandInTheChat() throws {
+        let harness = makeHarness()
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.handleStreamEvent(.messageStart(sessionId: "composer-origin"))
+        XCTAssertTrue(harness.appState.isBusy)
+
+        harness.appState.handleStreamEvent(try frame(#"""
+        {"type": "btw.complete", "session_id": "composer-origin", "payload": {"task_id": "btw_1a2b3c", "question": "what did we decide?", "text": "Ship on Friday."}}
+        """#))
+        harness.appState.handleStreamEvent(try frame(#"""
+        {"type": "background.complete", "session_id": "composer-origin", "payload": {"task_id": "bg_4d5e6f", "text": "Logs are clean."}}
+        """#))
+
+        let notes = harness.appState.messages.filter { $0.role == .system }.map(\.content)
+        XCTAssertEqual(notes, ["[btw \"what did we decide?\"]\nShip on Friday.", "[bg bg_4d5e6f]\nLogs are clean."])
+        XCTAssertTrue(harness.appState.isBusy, "a side agent finishing doesn't end the main turn")
+    }
+
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
         conversationIdentityIndex: ConversationIdentityIndex? = nil
@@ -1604,6 +1724,12 @@ final class AppStateSessionCompressTests: XCTestCase {
             lineageRootId: nil
         )
     }
+}
+
+/// Side-agent starts the `startSideAgent` seam saw.
+@MainActor
+private final class SideAgentRecorder {
+    var calls: [(kind: SideAgentKind, sessionID: String, text: String)] = []
 }
 
 /// Call recorder for the compression lifecycle seams. Everything runs on the

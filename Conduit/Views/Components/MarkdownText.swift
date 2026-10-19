@@ -478,6 +478,26 @@ struct MarkdownReferenceContext: Equatable {
     }
 }
 
+/// A fenced code block's delimiter: three or more backticks or tildes. Only
+/// a line of the same character, at least as long and with nothing after
+/// it, closes the block, so a ````markdown block can show ``` fences inside.
+struct MarkdownFence: Equatable {
+    let character: Character
+    let length: Int
+
+    /// The fence a whitespace-trimmed line opens, if any.
+    static func opening(_ trimmed: String) -> MarkdownFence? {
+        guard let first = trimmed.first, first == "`" || first == "~" else { return nil }
+        let length = trimmed.prefix { $0 == first }.count
+        return length >= 3 ? MarkdownFence(character: first, length: length) : nil
+    }
+
+    /// Whether this whitespace-trimmed line closes the block.
+    func closes(_ trimmed: String) -> Bool {
+        trimmed.count >= length && trimmed.allSatisfy { $0 == character }
+    }
+}
+
 /// A parsed chat message: its visible blocks plus the reference definitions
 /// that were removed from the visible body before block parsing.
 struct MarkdownParsedDocument {
@@ -2108,8 +2128,14 @@ private struct RemoteMarkdownImage: View {
     let gatewayMediaDataURL: ((String) async -> String?)?
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
+    /// A web picture, fetched and decoded within bounds; nil while loading.
+    @State private var remoteOutcome: BoundedRemoteImage.Outcome?
     @State private var openingRemote = false
     @State private var openTask: Task<Void, Never>?
+
+    /// Shown at most 360 pt tall and a phone's width: twice that, at 3x,
+    /// stays sharp.
+    private static let remoteMaxPixelSize: CGFloat = 2048
 
     private var isGatewayMedia: Bool { url.hasPrefix("MEDIA:") }
     private var gatewayPath: String {
@@ -2136,20 +2162,20 @@ private struct RemoteMarkdownImage: View {
             } else if isGatewayMedia {
                 gatewayMediaContent
             } else {
-                AsyncImage(url: URL(string: url), transaction: .init(animation: .easeInOut(duration: 0.2))) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            switch remoteOutcome {
+            case .image(let image):
+                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .overlay { if openingRemote { ProgressView() } }
                     .opensMediaPreview(openRemoteImage)
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
-            case .failure:
+            case .unavailable:
                 WebFallbackImage(url: url, alt: alt)
-            default:
+            case .tooLarge:
+                WebFallbackImage(url: url, alt: alt, loadsInPage: false)
+            case nil:
                 HStack(spacing: 8) { ProgressView(); Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt).font(.footnote).foregroundStyle(.secondary) }
                     .padding(12)
             }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2159,15 +2185,41 @@ private struct RemoteMarkdownImage: View {
             openingRemote = false
         }
         .task(id: url) {
-            guard isGatewayMedia, gatewayFileKind == nil else { return }
+            guard isGatewayMedia else {
+                // A URL that isn't RFC-valid goes to the web view, which
+                // escapes it.
+                guard let remoteURL = URL(string: url) else {
+                    remoteOutcome = .unavailable
+                    return
+                }
+                if let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) {
+                    remoteOutcome = .image(cached)
+                    return
+                }
+                remoteOutcome = nil
+                let outcome = await BoundedRemoteImage.load(remoteURL, maxPixelSize: Self.remoteMaxPixelSize)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
+                return
+            }
+            guard gatewayFileKind == nil else { return }
             gatewayImage = nil
             gatewayLoadFailed = false
             guard let gatewayMediaDataURL, !gatewayPath.isEmpty,
                   let dataURL = await gatewayMediaDataURL(gatewayPath),
                   !Task.isCancelled,
-                  let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/"),
-                  let image = UIImage(data: data) else {
+                  let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else {
                 guard !Task.isCancelled else { return }
+                gatewayLoadFailed = true
+                return
+            }
+            // Downsampled off the main thread, within the same pixel bound.
+            let maxPixelSize = Self.remoteMaxPixelSize
+            let decoded = await Task.detached(priority: .userInitiated) {
+                BoundedRemoteImage.decode(data, maxPixelSize: maxPixelSize)
+            }.value
+            guard !Task.isCancelled else { return }
+            guard case .image(let image) = decoded else {
                 gatewayLoadFailed = true
                 return
             }
@@ -2552,12 +2604,14 @@ enum WebFallbackImageLabel {
 private struct WebFallbackImage: View {
     let url: String
     let alt: String
+    /// False for a picture too large to load here: just the link.
+    var loadsInPage = true
     @State private var height: CGFloat = 220
     @State private var failed = false
 
     var body: some View {
         Group {
-            if failed {
+            if failed || !loadsInPage {
                 // A model-authored URL is not guaranteed to be RFC-valid
                 // (unencoded non-ASCII paths are common); force-unwrapping
                 // here crashed the app on exactly the images most likely to
@@ -2789,7 +2843,7 @@ enum MarkdownParser {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var visibleLines: [String] = []
         var definitions: [String] = []
-        var openFence: String?
+        var openFence: MarkdownFence?
         var mathClose: String?
 
         var index = 0
@@ -2813,11 +2867,11 @@ enum MarkdownParser {
             }
             if let fence = openFence {
                 visibleLines.append(line)
-                if trimmed.hasPrefix(fence) { openFence = nil }
+                if fence.closes(trimmed) { openFence = nil }
                 index += 1
                 continue
             }
-            if let fence = fenceStart(trimmed) {
+            if let fence = MarkdownFence.opening(trimmed) {
                 openFence = fence
                 visibleLines.append(line)
                 index += 1
@@ -2866,11 +2920,11 @@ enum MarkdownParser {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { index += 1; continue }
 
-            if let fence = fenceStart(trimmed) {
-                let language = String(trimmed.dropFirst(fence.count)).trimmingCharacters(in: .whitespaces)
+            if let fence = MarkdownFence.opening(trimmed) {
+                let language = String(trimmed.dropFirst(fence.length)).trimmingCharacters(in: .whitespaces)
                 index += 1
                 var code: [String] = []
-                while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(fence) { code.append(lines[index]); index += 1 }
+                while index < lines.count, !fence.closes(lines[index].trimmingCharacters(in: .whitespaces)) { code.append(lines[index]); index += 1 }
                 if index < lines.count { index += 1 }
                 blocks.append(.code(language: language, source: code.joined(separator: "\n")))
                 continue
@@ -2978,7 +3032,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -2998,7 +3052,6 @@ enum MarkdownParser {
         return (String(marker), String(value[range.upperBound...]))
     }
 
-    private static func fenceStart(_ value: String) -> String? { value.hasPrefix("```") ? "```" : (value.hasPrefix("~~~") ? "~~~" : nil) }
 
     /// CommonMark allows a definition at most three spaces of indentation;
     /// anything deeper is indented-code content that Foundation keeps as

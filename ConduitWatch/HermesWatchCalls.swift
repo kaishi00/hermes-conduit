@@ -293,8 +293,9 @@ final class HermesWatchCalls: NSObject {
             return
         }
         voiceCall = id
-        // Only a start the relay took reaches the iPhone.
-        WatchVoiceCall.shared.start(ring: ring.id, answer: settled == .settled && start != nil ? answer : nil, engine: engine)
+        // Only a start the relay took, or may have taken (no answer came
+        // back), reaches the iPhone.
+        WatchVoiceCall.shared.start(ring: ring.id, answer: settled.mayFetchHandoff && start != nil ? answer : nil, engine: engine)
     }
 
     /// The Watch voice call ended (hung up on its screen, or it failed):

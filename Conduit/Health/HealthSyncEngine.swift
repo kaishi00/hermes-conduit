@@ -323,13 +323,15 @@ final class HealthSyncEngine: ObservableObject {
             case .http(let status, _) where status == 404:
                 state.pause = .pluginMissing
                 return .paused(.pluginMissing)
-            case .http(let status, let detail) where status == 409:
+            case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key (a wipe, a
                 // reinstall of the plugin's store): set it up again next pass.
                 keys.clear()
                 lastError = detail
                 return .unfinished
-            case .http(let status, let detail) where status == 400 || status == 413:
+            case .http(let status, let detail) where status == 400 || status == 409 || status == 413:
+                // Any other 409 (too many devices, a store from a newer
+                // plugin) isn't fixed by a new key: the key stays.
                 state.pause = .refused(detail)
                 return .paused(.refused(detail))
             default:

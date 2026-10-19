@@ -1478,8 +1478,32 @@ final class ClarifyFakeSocket: HermesWebSocket {
         held.forEach { $0(error) }
     }
 
+    /// A gateway without `approval.pending` until the first
+    /// `approval.respond`: the queue read a card without a request id makes
+    /// before it answers is refused at once (-32601, so the answer goes by
+    /// session as before) and kept out of `sentTexts` and `onSend`, so a
+    /// test about what follows keeps its frame positions.
+    var refusesApprovalPendingBeforeRespond = false
+    private var sawApprovalRespond = false
+
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         if case .string(let text) = message {
+            let request = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
+            let method = request?["method"] as? String
+            if method == "approval.respond" { sawApprovalRespond = true }
+            if refusesApprovalPendingBeforeRespond, !sawApprovalRespond,
+               method == "approval.pending", let id = request?["id"] as? Int {
+                completionHandler(nil)
+                deliver(String(
+                    decoding: try! JSONSerialization.data(withJSONObject: [
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": ["code": -32601, "message": "unknown method: approval.pending"]
+                    ]),
+                    as: UTF8.self
+                ))
+                return
+            }
             sentTexts.append(text)
             onSend?()
         }

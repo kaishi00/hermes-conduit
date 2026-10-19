@@ -33,6 +33,7 @@ struct GatewayDiagnosticsSheet: View {
                 VStack(spacing: 22) {
                     summary
                     lastConnection
+                    DeviceReportsSection()
                     connectors
                     logs
                 }
@@ -427,5 +428,62 @@ private struct DelegateAgentCard: View {
         case .failed: return .red
         case .interrupted: return .secondary
         }
+    }
+}
+
+/// iOS's own MetricKit reports for Conduit (MetricKitReports): a short
+/// English summary of the latest day and a file to share, for battery and
+/// data questions. Nothing here is uploaded.
+private struct DeviceReportsSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @State private var loaded: MetricKitReports.Loaded?
+    @State private var loading = false
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let summary = loaded?.summary, !summary.isEmpty {
+                    // A summary, so it wraps rather than scrolling sideways.
+                    Text(verbatim: summary.text)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if loading {
+                    ProgressView().controlSize(.small)
+                } else if let exportURL = loaded?.exportURL {
+                    ShareLink(item: exportURL) {
+                        Label("Share device reports", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityLabel(AppLocalization.string("Share device reports"))
+                    .accessibilityIdentifier("diagnostics.shareDeviceReports")
+                } else if loaded?.exportFailed == true {
+                    // Reports are stored but the file to share isn't: say so
+                    // rather than leave the page looking empty.
+                    Text("Couldn't write the device reports file.")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                    Button { Task { await load() } } label: {
+                        Label("Try again", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityIdentifier("diagnostics.retryDeviceReports")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard !loading else { return }
+        loading = true
+        loaded = await MetricKitReports.shared.load()
+        loading = false
     }
 }

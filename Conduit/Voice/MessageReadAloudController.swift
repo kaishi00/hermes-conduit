@@ -31,12 +31,11 @@ final class MessageReadAloudController: ObservableObject {
     /// screen, Control Center, AirPods). The chat button still reads Stop.
     @Published private(set) var isPaused = false
 
-    /// The reply being read, for the floating player and its reading view
-    /// (#759). Set from the tap until playback settles.
+    /// The reply being read, for the floating player (#759). Set from the
+    /// tap until playback settles.
     struct NowReading: Equatable {
         let messageID: String
         let title: String
-        let script: ReadAloudScript
     }
 
     @Published private(set) var nowReading: NowReading?
@@ -50,9 +49,6 @@ final class MessageReadAloudController: ObservableObject {
     private let playbackRate: @MainActor () -> Float
     /// Saves a speed picked in the player as the Read Aloud setting.
     private let storeSpeed: @MainActor (ReadAloudSpeed) -> Void
-    /// Every second of the reply's audio has arrived, so the follow-along
-    /// estimate can use its real length.
-    private var audioComplete = false
     private var activeGateway: VoiceGatewayService?
     private var speechStream: VoiceSpeechStream?
     private var playbackTask: Task<Void, Never>?
@@ -247,17 +243,6 @@ final class MessageReadAloudController: ObservableObject {
         }
     }
 
-    /// The sentence of the playing reply estimated to be sounding now, as an
-    /// index into `nowReading.script.segments`. Nil before audio starts.
-    func followAlongIndex() -> Int? {
-        guard case .playing = state, let script = nowReading?.script else { return nil }
-        return script.segmentIndex(
-            playedSeconds: playback.playedSeconds,
-            receivedSeconds: playback.receivedSeconds,
-            isComplete: audioComplete
-        )
-    }
-
     /// The active stream belongs to the gateway that opened it. A replaced or
     /// cleared gateway (disconnect, profile change) invalidates the in-flight
     /// operation, so any replacement stops it.
@@ -287,9 +272,8 @@ final class MessageReadAloudController: ObservableObject {
         let generation = operationGeneration
         state = .preparing(messageID: messageID)
         nowPlayingTitle = ReadAloudNowPlaying.title(for: content)
-        audioComplete = false
         speed = ReadAloudSpeed.closest(to: playbackRate())
-        nowReading = NowReading(messageID: messageID, title: nowPlayingTitle, script: ReadAloudScript.make(from: content))
+        nowReading = NowReading(messageID: messageID, title: nowPlayingTitle)
         endBackgroundActivity = beginBackgroundActivity { [weak self] in
             // Time ran out before any audio: the app is about to suspend
             // with the stream still opening. Fail closed rather than leave
@@ -350,7 +334,6 @@ final class MessageReadAloudController: ObservableObject {
             _ = try await stream.finish()
             guard isCurrent(generation) else { return }
             speechStream = nil
-            audioComplete = true
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
@@ -415,7 +398,6 @@ final class MessageReadAloudController: ObservableObject {
         state = terminal
         isPaused = false
         nowReading = nil
-        audioComplete = false
         pausedStopTask?.cancel()
         pausedStopTask = nil
         nowPlaying.end()

@@ -235,7 +235,7 @@ final class LocalLiveTurnRunner {
             guard !current.correcting else { return }
             reply?.skipsInterruption = false
             speak(text)
-        case .messageComplete(let id, _, let content, _):
+        case .messageComplete(let id, _, let content, _, _):
             guard id == current.runtimeID else { return }
             // The notice for a reply a correction cut off is never its answer.
             if VoiceBackgroundJobSupervisor.isInterruptionNotice(content) { return }

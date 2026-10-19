@@ -388,6 +388,111 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.cachedReviewRowsForTesting("st-alt").count, 1)
     }
 
+    /// Hermes never stores the chat's own notes (slash command output,
+    /// /btw and /background answers), so a resume that rebuilds the chat
+    /// from its rows must keep them: after the row each followed, or at the
+    /// end when that row isn't among the rebuilt ones. Not doubled by a
+    /// second refresh.
+    func testLocalNotesSurviveAResumeOfTheSameChat() {
+        let index = ConversationIdentityIndex()
+        index.recordAuthoritative(runtimeID: "runtime-1", durableID: "stored-a", profile: "default", source: .resume)
+        let harness = makeHarness(
+            configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") },
+            conversationIdentityIndex: index
+        )
+        let appState = harness.appState
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "runtime-1"
+        appState.messages = [
+            ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+            ChatMessage(id: "row-2", role: .assistant, content: "Hello", timestamp: "2026-09-13T08:00:01Z")
+        ]
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "runtime-1", kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "what did we decide?"))
+        appState.messages.append(ChatMessage(id: "live-3", role: .assistant, content: "Later", timestamp: "2026-09-13T08:00:02Z"))
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "runtime-1", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil))
+
+        // The resume rotates the runtime id; the live row comes back as row-3.
+        let result = SessionResumeResult(
+            sessionId: "runtime-2",
+            storedSessionId: "stored-a",
+            messages: [
+                ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+                ChatMessage(id: "row-2", role: .assistant, content: "Hello", timestamp: "2026-09-13T08:00:01Z"),
+                ChatMessage(id: "row-3", role: .assistant, content: "Later", timestamp: "2026-09-13T08:00:02Z")
+            ],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )
+        XCTAssertTrue(appState.applyChatResume(result))
+        let expected = ["Hi", "Hello", "[btw \"what did we decide?\"]\nShip on Friday.", "Later", "[bg bg_1]\nLogs are clean."]
+        XCTAssertEqual(appState.messages.map(\.content), expected)
+
+        XCTAssertTrue(appState.applyChatResume(result))
+        XCTAssertEqual(appState.messages.map(\.content), expected, "a second refresh doesn't double the notes")
+    }
+
+    /// Two notes with the same text (/help run twice) are two notes: a
+    /// refresh keeps both, and a second refresh still doesn't double them.
+    func testIdenticalLocalNotesBothSurviveARefresh() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let rows = [row("row-1", .user, "Hi"), row("row-2", .assistant, "Hello")]
+        let previous = [rows[0], row("slash-a", .system, "Commands: /help"), rows[1], row("slash-b", .system, "Commands: /help")]
+
+        let once = AppState.keepingLocalNotes(from: previous, in: rows)
+        XCTAssertEqual(once.map(\.id), ["row-1", "slash-a", "row-2", "slash-b"])
+        XCTAssertEqual(AppState.keepingLocalNotes(from: once, in: rows).map(\.id), once.map(\.id))
+    }
+
+    /// Carried notes keep their order even when some of the rows they
+    /// followed are gone: those go at the end, and no later note lands
+    /// above an earlier one.
+    func testLocalNotesKeepTheirOrderWhenAnchorsAreMissing() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let note1 = row("slash-1", .system, "first")
+        let note2 = row("slash-2", .system, "second")
+        let rowA = row("row-a", .user, "A")
+        let rowB = row("row-b", .assistant, "B")
+        let rowC = row("row-c", .user, "C")
+
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB]).map(\.id),
+            ["row-b", "slash-1", "slash-2"]
+        )
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB, rowC]).map(\.id),
+            ["row-b", "row-c", "slash-1", "slash-2"]
+        )
+        // Anchors that are present still anchor.
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowA, rowB, rowC]).map(\.id),
+            ["row-a", "slash-1", "row-b", "slash-2", "row-c"]
+        )
+    }
+
+    /// The notes belong to their chat: a resume of another one doesn't
+    /// carry them over.
+    func testLocalNotesStayWithTheirChat() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-a"
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "chat-a", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil))
+        XCTAssertEqual(appState.messages.count, 1)
+
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "chat-b",
+            messages: [ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z")],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(appState.messages.map(\.content), ["Hi"])
+    }
+
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
         let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -2067,6 +2172,46 @@ final class AppStateChatResumeTests: XCTestCase {
 
         XCTAssertFalse(opened)
         XCTAssertFalse(harness.appState.isOpeningNotificationSession)
+    }
+
+    func testOpeningAnotherChatTakesDownTheChatsModelAndContextSheets() async {
+        let catalog = [session("stored-a"), session("stored-b", alternateIDs: ["runtime-b"])]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in catalog },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "b1", role: .assistant, content: "B", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = catalog
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.showModelPicker = true
+        harness.appState.showContextSheet = true
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: nil, sessionId: "stored-b", type: "response_ready")
+        )
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-b")
+        XCTAssertFalse(harness.appState.showModelPicker, "the Model sheet would apply chat A's picks to chat B")
+        XCTAssertFalse(harness.appState.showContextSheet, "the Context sheet shows chat A's breakdown")
+
+        // Another id of the same conversation is still the chat they came up over.
+        harness.appState.showModelPicker = true
+        harness.appState.showContextSheet = true
+        harness.appState.activeSessionId = "runtime-b"
+        XCTAssertTrue(harness.appState.showModelPicker)
+        XCTAssertTrue(harness.appState.showContextSheet)
     }
 
     func testNotificationDecisionSurvivesOpenWhenNotifiedSessionIsActive() async {
@@ -4411,6 +4556,105 @@ final class AppStateChatResumeTests: XCTestCase {
 
     func testProfileSwitchRejectsStaleAutomaticReconnectSignInFailure() async {
         await assertProfileSwitchCancelsStaleReconnectMint(outcome: .signInRequired)
+    }
+
+    // MARK: - Delegate agents belong to their conversation
+
+    private func delegateAgent(_ id: String) -> DelegateAgentActivity {
+        DelegateAgentActivity(
+            id: id, goal: "Look into it", model: nil, status: .running,
+            taskCount: 1, taskIndex: 0, currentTool: nil, summary: nil, stream: []
+        )
+    }
+
+    func testDelegateAgentsAreOnlyTheOpenConversations() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+                },
+                branchSession: { _, _, _, _, _ in
+                    (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
+                },
+                setSessionTitle: { _, _, _ in },
+                refreshContext: { _, _ in }
+            )
+        )
+        let first = session("stored-a")
+        let second = session("stored-b")
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [first, second]
+        harness.appState.activeSessionId = first.id
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: first.id, activity: delegateAgent("agent-a")))
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-a"])
+        XCTAssertEqual(harness.appState.activeAgents, 1)
+
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "the first conversation's agents don't show in the second")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: second.id, activity: delegateAgent("agent-b")))
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-b"], "opening the same conversation again keeps its agents")
+
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+        ]
+        await harness.appState.branchFromAssistantMessage("assistant")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "a branch is its own conversation: the parent's agents stay with the parent")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: "branch-runtime", activity: delegateAgent("agent-c")))
+        harness.appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "another profile never sees them")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+    }
+
+    func testADeletedConversationsAgentsGoWithItOnAutomaticReturn() async {
+        for fallbackOpens in [true, false] {
+            let scheduler = ControlledReconnectScheduler()
+            let harness = makeHarness(
+                reconnectScheduler: scheduler.schedule(after:operation:),
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in [self.session("stored-other")] },
+                    openSession: { _, sessionID, _ in
+                        if sessionID == "stored-deleted" {
+                            throw RpcError(code: 4007, message: "Session not found")
+                        }
+                        guard fallbackOpens else { throw ControlledLifecycleError.failed }
+                        return SessionResumeResult(
+                            sessionId: sessionID,
+                            messages: [],
+                            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                        )
+                    },
+                    refreshContext: { _, _ in }
+                )
+            )
+            installComposerClient(in: harness)
+            harness.store.setLastSessionID("stored-deleted", for: "default")
+            harness.appState.activeSessionId = "stored-deleted"
+            harness.appState.handleStreamEvent(.delegateAgent(sessionId: "stored-deleted", activity: delegateAgent("agent-gone")))
+            XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-gone"])
+
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: nil,
+                automaticWorkToken: nil
+            )
+
+            XCTAssertEqual(harness.appState.activeSessionId, fallbackOpens ? "stored-other" : nil)
+            XCTAssertTrue(
+                harness.appState.delegateAgents.isEmpty,
+                "the deleted conversation's agents don't stay (fallback opens: \(fallbackOpens))"
+            )
+            XCTAssertEqual(harness.appState.activeAgents, 0)
+        }
     }
 
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
@@ -7318,5 +7562,107 @@ private final class SessionOpenGates {
 
     func resume(_ sessionID: String) {
         gates[sessionID]?.resume()
+    }
+}
+
+// MARK: - A profile switch a newer navigation supersedes
+
+extension AppStateChatResumeTests {
+    private enum SupersededSwitchConnect {
+        case connects
+        case fails
+    }
+
+    /// Default connected; a switch to "work" whose mint or connect waits on
+    /// `gate`. Each mint gets a fresh ticket.
+    private func supersededSwitchHarness(
+        gateMint: Bool,
+        connect: SupersededSwitchConnect = .connects,
+        gate: ControlledSuspension
+    ) -> (appState: AppState, defaults: UserDefaults, mints: () -> Int) {
+        var mintCount = 0
+        var connectCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in
+                    connectCount += 1
+                    guard !gateMint, connectCount == 1 else { return }
+                    await gate.suspend()
+                    if connect == .fails { throw HermesError.connectionClosed }
+                },
+                loadCatalog: { _, _ in [] },
+                mintTicket: { _ in
+                    mintCount += 1
+                    if gateMint, mintCount == 1 { await gate.suspend() }
+                    return "ticket-\(mintCount)"
+                },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {}
+            )
+        )
+        let saved = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.appState.connection = saved
+        harness.appState.client = HermesClient(connection: saved, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.showLogin = false
+        harness.appState.runtime.approvalsMode = "off"
+        harness.appState.runtime.yolo = true
+        return (harness.appState, harness.defaults, { mintCount })
+    }
+
+    func testASwitchSupersededWhileMintingLeavesThePreviousProfileAsItWas() async {
+        let gate = ControlledSuspension()
+        let (appState, _, _) = supersededSwitchHarness(gateMint: true, gate: gate)
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()   // a notification opens meanwhile
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertFalse(appState.isProfileSwitching)
+        XCTAssertEqual(appState.runtime.approvalsMode, "off", "the profile still active keeps its approval mode")
+        XCTAssertEqual(appState.runtime.yolo, true)
+    }
+
+    func testASwitchSupersededWhileConnectingStillFinishesSwitching() async {
+        let gate = ControlledSuspension()
+        let (appState, defaults, _) = supersededSwitchHarness(gateMint: false, gate: gate)
+        let previousClient = appState.client
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "work")
+        XCTAssertFalse(appState.client === previousClient)
+        XCTAssertTrue(appState.isConnected, "the work profile's client is connected")
+        XCTAssertEqual(defaults.string(forKey: "conduit.activeProfile"), "work", "a cold launch opens the profile switched to")
+    }
+
+    func testASwitchSupersededWhoseConnectFailsGoesBackToThePreviousProfile() async {
+        let gate = ControlledSuspension()
+        let (appState, defaults, mints) = supersededSwitchHarness(gateMint: false, connect: .fails, gate: gate)
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        _ = appState.beginExplicitChatViewportTransition()
+        gate.resume()
+        await switching.value
+
+        XCTAssertEqual(appState.activeProfile, "default", "a failed client is never left as the work profile's")
+        XCTAssertEqual(appState.runtime.approvalsMode, "off")
+        XCTAssertEqual(appState.runtime.yolo, true)
+        XCTAssertNotEqual(defaults.string(forKey: "conduit.activeProfile"), "work")
+        XCTAssertGreaterThanOrEqual(mints(), 2, "the previous profile reconnects")
     }
 }

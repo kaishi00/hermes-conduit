@@ -3816,6 +3816,44 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 0, "\(fake.submissions)")
         controller.stop()
     }
+
+    /// "Cancel background jobs", then a hang-up before Hermes answered: the
+    /// answer (and every task the ended call left running) stays out of the
+    /// next call.
+    func testGPTLiveCancelAnswerFromAnEndedCallIsNotSpokenInTheNextCall() async {
+        let first = FakeGPTLiveSessionControl()
+        let second = FakeGPTLiveSessionControl()
+        var sessions = [first, second]
+        let client = FakeGPTLiveClient()
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let controller = GPTLiveConversationController(
+            makeSession: { sessions.removeFirst() },
+            availability: { try await client.availability() },
+            briefing: { "[rules]" },
+            supervisor: supervisor,
+            requestPermission: { true },
+            headsetMute: HeadsetMicrophoneMute(system: FakeSystemInputMute())
+        )
+        _ = await supervisor.startJob(instructions: "check the server")
+        await controller.start()
+        first.becomeReady()
+        fake.parksCancel = true
+        first.onEvent?(.turnDone(role: "user", transcript: "Cancel background jobs."))
+        await fake.cancelParked.waitUntil(1)
+
+        controller.stop()
+        await controller.start()
+        second.becomeReady()
+        let before = second.appended.count
+        fake.releaseCancel()
+        await settle(until: { fake.cancelled.count == 1 })
+        await settle(20)
+
+        XCTAssertEqual(fake.cancelled, ["rt-1"], "the job is still cancelled on Hermes")
+        XCTAssertEqual(second.appended.count, before, "\(second.appended.map(\.text))")
+        controller.stop()
+    }
 }
 
 // MARK: - Billing: ChatGPT plan or API key (#559)

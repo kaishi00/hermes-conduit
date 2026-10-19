@@ -196,6 +196,13 @@ enum WatchJobAnswer {
         var requestID: String
         var command: String
         var description: String
+        /// The card offers Approve once. A Local Live call's request offers
+        /// Deny only while more are pending or its command is cut.
+        var canApproveOnce = true
+
+        /// A Local Live call's own request (no job): answered on the call's
+        /// stream, `requestID` being the host's id for it.
+        var isCallRequest: Bool { grantID.isEmpty && jobID.isEmpty }
     }
 
     struct News: Equatable {

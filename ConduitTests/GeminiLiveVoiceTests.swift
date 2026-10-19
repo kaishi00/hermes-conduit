@@ -290,6 +290,28 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(try decode(["setupComplete": [String: Any]()]), [.setupComplete])
     }
 
+    func testHostCallsWaitPastTheHostsOwnTimeout() async throws {
+        // The host mints a Gemini token with a 15 s timeout to Google
+        // (plugin_api REQUEST_TIMEOUT_S): giving up first spends a mint for
+        // nothing and the call doesn't start.
+        var timeouts: [String: Int] = [:]
+        let client = GeminiLiveTokenClient(request: { path, _, _, timeout in
+            timeouts[path] = timeout
+            return ["ok": true, "token": "abc", "websocket_url": "wss://example.com/ws", "model": "gemini-3.8-live"]
+        })
+        _ = try? await client.freshToken()
+        XCTAssertGreaterThan(try XCTUnwrap(timeouts[GeminiLiveTokenClient.tokenPath]), 15_000)
+
+        // The host claims a pairing at the relay with a 15 s timeout
+        // (plugin_api PAIR_TIMEOUT_S), then writes it.
+        XCTAssertGreaterThan(PushNotificationService.pairTimeoutMilliseconds, 15_000)
+
+        // A room's files go to /room-files, which takes 50 MiB
+        // (plugin_api ROOM_FILE_MAX_BYTES), whatever the composer allows.
+        XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: AttachmentSizeLimit.hostMaximumMegabytes), 50)
+        XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: 16), 16)
+    }
+
     func testGeminiLiveTokenClientParsesStatusAndTokensAndNeverFallsBackSilently() async throws {
         XCTAssertEqual(
             GeminiLiveTokenClient.availability(from: ["ok": true, "available": true, "model": "gemini-3.8-live"]),
@@ -1832,6 +1854,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(standardInput.starts, 1)
         input.stop()
         output.stop()
+    }
+
+    /// A session notification seen between calls (an interruption or a
+    /// media reset while idle) never stops the next call's echo-cancelling
+    /// audio: each call's audio is a lifetime of its own.
+    func testEchoCancellingAudioIgnoresANotificationSeenBeforeTheCallStarted() {
+        var lifetime = LiveVoiceAudioLifetime()
+        lifetime.begin()
+        let duringCall = lifetime.id
+        XCTAssertTrue(lifetime.accepts(duringCall), "The call's own notification stops it")
+        lifetime.end()
+        XCTAssertFalse(lifetime.accepts(duringCall), "An earlier call's notification is stale")
+        let whileIdle = lifetime.id
+        lifetime.begin()
+        XCTAssertFalse(lifetime.accepts(whileIdle), "Seen while idle: not the new call's")
+        XCTAssertTrue(lifetime.accepts(lifetime.id))
     }
 
     func testGeminiLivePromptsAnAcknowledgementOnlyWhenTheModelStayedSilent() async {

@@ -108,6 +108,21 @@ extension NotificationE2ETests {
 
     // MARK: Precision
 
+    func testAreaNamesFitWhatTheHostTakes() {
+        // location_store MAX_AREA_CHARS: a longer field refuses the whole batch.
+        let long = String(repeating: "Ä", count: 120)
+        let area = LocationArea(name: long, locality: "London", region: long + "🇬🇧", country: "United Kingdom", countryCode: "GB")
+        let json = area.json
+        for key in ["name", "region"] {
+            let value = json[key] as? String ?? ""
+            XCTAssertEqual(value.unicodeScalars.count, 80, key)
+            XCTAssertTrue(long.hasPrefix(value), key)
+        }
+        XCTAssertEqual(json["locality"] as? String, "London")
+        XCTAssertEqual(json["country"] as? String, "United Kingdom")
+        XCTAssertEqual(json["country_code"] as? String, "GB")
+    }
+
     func testPlacesPrecisionNamesThePlaceAndNothingElse() {
         let json = LocationFixtures.json(LocationFixtures.fix(latitude: 51.5322, longitude: -0.0754), .places)
         XCTAssertEqual(json["place_id"] as? String, "p_home")
@@ -372,6 +387,29 @@ extension NotificationE2ETests {
         XCTAssertTrue(LocationSyncEngine.needsNewKey("unknown_key"))
         XCTAssertTrue(LocationSyncEngine.needsNewKey("bad_seal"))
         XCTAssertFalse(LocationSyncEngine.needsNewKey("layer_off"))
+    }
+
+    /// The notifier sends its message, not its code, as the 409's detail
+    /// (`location_store.py`, `health_store.py`): key loss is recognized from
+    /// those messages too, and its other 409s are not key loss.
+    func testTheNotifiersKeyLossMessagesAreRecognized() {
+        for detail in [
+            "This device's location key isn't on this profile; set it up again",
+            "The body didn't open with this device's key; set up location sharing again",
+            "This device's health key isn\u{2019}t on this profile; set it up again",
+            "The body didn't open with this device's key; set up health sync again",
+        ] {
+            XCTAssertTrue(LocationSyncEngine.needsNewKey(detail), detail)
+        }
+        for detail in [
+            "This profile already keeps location from 8 devices; delete one from Conduit first",
+            "This location store was written by a newer plugin; update the plugin",
+            "This health store was written by a newer plugin; update the plugin",
+            "A gps fix needs precise sharing on",
+            "That place rule was just deleted",
+        ] {
+            XCTAssertFalse(LocationSyncEngine.needsNewKey(detail), detail)
+        }
     }
 
     func testAnIngest404KeepsTheKeyAndIsThePluginMissingOnlyWhenStatusIsGoneToo() async throws {

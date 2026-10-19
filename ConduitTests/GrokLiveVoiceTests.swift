@@ -124,37 +124,62 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testGrokLiveClientMessagesMapToRealtimeEvents() throws {
-        // Samples 1 and 3 at 16 kHz become 1, 2, 3 at 24 kHz.
-        let audio = GrokLiveProtocol.frames(for: .audio(Data([1, 0, 3, 0])))
+        // Samples 1 and 3 at 16 kHz become 1, 2 at 24 kHz; the third falls
+        // between the 3 and the next chunk's first sample, so it waits for
+        // it: 1, 3, 5 become 1, 2, 4, 5.
+        var upsampler = GrokInputUpsampler()
+        let audio = GrokLiveProtocol.frames(for: .audio(Data([1, 0, 3, 0])), upsampler: &upsampler)
         XCTAssertEqual(audio.frames.first?["type"] as? String, "input_audio_buffer.append")
-        XCTAssertEqual(audio.frames.first?["audio"] as? String, Data([1, 0, 2, 0, 3, 0]).base64EncodedString())
+        XCTAssertEqual(audio.frames.first?["audio"] as? String, Data([1, 0, 2, 0]).base64EncodedString())
+        let next = GrokLiveProtocol.frames(for: .audio(Data([5, 0])), upsampler: &upsampler)
+        XCTAssertEqual(next.frames.first?["audio"] as? String, Data([4, 0, 5, 0]).base64EncodedString())
         XCTAssertFalse(audio.wantsResponse)
         XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data(count: 3_200)).count, 4_800, "100 ms of capture is 100 ms at 24 kHz")
         XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data([0x00, 0x80, 0xFF, 0x7F])), Data([0x00, 0x80, 0xAA, 0x2A, 0xFF, 0x7F]), "full-scale samples interpolate without overflow")
         XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data()), Data())
 
-        let end = GrokLiveProtocol.frames(for: .audioStreamEnd)
+        let end = GrokLiveProtocol.frames(for: .audioStreamEnd, upsampler: &upsampler)
         XCTAssertEqual(end.frames.first?["audio"] as? String, GrokLiveProtocol.silence.base64EncodedString(), "a short silence closes the turn")
         XCTAssertFalse(end.wantsResponse)
 
-        let text = GrokLiveProtocol.frames(for: .textTurn("hello"))
+        let text = GrokLiveProtocol.frames(for: .textTurn("hello"), upsampler: &upsampler)
         let item = try XCTUnwrap(text.frames.first?["item"] as? [String: Any])
         XCTAssertEqual(item["role"] as? String, "user")
         XCTAssertEqual((item["content"] as? [[String: Any]])?.first?["text"] as? String, "hello")
         XCTAssertTrue(text.wantsResponse)
 
-        let answer = GrokLiveProtocol.frames(for: .toolResponse(id: "c1", name: "list_jobs", result: ["b": "2", "a": "1"], scheduling: nil))
+        let answer = GrokLiveProtocol.frames(for: .toolResponse(id: "c1", name: "list_jobs", result: ["b": "2", "a": "1"], scheduling: nil), upsampler: &upsampler)
         let output = try XCTUnwrap(answer.frames.first?["item"] as? [String: Any])
         XCTAssertEqual(output["type"] as? String, "function_call_output")
         XCTAssertEqual(output["call_id"] as? String, "c1")
         XCTAssertEqual(output["output"] as? String, #"{"a":"1","b":"2"}"#)
         XCTAssertTrue(answer.wantsResponse)
-        XCTAssertFalse(GrokLiveProtocol.frames(for: .toolResponse(id: "c1", name: "start_job", result: [:], scheduling: .silent)).wantsResponse, "a silent answer is absorbed")
+        XCTAssertFalse(GrokLiveProtocol.frames(for: .toolResponse(id: "c1", name: "start_job", result: [:], scheduling: .silent), upsampler: &upsampler).wantsResponse, "a silent answer is absorbed")
 
-        let note = GrokLiveProtocol.frames(for: .contextNote("typed"))
+        let note = GrokLiveProtocol.frames(for: .contextNote("typed"), upsampler: &upsampler)
         XCTAssertEqual(note.frames.first?["type"] as? String, "conversation.item.create")
         XCTAssertEqual(((note.frames.first?["item"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String, "typed")
         XCTAssertFalse(note.wantsResponse, "context is kept, not answered")
+    }
+
+    /// Capture arrives in odd-sized chunks (1 024 frames at 48 kHz are 341
+    /// at 16 kHz): upsampled chunk by chunk, the stream must come out as
+    /// it does in one pass, with no sample lost and no step at the joins.
+    func testGrokLiveUpsamplesACaptureStreamAcrossItsChunks() {
+        let samples = (0..<682).map { Int16(truncatingIfNeeded: ($0 * 7_919) % 20_000 - 10_000) }
+        let pcm = samples.reduce(into: Data()) { data, sample in
+            let bits = UInt16(bitPattern: sample)
+            data.append(UInt8(bits & 0xFF))
+            data.append(UInt8(bits >> 8))
+        }
+        var whole = GrokInputUpsampler()
+        let once = whole.upsample(pcm)
+        var chunked = GrokInputUpsampler()
+        let first = chunked.upsample(pcm.prefix(682))
+        let second = chunked.upsample(pcm.suffix(682))
+        XCTAssertEqual(first + second, once, "Two 341-sample chunks come out as one pass")
+        // 682 samples are 1 023 at 24 kHz; the last waits for the next chunk.
+        XCTAssertEqual(once.count, 1_022 * 2)
     }
 
     func testGrokLiveServerEventsDecodeToTheSharedConversationEvents() {
@@ -695,6 +720,33 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(session.connectionGeneration, 1)
         XCTAssertEqual(replaced, 1, "calls opened on the old session can't be answered")
+        session.stop()
+    }
+
+    /// The upsampler is the connection's: a dropped connection's held
+    /// sample, or capture dropped while reconnecting, never reaches the
+    /// next connection's first chunk.
+    func testGrokLiveReconnectStartsTheMicrophoneStreamAfresh() async throws {
+        let (session, sockets) = makeGrokSession()
+        session.start()
+        await grokSettle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        await grokSettle(until: { session.state == .ready })
+        // 1, 3 go out as 1, 2; the 3 is held for the next chunk.
+        session.send(.audio(Data([1, 0, 3, 0])))
+        await grokSettle(until: { first.sent.last?["type"] as? String == "input_audio_buffer.append" })
+
+        first.serverClose(nil)
+        await grokSettle(until: { sockets().count == 2 && sockets()[1].sent.first != nil })
+        XCTAssertEqual(session.state, .reconnecting)
+        session.send(.audio(Data([7, 0, 9, 0])))
+        let second = try XCTUnwrap(sockets().last)
+        second.deliver(["type": "session.updated"])
+        await grokSettle(until: { session.state == .ready })
+        session.send(.audio(Data([5, 0])))
+        await grokSettle(until: { second.sent.last?["type"] as? String == "input_audio_buffer.append" })
+        XCTAssertEqual(second.sent.last?["audio"] as? String, Data([5, 0]).base64EncodedString(), "Nothing held from the dropped connection or the dropped capture")
         session.stop()
     }
 

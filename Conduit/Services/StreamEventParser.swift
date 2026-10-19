@@ -50,7 +50,24 @@ enum StreamEventParser {
                 ?? payload?["text"]?.stringValue
                 ?? payload?["rendered"]?.stringValue
             let reasoning = payload?["reasoning"]?.stringValue
-            return .messageComplete(sessionId: sessionId, messageId: messageId, content: content, reasoning: reasoning)
+            let alreadyShown = payload?["response_previewed"]?.boolValue == true
+                || payload?["response_reused"]?.boolValue == true
+            return .messageComplete(
+                sessionId: sessionId,
+                messageId: messageId,
+                content: content,
+                reasoning: reasoning,
+                alreadyShown: alreadyShown
+            )
+
+        case "message.interim":
+            let text = payload?["text"]?.stringValue ?? ""
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return .messageInterim(
+                sessionId: sessionId,
+                text: text,
+                alreadyStreamed: payload?["already_streamed"]?.boolValue == true
+            )
 
         case "message.reaction":
             guard let rowId = HermesClient.exactIntValue(payload?["row_id"]), rowId > 0 else { return nil }
@@ -175,6 +192,17 @@ enum StreamEventParser {
             let max = payload?["context_max"]?.intValue ?? 0
             return .contextUpdate(sessionId: sessionId, percent: percent, used: used, max: max)
 
+        case "session.usage":
+            // Hermes' live usage tick, about once a second while a turn
+            // runs: the context fields sit under `usage`, and are all
+            // absent while the window is unknown. An unknown window is
+            // no reading, not an empty one.
+            guard let usage = payload?["usage"]?.objectValue,
+                  let max = usage["context_max"]?.intValue, max > 0 else { return nil }
+            let used = usage["context_used"]?.intValue ?? 0
+            let percent = usage["context_percent"]?.doubleValue ?? (Double(used) / Double(max) * 100)
+            return .contextUpdate(sessionId: sessionId, percent: percent, used: used, max: max)
+
         case "cwd.update", "workspace.update":
             let cwd = payload?["cwd"]?.stringValue ?? ""
             return .cwdUpdate(sessionId: sessionId, cwd: cwd)
@@ -183,6 +211,18 @@ enum StreamEventParser {
             let model = payload?["model"]?.stringValue ?? ""
             let provider = payload?["provider"]?.stringValue ?? ""
             return .modelUpdate(sessionId: sessionId, model: model, provider: provider)
+
+        case "background.complete", "btw.complete":
+            let text = (payload?["text"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            let question = payload?["question"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .sideAgentComplete(
+                sessionId: sessionId,
+                kind: type == "btw.complete" ? .btw : .background,
+                taskId: payload?["task_id"]?.stringValue ?? "",
+                text: text,
+                question: question?.isEmpty == false ? question : nil
+            )
 
         case let eventType where eventType.hasPrefix("subagent."):
             guard let payload else { return nil }

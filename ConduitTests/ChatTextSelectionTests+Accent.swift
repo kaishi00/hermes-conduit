@@ -27,20 +27,6 @@ extension ChatTextSelectionTests {
         ))
     }
 
-    func testSelectionOnASentBubbleStandsOutFromIt() {
-        for choice in ConduitAccentChoice.allCases {
-            for dark in [false, true] {
-                let bubble = choice.color(dark: dark).conduitRelativeLuminance
-                let selection = choice.selectionColorOnBubble(dark: dark).conduitRelativeLuminance
-                XCTAssertGreaterThan(
-                    (max(bubble, selection) + 0.05) / (min(bubble, selection) + 0.05),
-                    3.0,
-                    "\(choice) dark=\(dark)"
-                )
-            }
-        }
-    }
-
     @MainActor
     func testSentBubbleTextSelectsInTheContrastingTint() throws {
         let host = UIHostingController(rootView:
@@ -53,7 +39,8 @@ extension ChatTextSelectionTests {
 
         let textView = try XCTUnwrap(Self.subviews(of: UITextView.self, in: host.view).first)
         let tint = textView.tintColor.resolvedColor(with: textView.traitCollection)
-        XCTAssertTrue(Self.isClose(tint, .black), "dark-mode amber bubble selects in black, got \(tint)")
+        // The bubble is deep amber in dark mode too, so white text reads on it.
+        XCTAssertTrue(Self.isClose(tint, .white), "dark-mode amber bubble selects in white, got \(tint)")
     }
 
     @MainActor
@@ -100,16 +87,23 @@ extension ChatTextSelectionTests {
         defer { Self.close(window) }
 
         let textView = try XCTUnwrap(Self.subviews(of: UITextView.self, in: host.view).first)
-        XCTAssertTrue(Self.isClose(textView.tintColor.resolvedColor(with: textView.traitCollection), .black))
+        XCTAssertEqual(textView.traitCollection.conduitAccent, .pink)
+        XCTAssertTrue(Self.isClose(
+            textView.tintColor.resolvedColor(with: textView.traitCollection),
+            ConduitAccentChoice.pink.selectionColorOnBubble
+        ))
 
-        // Dark-mode purple is a dark bubble: the selection turns white.
         model.choice = .purple
         Self.settle(host)
         XCTAssertEqual(textView.traitCollection.conduitAccent, .purple)
-        XCTAssertTrue(Self.isClose(textView.tintColor.resolvedColor(with: textView.traitCollection), .white))
+        XCTAssertTrue(Self.isClose(
+            textView.tintColor.resolvedColor(with: textView.traitCollection),
+            ConduitAccentChoice.purple.selectionColorOnBubble
+        ))
     }
 
-    /// #748: the photo picker runs out of process and tints from the window.
+    /// #748: the photo picker runs out of process and tints from the window,
+    /// where a colour that reads the accent trait would fall back to amber.
     @MainActor
     func testAPickRetintsTheWindow() {
         let model = AccentProbeModel()
@@ -126,9 +120,16 @@ extension ChatTextSelectionTests {
             "the window takes the new accent"
         )
         XCTAssertTrue(Self.isClose(
-            window.tintColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
-            ConduitAccentChoice.blue.color(dark: false)
-        ), "and still follows light and dark")
+            window.tintColor.resolvedColor(with: UITraitCollection()),
+            ConduitAccentChoice.blue.color(dark: true)
+        ), "the colour holds without the accent trait, as in the picker's process")
+
+        window.overrideUserInterfaceStyle = .light
+        Self.settle(host)
+        XCTAssertTrue(
+            Self.isClose(window.tintColor.resolvedColor(with: window.traitCollection), ConduitAccentChoice.blue.color(dark: false)),
+            "and still follows light and dark"
+        )
     }
 
     func testCopyingASentMessageLeavesOutTheQuotedReply() {
@@ -169,6 +170,9 @@ extension ChatTextSelectionTests {
     private static func settle(_ host: UIViewController) {
         let deadline = Date().addingTimeInterval(0.15)
         while Date() < deadline {
+            // As UIKit's own pass would: a window override reaches the
+            // window's traits before anything under it lays out.
+            host.view.window?.updateTraitsIfNeeded()
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))

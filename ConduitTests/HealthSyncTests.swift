@@ -272,6 +272,30 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(engine.lastError)
     }
 
+    /// Only a 409 that says the host lost the key clears it. The notifier's
+    /// other 409s (too many devices, a store from a newer plugin) can't be
+    /// fixed by a new key: they pause with the host's reason and keep it.
+    func testOnlyAKeyLoss409ForgetsTheKey() async {
+        let host = FakeHealthHost()
+        let keys = HealthKeyBox()
+        let engine = makeHealthEngine(source: FakeHealthSource(), keys: keys)
+        let preferences = healthPreferences(history: .days30)
+        // The key is agreed, then the first batch is refused.
+        let newerStore = "This health store was written by a newer plugin; update the plugin"
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: newerStore)
+        let refused = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(refused, .paused(.refused(newerStore)))
+        XCTAssertNotNil(keys.key, "A newer store is no reason to give up the key")
+        XCTAssertEqual(host.keyRequests, 1)
+
+        host.ingestError = DashboardTicketBridgeError.http(
+            status: 409, detail: "This device's health key isn't on this profile; set it up again"
+        )
+        let lost = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(lost, .unfinished)
+        XCTAssertNil(keys.key, "The host lost the key: the next pass agrees a new one")
+    }
+
     func testTurningOffDeletesFromTheHostAndForgetsTheKey() async {
         let host = FakeHealthHost()
         let keys = HealthKeyBox()

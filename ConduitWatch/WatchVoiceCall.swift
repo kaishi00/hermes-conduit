@@ -333,7 +333,7 @@ final class WatchVoiceCall: ObservableObject {
 
     // MARK: Screenshot fixture
 
-    /// Set by `-conduitScreenshotCall home|speaking|listening|ended` (debug builds only):
+    /// Set by `-conduitScreenshotCall home|speaking|listening|ended|approval|approvalDenyOnly` (debug builds only):
     /// the App Store screenshot run (scripts/app-store) shows a call in that
     /// state with no audio or connection behind it.
     private(set) var isScreenshotFixture = false
@@ -360,6 +360,13 @@ final class WatchVoiceCall: ObservableObject {
             phase = .ended(nil)
         case "listening":
             phase = .listening
+        case "approval", "approvalDenyOnly":
+            // A Local Live call's own request, on the job approvals' card.
+            pendingApproval = WatchJobAnswer.Approval(
+                grantID: "", jobID: "", title: "Delete the old build folder", requestID: "fixture",
+                command: "rm -rf ~/Projects/site/build", description: "",
+                canApproveOnce: arguments[index + 1] == "approval")
+            phase = .speaking
         default:
             caption = transcript.last?.text
             phase = .speaking

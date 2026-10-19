@@ -71,10 +71,10 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// Generous, as AVSpeechPlaybackService's: a late-starting output
     /// must never have its speech cut off as "stalled".
     var drainWatchdogGrace: TimeInterval = 10
-    /// Identity of the current audio lifetime, bumped by every full stop.
-    /// Session notifications read it synchronously on their own thread, so
-    /// one queued from an earlier call can't stop the next.
-    private var lifetime: UInt64 = 0
+    /// Identity of the current audio lifetime. Session notifications read
+    /// it synchronously on their own thread, so one queued from an earlier
+    /// call can't stop the next.
+    private var lifetime = LiveVoiceAudioLifetime()
     private let observedLifetime = OSAllocatedUnfairLock<UInt64>(initialState: 0)
     nonisolated private var lifetimeForObservers: UInt64 { observedLifetime.withLock { $0 } }
     /// The rate the speaker side starts at, before the first chunk says.
@@ -288,6 +288,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         if let engine, engine.isRunning { return }
         if lease == nil {
             lease = try coordinator.acquire(.conversationCapture)
+            lifetime.begin()
+            let current = lifetime.id
+            observedLifetime.withLock { $0 = current }
         }
         // Every rendering lifetime starts on a new engine (see
         // VoiceAudioEngineRecovery); a stale-graph failure re-applies the
@@ -395,8 +398,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     private func tearDown() {
         inputWanted = false
         outputWanted = false
-        lifetime &+= 1
-        let current = lifetime
+        lifetime.end()
+        let current = lifetime.id
         observedLifetime.withLock { $0 = current }
         tearDownEngine()
         playerFormat = nil
@@ -443,7 +446,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// microphone once the system lets go, as it does for the default
     /// capture.
     private func stopAfterInterruption(observed: UInt64? = nil) {
-        if let observed, observed != lifetime { return }
+        if let observed, !lifetime.accepts(observed) { return }
         guard inputWanted || outputWanted else { return }
         let wasListening = inputWanted
         tearDown()
@@ -668,4 +671,16 @@ final class LiveVoiceAudioSelector {
         func stop() { selector.stopOutput() }
         func setMuted(_ muted: Bool) { selector.setOutputMuted(muted) }
     }
+}
+
+/// One audio lifetime's identity: a new one when it begins and when it
+/// ends, so a notification seen while idle never matches the next call.
+struct LiveVoiceAudioLifetime {
+    private(set) var id: UInt64 = 0
+
+    mutating func begin() { id &+= 1 }
+
+    mutating func end() { id &+= 1 }
+
+    func accepts(_ observed: UInt64) -> Bool { observed == id }
 }

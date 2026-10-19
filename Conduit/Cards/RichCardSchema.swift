@@ -199,10 +199,11 @@ struct RichCardSchema {
     static let placeTypes: Set<String> = ["map", "place", "places"]
 
     /// A phone number's characters, and an address with nothing that could
-    /// end a link or a header early (the plugin's _PHONE and _EMAIL).
+    /// end a link or a header early, or add a header or recipient to its
+    /// mailto: link (the plugin's _PHONE and _EMAIL).
     private static let phonePattern = try! NSRegularExpression(pattern: #"^[0-9+\-(). ]+$"#)
     private static let emailPattern = try! NSRegularExpression(
-        pattern: #"^[^@\s<>()\[\]"'`,;:\\]+@[^@\s<>()\[\]"'`,;:\\]+\.[^@\s<>()\[\]"'`,;:\\.]+$"#)
+        pattern: #"^[^@\s<>()\[\]"'`,;:\\?#%&=]+@[^@\s<>()\[\]"'`,;:\\?#%&=]+\.[^@\s<>()\[\]"'`,;:\\?#%&=.]+$"#)
 
     private static func matches(_ pattern: NSRegularExpression, _ text: String) -> Bool {
         pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil

@@ -68,6 +68,10 @@ extension Color {
     static let conduitAdaptiveAccentSoft = Color(uiColor: UIColor { traits in
         traits.conduitAccent.softColor(dark: traits.userInterfaceStyle == .dark)
     })
+
+    /// A sent bubble's gradient stops, in the picked accent.
+    static let conduitUserBubble = Color(uiColor: .conduitUserBubble)
+    static let conduitUserBubbleShade = Color(uiColor: .conduitUserBubbleShade)
 }
 
 // MARK: - Accent choice
@@ -120,11 +124,27 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The fill of the user's own message bubbles, which carry white text:
+    /// the light-mode accent, in dark mode too. The dark-mode accent is light
+    /// enough to read on the dark backdrop, and so too light under white
+    /// text. AccentContrastTests holds both to WCAG AA.
+    var bubbleColor: UIColor { color(dark: false) }
+
+    /// The bubble's lower-trailing gradient stop: the same shade, darker and
+    /// opaque, so white text keeps its contrast whatever lies behind.
+    var bubbleShadeColor: UIColor {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        bubbleColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return UIColor(red: red * 0.8, green: green * 0.8, blue: blue * 0.8, alpha: 1)
+    }
+
     /// The tint a text selection takes on a sent bubble: the system draws
-    /// selections in the accent, which disappears on an accent bubble. Dark
-    /// on a light bubble, white on a dark one.
-    func selectionColorOnBubble(dark: Bool) -> UIColor {
-        color(dark: dark).conduitRelativeLuminance > 0.3 ? .black : .white
+    /// selections in the accent, which disappears on an accent bubble.
+    var selectionColorOnBubble: UIColor { Self.markColor(on: bubbleColor) }
+
+    /// Black or white, whichever stands out on `fill`.
+    static func markColor(on fill: UIColor) -> UIColor {
+        fill.conduitRelativeLuminance > 0.3 ? .black : .white
     }
 }
 
@@ -174,15 +194,18 @@ extension UIColor {
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
 
-    /// The accent of one fixed choice, light or dark with the trait. For
-    /// places outside the root's accent trait: the window itself.
-    static func conduitAccent(_ choice: ConduitAccentChoice) -> UIColor {
-        UIColor { traits in choice.color(dark: traits.userInterfaceStyle == .dark) }
-    }
-
     /// See ConduitAccentChoice.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
-        traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
+        traits.conduitAccent.selectionColorOnBubble
+    }
+
+    /// A sent bubble's fill, top-leading and bottom-trailing stops. See
+    /// ConduitAccentChoice.bubbleColor.
+    static let conduitUserBubble = UIColor { traits in
+        traits.conduitAccent.bubbleColor
+    }
+    static let conduitUserBubbleShade = UIColor { traits in
+        traits.conduitAccent.bubbleShadeColor
     }
 
     /// WCAG relative luminance of an sRGB colour.
@@ -447,6 +470,11 @@ struct ConduitBackdrop: View {
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }
         .ignoresSafeArea()
+        // The glows reach well past the backdrop's frame, and clipping only
+        // hides them: still hit-testable, the chat column's took touches
+        // (and accessibility's hit tests) meant for the list beside it on an
+        // iPad. Nothing on a backdrop takes a tap.
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 
@@ -643,10 +671,30 @@ extension View {
     }
 }
 
-/// Gives the window the chosen accent as its tint. System screens Conduit
-/// presents but doesn't draw (the photo picker runs in another process)
-/// take their tint from the window, not from SwiftUI's `.tint`, so without
-/// this they keep the built-in amber AccentColor (#748).
+extension View {
+    /// For the photo picker, which runs in another process and is handed the
+    /// tint of the view presenting it. The app-wide `.conduitAccent` resolves the choice from a
+    /// trait that process never sees, so it falls back to amber there (#748):
+    /// hand it the plain colour of the current pick instead.
+    func conduitOutOfProcessAccentTint() -> some View {
+        modifier(OutOfProcessAccentTint())
+    }
+}
+
+private struct OutOfProcessAccentTint: ViewModifier {
+    @Environment(\.conduitAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.tint(Color(uiColor: accent.color(dark: colorScheme == .dark)))
+    }
+}
+
+/// Gives the window the chosen accent as its tint, for system screens Conduit
+/// presents but doesn't draw. The colour is resolved, not dynamic: a dynamic
+/// one sent to another process loses the pick (#748). It is set again when
+/// the window turns light or dark: the window's own trait change, since the
+/// tinting view is never laid out again and its changes can arrive late.
 struct WindowAccentTint: UIViewRepresentable {
     let choice: ConduitAccentChoice
 
@@ -666,13 +714,24 @@ struct WindowAccentTint: UIViewRepresentable {
             didSet { if choice != oldValue { applyTint() } }
         }
 
+        private weak var observedWindow: UIWindow?
+        private var styleRegistration: (any UITraitChangeRegistration)?
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            if observedWindow !== window {
+                if let styleRegistration { observedWindow?.unregisterForTraitChanges(styleRegistration) }
+                styleRegistration = window?.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak self] (_: UIWindow, _: UITraitCollection) in
+                    self?.applyTint()
+                }
+                observedWindow = window
+            }
             applyTint()
         }
 
         private func applyTint() {
-            window?.tintColor = .conduitAccent(choice)
+            guard let window else { return }
+            window.tintColor = choice.color(dark: window.traitCollection.userInterfaceStyle == .dark)
         }
     }
 }

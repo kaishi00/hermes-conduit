@@ -86,6 +86,25 @@ final class AppStateMultiDashboardTests: XCTestCase {
         SavedDashboard(id: UUID(), label: label, normalizedURL: url)
     }
 
+    // MARK: - Agent settings scope
+
+    func testAgentSettingsScopeTellsApartDashboardsWhosePathsDifferInCase() {
+        let upper = dashboard("Tenant", "https://hermes.example/Tenant")
+        let lower = dashboard("tenant", "https://hermes.example/tenant")
+        let registry = SavedDashboardRegistry(activeDashboardID: upper.id, dashboards: [upper, lower])
+        let onUpper = makeAppState(registry: registry)
+        onUpper.connection = HermesConnection(baseUrl: upper.normalizedURL, ticket: "ticket")
+        var lowerRegistry = registry
+        lowerRegistry.activeDashboardID = lower.id
+        let onLower = makeAppState(registry: lowerRegistry)
+        onLower.connection = HermesConnection(baseUrl: lower.normalizedURL, ticket: "ticket")
+
+        // Answers waiting to be sent are kept by this scope: one dashboard's
+        // must never go to (and be cleared by) the other.
+        XCTAssertNotNil(onUpper.agentSettingsScope)
+        XCTAssertNotEqual(onUpper.agentSettingsScope, onLower.agentSettingsScope)
+    }
+
     // MARK: - Adoption
 
     func testAdoptDashboardRegistersAndActivatesNewDashboard() {
@@ -301,6 +320,220 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNotNil(appState.lastConnectionFailure)
         XCTAssertTrue(appState.showLogin)
         XCTAssertEqual(appState.lastDashboardURL, loopback.normalizedURL)
+    }
+
+    // MARK: - An address edited in Settings
+
+    /// What the Settings Connection page does when its tested setup is applied.
+    @discardableResult
+    private func applyFromSettings(
+        _ result: ConnectionSetupResult,
+        to appState: AppState,
+        currentURL: String
+    ) -> ConnectionSetupApplication {
+        let plan = ConnectionSetupApplication.plan(
+            result: result,
+            currentDashboardURL: currentURL,
+            savedCredentials: appState.savedCredentialsForDashboard(at: currentURL),
+            savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: currentURL)
+        )
+        plan.perform(appState: appState)
+        return plan
+    }
+
+    func testAnEditedAddressKeepsItsDashboardAndWaitsForTheNextReconnect() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false),
+            dashboardID: home.id
+        )
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: home.normalizedURL, ticket: "live"), dashboardID: home.id)
+        appState.isConnected = true
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "eric", password: "next"),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id], "No second dashboard")
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: home.id)?.password, "next")
+        // The session in use keeps its address and saved ticket.
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, home.normalizedURL)
+        XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: home.id))
+    }
+
+    func testTheNextLaunchMovesTheDashboardWithItsCloudflareToken() {
+        let home = dashboard("Home", "https://hermes.example.test/old")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: home.normalizedURL, ticket: "old"), dashboardID: home.id)
+        let access = CloudflareAccessCredentials(clientID: "id", clientSecret: "secret")
+        KeychainHelper.saveCloudflareAccess(access, origin: home.normalizedURL, dashboardID: home.id)
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://hermes.example.test/new", username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // The token still opens the address in use until the move.
+        XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: home.id, for: home.normalizedURL), access)
+
+        // The next launch reads the move back from the saved registry.
+        let relaunched = makeAppState(registry: SavedDashboardRegistryStore.load() ?? SavedDashboardRegistry())
+        relaunched.loadSavedConnection()
+
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboards.map(\.id), [home.id])
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://hermes.example.test/new")
+        XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: home.id, for: "https://hermes.example.test/new"), access)
+        // The old address's ticket can't reconnect at the new one.
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: home.id))
+        XCTAssertTrue(relaunched.showLogin)
+        XCTAssertEqual(relaunched.lastDashboardURL, "https://hermes.example.test/new")
+    }
+
+    func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
+        let home = dashboard("Home", "http://127.0.0.1:1")
+        let work = dashboard("Work", "https://work.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false),
+            dashboardID: home.id
+        )
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "http://127.0.0.1:2", username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        appState.selectDashboardTarget(work.id)
+        await appState.switchDashboard(to: home.id)
+
+        XCTAssertEqual(appState.activeDashboardID, home.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id, work.id])
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "http://127.0.0.1:2")
+        // The setup applied had no password: the old address's one is not
+        // sent to the new address.
+        XCTAssertNil(KeychainHelper.loadCredentials(dashboardID: home.id))
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertEqual(appState.lastDashboardURL, "http://127.0.0.1:2")
+    }
+
+    func testAReconnectAtTheEditedAddressIsTheSameDashboard() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+
+        XCTAssertEqual(appState.adoptDashboard(forNormalizedURL: "https://new.example.test"), home.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id])
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://new.example.test")
+    }
+
+    func testAddingADashboardAtTheEditedAddressLeavesTheOldOneWhereItIs() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false),
+            dashboardID: home.id
+        )
+        appState.isConnected = true
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "eric", password: "next"),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // Add a dashboard, while Home is in use.
+        let added = appState.resolveDashboardID(forURL: "https://new.example.test", registerIfMissing: true)
+
+        XCTAssertNotNil(added)
+        XCTAssertNotEqual(added, home.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, home.normalizedURL)
+        XCTAssertEqual(appState.activeDashboardID, home.id)
+        // The password saved for the move would send Home's next sign-in to
+        // the added dashboard.
+        XCTAssertNotEqual(KeychainHelper.loadCredentials(dashboardID: home.id)?.baseURL, "https://new.example.test")
+    }
+
+    func testASignInWriteAtTheEditedAddressMovesTheSelectedDashboard() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: home.normalizedURL, ticket: "old"), dashboardID: home.id)
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // A Cloudflare token or browser grant saved before connecting there
+        // (Home is selected, not in use).
+        let target = appState.resolveDashboardID(forURL: "https://new.example.test", registerIfMissing: true)
+
+        XCTAssertEqual(target, home.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id], "No second dashboard")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, "https://new.example.test")
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: home.id))
+        XCTAssertEqual(appState.adoptDashboard(forNormalizedURL: "https://new.example.test"), home.id)
+    }
+
+    func testCancellingAnEditedAddressForgetsThePasswordSavedForIt() {
+        let home = dashboard("Home", "https://old.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]))
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false),
+            dashboardID: home.id
+        )
+        appState.isConnected = true
+
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: "https://new.example.test", username: "eric", password: "next"),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+        // Re-applying the address in use, with nothing typed, cancels it.
+        applyFromSettings(
+            ConnectionSetupResult(serverURL: home.normalizedURL, username: "", password: ""),
+            to: appState,
+            currentURL: home.normalizedURL
+        )
+
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: home.id)?.pendingURL)
+        // Its next sign-in can't reach the cancelled address as a second
+        // dashboard.
+        XCTAssertNotEqual(KeychainHelper.loadCredentials(dashboardID: home.id)?.baseURL, "https://new.example.test")
+        let relaunched = makeAppState(registry: SavedDashboardRegistryStore.load() ?? SavedDashboardRegistry())
+        relaunched.loadSavedConnection()
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboards.map(\.id), [home.id])
+        XCTAssertEqual(relaunched.savedDashboardRegistry.dashboard(with: home.id)?.normalizedURL, home.normalizedURL)
+    }
+
+    func testAnEditedAddressThatIsAnotherSavedDashboardChangesNothing() {
+        let home = dashboard("Home", "https://old.example.test")
+        let vps = dashboard("VPS", "https://vps.example.test")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, vps]))
+        let homeCredentials = DashboardCredentials(baseURL: home.normalizedURL, username: "eric", password: "old", requiresFaceID: false)
+        let vpsCredentials = DashboardCredentials(baseURL: vps.normalizedURL, username: "ops", password: "vps", requiresFaceID: false)
+        KeychainHelper.saveCredentials(homeCredentials, dashboardID: home.id)
+        KeychainHelper.saveCredentials(vpsCredentials, dashboardID: vps.id)
+        let registryBefore = appState.savedDashboardRegistry
+
+        let plan = ConnectionSetupApplication.plan(
+            result: ConnectionSetupResult(serverURL: vps.normalizedURL, username: "eric", password: "next"),
+            currentDashboardURL: home.normalizedURL,
+            savedCredentials: appState.savedCredentialsForDashboard(at: home.normalizedURL),
+            savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: home.normalizedURL)
+        )
+
+        // Settings says which dashboard has that address.
+        XCTAssertEqual(plan.perform(appState: appState), .addressBelongsToDashboard(label: "VPS"))
+        XCTAssertEqual(appState.savedDashboardRegistry, registryBefore)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: home.id), homeCredentials)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: vps.id), vpsCredentials)
     }
 
     // MARK: - Sign out / remove scoping
@@ -968,5 +1201,287 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(FinishSetupStatus(plugin: .unknown, notifications: .done, voiceReady: true).isComplete)
         XCTAssertFalse(FinishSetupStatus(plugin: .done, notifications: .off, voiceReady: true).isComplete)
         XCTAssertFalse(FinishSetupStatus(plugin: .done, notifications: .done, voiceReady: false).isComplete)
+    }
+}
+
+// MARK: - Answers from the dashboard switched away from
+
+extension AppStateMultiDashboardTests {
+
+    private final class Finished {
+        var value = false
+    }
+
+    /// Connected to Mac through a bridge whose requests the test answers;
+    /// VPS is the dashboard switched to (authless, so nothing connects).
+    private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]))
+        let held = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        addTeardownBlock { @MainActor in held.releaseAll() }
+        return (appState, held, vps)
+    }
+
+    private func macSession(_ id: String) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            storedSessionId: nil,
+            alternateIds: [],
+            title: "On the Mac",
+            model: "m",
+            updatedLabel: "",
+            profile: nil,
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+    }
+
+    func testAnArchiveAnsweredAfterASwitchChangesNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let archive = Task { await appState.archiveSession(self.macSession("mac-1")) }
+        try await held.answer()             // the mutation snapshot read
+        try await held.waitForRequests(2)   // the archive itself
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer()             // the Mac archived it, after the switch
+        let archived = await archive.value
+
+        XCTAssertFalse(archived)
+        XCTAssertTrue(appState.archivedSessions.isEmpty, "the Mac's chat never lands in the VPS's Archived list")
+        XCTAssertNil(appState.pinSyncNotice, "nothing about the Mac's chat is said over the VPS")
+    }
+
+    func testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
+        try await held.answer()
+        try await held.waitForRequests(2)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer()
+        let deleted = await delete.value
+
+        XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
+        XCTAssertNil(appState.pinSyncNotice)
+    }
+
+    func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let load = Task { await appState.loadArchivedSessions() }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["sessions": [
+            ["id": "mac-archived", "title": "On the Mac", "message_count": 3, "profile": "default"],
+        ]])
+        await load.value
+
+        XCTAssertTrue(appState.archivedSessions.isEmpty)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// A settings save queued behind one that outlives a switch is never
+    /// sent to the dashboard switched to, which has its own profile of the
+    /// same name.
+    func testAQueuedProfileSettingsSaveNeverReachesTheDashboardSwitchedTo() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let first = Task { await appState.setProfileSetting("display.skin", value: .text("ares")) }
+        try await held.waitForRequests(1)   // the first save's config read
+        let secondFinished = Finished()
+        let second = Task {
+            let saved = await appState.setProfileSetting("display.compact", value: .bool(true))
+            secondFinished.value = true
+            return saved
+        }
+        for _ in 0..<5 { await Task.yield() }
+
+        await appState.switchDashboard(to: vps.id)
+        let vpsRequests = HeldDashboardRequests(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        appState.installDashboardTicketBridgeForTesting(vpsRequests.bridge)   // the VPS connects
+        try await held.answer(["display": [String: Any]()])   // the Mac's read lands late
+        _ = await first.value
+        for _ in 0..<500 where !secondFinished.value && vpsRequests.sent.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(
+            vpsRequests.sent.isEmpty,
+            "the Mac's queued save was sent to the VPS: \(vpsRequests.sent.map(\.path))"
+        )
+        vpsRequests.releaseAll()
+        let saved = await second.value
+        XCTAssertFalse(saved)
+    }
+
+    func testAVoiceCallTranscriptOpenOnTheOldDashboardIsClosedBySwitching() async {
+        let (appState, _, vps) = heldSwitchFixture()
+        appState.chatCallTranscript = VoiceChatCall(callID: "mac-call", turns: [])
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.chatCallTranscript, "the Mac's call transcript doesn't stay up over the VPS")
+    }
+
+    /// Picking another file while one loads: only the latest pick's answer
+    /// (or failure) shows, and it is the one that ends the loading state.
+    func testOnlyTheLatestWorkspaceFilePickShows() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "a.txt", path: "/w/a.txt", isDirectory: false)) }
+        try await held.waitForRequests(1)
+        let second = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "b.txt", path: "/w/b.txt", isDirectory: false)) }
+        try await held.waitForRequests(2)
+
+        try await held.answer(["text": "a's text"])
+        await first.value
+        XCTAssertNil(appState.workspacePreview, "a.txt's text never shows under b.txt")
+        XCTAssertTrue(appState.workspaceFileLoading, "b.txt is still loading")
+
+        try await held.answer(["text": "b's text"])
+        await second.value
+        XCTAssertEqual(appState.workspaceSelectedFile?.path, "/w/b.txt")
+        XCTAssertEqual(appState.workspacePreview?.text, "b's text")
+        XCTAssertFalse(appState.workspaceFileLoading)
+
+        let third = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "c.txt", path: "/w/c.txt", isDirectory: false)) }
+        try await held.waitForRequests(3)
+        let fourth = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "d.txt", path: "/w/d.txt", isDirectory: false)) }
+        try await held.waitForRequests(4)
+        try await held.answer(["error": "gone"], status: 500)
+        await third.value
+        XCTAssertNil(appState.workspaceFileError, "c.txt's failure isn't shown for d.txt")
+        try await held.answer(["text": "d's text"])
+        await fourth.value
+        XCTAssertEqual(appState.workspacePreview?.text, "d's text")
+    }
+}
+
+// MARK: - Voice-call history stays with its dashboard
+
+extension AppStateMultiDashboardTests {
+
+    /// Switching selects the next dashboard before it closes the live
+    /// call, so the closing save must not take the selection's id.
+    func testACallLiveDuringASwitchIsKeptForTheDashboardItWasOn() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID).uuidString
+        defaults.set(mac, forKey: AppState.chatResumeServerIdentityKey)
+        appState.beginVoiceCallRecordingForTesting(engine: .geminiLive, turns: [
+            VoiceConversationTranscriptEntry(speaker: .user, text: "Add milk to the list"),
+            VoiceConversationTranscriptEntry(speaker: .assistant, text: "Added."),
+        ])
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.dashboard), [mac])
+
+        // The closing save can't reach the Mac now; what it puts back is
+        // still the Mac's, never sent to the VPS when it connects.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.dashboard), [mac])
+    }
+
+    /// A call's jobs are tagged one request at a time; a switch while one
+    /// is in flight stops the rest instead of sending them to the next
+    /// dashboard's profile of the same name.
+    func testQueuedVoiceTagsAreNeverSentToTheDashboardSwitchedTo() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID).uuidString
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: mac, profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(
+                callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Start two jobs", at: Date())]
+            ),
+            queuedAt: Date(),
+            jobSessionIDs: ["job-1", "job-2"]
+        ))
+        outbox.store(in: defaults)
+
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 1])   // the call saves on the Mac
+        await save.value
+        try await held.waitForRequests(2)   // the first job's tag
+
+        await appState.switchDashboard(to: vps.id)
+        let vpsRequests = HeldDashboardRequests(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        appState.installDashboardTicketBridgeForTesting(vpsRequests.bridge)   // the VPS connects
+        addTeardownBlock { @MainActor in vpsRequests.releaseAll() }
+        try await held.answer()   // the Mac's answer lands after the switch
+        for _ in 0..<100 where vpsRequests.sent.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(vpsRequests.sent.isEmpty, "the Mac's tags were sent to the VPS: \(vpsRequests.sent.map(\.path))")
+    }
+
+    /// A reconnect to the same dashboard (a new bridge) isn't a switch: the
+    /// rest of the call's job tags still go, since tags aren't retried.
+    func testQueuedVoiceTagsGoOnAfterAReconnectToTheSameDashboard() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: mac.uuidString, profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(
+                callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Start two jobs", at: Date())]
+            ),
+            queuedAt: Date(),
+            jobSessionIDs: ["job-1", "job-2"]
+        ))
+        outbox.store(in: defaults)
+
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 1])
+        await save.value
+        try await held.waitForRequests(2)   // the first job's tag
+
+        let reconnected = HeldDashboardRequests(baseURL: held.bridge.baseURL, dashboardID: mac)
+        appState.installDashboardTicketBridgeForTesting(reconnected.bridge)   // the Mac reconnects
+        addTeardownBlock { @MainActor in reconnected.releaseAll() }
+        try await held.answer()   // the first tag's answer lands after it
+        try await reconnected.waitForRequests(1)
+
+        XCTAssertEqual(reconnected.sent.map(\.path), ["/api/plugins/conduit_push/voice/tags"], "the second job's tag still goes to the Mac")
+    }
+
+    /// A switch that lands right after the closing save: the jobs' tags and
+    /// the chat link can't go to the Mac now, so the call stays queued for
+    /// it, and the Mac's next save run files them.
+    func testACallSavedJustBeforeASwitchStillFilesItsJobsLater() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.beginVoiceCallRecordingForTesting(engine: .geminiLive, turns: [
+            VoiceConversationTranscriptEntry(speaker: .user, text: "Look into the logs"),
+            VoiceConversationTranscriptEntry(speaker: .assistant, text: "On it."),
+        ], jobs: ["job-1"])
+
+        appState.closeGeminiLiveConversation()
+        try await held.waitForRequests(1)   // the closing save
+        appState.selectDashboardTarget(vps.id)   // the switch lands before the save's answer is applied
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 2])
+        func queued() -> [VoiceTranscriptOutbox.Entry] {
+            VoiceTranscriptOutbox.load(from: defaults).entries.filter { $0.request.sessionID == "row-1" }
+        }
+        for _ in 0..<100 where queued().isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(queued().map(\.dashboard), [mac.uuidString], "kept for the Mac")
+        XCTAssertEqual(queued().first?.jobSessionIDs, ["job-1"])
+        XCTAssertEqual(held.sent.count, 1, "nothing more went out after the switch")
+
+        // Back on the Mac: the save is a replay the host skips, then the job is filed.
+        appState.selectDashboardTarget(mac)
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 2])
+        await save.value
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.map(\.path).last, "/api/plugins/conduit_push/voice/tags")
+        XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
     }
 }

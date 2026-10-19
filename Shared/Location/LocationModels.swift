@@ -345,12 +345,19 @@ struct LocationArea: Codable, Equatable {
 
     var isEmpty: Bool { [name, locality, region, country, countryCode].allSatisfy { ($0 ?? "").isEmpty } }
 
+    /// The longest field the host takes (location_store MAX_AREA_CHARS,
+    /// counted in code points); a longer one refuses the whole batch.
+    static let maxFieldCharacters = 80
+
     var json: [String: Any] {
         var object: [String: Any] = [:]
-        if let name, !name.isEmpty { object["name"] = name }
-        if let locality, !locality.isEmpty { object["locality"] = locality }
-        if let region, !region.isEmpty { object["region"] = region }
-        if let country, !country.isEmpty { object["country"] = country }
+        func field(_ value: String) -> String {
+            String(String.UnicodeScalarView(value.unicodeScalars.prefix(Self.maxFieldCharacters)))
+        }
+        if let name, !name.isEmpty { object["name"] = field(name) }
+        if let locality, !locality.isEmpty { object["locality"] = field(locality) }
+        if let region, !region.isEmpty { object["region"] = field(region) }
+        if let country, !country.isEmpty { object["country"] = field(country) }
         if let countryCode, !countryCode.isEmpty { object["country_code"] = countryCode }
         return object
     }

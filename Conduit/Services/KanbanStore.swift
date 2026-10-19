@@ -310,11 +310,14 @@ final class KanbanStore: ObservableObject {
     func createTask(
         _ request: KanbanCreateTaskRequest,
         initialStatus: String? = nil,
+        expectedContext: KanbanBoardContextStamp? = nil,
         includeArchived: Bool = false
     ) async throws -> KanbanTask? {
         guard !isMutating else {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
+        // A draft composed for one board is never created on another.
+        try validateExpectedContext(expectedContext)
         // Context is frozen before the first suspension point.
         guard let context = makeOperationContext() else {
             throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))

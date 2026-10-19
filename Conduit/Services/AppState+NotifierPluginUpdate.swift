@@ -223,7 +223,8 @@ extension AppState {
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {
                 throw DashboardTicketBridgeError.notReady
             }
-            return try await bridge.requestJSON(path: path, method: method, body: body)
+            return try await bridge.requestJSON(path: path, method: method, body: body,
+                                                timeoutMilliseconds: PushNotificationService.pairTimeoutMilliseconds)
         }
         // The new pairing gets its key right away, before its first push.
         await provisionNotificationEncryption(bridge: bridge)

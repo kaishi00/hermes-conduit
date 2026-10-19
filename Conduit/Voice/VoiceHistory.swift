@@ -109,6 +109,10 @@ struct VoiceTranscriptSaveRequest: Equatable, Codable {
     /// The profile `chatID` lives in when it isn't the call's own: a Bot
     /// Chat's is its bot's. The turns are kept there, with the chat.
     var chatProfile: String? = nil
+    /// The profile `sessionID`'s row is in when it isn't the call's own: a
+    /// plugin that predates chat calls made a Bot Chat's call into a row in
+    /// the bot's profile. The turns append there.
+    var rowProfile: String? = nil
 }
 
 struct VoiceTranscriptSaveResult: Equatable {
@@ -128,6 +132,24 @@ struct VoiceChatCall: Identifiable, Equatable {
     var engine: VoiceCallEngine? = nil
 
     var id: String { callID }
+
+    /// Each live card's last turn in the call: a live card shown again
+    /// replaces the earlier one wherever it's shown, as in a typed chat.
+    var latestLiveTurns: [String: String] {
+        var latest: [String: String] = [:]
+        for turn in turns {
+            for name in turn.cards.compactMap(\.live) { latest[name] = turn.id.uuidString }
+        }
+        return latest
+    }
+
+    /// `turn`'s cards less the live ones a later turn brought up to date.
+    func currentCards(
+        for turn: VoiceConversationTranscriptEntry,
+        latestLiveTurns: [String: String]? = nil
+    ) -> [RichCard] {
+        RichCard.current(turn.cards, row: turn.id.uuidString, latestLiveRows: latestLiveTurns ?? self.latestLiveTurns)
+    }
 }
 
 enum VoiceHistoryError: Error, Equatable {
@@ -356,6 +378,9 @@ final class VoiceTranscriptRecorder {
     /// The row this call saves into: the resumed row, or the one its first
     /// save created.
     private(set) var sessionID: String?
+    /// The profile `sessionID` is in, when a save with `chatProfile` made
+    /// it there.
+    private(set) var rowProfile: String?
     private(set) var turns: [VoiceTranscriptTurn] = []
     /// Turns the host confirmed (every turn below this index).
     private(set) var written = 0
@@ -396,6 +421,7 @@ final class VoiceTranscriptRecorder {
         if let previous {
             callID = previous.callID
             sessionID = previous.sessionID
+            rowProfile = previous.rowProfile
             chatID = previous.chatID
             chatProfile = previous.chatProfile
             savedWithChat = previous.savedWithChat
@@ -502,11 +528,16 @@ final class VoiceTranscriptRecorder {
             title: rowTitle,
             turns: pending,
             chatID: withChat ? chatID : nil,
-            chatProfile: withChat ? chatProfile : nil
+            chatProfile: withChat ? chatProfile : nil,
+            rowProfile: rowProfile
         )
         do {
             let result = try await save(request)
-            if let id = result.sessionID { sessionID = id }
+            if let id = result.sessionID {
+                sessionID = id
+                // Made with the chat's profile, the row is there.
+                if withChat { rowProfile = chatProfile }
+            }
             if result.chatID != nil { savedWithChat = true }
             written = max(written, min(result.written, turns.count))
         } catch VoiceHistoryError.rowUnavailable where withChat {
@@ -523,6 +554,7 @@ final class VoiceTranscriptRecorder {
             // new row holding everything it said.
             voiceHistoryLogger.notice("Voice row is gone; saving the call as a new session")
             sessionID = nil
+            rowProfile = nil
             written = 0
             callID = UUID().uuidString
             await performFlush()
@@ -532,6 +564,21 @@ final class VoiceTranscriptRecorder {
         } catch {
             voiceHistoryLogger.error("Saving a voice transcript failed: \(LogRedaction.describing(error), privacy: .public)")
         }
+    }
+
+    /// The saved call again, as its last turn, for the outbox when what
+    /// follows a save (its jobs' tags, its chat link) couldn't run: the host
+    /// skips the turn and answers with the call's row or chat. Nil when the
+    /// call has neither.
+    var savedCallReplay: VoiceTranscriptSaveRequest? {
+        guard sessionID != nil || savedWithChat, let last = turns.last, last.index < written else { return nil }
+        return VoiceTranscriptSaveRequest(
+            callID: callID, engine: engine, sessionID: sessionID,
+            title: nil, turns: [last],
+            chatID: sessionID == nil ? chatID : nil,
+            chatProfile: sessionID == nil ? chatProfile : nil,
+            rowProfile: rowProfile
+        )
     }
 
     /// What is still unsaved, for the outbox to retry after the call. Kept
@@ -545,7 +592,8 @@ final class VoiceTranscriptRecorder {
             callID: callID, engine: engine, sessionID: sessionID,
             title: sessionID == nil ? newRowTitle : nil, turns: pending,
             chatID: sessionID == nil ? chatID : nil,
-            chatProfile: sessionID == nil ? chatProfile : nil
+            chatProfile: sessionID == nil ? chatProfile : nil,
+            rowProfile: rowProfile
         )
     }
 }

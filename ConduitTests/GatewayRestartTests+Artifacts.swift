@@ -32,6 +32,33 @@ extension GatewayRestartTests {
         XCTAssertEqual(asked.last, "/api/plugins/conduit_push/artifacts?limit=60")
     }
 
+    func testArtifactListsBelongToTheirDashboard() {
+        let first = UUID()
+        let second = UUID()
+        let onFirst = ArtifactsListKey(dashboard: first, profile: "default", filter: .all, query: "")
+        let onSecond = ArtifactsListKey(dashboard: second, profile: "default", filter: .all, query: "")
+        let imagesOnFirst = ArtifactsListKey(dashboard: first, profile: "default", filter: .images, query: "")
+
+        // Every server has a "default" profile: switching servers reads the list again...
+        XCTAssertNotEqual(onFirst, onSecond)
+        // ...and doesn't leave the other server's rows up while it does.
+        XCTAssertFalse(onSecond.showsRows(of: onFirst))
+        XCTAssertTrue(imagesOnFirst.showsRows(of: onFirst), "another filter keeps the rows up, dimmed")
+
+        XCTAssertNotEqual(
+            ArtifactsListKey.thumbnailCacheKey(dashboard: first, profile: "default", path: "/root/out/map.png"),
+            ArtifactsListKey.thumbnailCacheKey(dashboard: second, profile: "default", path: "/root/out/map.png")
+        )
+        XCTAssertNotEqual(
+            ArtifactsListKey.thumbnailCacheKey(dashboard: first, profile: "default", path: "/root/out/map.png"),
+            ArtifactsListKey.thumbnailCacheKey(dashboard: first, profile: "work", path: "/root/out/map.png")
+        )
+        XCTAssertEqual(
+            ArtifactsListKey.thumbnailCacheKey(dashboard: first, profile: "default", path: "/root/out/map.png"),
+            ArtifactsListKey.thumbnailCacheKey(dashboard: first, profile: "default", path: "/root/out/map.png")
+        )
+    }
+
     func testArtifactsParseFilesAndLinksAndSkipBrokenRows() throws {
         let page = try ArtifactsClient.parse([
             "ok": true,
