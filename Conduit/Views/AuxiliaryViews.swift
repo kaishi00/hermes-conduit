@@ -76,14 +76,10 @@ struct ContextSheet: View {
     }
 
     private func loadBreakdown() async {
-        guard let client = appState.client, let sid = appState.activeSessionId else { return }
-        do {
-            let loaded = try await client.contextBreakdown(sid)
-            breakdown = loaded
-            appState.applyContextBreakdown(loaded)
-        } catch {
-            // Context detail is supplementary to the live ring in the composer.
-        }
+        // Only the open chat's breakdown, and only while it's still open.
+        // Context detail is supplementary to the live ring in the composer.
+        guard let loaded = await appState.refreshContextUsage() else { return }
+        breakdown = loaded
     }
 
     private func colorFor(_ name: String) -> Color {

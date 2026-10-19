@@ -805,6 +805,8 @@ struct ModelPickerView: View {
             applyError = AppLocalization.string("Not connected to a conversation.")
             return
         }
+        // Every step goes to the chat Apply was pressed in, YOLO included.
+        let context = appState.composerSubmissionContext()
         isApplying = true
         applyError = nil
         defer { isApplying = false }
@@ -830,7 +832,7 @@ struct ModelPickerView: View {
             },
             // The composer banner sits behind this sheet; the failure is
             // reported here instead.
-            setYolo: { enabled in await appState.setYoloModeReportingFailure(enabled) },
+            setYolo: { enabled in await appState.setYoloModeReportingFailure(enabled, context: context) },
             setReasoning: { effort in try await client.setReasoning(sessionId, effort: effort) },
             setFast: { enabled in try await client.setFast(sessionId, enabled: enabled) }
         )
@@ -841,6 +843,10 @@ struct ModelPickerView: View {
             confirmedModelSwitch: confirmedModelSwitch,
             actions: actions
         )
+        // Another chat opened meanwhile (which also takes this sheet down):
+        // what Hermes took belongs to the chat Apply started in, not to the
+        // runtime the composer now shows.
+        guard appState.client === client, appState.activeSessionId == sessionId else { return }
         switch result {
         case .completed(let progress):
             record(progress, for: selection, draft: draft)

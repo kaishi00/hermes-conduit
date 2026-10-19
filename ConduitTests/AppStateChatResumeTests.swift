@@ -2069,6 +2069,46 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(harness.appState.isOpeningNotificationSession)
     }
 
+    func testOpeningAnotherChatTakesDownTheChatsModelAndContextSheets() async {
+        let catalog = [session("stored-a"), session("stored-b", alternateIDs: ["runtime-b"])]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in catalog },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "b1", role: .assistant, content: "B", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = catalog
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.showModelPicker = true
+        harness.appState.showContextSheet = true
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: nil, sessionId: "stored-b", type: "response_ready")
+        )
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-b")
+        XCTAssertFalse(harness.appState.showModelPicker, "the Model sheet would apply chat A's picks to chat B")
+        XCTAssertFalse(harness.appState.showContextSheet, "the Context sheet shows chat A's breakdown")
+
+        // Another id of the same conversation is still the chat they came up over.
+        harness.appState.showModelPicker = true
+        harness.appState.showContextSheet = true
+        harness.appState.activeSessionId = "runtime-b"
+        XCTAssertTrue(harness.appState.showModelPicker)
+        XCTAssertTrue(harness.appState.showContextSheet)
+    }
+
     func testNotificationDecisionSurvivesOpenWhenNotifiedSessionIsActive() async {
         // The warm-resume case: the tapped notification targets the session
         // that is already active. The push-recorded card lives only in the

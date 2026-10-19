@@ -931,6 +931,14 @@ final class AppState: ObservableObject {
                     newChatOpenedSessionID = nil
                 }
                 schedulePendingComposerSendCheck()
+                // The Model and Context sheets act on the chat they came up
+                // over. Another chat taking its place (a notification, an
+                // app link) takes them down; a new id for the same
+                // conversation leaves them up.
+                if !activeChatScrollSessionIdentity.contains(oldValue) {
+                    showModelPicker = false
+                    showContextSheet = false
+                }
             }
         }
     }
@@ -14830,9 +14838,12 @@ final class AppState: ObservableObject {
 
     /// The context breakdown RPC is the gateway's complete accounting source.
     /// Session snapshots may omit it, or expose the percentage as a fraction.
-    func refreshContextUsage() async {
-        guard let client, let sessionId = activeSessionId else { return }
-        await refreshContextUsage(sessionId: sessionId, using: client)
+    /// The breakdown read, or nil when it couldn't be read or another chat
+    /// (or server) became active while it was.
+    @discardableResult
+    func refreshContextUsage() async -> ContextBreakdown? {
+        guard let client, let sessionId = activeSessionId else { return nil }
+        return await refreshContextUsage(sessionId: sessionId, using: client)
     }
 
     func applyContextBreakdown(_ breakdown: ContextBreakdown) {
@@ -14841,14 +14852,17 @@ final class AppState: ObservableObject {
         runtime.contextPercent = breakdown.resolvedPercent
     }
 
-    private func refreshContextUsage(sessionId: String, using client: HermesClient) async {
+    @discardableResult
+    private func refreshContextUsage(sessionId: String, using client: HermesClient) async -> ContextBreakdown? {
         do {
             let breakdown = try await client.contextBreakdown(sessionId)
-            guard self.client === client, activeSessionId == sessionId else { return }
+            guard self.client === client, activeSessionId == sessionId else { return nil }
             applyContextBreakdown(breakdown)
+            return breakdown
         } catch {
             // Context accounting is supplementary to chat recovery. Preserve
             // the latest stream/snapshot values when older gateways lack it.
+            return nil
         }
     }
 
