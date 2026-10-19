@@ -1536,6 +1536,20 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.pendingComposerSend)
     }
 
+    /// A message queued onto one already waiting makes the whole message
+    /// wait for the turn, whichever came first.
+    func testQueuingOntoAWaitingMessageMakesItWaitForTheTurn() {
+        let waiting = PendingComposerSend(
+            draftText: "First", replyReference: nil, dashboardID: UUID(), profile: "default",
+            sessionIDs: ["a"], draftSessionID: "a", isNewChat: false, title: "A"
+        )
+        XCTAssertFalse(waiting.appending("More", replyReference: nil).waitsForTurnEnd)
+        let queued = waiting.appending("Next", replyReference: nil, waitsForTurnEnd: true)
+        XCTAssertTrue(queued.waitsForTurnEnd)
+        XCTAssertEqual(queued.draftText, "First\n\nNext")
+        XCTAssertTrue(queued.appending("Again", replyReference: nil).waitsForTurnEnd, "Plain text joining a queued message keeps it queued")
+    }
+
     /// Files written before Queue have no flag and read as not queued.
     func testAPendingSendSavedBeforeQueueDecodesAsNotQueued() throws {
         let plain = PendingComposerSend(

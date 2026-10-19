@@ -161,7 +161,7 @@ extension AppState {
               let dashboardID = activeDashboardID else { return false }
         let pending: PendingComposerSend
         if let waiting = pendingComposerSendOnScreen {
-            pending = waiting.appending(trimmed, replyReference: replyReference)
+            pending = waiting.appending(trimmed, replyReference: replyReference, waitsForTurnEnd: waitsForTurnEnd)
         } else {
             guard let chat = waitingChatOnScreen() else { return false }
             pending = PendingComposerSend(

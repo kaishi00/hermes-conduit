@@ -92,10 +92,16 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
     }
 
     /// Another send before this one went: one message, in the order typed.
-    /// A reply already attached stays the one quoted.
-    func appending(_ more: String, replyReference moreReply: ComposerReplyReference?) -> PendingComposerSend {
+    /// A reply already attached stays the one quoted. Either one queued
+    /// makes the whole message wait for the turn to end.
+    func appending(
+        _ more: String,
+        replyReference moreReply: ComposerReplyReference?,
+        waitsForTurnEnd moreWaits: Bool = false
+    ) -> PendingComposerSend {
         var combined = self
         combined.draftText = ComposerDraft.joined(draftText, more)
+        if moreWaits { combined.waitsForTurn = true }
         if combined.replyReference == nil, let moreReply {
             combined.replyAuthor = moreReply.authorName
             combined.replyText = moreReply.text
