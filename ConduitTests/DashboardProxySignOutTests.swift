@@ -349,6 +349,52 @@ final class DashboardProxySignOutTests: XCTestCase {
         }
     }
 
+    /// Hermes answers a request it won't serve to someone signed in (a
+    /// sensitive path, a file it can't write) with 403 and its reason in
+    /// `detail`. That is Hermes' answer, shown as it gave it: signing in
+    /// again can't change it. A proxy's own 403 page carries no such reason
+    /// and is still sign-in required.
+    func testAReadyPagesHermesRefusalIsNotSignIn() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch path {
+            case "/api/status":
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case "/api/files/write":
+                return .json(status: 403, body: #"{"detail":"File is not writable"}"#)
+            default:
+                return LoopbackHTTPResponse(
+                    status: 403,
+                    headers: [("Content-Type", "text/html")],
+                    body: Data("<html>Forbidden</html>".utf8)
+                )
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/files/write", method: "POST", body: ["content": "x"])
+            XCTFail("A refused write is not a success")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(detail, "File is not writable")
+            XCTAssertEqual(DashboardTicketBridgeError.describe(status: status, detail: detail), "File is not writable")
+        } catch {
+            XCTFail("Expected Hermes' refusal, got \(error)")
+        }
+        XCTAssertFalse(bridge.requiresSignIn)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions")
+            XCTFail("The proxy's 403 page is not the dashboard's answer")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected
+        } catch {
+            XCTFail("Expected .signInRequired, got \(error)")
+        }
+    }
+
     func testAReadyPagesRequestFollowsASameOriginRedirectToAnOrdinaryPage() async throws {
         let dashboard = try LoopbackHTTPServer.start { request in
             let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
@@ -574,6 +620,40 @@ final class DashboardProxySignOutTests: XCTestCase {
         let response = try await bridge.requestJSON(path: "/api/sessions")
 
         XCTAssertNotNil(response["sessions"])
+    }
+
+    /// The same refusal, heard by a request sent without the page.
+    func testABackgroundRequestHermesRefusalIsNotSignIn() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            request.path.hasPrefix("/api/files/")
+                ? .json(status: 403, body: #"{"detail":"Access to sensitive files is not allowed"}"#)
+                : LoopbackHTTPResponse(
+                    status: 403,
+                    headers: [("Content-Type", "text/html")],
+                    body: Data("<html>Forbidden</html>".utf8)
+                )
+        }
+        defer { dashboard.stop() }
+        let bridge = try backgroundBridge(port: dashboard.port)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/files/read?path=%2Froot%2F.env")
+            XCTFail("A refused file is not a file")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(detail, "Access to sensitive files is not allowed")
+        } catch {
+            XCTFail("Expected Hermes' refusal, got \(error)")
+        }
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions")
+            XCTFail("The proxy's 403 page is not the dashboard's answer")
+        } catch DashboardTicketBridgeError.signInRequired {
+            // expected
+        } catch {
+            XCTFail("Expected .signInRequired, got \(error)")
+        }
     }
 
     private func backgroundBridge(port: UInt16) throws -> DashboardTicketBridge {
