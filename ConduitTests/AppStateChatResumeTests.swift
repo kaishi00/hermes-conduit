@@ -432,6 +432,48 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.content), expected, "a second refresh doesn't double the notes")
     }
 
+    /// Two notes with the same text (/help run twice) are two notes: a
+    /// refresh keeps both, and a second refresh still doesn't double them.
+    func testIdenticalLocalNotesBothSurviveARefresh() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let rows = [row("row-1", .user, "Hi"), row("row-2", .assistant, "Hello")]
+        let previous = [rows[0], row("slash-a", .system, "Commands: /help"), rows[1], row("slash-b", .system, "Commands: /help")]
+
+        let once = AppState.keepingLocalNotes(from: previous, in: rows)
+        XCTAssertEqual(once.map(\.id), ["row-1", "slash-a", "row-2", "slash-b"])
+        XCTAssertEqual(AppState.keepingLocalNotes(from: once, in: rows).map(\.id), once.map(\.id))
+    }
+
+    /// Carried notes keep their order even when some of the rows they
+    /// followed are gone: those go at the end, and no later note lands
+    /// above an earlier one.
+    func testLocalNotesKeepTheirOrderWhenAnchorsAreMissing() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let note1 = row("slash-1", .system, "first")
+        let note2 = row("slash-2", .system, "second")
+        let rowA = row("row-a", .user, "A")
+        let rowB = row("row-b", .assistant, "B")
+        let rowC = row("row-c", .user, "C")
+
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB]).map(\.id),
+            ["row-b", "slash-1", "slash-2"]
+        )
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB, rowC]).map(\.id),
+            ["row-b", "row-c", "slash-1", "slash-2"]
+        )
+        // Anchors that are present still anchor.
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowA, rowB, rowC]).map(\.id),
+            ["row-a", "slash-1", "row-b", "slash-2", "row-c"]
+        )
+    }
+
     /// The notes belong to their chat: a resume of another one doesn't
     /// carry them over.
     func testLocalNotesStayWithTheirChat() {

@@ -8259,26 +8259,38 @@ final class AppState: ObservableObject {
     /// answers), which Hermes never stores, carried from `previous` into a
     /// transcript of the same chat rebuilt from the gateway's rows. Each goes
     /// back after the row it followed, or at the end when that row isn't
-    /// among the rebuilt ones. A note the rebuilt transcript already holds
-    /// (same id, or a system row with the same text) isn't added again.
+    /// among the rebuilt ones; the notes keep their order either way, so a
+    /// note never lands above one that came before it. A note the rebuilt
+    /// rows already hold (same id, or a system row with the same text) isn't
+    /// added again; two notes with the same text are still two notes.
     static func keepingLocalNotes(from previous: [ChatMessage], in rebuilt: [ChatMessage]) -> [ChatMessage] {
-        var kept = rebuilt
-        // Where the next note goes: the top until a row has gone by.
-        var insertion: Int? = 0
+        var rebuiltIndex: [String: Int] = [:]
+        for (index, message) in rebuilt.enumerated() where rebuiltIndex[message.id] == nil {
+            rebuiltIndex[message.id] = index
+        }
+        let rebuiltSystemTexts = Set(rebuilt.lazy.filter { $0.role == .system }.map(\.content))
+        // The notes by the rebuilt row they go after: -1 is the top,
+        // rebuilt.count - 1 the end.
+        var notesAfter: [Int: [ChatMessage]] = [:]
+        // The top until a row has gone by.
+        var anchor = -1
+        // Never above a note already placed.
+        var floor = -1
         for message in previous {
             guard message.role == .system, message.id.hasPrefix("slash-") else {
-                insertion = kept.firstIndex { $0.id == message.id }.map { $0 + 1 }
+                anchor = rebuiltIndex[message.id] ?? rebuilt.count - 1
                 continue
             }
-            guard !kept.contains(where: {
-                $0.id == message.id || ($0.role == .system && $0.content == message.content)
-            }) else { continue }
-            if let index = insertion {
-                kept.insert(message, at: index)
-                insertion = index + 1
-            } else {
-                kept.append(message)
-            }
+            guard rebuiltIndex[message.id] == nil, !rebuiltSystemTexts.contains(message.content) else { continue }
+            floor = max(floor, anchor)
+            notesAfter[floor, default: []].append(message)
+        }
+        guard !notesAfter.isEmpty else { return rebuilt }
+        var kept = notesAfter[-1] ?? []
+        kept.reserveCapacity(rebuilt.count + notesAfter.values.reduce(0) { $0 + $1.count })
+        for (index, message) in rebuilt.enumerated() {
+            kept.append(message)
+            kept.append(contentsOf: notesAfter[index] ?? [])
         }
         return kept
     }
