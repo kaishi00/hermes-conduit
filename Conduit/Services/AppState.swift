@@ -9129,6 +9129,9 @@ final class AppState: ObservableObject {
     /// slower refresh or an older change can't undo a newer one. Never
     /// reset: a reset could make a change look as if it never happened.
     var groupRoomPictureGenerations: [String: Int] = [:]
+    /// How many set or remove requests are still on their way for each
+    /// room; a room drops out once all of them have settled.
+    var groupRoomPicturesChanging: [String: Int] = [:]
     @Published private(set) var activeRoomSurface: GroupRoomSurface?
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?

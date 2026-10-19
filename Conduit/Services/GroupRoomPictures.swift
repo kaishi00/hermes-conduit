@@ -47,6 +47,18 @@ enum GroupRoomPictures {
         return revision
     }
 
+    /// The rooms a refresh must leave as they are: those set or removed
+    /// here since it began (their generation moved on from `started`), and
+    /// those whose change was still on its way when it began, whose answer
+    /// may land before the refresh ends.
+    static func changed(
+        started: [String: Int],
+        generations: [String: Int],
+        changingAtStart: Set<String>
+    ) -> Set<String> {
+        Set(generations.keys.filter { generations[$0] != started[$0] }).union(changingAtStart)
+    }
+
     /// A refresh's pictures merged into the ones on hand now. `listed` is
     /// the host's revisions, `fetched` what the refresh downloaded, and
     /// `changed` the rooms whose picture was set or removed here since the
@@ -161,6 +173,7 @@ extension AppState {
         let epoch = groupRoomEpoch
         // A picture set or removed while this runs stays as the user left it.
         let started = groupRoomPictureGenerations
+        let changingAtStart = Set(groupRoomPicturesChanging.keys)
         guard let listed = try? await bridge.requestJSON(path: GroupRoomPictures.listPath),
               let revisions = GroupRoomPictures.revisions(from: listed),
               activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
@@ -174,7 +187,11 @@ extension AppState {
             guard activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
             fetched[roomID] = picture
         }
-        let changed = Set(groupRoomPictureGenerations.keys.filter { groupRoomPictureGenerations[$0] != started[$0] })
+        let changed = GroupRoomPictures.changed(
+            started: started,
+            generations: groupRoomPictureGenerations,
+            changingAtStart: changingAtStart
+        )
         let merged = GroupRoomPictures.merged(
             data: groupRoomPictureData,
             revisions: groupRoomPictureRevisions,
@@ -198,6 +215,13 @@ extension AppState {
         // The latest change to the room wins, whichever answer comes last.
         let generation = (groupRoomPictureGenerations[roomID] ?? 0) + 1
         groupRoomPictureGenerations[roomID] = generation
+        groupRoomPicturesChanging[roomID, default: 0] += 1
+        defer {
+            let left = (groupRoomPicturesChanging[roomID] ?? 1) - 1
+            groupRoomPicturesChanging[roomID] = left > 0 ? left : nil
+        }
+        // A newer change to the room has taken over: this one fails quietly.
+        var superseded: Bool { groupRoomPictureGenerations[roomID] != generation }
         do {
             if let image {
                 // Scaling and encoding a large photo stays off the main actor.
@@ -205,6 +229,7 @@ extension AppState {
                     GroupRoomPictures.uploadBody(for: image)
                 }.value
                 guard let upload else {
+                    if superseded { return }
                     errorMessage = AppLocalization.string("That picture could not be used.")
                     return
                 }
@@ -232,6 +257,7 @@ extension AppState {
         } catch is CancellationError {
             return
         } catch {
+            if superseded { return }
             errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))")
         }
     }

@@ -160,6 +160,18 @@ extension GroupChatModelsTests {
         XCTAssertNil(merged.data["gone"], "a room the host no longer lists loses its picture")
     }
 
+    func testARefreshLeavesRoomsWhoseChangeWasStillOnItsWay() {
+        // r1's set was sent before the refresh began and is still on its way;
+        // r2 was set after it began; r3 was changed long before and settled.
+        let changed = GroupRoomPictures.changed(
+            started: ["r1": 1, "r3": 4],
+            generations: ["r1": 1, "r2": 1, "r3": 4],
+            changingAtStart: ["r1"]
+        )
+        XCTAssertEqual(changed, ["r1", "r2"])
+        XCTAssertEqual(GroupRoomPictures.changed(started: ["r3": 4], generations: ["r3": 4], changingAtStart: []), [])
+    }
+
     func testDesktopProjectionCarriesTheRoomPictureAndID() {
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         let room: [String: Any] = [
