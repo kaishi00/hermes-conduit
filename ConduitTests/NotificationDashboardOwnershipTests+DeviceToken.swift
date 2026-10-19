@@ -30,6 +30,7 @@ extension NotificationDashboardOwnershipTests {
             let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil))
             return (Data(#"{"installation":{}}"#.utf8), response)
         }
+        defer { service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) } }
 
         // The first launch after updating sends the token once.
         service.didReceiveDeviceToken(Data([0xab, 0xcd]))
@@ -42,6 +43,36 @@ extension NotificationDashboardOwnershipTests {
         // What the relay accepted is kept for the next launch.
         try await waitUntil { self.savedDeviceToken() == "1234" }
         XCTAssertEqual(sent, ["abcd", "1234"])
+    }
+
+    func testAPushTokenTheRelayRefusesShowsInSettingsAndGoesAgain() async throws {
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        let service = PushNotificationService(retryDelay: .zero)
+
+        var status = 503
+        var attempts = 0
+        service.sendRegistrationUpdate = { request in
+            attempts += 1
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: status, httpVersion: nil, headerFields: nil))
+            return (Data(#"{"installation":{}}"#.utf8), response)
+        }
+        defer { service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) } }
+
+        service.didReceiveDeviceToken(Data([0xab, 0xcd]))
+        try await waitUntil { service.lastError != nil }
+        XCTAssertNil(savedDeviceToken(), "a refused token isn't recorded as accepted")
+
+        // Coming back to the front delivers the same token again, and it goes.
+        status = 200
+        service.didReceiveDeviceToken(Data([0xab, 0xcd]))
+        try await waitUntil { self.savedDeviceToken() == "abcd" }
+        XCTAssertEqual(attempts, 2)
     }
 
     private func savedDeviceToken() -> String? {

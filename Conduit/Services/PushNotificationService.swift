@@ -1421,18 +1421,38 @@ final class PushNotificationService: ObservableObject {
         deviceToken = token
         tokenContinuation?.resume(returning: token)
         tokenContinuation = nil
-        // Every launch asks for the token; only a new one goes to the relay,
-        // which shares one budget for device changes across all phones.
+        // Every launch and return to the front asks for the token; only a
+        // new one goes to the relay, which shares one budget for device
+        // changes across all phones.
         // Registrations saved before the token was recorded send it once.
-        if registration?.deviceToken != token {
-            queueRegistrationUpdate(deviceToken: token)
+        // One that fails shows in Settings > Notifications and goes again
+        // the next time Conduit comes to the front.
+        guard registration?.deviceToken != token, let update = queueRegistrationUpdate(deviceToken: token) else { return }
+        Task { [weak self] in
+            if case .failure(let error) = await update.result {
+                self?.lastError = UserFacingError.message(for: error)
+            }
         }
     }
 
-    /// Asks iOS for this launch's push token. The token can change (a
-    /// restore, a new phone), and a relay still sending to the old one gets
-    /// 200 from Apple while nothing reaches this phone (notifier #119).
+    /// Asks iOS for this launch's push token, and again each time Conduit
+    /// comes to the front. The token can change (a restore, a new phone),
+    /// and a relay still sending to the old one gets 200 from Apple while
+    /// nothing reaches this phone (notifier #119).
     func refreshDeviceTokenAtLaunch() {
+        if becomeActiveObserver == nil {
+            becomeActiveObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.requestCurrentDeviceToken() }
+            }
+        }
+        requestCurrentDeviceToken()
+    }
+
+    private var becomeActiveObserver: NSObjectProtocol?
+
+    private func requestCurrentDeviceToken() {
         guard registration != nil else { return }
         UIApplication.shared.registerForRemoteNotifications()
     }
