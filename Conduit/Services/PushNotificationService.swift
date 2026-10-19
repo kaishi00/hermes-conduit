@@ -1693,8 +1693,8 @@ final class PushNotificationService: ObservableObject {
     /// Every registration update goes through here, one after another,
     /// each sending the tokens and preferences as they are by then. An
     /// update still on its way may carry other ones, so whether this one has
-    /// anything new is decided when its turn comes; `force` (a new device
-    /// token) sends regardless.
+    /// anything new is decided when its turn comes; a device token the
+    /// relay hasn't accepted yet always counts as new.
     @discardableResult
     private func queueRegistrationUpdate(deviceToken: String? = nil) -> Task<Void, Error>? {
         guard registration != nil else { return nil }
