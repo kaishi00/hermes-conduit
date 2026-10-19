@@ -13,6 +13,7 @@
 import AVFAudio
 import Foundation
 import OSLog
+import os
 
 private let audioSessionLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
 
@@ -64,8 +65,19 @@ extension VoiceAudioSessionControlling {
     func overrideOutputToSpeaker() throws {}
 }
 
-@MainActor
-final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
+/// The blocking AVAudioSession calls. `SystemVoiceAudioSession` makes them
+/// on its serial queue, never the main thread; tests substitute a fake.
+protocol VoiceAudioSessionBackend: AnyObject, Sendable {
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        options: AVAudioSession.CategoryOptions
+    ) throws
+    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
+    func overrideOutputToSpeaker() throws
+}
+
+final class SharedAVAudioSessionBackend: VoiceAudioSessionBackend {
     func setCategory(
         _ category: AVAudioSession.Category,
         mode: AVAudioSession.Mode,
@@ -76,6 +88,65 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
         try AVAudioSession.sharedInstance().setActive(active, options: options)
+    }
+
+    func overrideOutputToSpeaker() throws {
+        try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+    }
+}
+
+/// Every session change goes through one serial queue. Deactivation is
+/// blocking IPC that waits for audio I/O to wind down, so it runs there
+/// without the main thread waiting. Activation and category changes still
+/// wait (callers need the error, and a live session before starting an
+/// engine), and being on the same queue they run after any deactivation
+/// queued before them. A deactivation still queued when a newer change
+/// arrives is dropped: stop-then-listen-again doesn't flap the session or
+/// resume other apps' audio for an instant.
+@MainActor
+final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
+    private let backend: VoiceAudioSessionBackend
+    private let queue: DispatchQueue
+    /// Bumped by every change other than deactivation; a queued
+    /// deactivation runs only if nothing newer was asked for since.
+    private let generation = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+    init(backend: VoiceAudioSessionBackend? = nil, queue: DispatchQueue? = nil) {
+        self.backend = backend ?? SharedAVAudioSessionBackend()
+        self.queue = queue ?? DispatchQueue(label: "com.milim.relay.audio-session", qos: .userInitiated)
+    }
+
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        options: AVAudioSession.CategoryOptions
+    ) throws {
+        let backend = self.backend
+        try onQueue { try backend.setCategory(category, mode: mode, options: options) }
+    }
+
+    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
+        let backend = self.backend
+        if active {
+            try onQueue { try backend.setActive(true, options: options) }
+            return
+        }
+        let generation = self.generation
+        let scheduled = generation.withLock { $0 }
+        queue.async {
+            guard generation.withLock({ $0 }) == scheduled else { return }
+            do {
+                try backend.setActive(false, options: options)
+            } catch {
+                audioSessionLogger.error("audio session deactivation failed: \(LogRedaction.describing(error), privacy: .public)")
+            }
+        }
+    }
+
+    /// Supersedes any queued deactivation, then waits for the change.
+    private func onQueue(_ change: () throws -> Void) rethrows {
+        generation.withLock { $0 &+= 1 }
+        try queue.sync(execute: change)
     }
 
     var isOtherAudioPlaying: Bool {
@@ -101,7 +172,8 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
     }
 
     func overrideOutputToSpeaker() throws {
-        try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        let backend = self.backend
+        try onQueue { try backend.overrideOutputToSpeaker() }
     }
 }
 
@@ -317,6 +389,21 @@ final class VoiceAudioSessionCoordinator {
             // needsReapply stays raised: the next transition retries.
             audioSessionLogger.error("conversation policy after the call failed: \(LogRedaction.describing(error), privacy: .public)")
         }
+    }
+
+    /// A video or audio card plays outside any lease, only while nothing
+    /// else holds the session (the card checks). Its changes still go
+    /// through the session seam, so they supersede a deactivation queued
+    /// when the last owner released, instead of having it land on the
+    /// card's playback.
+    func activateForCardPlayback() {
+        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setActive(true, options: [])
+    }
+
+    /// Hands the audio back to whatever the card's media paused.
+    func deactivateAfterCardPlayback() {
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     /// Reapplies the dominant policy after the system may have deactivated
