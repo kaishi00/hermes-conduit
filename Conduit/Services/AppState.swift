@@ -8255,6 +8255,34 @@ final class AppState: ObservableObject {
         restoredPendingDecisionCardsAwaitingConfirmation = nil
     }
 
+    /// The chat's own notes (slash command output, /btw and /background
+    /// answers), which Hermes never stores, carried from `previous` into a
+    /// transcript of the same chat rebuilt from the gateway's rows. Each goes
+    /// back after the row it followed, or at the end when that row isn't
+    /// among the rebuilt ones. A note the rebuilt transcript already holds
+    /// (same id, or a system row with the same text) isn't added again.
+    static func keepingLocalNotes(from previous: [ChatMessage], in rebuilt: [ChatMessage]) -> [ChatMessage] {
+        var kept = rebuilt
+        // Where the next note goes: the top until a row has gone by.
+        var insertion: Int? = 0
+        for message in previous {
+            guard message.role == .system, message.id.hasPrefix("slash-") else {
+                insertion = kept.firstIndex { $0.id == message.id }.map { $0 + 1 }
+                continue
+            }
+            guard !kept.contains(where: {
+                $0.id == message.id || ($0.role == .system && $0.content == message.content)
+            }) else { continue }
+            if let index = insertion {
+                kept.insert(message, at: index)
+                insertion = index + 1
+            } else {
+                kept.append(message)
+            }
+        }
+        return kept
+    }
+
     /// Adopts a conversation as the active one and records it as the
     /// workspace's stored selection — WITH its kind, resolved from the bot
     /// registry and the conversation's own identities. Every adoption path
@@ -14435,6 +14463,8 @@ final class AppState: ObservableObject {
             syncOperationID: automaticSyncOperationID
         ) else { return false }
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
+        let previousSessionID = activeSessionId
+        let previousMessages = messages
         // The server answered with an authoritative conversation: it replaces
         // the read-only offline copy wholesale, even when it is empty.
         dismissOfflineChatPresentation()
@@ -14487,7 +14517,15 @@ final class AppState: ObservableObject {
             includePendingApprovals: restorePendingDecisionCards,
             includePendingTools: result.snapshot.running != false
         )
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: restored, sessionId: result.sessionId), sessionId: result.sessionId)
+        // Hermes' rows don't hold the chat's own notes: a refresh of the same
+        // chat keeps them, a resume of another chat leaves them behind.
+        let resumedIDs = chatOwnSessionIDs(for: result.sessionId)
+            .union(sessionIDs + [result.storedSessionId].compactMap { $0 })
+        let isSameChat = previousSessionID.map {
+            !chatOwnSessionIDs(for: $0).union([$0]).isDisjoint(with: resumedIDs)
+        } ?? false
+        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: restored) : restored
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -23868,7 +23906,9 @@ final class AppState: ObservableObject {
             includePendingClarifications: false,
             includePendingApprovals: false
         )
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: merged, sessionId: sessionID), sessionId: sessionID)
+        // The chat's own notes aren't among the compressed rows; keep them.
+        let kept = Self.keepingLocalNotes(from: messages, in: merged)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
