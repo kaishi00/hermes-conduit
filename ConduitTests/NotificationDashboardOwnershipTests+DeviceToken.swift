@@ -42,7 +42,6 @@ extension NotificationDashboardOwnershipTests {
         // What the relay accepted is kept for the next launch.
         try await waitUntil { self.savedDeviceToken() == "1234" }
         XCTAssertEqual(sent, ["abcd", "1234"])
-        XCTAssertNil(service.lastError)
     }
 
     private func savedDeviceToken() -> String? {

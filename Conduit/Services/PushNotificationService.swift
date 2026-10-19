@@ -1667,13 +1667,17 @@ final class PushNotificationService: ObservableObject {
     /// anything new is decided when its turn comes; `force` (a new device
     /// token) sends regardless.
     @discardableResult
-    private func queueRegistrationUpdate(deviceToken: String? = nil, force: Bool = false) -> Task<Void, Error>? {
+    private func queueRegistrationUpdate(deviceToken: String? = nil) -> Task<Void, Error>? {
         guard registration != nil else { return nil }
         let previous = registrationUpdate
         let update = Task {
             _ = await previous?.result
             guard let registration else { return }
-            guard force || deviceToken != nil || registration.preferences != preferences
+            // A token the relay hasn't accepted yet rides any later update,
+            // so one that failed at launch goes again (a relay meta refresh
+            // queues one); the same token twice sends once.
+            let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
+            guard tokenChanged || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
                     || registration.locationToken != relayLocationToken else { return }
             try await updateRegistration(deviceToken: deviceToken)
