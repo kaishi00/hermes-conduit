@@ -78,6 +78,13 @@ final class CapabilitiesStore: ObservableObject {
     /// Bumped on every profile or dashboard switch: work started before it
     /// commits nothing.
     private var generation = 0
+    /// Bumped by every load of a list and every change made to it here: a
+    /// load commits only if nothing newer touched its list meanwhile, so a
+    /// refresh that answers late can't bring back an older list or undo a
+    /// switch just flipped.
+    private var skillsEpoch = 0
+    private var connectorsEpoch = 0
+    private var pluginsEpoch = 0
 
     /// A connector's probe stays fresh this long, as on Desktop.
     static let probeLifetime: TimeInterval = 300
@@ -175,8 +182,10 @@ final class CapabilitiesStore: ObservableObject {
 
     func loadOfficialSkills() async {
         let token = generation
+        skillsEpoch &+= 1
+        let epoch = skillsEpoch
         guard let response = try? await request(scoped("/api/skills/hub/official"), timeout: 30_000) else { return }
-        guard token == generation else { return }
+        guard token == generation, epoch == skillsEpoch else { return }
         officialSkills = (response["skills"] as? [Any] ?? []).compactMap { OfficialSkill($0) }
     }
 
@@ -219,6 +228,7 @@ final class CapabilitiesStore: ObservableObject {
             }
             skillInstalls[skill.identifier] = nil
             if let index = officialSkills.firstIndex(where: { $0.identifier == skill.identifier }) {
+                skillsEpoch &+= 1
                 officialSkills[index].installed = true
             }
             return true
@@ -283,12 +293,14 @@ final class CapabilitiesStore: ObservableObject {
 
     func loadConnectors() async {
         let token = generation
+        connectorsEpoch &+= 1
+        let epoch = connectorsEpoch
         async let serversResponse = request(scoped("/api/mcp/servers"), timeout: 30_000)
         async let catalogResponse = try? request(scoped("/api/mcp/catalog"), timeout: 30_000)
         do {
             let servers = ConnectorServer.list(from: try await serversResponse)
             let catalog = await catalogResponse.map(ConnectorCatalogEntry.list) ?? connectorCatalog
-            guard token == generation else { return }
+            guard token == generation, epoch == connectorsEpoch else { return }
             self.servers = servers
             connectorCatalog = catalog
             connectorsError = nil
@@ -296,7 +308,7 @@ final class CapabilitiesStore: ObservableObject {
             probes = probes.filter { names.contains($0.key) }
         } catch {
             _ = await catalogResponse
-            guard token == generation else { return }
+            guard token == generation, epoch == connectorsEpoch else { return }
             connectorsError = UserFacingError.message(for: error)
         }
         connectorsLoaded = true
@@ -348,6 +360,7 @@ final class CapabilitiesStore: ObservableObject {
     func setServerEnabled(_ name: String, enabled: Bool) async throws {
         let token = generation
         guard let index = servers.firstIndex(where: { $0.name == name }) else { return }
+        connectorsEpoch &+= 1
         servers[index].enabled = enabled
         do {
             _ = try await request(
@@ -357,6 +370,7 @@ final class CapabilitiesStore: ObservableObject {
             )
         } catch {
             if token == generation, let index = servers.firstIndex(where: { $0.name == name }) {
+                connectorsEpoch &+= 1
                 servers[index].enabled = !enabled
             }
             throw error
@@ -373,6 +387,7 @@ final class CapabilitiesStore: ObservableObject {
         let token = generation
         _ = try await request(scoped("/api/mcp/servers/\(Self.component(name))"), method: "DELETE")
         guard token == generation else { return }
+        connectorsEpoch &+= 1
         servers.removeAll { $0.name == name }
         probes[name] = nil
         if let index = connectorCatalog.firstIndex(where: { $0.name == name }) {
@@ -454,18 +469,20 @@ final class CapabilitiesStore: ObservableObject {
 
     func loadPlugins() async {
         let token = generation
+        pluginsEpoch &+= 1
+        let epoch = pluginsEpoch
         async let hubResponse = request(scoped("/api/dashboard/plugins/hub"), timeout: 30_000)
         async let catalogResponse = try? request("/api/dashboard/plugins/catalog", timeout: 30_000)
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
             let catalog = await catalogResponse.map(PluginCatalogEntry.list) ?? pluginCatalog
-            guard token == generation else { return }
+            guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
             pluginCatalog = catalog
             pluginsError = nil
         } catch {
             _ = await catalogResponse
-            guard token == generation else { return }
+            guard token == generation, epoch == pluginsEpoch else { return }
             pluginsError = UserFacingError.message(for: error)
         }
         pluginsLoaded = true
@@ -497,6 +514,7 @@ final class CapabilitiesStore: ObservableObject {
         )
         guard token == generation else { return }
         if let index = plugins.firstIndex(where: { $0.name == plugin.name }) {
+            pluginsEpoch &+= 1
             plugins[index].runtimeStatus = enabled ? "enabled" : "disabled"
         }
         if response["restart_required"] as? Bool == true {
@@ -543,6 +561,7 @@ final class CapabilitiesStore: ObservableObject {
             timeout: 60_000
         )
         guard token == generation else { return }
+        pluginsEpoch &+= 1
         plugins.removeAll { $0.name == plugin.name }
         // Hermes can't unload a plugin while the gateway runs.
         pluginsNeedRestart = true
