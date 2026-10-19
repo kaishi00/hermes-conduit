@@ -9,6 +9,9 @@
 //  long time first, it goes back into its chat's draft and is never sent
 //  on its own.
 //
+//  Queue (#842) reuses it: a message queued while Hermes works waits the
+//  same way in the open chat, and goes once the turn is over.
+//
 
 import Foundation
 
@@ -134,8 +137,27 @@ extension AppState {
     /// chat it could wait for.
     @discardableResult
     func sendWhenConnected(_ text: String, replyReference: ComposerReplyReference?) -> Bool {
+        guard composerWaitsForChat else { return false }
+        return holdComposerSend(text, replyReference: replyReference, waitsForTurnEnd: false)
+    }
+
+    /// Queue: a message typed while Hermes works waits in the open chat as
+    /// "Sends when Hermes finishes" and goes as the next turn once this one
+    /// is over, stopped or failed alike. False when there is no live chat
+    /// to queue it in.
+    @discardableResult
+    func queueForNextTurn(_ text: String, replyReference: ComposerReplyReference?) -> Bool {
+        guard case .live = composerChatOnScreen, composerIsEnabled else { return false }
+        return holdComposerSend(text, replyReference: replyReference, waitsForTurnEnd: true)
+    }
+
+    private func holdComposerSend(
+        _ text: String,
+        replyReference: ComposerReplyReference?,
+        waitsForTurnEnd: Bool
+    ) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard composerWaitsForChat, !trimmed.isEmpty, Self.parseSlashCommand(trimmed) == nil,
+        guard !trimmed.isEmpty, Self.parseSlashCommand(trimmed) == nil,
               let dashboardID = activeDashboardID else { return false }
         let pending: PendingComposerSend
         if let waiting = pendingComposerSendOnScreen {
@@ -150,7 +172,8 @@ extension AppState {
                 sessionIDs: chat.sessionIDs,
                 draftSessionID: chat.draftSessionID,
                 isNewChat: chat.isNewChat,
-                title: displayedChatTitle
+                title: displayedChatTitle,
+                waitsForTurnEnd: waitsForTurnEnd
             )
         }
         // Accept only once the file is safe. On failure the caller keeps
@@ -191,6 +214,14 @@ extension AppState {
         pendingComposerSend = nil
         composerNotice = nil
         composerRestoreRequests.append(restoreRequest(for: pending, key: durableComposerDraftKeyOnScreen, focuses: true))
+    }
+
+    /// The bubble's Send now: a queued message goes into the running turn
+    /// (Steer) instead of waiting for it to end.
+    func sendPendingComposerSendNow() {
+        guard let pending = pendingComposerSendOnScreen, pending.waitsForTurnEnd,
+              composerIsEnabled, isConnected, client != nil else { return }
+        deliverPendingComposerSend(pending, busyMode: .steer)
     }
 
     /// The composer put the words back: the waiting message's file goes too.
@@ -241,6 +272,9 @@ extension AppState {
             return
         }
         guard composerIsEnabled, isConnected, client != nil else { return }
+        // A queued message waits for the turn to end; that edge checks
+        // again (turnState's didSet).
+        guard !pending.waitsForTurnEnd || turnState == .idle else { return }
         // A sync or reconnect still running could replace the chat.
         guard !isSettlingConnection else {
             recheckPendingComposerSendSoon()
@@ -251,7 +285,7 @@ extension AppState {
 
     /// Through the normal send, busy mode and all. One that doesn't go
     /// comes back to the composer, like any send that didn't.
-    private func deliverPendingComposerSend(_ pending: PendingComposerSend) {
+    private func deliverPendingComposerSend(_ pending: PendingComposerSend, busyMode: BusyInputMode? = nil) {
         cancelPendingComposerSendRecheck()
         pendingComposerSend = nil
         deliveringPendingComposerSendIDs.insert(pending.id)
@@ -259,7 +293,7 @@ extension AppState {
         let key = durableComposerDraftKeyOnScreen
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let sent = await self.submitComposer(text: pending.outboundText, context: context)
+            let sent = await self.submitComposer(text: pending.outboundText, context: context, busyMode: busyMode)
             self.deliveringPendingComposerSendIDs.remove(pending.id)
             if sent {
                 self.removePendingComposerSendFile(pending)

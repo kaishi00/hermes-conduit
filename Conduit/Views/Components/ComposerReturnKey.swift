@@ -46,7 +46,7 @@ enum ComposerReturnKey {
     /// empty composer is stop-only; Return must never act as the Stop button.
     static func canSubmit(action: ComposerAction) -> Bool {
         switch action {
-        case .send, .steer, .interrupt: return true
+        case .send, .steer, .interrupt, .queue: return true
         case .stop, .unavailable: return false
         }
     }

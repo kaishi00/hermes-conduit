@@ -81,6 +81,7 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertTrue(ComposerReturnKey.canSubmit(action: .send))
         XCTAssertTrue(ComposerReturnKey.canSubmit(action: .steer))
         XCTAssertTrue(ComposerReturnKey.canSubmit(action: .interrupt))
+        XCTAssertTrue(ComposerReturnKey.canSubmit(action: .queue))
         // A running response with an empty composer is stop-only; Return
         // must never act as the Stop button.
         XCTAssertFalse(ComposerReturnKey.canSubmit(action: .stop))

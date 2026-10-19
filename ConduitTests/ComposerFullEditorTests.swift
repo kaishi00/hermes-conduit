@@ -24,6 +24,7 @@ final class ComposerFullEditorTests: XCTestCase {
         XCTAssertTrue(ComposerBar.turnControlExpandsComposer(action: .stop, restsWhenIdle: false), "the classic layout keeps Stop in its row")
         XCTAssertTrue(ComposerBar.turnControlExpandsComposer(action: .steer, restsWhenIdle: true))
         XCTAssertTrue(ComposerBar.turnControlExpandsComposer(action: .interrupt, restsWhenIdle: true))
+        XCTAssertTrue(ComposerBar.turnControlExpandsComposer(action: .queue, restsWhenIdle: true))
         XCTAssertFalse(ComposerBar.turnControlExpandsComposer(action: .unavailable, restsWhenIdle: true))
         XCTAssertEqual(ComposerBar.trailingControl(action: .stop, showsVoiceButton: true), .action, "the resting bar's slot holds Stop, not voice")
     }

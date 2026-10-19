@@ -1477,6 +1477,82 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
     }
 
+    /// Queue (#842): a message queued while Hermes works waits in the open
+    /// chat, and goes as the next turn only once the turn is over.
+    func testAQueuedMessageWaitsForTheTurnToEnd() async throws {
+        let sent = SentPrompts()
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+
+        XCTAssertTrue(appState.queueForNextTurn("  Next one  ", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSendOnScreen)
+        XCTAssertTrue(pending.waitsForTurnEnd)
+        XCTAssertEqual(pending.draftText, "Next one")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [pending.id])
+
+        appState.settlePendingComposerSend()
+        XCTAssertEqual(appState.pendingComposerSend?.id, pending.id, "It waits while the turn runs")
+        XCTAssertTrue(sent.prompts.isEmpty)
+
+        XCTAssertTrue(appState.sendWhenConnected("And this", replyReference: nil), "More text joins it")
+        XCTAssertEqual(appState.pendingComposerSendOnScreen?.draftText, "Next one\n\nAnd this")
+        XCTAssertEqual(appState.pendingComposerSendOnScreen?.waitsForTurnEnd, true)
+
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: false))
+        await waitUntil { !sent.prompts.isEmpty }
+        XCTAssertEqual(sent.prompts.map { $0.text }, ["Next one\n\nAnd this"])
+        XCTAssertEqual(sent.prompts.map { $0.sessionID }, ["stored-a"])
+        XCTAssertNil(appState.pendingComposerSend)
+        await waitUntil { store.loadPendingSends(dashboardID: dashboard).isEmpty }
+    }
+
+    /// Queue needs a live chat: over a saved copy it's "Sends when
+    /// connected" instead, and a slash command is never queued.
+    func testQueueNeedsALiveChatAndPlainText() {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertFalse(appState.queueForNextTurn("Hello", replyReference: nil))
+
+        appState.dismissOfflineChatPresentation()
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnecting = false
+        appState.isConnected = true
+        XCTAssertFalse(appState.queueForNextTurn("/new", replyReference: nil))
+        XCTAssertNil(appState.pendingComposerSend)
+    }
+
+    /// Files written before Queue have no flag and read as not queued.
+    func testAPendingSendSavedBeforeQueueDecodesAsNotQueued() throws {
+        let plain = PendingComposerSend(
+            draftText: "Hi", replyReference: nil, dashboardID: UUID(), profile: "default",
+            sessionIDs: ["a"], draftSessionID: "a", isNewChat: false, title: "A"
+        )
+        let plainJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any]
+        XCTAssertNil(plainJSON?["waitsForTurn"], "Nothing new is written for a message that isn't queued")
+        XCTAssertFalse(try JSONDecoder().decode(PendingComposerSend.self, from: JSONEncoder().encode(plain)).waitsForTurnEnd)
+
+        let queued = PendingComposerSend(
+            draftText: "Hi", replyReference: nil, dashboardID: UUID(), profile: "default",
+            sessionIDs: ["a"], draftSessionID: "a", isNewChat: false, title: "A", waitsForTurnEnd: true
+        )
+        XCTAssertTrue(try JSONDecoder().decode(PendingComposerSend.self, from: JSONEncoder().encode(queued)).waitsForTurnEnd)
+    }
+
     /// A message an earlier run left waiting comes back as a draft at
     /// launch and is never sent on its own.
     func testAMessageLeftWaitingComesBackAsADraftAtLaunch() throws {

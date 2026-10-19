@@ -230,10 +230,14 @@ private struct LegacySettingsView: View {
             Text("Choose what a typed message does while Hermes is still working.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            Text("Touch and hold the send button to choose another way for one message.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
             ConduitGlassGroup(spacing: 10) {
                 AdaptiveStack(spacing: 10) {
                     busyModeChoice(.steer, symbol: BusyInputMode.steer.symbol, detail: AppLocalization.string("Guide safely"))
+                    busyModeChoice(.queue, symbol: BusyInputMode.queue.symbol, detail: AppLocalization.string("Send next"))
                     busyModeChoice(.interrupt, symbol: BusyInputMode.interrupt.symbol, detail: AppLocalization.string("Stop and correct"))
                 }
             }
@@ -1857,10 +1861,11 @@ private struct ResponseBehaviorSettings: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("During a response"), symbol: BusyInputMode.steer.symbol, tint: .conduitAccent) {
-            Text("Steer adds guidance to the active turn. Interrupt stops it before handling the new message.")
+            Text("Steer adds guidance to the active turn. Queue sends the message once it finishes. Interrupt stops it before handling the new message.")
                 .font(.footnote).foregroundStyle(.secondary)
             Picker("Messages during a response", selection: Binding(get: { mode }, set: choose)) {
                 Text("Steer").tag(BusyInputMode.steer)
+                Text("Queue").tag(BusyInputMode.queue)
                 Text("Interrupt").tag(BusyInputMode.interrupt)
             }
             .pickerStyle(.segmented)

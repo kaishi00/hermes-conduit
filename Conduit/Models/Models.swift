@@ -1027,7 +1027,7 @@ enum TurnState: Equatable {
             // Attachments do not have steering semantics. With no typed text,
             // keep Stop available even if an attachment was drafted earlier.
             guard hasText else { return .stop }
-            return busyInputMode == .interrupt ? .interrupt : .steer
+            return busyInputMode.composerAction
         }
     }
 }
@@ -1038,12 +1038,84 @@ enum ComposerAction: Equatable {
     case stop
     case steer
     case interrupt
+    /// Waits as the next message until the running turn finishes.
+    case queue
+}
+
+/// What a long-press on the composer's action button offers for this
+/// message only; a plain tap keeps the action it shows (#816, #817, #842,
+/// #962).
+enum ComposerSendChoice: String, CaseIterable, Identifiable {
+    case steer
+    case interrupt
+    case queue
+    /// `/background`: a separate agent takes the message.
+    case background
+    /// `/btw`: a side question over a snapshot of the chat.
+    case btw
+
+    var id: String { rawValue }
+
+    /// The busy mode this choice stands for, if it is one.
+    var busyInputMode: BusyInputMode? {
+        switch self {
+        case .steer: return .steer
+        case .interrupt: return .interrupt
+        case .queue: return .queue
+        case .background, .btw: return nil
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .steer, .interrupt, .queue: return busyInputMode?.title ?? ""
+        case .background: return AppLocalization.string("Background")
+        case .btw: return AppLocalization.string("Side question")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .steer, .interrupt, .queue: return busyInputMode?.symbol ?? ""
+        case .background: return "square.stack.3d.up"
+        case .btw: return "bubble.left.and.text.bubble.right"
+        }
+    }
+
+    /// The slash command a side-agent choice sends the message as.
+    var slashCommand: String? {
+        switch self {
+        case .background: return "background"
+        case .btw: return "btw"
+        case .steer, .interrupt, .queue: return nil
+        }
+    }
+
+    /// The other ways to send a typed message, in menu order. While Hermes
+    /// works: the busy modes the tap doesn't use, then the side agents.
+    /// While idle: the side agents. None for attachments (no busy mode or
+    /// side agent takes them) or a slash command (it runs as typed).
+    static func choices(for action: ComposerAction, hasAttachments: Bool, isSlashCommand: Bool) -> [ComposerSendChoice] {
+        guard !hasAttachments, !isSlashCommand else { return [] }
+        switch action {
+        case .send:
+            return [.background, .btw]
+        case .steer, .interrupt, .queue:
+            let busyModes: [ComposerSendChoice] = [.steer, .queue, .interrupt]
+            return busyModes.filter { $0.busyInputMode?.composerAction != action } + [.background, .btw]
+        case .stop, .unavailable:
+            return []
+        }
+    }
 }
 
 /// Profile-scoped Hermes setting (`display.busy_input_mode`).
 enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
     case steer
     case interrupt
+    /// The message waits and goes as the next turn once the running one
+    /// finishes (#842). Held on the phone, so it works on any Hermes.
+    case queue
 
     var id: String { rawValue }
 
@@ -1051,6 +1123,16 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .steer: return AppLocalization.string("Steer")
         case .interrupt: return AppLocalization.string("Interrupt")
+        case .queue: return AppLocalization.string("Queue")
+        }
+    }
+
+    /// The composer action a typed message takes in this mode.
+    var composerAction: ComposerAction {
+        switch self {
+        case .steer: return .steer
+        case .interrupt: return .interrupt
+        case .queue: return .queue
         }
     }
 
@@ -1061,11 +1143,16 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .steer: return "steeringwheel"
         case .interrupt: return "hand.raised.fill"
+        case .queue: return "text.line.last.and.arrowtriangle.forward"
         }
     }
 
     static func fromGatewayValue(_ value: String?) -> BusyInputMode {
-        value?.lowercased() == BusyInputMode.interrupt.rawValue ? .interrupt : .steer
+        switch value?.lowercased() {
+        case BusyInputMode.interrupt.rawValue: return .interrupt
+        case BusyInputMode.queue.rawValue: return .queue
+        default: return .steer
+        }
     }
 }
 
