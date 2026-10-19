@@ -7,6 +7,7 @@
 //  attachment in the composer instead of an opaque text placeholder.
 //
 
+import ImageIO
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -14,6 +15,18 @@ import UniformTypeIdentifiers
 struct PastedImage: Equatable {
     let data: Data
     let typeIdentifier: String
+}
+
+/// A pasted image link's download, kept only when it is a picture, under
+/// the type it actually is: a link can answer with an error page whatever
+/// its extension says.
+enum PastedRemoteImage {
+    static func image(from data: Data) -> PastedImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0,
+              let type = CGImageSourceGetType(source) as String? else { return nil }
+        return PastedImage(data: data, typeIdentifier: type)
+    }
 }
 
 struct ComposerPasteTextView: UIViewRepresentable {
@@ -728,6 +741,15 @@ final class ImagePasteTextView: UITextView {
         }
     }
 
+    private func reportPastedImageTooLarge(_ url: URL, megabytes: Int, editorIdentity pasteEditorIdentity: UUID?) {
+        let name = url.lastPathComponent.isEmpty ? url.absoluteString : url.lastPathComponent
+        let message = AttachmentSizeLimit.tooLargeMessage(names: [name], megabytes: megabytes)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.editorIdentity == pasteEditorIdentity else { return }
+            self.onPastedImageError?(message)
+        }
+    }
+
     private func reportImageLoadFailure(
         _ error: Error?,
         editorIdentity pasteEditorIdentity: UUID? = nil
@@ -764,15 +786,28 @@ final class ImagePasteTextView: UITextView {
             let ext = url.pathExtension.lowercased()
             let imageExts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "tiff"]
             if imageExts.contains(ext) || pb.types.contains("public.image") {
-                URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                    guard let data = data else { return }
-                    let typeIdentifier = UTType(filenameExtension: ext)?.identifier ?? UTType.image.identifier
-                    self?.deliverImageData(
-                        data,
-                        typeIdentifier: typeIdentifier,
-                        editorIdentity: pasteEditorIdentity
-                    )
-                }.resume()
+                // Streamed against the attachment limit: an endless or huge
+                // answer is abandoned, not buffered whole.
+                let megabytes = UserDefaults.standard.integer(forKey: AttachmentSizeLimit.preferenceKey)
+                let limit = Int(AttachmentSizeLimit.byteLimit(megabytes: megabytes))
+                Task { [weak self] in
+                    switch await MediaPreviewPresenter.boundedDownloadResult(url, limit: limit) {
+                    case .downloaded(let data, _):
+                        guard let pastedImage = PastedRemoteImage.image(from: data) else {
+                            self?.reportImageNormalizationFailure(editorIdentity: pasteEditorIdentity)
+                            return
+                        }
+                        self?.deliverImageData(
+                            pastedImage.data,
+                            typeIdentifier: pastedImage.typeIdentifier,
+                            editorIdentity: pasteEditorIdentity
+                        )
+                    case .tooLarge:
+                        self?.reportPastedImageTooLarge(url, megabytes: megabytes, editorIdentity: pasteEditorIdentity)
+                    case .failed:
+                        self?.reportImageLoadFailure(nil, editorIdentity: pasteEditorIdentity)
+                    }
+                }
                 return
             }
         }

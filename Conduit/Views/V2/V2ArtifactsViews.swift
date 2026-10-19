@@ -591,16 +591,6 @@ private struct ArtifactThumbnail: View {
                     .scaledToFill()
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .clipped()
-            } else if item.kind == .image, let url = item.url {
-                AsyncImage(url: url) { phase in
-                    if let picture = phase.image {
-                        picture.resizable().scaledToFill()
-                    } else {
-                        placeholderGlyph
-                    }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
             } else {
                 placeholderGlyph
             }
@@ -624,7 +614,17 @@ private struct ArtifactThumbnail: View {
     }
 
     private func loadThumbnail() async {
-        guard item.kind == .image, item.exists, let path = item.path else { return }
+        guard item.kind == .image else { return }
+        if item.path == nil, let url = item.url {
+            // A web image: fetched and downsampled within bounds, like the
+            // same picture in the chat.
+            image = nil
+            guard case .image(let thumbnail) = await BoundedRemoteImage.load(url, maxPixelSize: 360),
+                  !Task.isCancelled else { return }
+            image = thumbnail
+            return
+        }
+        guard item.exists, let path = item.path else { return }
         if let cached = ArtifactThumbnailCache.shared.object(forKey: cacheKey) {
             image = cached
             return

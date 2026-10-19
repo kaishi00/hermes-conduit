@@ -1,3 +1,5 @@
+import Compression
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -9,6 +11,76 @@ import XCTest
 /// batches per lane, and one more class tips a lane over that cap. Hosting
 /// these on a smoke-suite class also gets them onto the hosted runner.
 extension MarkdownLargeDocumentTests {
+
+    // MARK: - Web pictures load within bounds
+
+    private func remoteTestPNG(width: Int, height: Int) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).pngData { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    /// A real, all-black 1-bit PNG: about 10 KB for 9,000 × 9,000, which
+    /// decodes to 81 megapixels.
+    private func remoteTestPNGBomb(side: UInt32) -> Data {
+        func crc32(_ bytes: [UInt8]) -> UInt32 {
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in bytes {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = (crc >> 1) ^ (crc & 1 == 1 ? 0xEDB8_8320 : 0) }
+            }
+            return ~crc
+        }
+        func bigEndian(_ value: UInt32) -> [UInt8] {
+            [UInt8(value >> 24), UInt8(value >> 16 & 0xFF), UInt8(value >> 8 & 0xFF), UInt8(value & 0xFF)]
+        }
+        func chunk(_ type: String, _ body: [UInt8]) -> [UInt8] {
+            let typed = Array(type.utf8) + body
+            return bigEndian(UInt32(body.count)) + typed + bigEndian(crc32(typed))
+        }
+        let raw = [UInt8](repeating: 0, count: (Int(side + 7) / 8 + 1) * Int(side))
+        var deflated = [UInt8](repeating: 0, count: raw.count / 100 + 4096)
+        let deflatedCount = compression_encode_buffer(&deflated, deflated.count, raw, raw.count, nil, COMPRESSION_ZLIB)
+        // zlib header, raw deflate, Adler-32 (all zeros: a = 1, b = length).
+        let idat = [0x78, 0x9C] + deflated[0..<deflatedCount] + bigEndian(UInt32(raw.count % 65521) << 16 | 1)
+        let header = bigEndian(side) + bigEndian(side) + [1, 0, 0, 0, 0]
+        return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+            + chunk("IHDR", header) + chunk("IDAT", idat) + chunk("IEND", []))
+    }
+
+    func testRemoteImage_ALargePictureIsDownsampledToTheSizeShown() {
+        guard case .image(let image) = BoundedRemoteImage.decode(remoteTestPNG(width: 3000, height: 1200), maxPixelSize: 600) else {
+            return XCTFail("A picture within bounds loads")
+        }
+        XCTAssertLessThanOrEqual(max(image.size.width, image.size.height) * image.scale, 600)
+    }
+
+    func testRemoteImage_ASmallFileOfHugeDimensionsIsRefusedUndecoded() {
+        let bomb = remoteTestPNGBomb(side: 9_000)
+        XCTAssertLessThan(bomb.count, 64 * 1024)
+        guard case .tooLarge = BoundedRemoteImage.decode(bomb, maxPixelSize: 600) else {
+            return XCTFail("81 megapixels is never decoded")
+        }
+    }
+
+    func testRemoteImage_APageThatIsNotAPictureIsUnavailable() {
+        guard case .unavailable = BoundedRemoteImage.decode(Data("<html><body>Not found</body></html>".utf8), maxPixelSize: 600) else {
+            return XCTFail("Not a picture")
+        }
+    }
+
+    func testRemoteImage_ADownloadOverTheCeilingIsNotHandedToTheWebView() async {
+        let outcome = await BoundedRemoteImage.load(URL(string: "https://example.test/huge.png")!, maxPixelSize: 600) { _ in .tooLarge }
+        guard case .tooLarge = outcome else { return XCTFail("Offered as a link instead") }
+    }
+
+    func testRemoteImage_AFailedFetchStillTriesTheWebView() async {
+        let outcome = await BoundedRemoteImage.load(URL(string: "https://example.test/a.png")!, maxPixelSize: 600) { _ in .failed }
+        guard case .unavailable = outcome else { return XCTFail("The web view gets its chance") }
+    }
 
     // MARK: - MEDIA: recognition
 
