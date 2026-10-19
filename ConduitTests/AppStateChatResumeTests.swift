@@ -388,6 +388,111 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.cachedReviewRowsForTesting("st-alt").count, 1)
     }
 
+    /// Hermes never stores the chat's own notes (slash command output,
+    /// /btw and /background answers), so a resume that rebuilds the chat
+    /// from its rows must keep them: after the row each followed, or at the
+    /// end when that row isn't among the rebuilt ones. Not doubled by a
+    /// second refresh.
+    func testLocalNotesSurviveAResumeOfTheSameChat() {
+        let index = ConversationIdentityIndex()
+        index.recordAuthoritative(runtimeID: "runtime-1", durableID: "stored-a", profile: "default", source: .resume)
+        let harness = makeHarness(
+            configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") },
+            conversationIdentityIndex: index
+        )
+        let appState = harness.appState
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "runtime-1"
+        appState.messages = [
+            ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+            ChatMessage(id: "row-2", role: .assistant, content: "Hello", timestamp: "2026-09-13T08:00:01Z")
+        ]
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "runtime-1", kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "what did we decide?"))
+        appState.messages.append(ChatMessage(id: "live-3", role: .assistant, content: "Later", timestamp: "2026-09-13T08:00:02Z"))
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "runtime-1", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil))
+
+        // The resume rotates the runtime id; the live row comes back as row-3.
+        let result = SessionResumeResult(
+            sessionId: "runtime-2",
+            storedSessionId: "stored-a",
+            messages: [
+                ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z"),
+                ChatMessage(id: "row-2", role: .assistant, content: "Hello", timestamp: "2026-09-13T08:00:01Z"),
+                ChatMessage(id: "row-3", role: .assistant, content: "Later", timestamp: "2026-09-13T08:00:02Z")
+            ],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )
+        XCTAssertTrue(appState.applyChatResume(result))
+        let expected = ["Hi", "Hello", "[btw \"what did we decide?\"]\nShip on Friday.", "Later", "[bg bg_1]\nLogs are clean."]
+        XCTAssertEqual(appState.messages.map(\.content), expected)
+
+        XCTAssertTrue(appState.applyChatResume(result))
+        XCTAssertEqual(appState.messages.map(\.content), expected, "a second refresh doesn't double the notes")
+    }
+
+    /// Two notes with the same text (/help run twice) are two notes: a
+    /// refresh keeps both, and a second refresh still doesn't double them.
+    func testIdenticalLocalNotesBothSurviveARefresh() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let rows = [row("row-1", .user, "Hi"), row("row-2", .assistant, "Hello")]
+        let previous = [rows[0], row("slash-a", .system, "Commands: /help"), rows[1], row("slash-b", .system, "Commands: /help")]
+
+        let once = AppState.keepingLocalNotes(from: previous, in: rows)
+        XCTAssertEqual(once.map(\.id), ["row-1", "slash-a", "row-2", "slash-b"])
+        XCTAssertEqual(AppState.keepingLocalNotes(from: once, in: rows).map(\.id), once.map(\.id))
+    }
+
+    /// Carried notes keep their order even when some of the rows they
+    /// followed are gone: those go at the end, and no later note lands
+    /// above an earlier one.
+    func testLocalNotesKeepTheirOrderWhenAnchorsAreMissing() {
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-09-13T08:00:00Z")
+        }
+        let note1 = row("slash-1", .system, "first")
+        let note2 = row("slash-2", .system, "second")
+        let rowA = row("row-a", .user, "A")
+        let rowB = row("row-b", .assistant, "B")
+        let rowC = row("row-c", .user, "C")
+
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB]).map(\.id),
+            ["row-b", "slash-1", "slash-2"]
+        )
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowB, rowC]).map(\.id),
+            ["row-b", "row-c", "slash-1", "slash-2"]
+        )
+        // Anchors that are present still anchor.
+        XCTAssertEqual(
+            AppState.keepingLocalNotes(from: [rowA, note1, rowB, note2], in: [rowA, rowB, rowC]).map(\.id),
+            ["row-a", "slash-1", "row-b", "slash-2", "row-c"]
+        )
+    }
+
+    /// The notes belong to their chat: a resume of another one doesn't
+    /// carry them over.
+    func testLocalNotesStayWithTheirChat() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-a"
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "chat-a", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil))
+        XCTAssertEqual(appState.messages.count, 1)
+
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "chat-b",
+            messages: [ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "2026-09-13T08:00:00Z")],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(appState.messages.map(\.content), ["Hi"])
+    }
+
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
         let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

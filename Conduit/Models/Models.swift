@@ -461,6 +461,21 @@ struct ApprovalActivity: Codable, Equatable {
         case expired
         case error
     }
+
+    /// Whether this card still asks what `shown` asked: the same request,
+    /// command, explanation and offered choices. A legacy (request-less)
+    /// card is updated in place when Hermes announces the next command, so
+    /// a tap must only answer the card the person actually read. Status,
+    /// the chosen answer and the error are progress, not the question; the
+    /// session id is not shown and moves to the durable id on its own.
+    func asksSameAs(_ shown: ApprovalActivity) -> Bool {
+        requestId == shown.requestId
+            && command == shown.command
+            && description == shown.description
+            && choices == shown.choices
+            && allowPermanent == shown.allowPermanent
+            && smartDenied == shown.smartDenied
+    }
 }
 
 /// One masked single-value prompt Hermes asks through a server→client
@@ -1104,6 +1119,16 @@ enum ProfileSettingValue: Equatable {
     /// are counts, seconds, or characters.
     static func numberText(_ value: Double) -> String {
         value.rounded() == value && abs(value) < 1e15 ? String(Int64(value)) : String(value)
+    }
+
+    /// What someone typed in a number field. The decimal pad shows a comma in
+    /// locales like fr-CA, so "0,8" reads as 0.8 as well as "0.8"; spaces
+    /// around the number are ignored.
+    static func parseNumber(_ raw: String) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let value = Double(trimmed) { return value }
+        guard !trimmed.contains("."), trimmed.filter({ $0 == "," }).count == 1 else { return nil }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
     }
 }
 

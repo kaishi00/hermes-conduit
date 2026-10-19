@@ -326,6 +326,10 @@ struct V2ChatsView: View, Equatable {
     /// Nothing pushed over the list, on the selected tab.
     private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
 
+    /// No chat covers the list: none is open, or a wide window shows the
+    /// list beside it.
+    private var listInView: Bool { appState.showSidebar || shell.isSplit }
+
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
     private var savedSelection: V2FilterSelection {
@@ -380,6 +384,9 @@ struct V2ChatsView: View, Equatable {
         .environmentObject(updates)
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+            updates.coalesces = beside
+        }
         .onChange(of: isShown, initial: true) { _, shown in
             updates.isShown = shown
             // Anything over the list (a chat, a page, another tab) puts the
@@ -426,9 +433,10 @@ struct V2ChatsView: View, Equatable {
         // Running and Needs approval follow the gateway's live registry
         // while the list is on screen; a hidden tab or a conversation
         // pushed over the list stops polling. The poll slows down while
-        // nothing on the list changes (PollCadence).
-        .task(id: "\(appState.activeProfile)|\(isShown)|\(appState.showSidebar)") {
-            guard isShown, appState.showSidebar else { return }
+        // nothing on the list changes (PollCadence). Split, the list stays
+        // on screen beside the open chat.
+        .task(id: "\(appState.activeProfile)|\(isShown)|\(listInView)") {
+            guard isShown, listInView else { return }
             await appState.runChatListPolling()
         }
         // Searching is looking at the list: it catches up at once.
@@ -438,7 +446,7 @@ struct V2ChatsView: View, Equatable {
         // Back in the app over the list: it reads the catalog again if its
         // last read is old (a chat started elsewhere meanwhile).
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, isShown, appState.showSidebar { appState.chatListBecameActive() }
+            if phase == .active, isShown, listInView { appState.chatListBecameActive() }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(

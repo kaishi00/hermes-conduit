@@ -1975,6 +1975,7 @@ struct KanbanView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear search"))
             }
             // V3B: assignee/tenant/Show Archived/grouping live behind ONE
             // compact filter button instead of crowding the header.

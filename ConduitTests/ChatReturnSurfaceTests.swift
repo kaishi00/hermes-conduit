@@ -590,6 +590,9 @@ private extension ChatReturnSurfaceTests {
             chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            // Hermetic: never the simulator Keychain's registry (a signed
+            // host shares it with the installed app).
+            dashboardRegistry: SavedDashboardRegistry(),
             reconnectScheduler: reconnectScheduler
                 ?? ReturnSurfaceReconnectScheduler().schedule(after:operation:),
             chatResumeLifecycleOperations: lifecycleOperations

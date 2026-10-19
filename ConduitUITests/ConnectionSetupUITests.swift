@@ -64,6 +64,12 @@ final class ConnectionSetupUITests: XCTestCase {
         let username = app.textFields["setup.username"]
         tapVisible(username, in: app)
         username.typeText("round3-user")
+        // Dismiss the keyboard before reaching for the password field: on
+        // iOS 27 the Passwords AutoFill bar makes the keyboard tall enough
+        // that the pinned Continue sits over the password field and at the
+        // window's vertical center, where app.swipeUp() lands, so the field
+        // can never be scrolled into a hittable spot.
+        dismissKeyboard(app)
         let password = app.secureTextFields["setup.password"]
         tapVisible(password, in: app)
         password.typeText("round3-private-fixture")
@@ -129,6 +135,7 @@ final class ConnectionSetupUITests: XCTestCase {
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
+        if !element.isHittable { dismissSavePasswordPrompt(app) }
         for _ in 0..<6 {
             if element.isHittable { break }
             app.swipeUp()
@@ -154,6 +161,17 @@ final class ConnectionSetupUITests: XCTestCase {
             stablePolls = frame == last ? stablePolls + 1 : 0
             last = frame
         }
+    }
+
+    /// iOS 27 offers to save a typed password to the Passwords app once the
+    /// credentials step goes away, and its sheet covers the next screen.
+    /// A tap while the sheet is still sliding in is swallowed.
+    private func dismissSavePasswordPrompt(_ app: XCUIApplication) {
+        let notNow = app.buttons["Not Now"]
+        guard notNow.waitForExistence(timeout: 2) else { return }
+        waitUntilSettled(notNow)
+        notNow.tap()
+        _ = notNow.waitForNonExistence(timeout: 3)
     }
 
     /// Tap the keyboard toolbar's Done control when present, so a Continue

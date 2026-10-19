@@ -27,6 +27,8 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
             HermesNativeCalls.shared.activate()
+            // The relay needs this launch's push token if it changed.
+            PushNotificationService.shared.refreshDeviceTokenAtLaunch()
             // Apple Health wakes Conduit when shared data changes, and a
             // background refresh catches up.
             AppState.registerHealthSyncTask()
@@ -53,6 +55,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()
         }
+        // iOS's daily usage and hang reports, kept on this device for
+        // Diagnostics & logs. Subscribes on its own background queue.
+        MetricKitReports.shared.start()
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Task { @MainActor in
                 PushNotificationService.shared.receiveNotificationPayload(payload)

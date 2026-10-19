@@ -329,170 +329,6 @@
         }
       }
     },
-    "Shows the reply as it is read" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeigt die Antwort, während sie vorgelesen wird"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Muestra la respuesta mientras se lee"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affiche la réponse pendant sa lecture"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Menampilkan respons saat dibacakan"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra la risposta mentre viene letta"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "読み上げ中の応答を表示します"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "읽는 동안 응답을 표시합니다"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pokazuje odpowiedź podczas czytania"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra a resposta enquanto é lida"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Показывает ответ во время чтения"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yanıtı okunurken gösterir"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "朗读时显示回复"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "朗讀時顯示回覆"
-          }
-        }
-      }
-    },
-    "The highlight is an estimate of where the voice is, so it can run a little ahead or behind." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Markierung ist eine Schätzung, wo die Stimme gerade ist, und kann etwas voraus- oder hinterherlaufen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El resaltado es una estimación de por dónde va la voz, así que puede ir un poco adelantado o atrasado."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le surlignage estime où en est la voix : il peut avoir un peu d’avance ou de retard."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorotan hanya perkiraan posisi suara, jadi bisa sedikit mendahului atau tertinggal."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L’evidenziazione stima dove si trova la voce, quindi può essere un po’ avanti o indietro."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ハイライトは音声の位置の推定なので、少し先行したり遅れたりすることがあります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "강조 표시는 음성 위치를 추정한 것이므로 조금 앞서거나 뒤처질 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podświetlenie to szacunek miejsca, w którym jest głos, więc może trochę wyprzedzać lub się spóźniać."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O destaque é uma estimativa de onde a voz está, então pode ficar um pouco adiantado ou atrasado."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Подсветка лишь примерно показывает, где сейчас голос, поэтому может немного опережать или отставать."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vurgu, sesin nerede olduğuna dair bir tahmindir; biraz önde ya da geride kalabilir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "高亮是对语音位置的估计，可能会稍微超前或落后。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "醒目提示是對語音位置的估計，可能會稍微超前或落後。"
-          }
-        }
-      }
-    },
     "Recommended" : {
       "localizations" : {
         "de" : {
@@ -288618,170 +288454,6 @@
         }
       }
     },
-    "A real-time conversation through a speech server you run, with Hermes answering each turn. Needs the Hermes notifier plugin." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Echtzeitgespräch über einen Sprachserver, den du selbst betreibst, bei dem Hermes jede Runde beantwortet. Benötigt das Hermes-Notifier-Plugin."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Una conversación en tiempo real a través de un servidor de voz propio, en la que Hermes responde cada turno. Requiere el plugin notificador de Hermes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une conversation en temps réel via un serveur vocal que vous gérez, où Hermes répond à chaque tour. Nécessite le plugin de notifications Hermes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Percakapan waktu nyata melalui server suara yang Anda jalankan, dengan Hermes menjawab setiap giliran. Memerlukan plugin notifier Hermes."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Una conversazione in tempo reale tramite un server vocale che gestisci tu, con Hermes che risponde a ogni turno. Richiede il plugin di notifica di Hermes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自分で運用する音声サーバーを使ったリアルタイムの会話で、各ターンに Hermes が答えます。Hermes 通知プラグインが必要です。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "직접 운영하는 음성 서버를 통한 실시간 대화로, 매 턴마다 Hermes가 답합니다. Hermes 알림 플러그인이 필요합니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmowa w czasie rzeczywistym przez twój własny serwer mowy, w której Hermes odpowiada w każdej turze. Wymaga wtyczki powiadomień Hermes."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uma conversa em tempo real por um servidor de voz que você mantém, com o Hermes respondendo a cada turno. Requer o plugin notificador do Hermes."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Разговор в реальном времени через ваш собственный речевой сервер, где Hermes отвечает на каждую реплику. Нужен плагин уведомлений Hermes."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kendi çalıştırdığınız bir konuşma sunucusu üzerinden, her sırayı Hermes'in yanıtladığı gerçek zamanlı bir konuşma. Hermes bildirim eklentisi gerekir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "通过你自己运行的语音服务器进行实时对话，每一轮都由 Hermes 回答。需要 Hermes 通知插件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "透過你自己執行的語音伺服器進行即時對話，每一輪都由 Hermes 回答。需要 Hermes 通知外掛程式。"
-          }
-        }
-      }
-    },
-    "Talk with Hermes through a speech server you run, such as Hugging Face speech-to-speech. The server listens and speaks in its own voice; what you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written. Turning this on turns Gemini Live, GPT-Live and Grok Live off." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprich mit Hermes über einen Sprachserver, den du selbst betreibst, etwa Hugging Face speech-to-speech. Der Server hört zu und spricht mit seiner eigenen Stimme; was du sagst, geht als Runde im Chat des Anrufs an Hermes, und Hermes' Antwort wird gesprochen, während sie entsteht. Wenn du das einschaltest, werden Gemini Live, GPT-Live und Grok Live ausgeschaltet."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Habla con Hermes a través de un servidor de voz propio, como Hugging Face speech-to-speech. El servidor escucha y habla con su propia voz; lo que dices llega a Hermes como un turno en el chat de la llamada, y la respuesta de Hermes se dice a medida que se escribe. Al activarlo se desactivan Gemini Live, GPT-Live y Grok Live."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parlez avec Hermes via un serveur vocal que vous gérez, comme Hugging Face speech-to-speech. Le serveur écoute et parle avec sa propre voix ; ce que vous dites est envoyé à Hermes comme un tour dans la discussion de l’appel, et la réponse de Hermes est lue au fur et à mesure qu’elle s’écrit. Activer cette option désactive Gemini Live, GPT-Live et Grok Live."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bicara dengan Hermes melalui server suara yang Anda jalankan, seperti Hugging Face speech-to-speech. Server mendengarkan dan berbicara dengan suaranya sendiri; yang Anda ucapkan dikirim ke Hermes sebagai giliran di obrolan panggilan, dan balasan Hermes diucapkan sambil ditulis. Menyalakan ini akan mematikan Gemini Live, GPT-Live, dan Grok Live."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parla con Hermes tramite un server vocale che gestisci tu, come Hugging Face speech-to-speech. Il server ascolta e parla con la propria voce; ciò che dici arriva a Hermes come un turno nella chat della chiamata, e la risposta di Hermes viene letta mentre viene scritta. Attivandolo si disattivano Gemini Live, GPT-Live e Grok Live."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hugging Face speech-to-speech など、自分で運用する音声サーバーを通して Hermes と話します。サーバーが聞き取り、自分の声で話します。話した内容は通話のチャットのターンとして Hermes に送られ、Hermes の返答は書かれるそばから読み上げられます。オンにすると Gemini Live、GPT-Live、Grok Live はオフになります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hugging Face speech-to-speech 같은 직접 운영하는 음성 서버를 통해 Hermes와 대화합니다. 서버가 듣고 자기 목소리로 말합니다. 말한 내용은 통화 채팅의 한 턴으로 Hermes에 전달되고, Hermes의 답은 작성되는 대로 읽어 줍니다. 켜면 Gemini Live, GPT-Live, Grok Live가 꺼집니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmawiaj z Hermesem przez własny serwer mowy, na przykład Hugging Face speech-to-speech. Serwer słucha i mówi własnym głosem; to, co mówisz, trafia do Hermesa jako tura w czacie połączenia, a odpowiedź Hermesa jest czytana na bieżąco, w miarę pisania. Włączenie tej opcji wyłącza Gemini Live, GPT-Live i Grok Live."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fale com o Hermes por um servidor de voz que você mantém, como o Hugging Face speech-to-speech. O servidor escuta e fala com a própria voz; o que você diz vai para o Hermes como um turno na conversa da chamada, e a resposta do Hermes é falada enquanto é escrita. Ativar isto desativa o Gemini Live, o GPT-Live e o Grok Live."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Говорите с Hermes через собственный речевой сервер, например Hugging Face speech-to-speech. Сервер слушает и говорит своим голосом; сказанное уходит в Hermes репликой в чате звонка, а ответ Hermes озвучивается по мере написания. Если включить этот режим, Gemini Live, GPT-Live и Grok Live выключатся."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hugging Face speech-to-speech gibi kendi çalıştırdığınız bir konuşma sunucusu üzerinden Hermes ile konuşun. Sunucu dinler ve kendi sesiyle konuşur; söyledikleriniz aramanın sohbetinde bir sıra olarak Hermes'e gider ve Hermes'in yanıtı yazıldıkça okunur. Bunu açmak Gemini Live, GPT-Live ve Grok Live'ı kapatır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "通过你自己运行的语音服务器（例如 Hugging Face speech-to-speech）与 Hermes 交谈。服务器负责聆听，并用它自己的声音说话；你说的话会作为通话聊天中的一轮发给 Hermes，Hermes 的回复边写边读出来。打开后会关闭 Gemini Live、GPT-Live 和 Grok Live。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "透過你自己執行的語音伺服器（例如 Hugging Face speech-to-speech）與 Hermes 交談。伺服器負責聆聽，並用它自己的聲音說話；你說的話會作為通話聊天中的一輪傳給 Hermes，Hermes 的回覆邊寫邊唸出來。開啟後會關閉 Gemini Live、GPT-Live 和 Grok Live。"
-          }
-        }
-      }
-    },
     "1. Your speech server" : {
       "localizations" : {
         "de" : {
@@ -294034,6 +293706,170 @@
         }
       }
     },
+    "Settings not applied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen nicht angewendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes no aplicados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages non appliqués"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengaturan tidak diterapkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni non applicate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定は適用されませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정이 적용되지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie zastosowano ustawień"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes não aplicados"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки не применены"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayarlar uygulanmadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置未应用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未套用設定"
+          }
+        }
+      }
+    },
+    "This address is your saved dashboard “%@”. Switch to it from your dashboards instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Adresse gehört zu deinem gespeicherten Dashboard „%@“. Wechsle stattdessen in deinen Dashboards dorthin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta dirección es tu panel guardado «%@». Cambia a él desde tus paneles."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette adresse est celle de votre tableau de bord enregistré « %@ ». Basculez plutôt vers celui-ci depuis vos tableaux de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alamat ini adalah dasbor tersimpan Anda “%@”. Beralihlah ke dasbor itu dari daftar dasbor Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo indirizzo è la tua dashboard salvata “%@”. Passa a quella dalle tue dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスは保存済みのダッシュボード「%@」のものです。ダッシュボードの一覧からそちらに切り替えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 주소는 저장된 대시보드 “%@”의 주소예요. 대시보드 목록에서 그 대시보드로 전환하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten adres należy do zapisanego panelu „%@”. Zamiast tego przełącz się na niego z listy paneli."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este endereço é do seu painel salvo “%@”. Mude para ele na sua lista de painéis."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот адрес принадлежит сохранённому дашборду «%@». Переключитесь на него в списке дашбордов."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu adres kayıtlı panelin “%@” adresi. Bunun yerine panellerinden ona geç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址属于你已保存的仪表板“%@”。请改为在仪表板列表中切换到它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址屬於你已儲存的儀表板「%@」。請改從儀表板列表切換到它。"
+          }
+        }
+      }
+    },
     "%@ couldn't be read." : {
       "localizations" : {
         "de" : {
@@ -297386,6 +297222,2138 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在根據此聊天的快照作答。回答將顯示在這裡。"
+          }
+        }
+      }
+    },
+    "3. Your fast model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Dein schnelles Modell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Tu modelo rápido"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Votre modèle rapide"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Model cepat Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Il tuo modello veloce"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 高速モデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 빠른 모델"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Twój szybki model"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Seu modelo rápido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Быстрая модель"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. Hızlı modeliniz"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 你的快速模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 你的快速模型"
+          }
+        }
+      }
+    },
+    "A hands-free call through a speech server you run, such as Hugging Face speech-to-speech. Everything you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Freisprechanruf über einen Sprachserver, den du betreibst, etwa Hugging Face speech-to-speech. Alles, was du sagst, geht als Zug im Chat des Anrufs an Hermes, und Hermes’ Antwort wird so gesprochen, wie sie geschrieben wird."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una llamada manos libres a través de un servidor de voz que tú ejecutas, como Hugging Face speech-to-speech. Todo lo que dices va a Hermes como un turno en el chat de la llamada, y la respuesta de Hermes se pronuncia tal como se escribe."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel mains libres via un serveur vocal que vous hébergez, comme Hugging Face speech-to-speech. Tout ce que vous dites va à Hermes comme un tour dans la discussion de l’appel, et la réponse de Hermes est dite au fil de son écriture."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan bebas genggam melalui server suara yang Anda jalankan, seperti Hugging Face speech-to-speech. Semua yang Anda ucapkan dikirim ke Hermes sebagai giliran di chat panggilan, dan balasan Hermes diucapkan saat ditulis."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una chiamata a mani libere tramite un server vocale che gestisci tu, come Hugging Face speech-to-speech. Tutto ciò che dici va a Hermes come un turno nella chat della chiamata, e la risposta di Hermes viene pronunciata mentre viene scritta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech など、ご自身で動かす音声サーバー経由のハンズフリー通話です。話した内容はすべて通話のチャットのターンとして Hermes に送られ、Hermes の返答は書かれるそばから読み上げられます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech처럼 직접 운영하는 음성 서버를 통한 핸즈프리 통화입니다. 말하는 모든 내용이 통화 채팅의 턴으로 Hermes에 전달되고, Hermes의 답장은 작성되는 대로 읽어 줍니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa bez użycia rąk przez serwer mowy, który uruchamiasz, np. Hugging Face speech-to-speech. Wszystko, co mówisz, trafia do Hermesa jako tura w czacie rozmowy, a odpowiedź Hermesa jest czytana w miarę pisania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma chamada viva-voz por um servidor de fala que você roda, como o Hugging Face speech-to-speech. Tudo o que você diz vai para o Hermes como um turno no chat da chamada, e a resposta do Hermes é falada enquanto é escrita."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонок без рук через ваш собственный речевой сервер, например Hugging Face speech-to-speech. Всё, что вы говорите, уходит Hermes как ход в чате звонка, а ответ Hermes произносится по мере написания."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech gibi kendi çalıştırdığınız bir konuşma sunucusu üzerinden eller serbest arama. Söylediğiniz her şey aramanın sohbetinde bir tur olarak Hermes’e gider ve Hermes’in yanıtı yazıldıkça okunur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你自己运行的语音服务器（例如 Hugging Face speech-to-speech）进行免提通话。你说的每句话都会作为通话聊天中的一轮发给 Hermes，Hermes 的回复会边写边读出来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你自己執行的語音伺服器（例如 Hugging Face speech-to-speech）進行免持通話。你說的每句話都會作為通話聊天中的一輪傳給 Hermes，Hermes 的回覆會邊寫邊唸出來。"
+          }
+        }
+      }
+    },
+    "A real-time conversation through a speech server you run, with a fast model of your choosing that hands the work to Hermes. Needs the Hermes notifier plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Echtzeitgespräch über einen Sprachserver, den du betreibst, mit einem schnellen Modell deiner Wahl, das die Arbeit an Hermes übergibt. Benötigt das Hermes-Notifier-Plugin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una conversación en tiempo real a través de un servidor de voz que tú ejecutas, con un modelo rápido de tu elección que pasa el trabajo a Hermes. Necesita el plugin notificador de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une conversation en temps réel via un serveur vocal que vous hébergez, avec un modèle rapide de votre choix qui confie le travail à Hermes. Nécessite le plugin de notification Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percakapan waktu nyata melalui server suara yang Anda jalankan, dengan model cepat pilihan Anda yang menyerahkan pekerjaan ke Hermes. Memerlukan plugin notifier Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una conversazione in tempo reale tramite un server vocale che gestisci tu, con un modello veloce a tua scelta che passa il lavoro a Hermes. Richiede il plugin notificatore di Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご自身で動かす音声サーバー経由のリアルタイム会話です。選んだ高速モデルが応答し、作業は Hermes に任せます。Hermes notifier プラグインが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 운영하는 음성 서버를 통한 실시간 대화로, 선택한 빠른 모델이 응답하고 작업은 Hermes에 넘깁니다. Hermes 알림 플러그인이 필요합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa w czasie rzeczywistym przez serwer mowy, który uruchamiasz, z szybkim modelem do wyboru, który przekazuje pracę Hermesowi. Wymaga wtyczki powiadomień Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma conversa em tempo real por um servidor de fala que você roda, com um modelo rápido da sua escolha que passa o trabalho para o Hermes. Requer o plugin notificador do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разговор в реальном времени через ваш речевой сервер с быстрой моделью на ваш выбор, которая передаёт работу Hermes. Нужен плагин уведомлений Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi çalıştırdığınız bir konuşma sunucusu üzerinden, seçtiğiniz hızlı bir modelin işi Hermes’e devrettiği gerçek zamanlı sohbet. Hermes bildirim eklentisi gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你自己运行的语音服务器进行实时对话，由你选择的快速模型应答，并把工作交给 Hermes。需要 Hermes 通知插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你自己執行的語音伺服器進行即時對話，由你選擇的快速模型應答，並把工作交給 Hermes。需要 Hermes 通知外掛。"
+          }
+        }
+      }
+    },
+    "Any OpenAI-compatible server works, on your network (llama.cpp, Ollama, vLLM, LM Studio) or a hosted one. A small, quick model is best: it only talks and hands the work to Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder OpenAI-kompatible Server funktioniert, in deinem Netzwerk (llama.cpp, Ollama, vLLM, LM Studio) oder gehostet. Am besten ein kleines, schnelles Modell: Es redet nur und übergibt die Arbeit an Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sirve cualquier servidor compatible con OpenAI, en tu red (llama.cpp, Ollama, vLLM, LM Studio) o alojado. Lo mejor es un modelo pequeño y rápido: solo habla y pasa el trabajo a Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout serveur compatible OpenAI convient, sur votre réseau (llama.cpp, Ollama, vLLM, LM Studio) ou hébergé. Un petit modèle rapide est idéal : il ne fait que parler et confie le travail à Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server apa pun yang kompatibel dengan OpenAI bisa dipakai, di jaringan Anda (llama.cpp, Ollama, vLLM, LM Studio) atau yang di-hosting. Model kecil yang cepat paling baik: ia hanya berbicara dan menyerahkan pekerjaan ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Va bene qualsiasi server compatibile con OpenAI, nella tua rete (llama.cpp, Ollama, vLLM, LM Studio) o in hosting. Meglio un modello piccolo e veloce: parla soltanto e passa il lavoro a Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI 互換のサーバーなら、ネットワーク内（llama.cpp、Ollama、vLLM、LM Studio）でもホスト型でも使えます。小さく速いモデルがおすすめです。会話だけを担当し、作業は Hermes に任せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI 호환 서버라면 네트워크 안(llama.cpp, Ollama, vLLM, LM Studio)이든 호스팅이든 사용할 수 있습니다. 작고 빠른 모델이 가장 좋습니다. 대화만 하고 작업은 Hermes에 넘기기 때문입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Działa każdy serwer zgodny z OpenAI, w Twojej sieci (llama.cpp, Ollama, vLLM, LM Studio) lub hostowany. Najlepszy jest mały, szybki model: tylko rozmawia i przekazuje pracę Hermesowi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualquer servidor compatível com OpenAI funciona, na sua rede (llama.cpp, Ollama, vLLM, LM Studio) ou hospedado. Um modelo pequeno e rápido é o ideal: ele só conversa e passa o trabalho para o Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подойдёт любой сервер, совместимый с OpenAI, в вашей сети (llama.cpp, Ollama, vLLM, LM Studio) или облачный. Лучше всего маленькая быстрая модель: она только разговаривает и передаёт работу Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI uyumlu her sunucu çalışır; ağınızda (llama.cpp, Ollama, vLLM, LM Studio) ya da barındırılan. En iyisi küçük ve hızlı bir modeldir: yalnızca konuşur ve işi Hermes’e devreder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何兼容 OpenAI 的服务器都可以，可以在你的网络中（llama.cpp、Ollama、vLLM、LM Studio），也可以是托管服务。小而快的模型最好：它只负责交谈，把工作交给 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何相容 OpenAI 的伺服器都可以，可以在你的網路中（llama.cpp、Ollama、vLLM、LM Studio），也可以是託管服務。小而快的模型最好：它只負責交談，把工作交給 Hermes。"
+          }
+        }
+      }
+    },
+    "Calls answer with %@ and hand the work to Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe antworten mit %@ und übergeben die Arbeit an Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas responden con %@ y pasan el trabajo a Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels répondent avec %@ et confient le travail à Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dijawab dengan %@ dan pekerjaannya diserahkan ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate rispondono con %@ e passano il lavoro a Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話は %@ が応答し、作業は Hermes に任せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화는 %@이(가) 응답하고 작업은 Hermes에 넘깁니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy odpowiada %@, a pracę przekazuje Hermesowi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas respondem com %@ e passam o trabalho para o Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки отвечает %@, а работу передаёт Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaları %@ yanıtlar ve işi Hermes’e devreder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话由 %@ 应答，工作交给 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話由 %@ 應答，工作交給 Hermes。"
+          }
+        }
+      }
+    },
+    "Hands-free calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freisprechanrufe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas manos libres"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appels mains libres"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan bebas genggam"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate a mani libere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ハンズフリー通話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "핸즈프리 통화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy bez użycia rąk"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas viva-voz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки без рук"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eller serbest aramalar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免提通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免持通話"
+          }
+        }
+      }
+    },
+    "Hands-free on your speech server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freisprechen über deinen Sprachserver"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manos libres en tu servidor de voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mains libres sur votre serveur vocal"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bebas genggam di server suara Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mani libere sul tuo server vocale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーでハンズフリー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버로 핸즈프리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bez użycia rąk na Twoim serwerze mowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viva-voz no seu servidor de fala"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без рук через ваш речевой сервер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuzda eller serbest"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的语音服务器上免提"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的語音伺服器上免持"
+          }
+        }
+      }
+    },
+    "No fast model is set, so Hermes answers each turn itself, which is slower to start talking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein schnelles Modell eingerichtet, daher beantwortet Hermes jeden Zug selbst und fängt langsamer an zu sprechen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay un modelo rápido configurado, así que Hermes responde cada turno por sí mismo y tarda más en empezar a hablar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun modèle rapide n’est défini : Hermes répond lui-même à chaque tour et met plus de temps à commencer à parler."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada model cepat, jadi Hermes menjawab setiap giliran sendiri dan lebih lambat mulai berbicara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun modello veloce impostato, quindi Hermes risponde da sé a ogni turno e inizia a parlare più lentamente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高速モデルが設定されていないため、Hermes が各ターンに自分で答えます。話し始めるまでに時間がかかります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "빠른 모델이 설정되지 않아 Hermes가 매 턴을 직접 답하므로 말을 시작하기까지 더 오래 걸립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ustawiono szybkiego modelu, więc Hermes sam odpowiada na każdą turę i później zaczyna mówić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum modelo rápido definido, então o Hermes responde cada turno sozinho e demora mais para começar a falar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Быстрая модель не задана, поэтому Hermes сам отвечает на каждый ход и начинает говорить медленнее."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hızlı model ayarlanmadı, bu yüzden Hermes her turu kendisi yanıtlar ve konuşmaya daha geç başlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未设置快速模型，因此 Hermes 会自己回答每一轮，开口会更慢。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未設定快速模型，因此 Hermes 會自己回答每一輪，開口會比較慢。"
+          }
+        }
+      }
+    },
+    "Optional, for a hosted model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional, für ein gehostetes Modell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcional, para un modelo alojado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facultatif, pour un modèle hébergé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opsional, untuk model yang di-hosting"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facoltativo, per un modello in hosting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任意、ホスト型モデル用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택 사항, 호스팅 모델용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcjonalnie, dla modelu hostowanego"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcional, para um modelo hospedado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Необязательно, для облачной модели"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İsteğe bağlı, barındırılan model için"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选，用于托管模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選用，適用於託管模型"
+          }
+        }
+      }
+    },
+    "Talk through a speech server you run, with a fast model of your choosing answering right away. Real work goes to Hermes as jobs, with their cards in the call's chat, like the other live modes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprich über einen Sprachserver, den du betreibst, und ein schnelles Modell deiner Wahl antwortet sofort. Echte Arbeit geht als Aufgaben an Hermes, mit ihren Karten im Chat des Anrufs, wie bei den anderen Live-Modi."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Habla a través de un servidor de voz que tú ejecutas, con un modelo rápido de tu elección que responde al instante. El trabajo real va a Hermes como tareas, con sus tarjetas en el chat de la llamada, como en los otros modos en vivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parlez via un serveur vocal que vous hébergez, avec un modèle rapide de votre choix qui répond tout de suite. Le vrai travail part à Hermes sous forme de tâches, avec leurs cartes dans la discussion de l’appel, comme dans les autres modes en direct."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berbicara melalui server suara yang Anda jalankan, dengan model cepat pilihan Anda yang langsung menjawab. Pekerjaan sebenarnya dikirim ke Hermes sebagai tugas, dengan kartunya di chat panggilan, seperti mode langsung lainnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parla tramite un server vocale che gestisci tu, con un modello veloce a tua scelta che risponde subito. Il lavoro vero va a Hermes come attività, con le loro schede nella chat della chiamata, come nelle altre modalità live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご自身で動かす音声サーバー経由で話し、選んだ高速モデルがすぐに応答します。実際の作業はジョブとして Hermes に送られ、ほかのライブモードと同じく通話のチャットにカードが表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 운영하는 음성 서버로 대화하고, 선택한 빠른 모델이 바로 응답합니다. 실제 작업은 작업으로 Hermes에 넘어가며, 다른 라이브 모드처럼 통화 채팅에 카드가 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmawiaj przez serwer mowy, który uruchamiasz, a szybki model do wyboru odpowie od razu. Prawdziwa praca trafia do Hermesa jako zadania, z ich kartami w czacie rozmowy, jak w innych trybach na żywo."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fale por um servidor de fala que você roda, com um modelo rápido da sua escolha respondendo na hora. O trabalho de verdade vai para o Hermes como tarefas, com seus cartões no chat da chamada, como nos outros modos ao vivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Говорите через ваш речевой сервер, а быстрая модель на ваш выбор отвечает сразу. Настоящая работа уходит Hermes как задачи, с карточками в чате звонка, как в других живых режимах."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi çalıştırdığınız bir konuşma sunucusu üzerinden konuşun; seçtiğiniz hızlı model hemen yanıtlar. Asıl iş, diğer canlı modlarda olduğu gibi kartlarıyla aramanın sohbetinde görev olarak Hermes’e gider."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你自己运行的语音服务器交谈，由你选择的快速模型立即应答。真正的工作会作为任务交给 Hermes，任务卡片显示在通话的聊天中，和其他实时模式一样。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你自己執行的語音伺服器交談，由你選擇的快速模型立即應答。真正的工作會作為任務交給 Hermes，任務卡片顯示在通話的聊天中，和其他即時模式一樣。"
+          }
+        }
+      }
+    },
+    "Update the Conduit plugin on your Hermes host to use a fast model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere das Conduit-Plugin auf deinem Hermes-Host, um ein schnelles Modell zu nutzen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualiza el plugin de Conduit en tu host de Hermes para usar un modelo rápido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mettez à jour le plugin Conduit sur votre hôte Hermes pour utiliser un modèle rapide."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin Conduit di host Hermes Anda untuk memakai model cepat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin Conduit sul tuo host Hermes per usare un modello veloce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高速モデルを使うには、Hermes ホストの Conduit プラグインを更新してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "빠른 모델을 사용하려면 Hermes 호스트의 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę Conduit na hoście Hermes, aby używać szybkiego modelu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualize o plugin do Conduit no seu host do Hermes para usar um modelo rápido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновите плагин Conduit на хосте Hermes, чтобы использовать быструю модель."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hızlı model kullanmak için Hermes sunucunuzdaki Conduit eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 主机上的 Conduit 插件以使用快速模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新 Hermes 主機上的 Conduit 外掛以使用快速模型。"
+          }
+        }
+      }
+    },
+    "Voice opens a call through your own speech server instead, and every utterance goes to Hermes as a turn in the call's chat. For quicker replies, pick Local under Voice mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache öffnet stattdessen einen Anruf über deinen eigenen Sprachserver, und jede Äußerung geht als Zug im Chat des Anrufs an Hermes. Für schnellere Antworten wähle unter Sprachmodus „Lokal“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz abre en su lugar una llamada a través de tu propio servidor de voz, y cada frase va a Hermes como un turno en el chat de la llamada. Para respuestas más rápidas, elige Local en Modo de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voix ouvre plutôt un appel via votre propre serveur vocal, et chaque phrase va à Hermes comme un tour dans la discussion de l’appel. Pour des réponses plus rapides, choisissez Local dans Mode vocal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara membuka panggilan melalui server suara Anda sendiri, dan setiap ucapan dikirim ke Hermes sebagai giliran di chat panggilan. Untuk balasan lebih cepat, pilih Lokal di Mode suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voce apre invece una chiamata tramite il tuo server vocale, e ogni frase va a Hermes come un turno nella chat della chiamata. Per risposte più rapide, scegli Locale in Modalità vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりにご自身の音声サーバー経由で通話を開き、発話はすべて通話のチャットのターンとして Hermes に送られます。より速く返答させるには、音声モードで「ローカル」を選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 직접 운영하는 음성 서버로 통화를 열고, 모든 발화가 통화 채팅의 턴으로 Hermes에 전달됩니다. 더 빠른 답장을 원하면 음성 모드에서 로컬을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos otwiera wtedy rozmowę przez Twój własny serwer mowy, a każda wypowiedź trafia do Hermesa jako tura w czacie rozmowy. Aby szybciej dostawać odpowiedzi, wybierz Lokalnie w Trybie głosowym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A voz abre uma chamada pelo seu próprio servidor de fala, e cada fala vai para o Hermes como um turno no chat da chamada. Para respostas mais rápidas, escolha Local em Modo de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голос вместо этого открывает звонок через ваш речевой сервер, и каждая фраза уходит Hermes как ход в чате звонка. Для более быстрых ответов выберите «Локально» в Голосовом режиме."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ses bunun yerine kendi konuşma sunucunuz üzerinden bir arama açar ve her söz aramanın sohbetinde bir tur olarak Hermes’e gider. Daha hızlı yanıtlar için Ses modu altında Yerel’i seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音会改为通过你自己的语音服务器打开通话，每句话都会作为通话聊天中的一轮发给 Hermes。若想更快得到回复，请在语音模式中选择“本地”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音會改為透過你自己的語音伺服器開啟通話，每句話都會作為通話聊天中的一輪傳給 Hermes。若想更快得到回覆，請在語音模式中選擇「本機」。"
+          }
+        }
+      }
+    },
+    "Device reports" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geräteberichte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informes del dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rapports de l’appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laporan perangkat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report del dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイスレポート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 보고서"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raporty urządzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relatórios do dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отчёты устройства"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihaz raporları"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备报告"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "裝置報告"
+          }
+        }
+      }
+    },
+    "Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungs-, Netzwerk- und Hänger-Berichte, die iOS etwa einmal am Tag erstellt. Sie bleiben auf diesem Gerät, bis du sie teilst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informes de uso, red y bloqueos que iOS genera aproximadamente una vez al día. Se quedan en este dispositivo hasta que los compartas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rapports d’utilisation, de réseau et de blocages qu’iOS produit environ une fois par jour. Ils restent sur cet appareil jusqu’à ce que vous les partagiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laporan penggunaan, jaringan, dan macet yang dibuat iOS sekitar sekali sehari. Laporan ini tetap di perangkat ini sampai Anda membagikannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report su utilizzo, rete e blocchi che iOS crea circa una volta al giorno. Restano su questo dispositivo finché non li condividi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS がおよそ1日に1回作成する、使用状況・ネットワーク・ハングのレポートです。共有するまでこのデバイスから出ることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS가 하루에 한 번 정도 만드는 사용량, 네트워크, 멈춤 보고서입니다. 공유하기 전까지는 이 기기에만 보관됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raporty użycia, sieci i zawieszeń, które iOS tworzy mniej więcej raz dziennie. Pozostają na tym urządzeniu, dopóki ich nie udostępnisz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relatórios de uso, rede e travamentos que o iOS gera cerca de uma vez por dia. Eles ficam neste dispositivo até você compartilhá-los."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отчёты об использовании, сети и зависаниях, которые iOS создаёт примерно раз в день. Они остаются на этом устройстве, пока вы ими не поделитесь."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS'un yaklaşık günde bir kez oluşturduğu kullanım, ağ ve donma raporları. Siz paylaşana kadar bu cihazda kalırlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 大约每天生成一次的使用、网络和卡顿报告。在你分享之前，它们只保存在这台设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 大約每天產生一次的使用、網路和卡頓報告。在你分享之前，它們只會保存在這部裝置上。"
+          }
+        }
+      }
+    },
+    "Share device reports" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geräteberichte teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir informes del dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager les rapports de l’appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bagikan laporan perangkat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi report del dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイスレポートを共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 보고서 공유"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępnij raporty urządzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartilhar relatórios do dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поделиться отчётами устройства"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihaz raporlarını paylaş"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享设备报告"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享裝置報告"
+          }
+        }
+      }
+    },
+    "Couldn't write the device reports file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei mit den Geräteberichten konnte nicht geschrieben werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo escribir el archivo de informes del dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’écrire le fichier des rapports de l’appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat menulis file laporan perangkat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile scrivere il file dei report del dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイスレポートのファイルを書き込めませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 보고서 파일을 쓸 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się zapisać pliku raportów urządzenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível gravar o arquivo de relatórios do dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось записать файл отчётов устройства."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihaz raporları dosyası yazılamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法写入设备报告文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法寫入裝置報告檔案。"
+          }
+        }
+      }
+    },
+    "Couldn't reach the push relay to check compatibility." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay war nicht erreichbar, um die Kompatibilität zu prüfen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo contactar con el relay push para comprobar la compatibilidad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre le relais push pour vérifier la compatibilité."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat menghubungi relai push untuk memeriksa kompatibilitas."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere il relay push per verificare la compatibilità."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "互換性を確認するためにプッシュリレーに接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호환성을 확인하기 위해 푸시 릴레이에 연결하지 못했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z przekaźnikiem push, aby sprawdzić zgodność."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar a retransmissão de push para verificar a compatibilidade."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с push-ретранслятором, чтобы проверить совместимость."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uyumluluğu denetlemek için bildirim aktarıcısına ulaşılamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接推送中继以检查兼容性。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線推播中繼以檢查相容性。"
+          }
+        }
+      }
+    },
+    "The push relay no longer knows this iPhone. Turn notifications off and on again in Settings > Notifications." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay kennt dieses iPhone nicht mehr. Schalte Mitteilungen unter Einstellungen > Mitteilungen aus und wieder ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push ya no reconoce este iPhone. Desactiva y vuelve a activar las notificaciones en Ajustes > Notificaciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push ne reconnaît plus cet iPhone. Désactivez puis réactivez les notifications dans Réglages > Notifications."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak lagi mengenali iPhone ini. Matikan lalu nyalakan lagi notifikasi di Pengaturan > Notifikasi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non riconosce più questo iPhone. Disattiva e riattiva le notifiche in Impostazioni > Notifiche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーがこのiPhoneを認識できなくなりました。設定 > 通知 で通知をオフにしてから、もう一度オンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 iPhone을 더 이상 알지 못해요. 설정 > 알림에서 알림을 껐다가 다시 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie rozpoznaje już tego iPhone'a. Wyłącz i ponownie włącz powiadomienia w Ustawieniach > Powiadomienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não reconhece mais este iPhone. Desative e ative novamente as notificações em Ajustes > Notificações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор больше не узнаёт этот iPhone. Выключите и снова включите уведомления в разделе «Настройки» > «Уведомления»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı bu iPhone'u artık tanımıyor. Ayarlar > Bildirimler'de bildirimleri kapatıp yeniden açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继已不再识别这台 iPhone。请在“设置”>“通知”中关闭通知后再重新打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼已不再識別這支 iPhone。請在「設定」>「通知」中關閉通知後再重新開啟。"
+          }
+        }
+      }
+    },
+    "The push relay can't send to this build of Conduit. Check the relay's APNs settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay kann nicht an diesen Build von Conduit senden. Prüfe die APNs-Einstellungen des Relays."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no puede enviar a esta compilación de Conduit. Revisa los ajustes de APNs del relay."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push ne peut pas envoyer à cette version de Conduit. Vérifiez les réglages APNs du relais."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak dapat mengirim ke build Conduit ini. Periksa pengaturan APNs relai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non può inviare a questa build di Conduit. Controlla le impostazioni APNs del relay."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーはこのビルドのConduitに送信できません。リレーのAPNs設定を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 Conduit 빌드로 보낼 수 없어요. 릴레이의 APNs 설정을 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie może wysyłać do tej kompilacji Conduit. Sprawdź ustawienia APNs przekaźnika."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não pode enviar para esta versão do Conduit. Verifique as configurações de APNs da retransmissão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор не может отправлять в эту сборку Conduit. Проверьте настройки APNs ретранслятора."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı Conduit'in bu sürümüne gönderemiyor. Aktarıcının APNs ayarlarını kontrol edin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继无法发送到此版本的 Conduit。请检查中继的 APNs 设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼無法傳送到此版本的 Conduit。請檢查中繼的 APNs 設定。"
+          }
+        }
+      }
+    },
+    "The push relay couldn't confirm this iPhone's push token. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay konnte das Push-Token dieses iPhones nicht bestätigen. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no pudo confirmar el token push de este iPhone. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push n'a pas pu confirmer le jeton push de cet iPhone. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak dapat mengonfirmasi token push iPhone ini. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non è riuscito a confermare il token push di questo iPhone. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーがこのiPhoneのプッシュトークンを確認できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 이 iPhone의 푸시 토큰을 확인하지 못했어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie mógł potwierdzić tokenu push tego iPhone'a. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não conseguiu confirmar o token de push deste iPhone. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор не смог подтвердить push-токен этого iPhone. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı bu iPhone'un bildirim belirtecini doğrulayamadı. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继无法确认这台 iPhone 的推送令牌。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼無法確認這支 iPhone 的推播權杖。請再試一次。"
+          }
+        }
+      }
+    },
+    "The push relay has no room for this iPhone. Ask whoever runs it to make room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay hat keinen Platz für dieses iPhone. Bitte die Person, die es betreibt, Platz zu schaffen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push no tiene espacio para este iPhone. Pide a quien lo gestiona que haga espacio."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push n'a plus de place pour cet iPhone. Demandez à la personne qui le gère de faire de la place."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push tidak punya ruang untuk iPhone ini. Minta pengelolanya untuk menyediakan ruang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push non ha spazio per questo iPhone. Chiedi a chi lo gestisce di fare spazio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーにこのiPhoneを追加する空きがありません。運営者に空きを作るよう依頼してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이에 이 iPhone을 위한 자리가 없어요. 운영자에게 자리를 만들어 달라고 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push nie ma miejsca dla tego iPhone'a. Poproś osobę, która go prowadzi, o zwolnienie miejsca."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push não tem espaço para este iPhone. Peça a quem a administra para liberar espaço."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В push-ретрансляторе нет места для этого iPhone. Попросите его владельца освободить место."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısında bu iPhone için yer yok. İşleten kişiden yer açmasını isteyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继已没有空间容纳这台 iPhone。请联系其运营者腾出空间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼已沒有空間容納這支 iPhone。請聯絡其營運者騰出空間。"
+          }
+        }
+      }
+    },
+    "The push relay is busy. Try again in a minute." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Push-Relay ist ausgelastet. Versuch es in einer Minute noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El relay push está ocupado. Inténtalo de nuevo en un minuto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le relais push est occupé. Réessayez dans une minute."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai push sedang sibuk. Coba lagi dalam satu menit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay push è occupato. Riprova tra un minuto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーが混み合っています。1分後にもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이가 바빠요. 1분 후에 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik push jest zajęty. Spróbuj ponownie za minutę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A retransmissão de push está ocupada. Tente novamente em um minuto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-ретранслятор занят. Попробуйте ещё раз через минуту."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı meşgul. Bir dakika sonra yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继正忙。请一分钟后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼正忙。請一分鐘後再試。"
+          }
+        }
+      }
+    },
+    "Push relay request failed (%@)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an das Push-Relay fehlgeschlagen (%@)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error en la solicitud al relay push (%@)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de la requête au relais push (%@)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permintaan relai push gagal (%@)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiesta al relay push non riuscita (%@)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーへのリクエストに失敗しました（%@）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이 요청에 실패했어요(%@)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Żądanie do przekaźnika push nie powiodło się (%@)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falha na solicitação à retransmissão de push (%@)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос к push-ретранслятору не выполнен (%@)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirim aktarıcısı isteği başarısız oldu (%@)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继请求失败（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼請求失敗（%@）。"
+          }
+        }
+      }
+    },
+    "That answer is too long to send from a notification card. Open the chat in Conduit and answer there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Antwort ist zu lang, um sie aus einer Mitteilungskarte zu senden. Öffne den Chat in Conduit und antworte dort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esa respuesta es demasiado larga para enviarla desde una tarjeta de notificación. Abre el chat en Conduit y responde allí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette réponse est trop longue pour être envoyée depuis une carte de notification. Ouvrez la discussion dans Conduit et répondez-y."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawaban itu terlalu panjang untuk dikirim dari kartu notifikasi. Buka obrolan di Conduit dan jawab di sana."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa risposta è troppo lunga per essere inviata da una scheda di notifica. Apri la chat in Conduit e rispondi da lì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この回答は長すぎて通知カードから送信できません。Conduitでチャットを開いて、そこで回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 답변은 알림 카드에서 보내기에는 너무 길어요. Conduit에서 채팅을 열고 그곳에서 답하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta odpowiedź jest za długa, by wysłać ją z karty powiadomienia. Otwórz czat w Conduit i odpowiedz tam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essa resposta é longa demais para enviar de um cartão de notificação. Abra o chat no Conduit e responda lá."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот ответ слишком длинный для отправки из карточки уведомления. Откройте чат в Conduit и ответьте там."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu yanıt bir bildirim kartından gönderilemeyecek kadar uzun. Sohbeti Conduit'te açıp orada yanıtlayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个回答太长，无法从通知卡片发送。请在 Conduit 中打开该对话并在那里回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個回答太長，無法從通知卡片傳送。請在 Conduit 中打開該聊天，並在那裡回答。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to start a conversation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde dich mit Hermes, um eine Unterhaltung zu beginnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate a Hermes para empezar una conversación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous à Hermes pour commencer une conversation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hubungkan ke Hermes untuk memulai percakapan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connettiti a Hermes per iniziare una conversazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会話を始めるには Hermes に接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대화를 시작하려면 Hermes에 연결하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz się z Hermes, aby rozpocząć rozmowę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conecte-se ao Hermes para iniciar uma conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь к Hermes, чтобы начать разговор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbet başlatmak için Hermes'e bağlanın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以开始对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線到 Hermes 以開始對話。"
+          }
+        }
+      }
+    },
+    "Send answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwort senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar respuesta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyer la réponse"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim jawaban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia risposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答を送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답변 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij odpowiedź"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправить ответ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtı gönder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送回答"
           }
         }
       }

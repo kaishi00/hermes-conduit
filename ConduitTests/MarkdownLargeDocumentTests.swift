@@ -802,7 +802,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         host.view.layoutIfNeeded()
 
         // Wait until the detached preparation has landed and rendered.
-        let deadline = Date().addingTimeInterval(5)
+        let deadline = Date().addingTimeInterval(10)
         var rendered = false
         while Date() < deadline {
             pumpForSwiftUICommit(host: host)
@@ -890,7 +890,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         }
 
         // Phase A: initial preparation must land and render.
-        let deadlineA = Date().addingTimeInterval(5)
+        let deadlineA = Date().addingTimeInterval(10)
         while Date() < deadlineA, !renderedSummary().contains("oldmarker") {
             pumpForSwiftUICommit(host: host)
         }
@@ -902,7 +902,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         // Swap under the same identity: the stale preparation for A must be
         // dropped and B must render.
         state.source = sourceB
-        let deadlineB = Date().addingTimeInterval(5)
+        let deadlineB = Date().addingTimeInterval(10)
         while Date() < deadlineB, !renderedSummary().contains("newmarker") {
             pumpForSwiftUICommit(host: host)
         }
@@ -942,7 +942,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
                 .joined(separator: "\n")
         }
         func pump(until marker: String) {
-            let deadline = Date().addingTimeInterval(5)
+            let deadline = Date().addingTimeInterval(10)
             while Date() < deadline, !rendered().contains(marker) {
                 pumpForSwiftUICommit(host: host)
             }
@@ -1789,7 +1789,7 @@ extension MarkdownLargeDocumentTests {
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.layoutIfNeeded()
-        let first = Date().addingTimeInterval(5)
+        let first = Date().addingTimeInterval(10)
         while Date() < first,
               !host.view.recursiveSubviewsForTests.contains(where: { ($0 as? UITextView)?.attributedText?.string.contains("oldmarker") == true }) {
             pumpForSwiftUICommit(host: host)

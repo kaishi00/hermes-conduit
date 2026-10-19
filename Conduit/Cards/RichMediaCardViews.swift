@@ -284,16 +284,14 @@ final class RichAudioPlayer: ObservableObject {
     /// Media plays even with the ringer switch off, as a player does.
     static func preparePlayback() {
         guard !sessionIsOwnedElsewhere else { return }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(true)
+        VoiceAudioSessionCoordinator.shared.activateForCardPlayback()
     }
 
     /// Hands the audio back to whatever the card's media paused.
     static func endPlayback() {
         let session = AVAudioSession.sharedInstance()
         guard !sessionIsOwnedElsewhere, session.category == .playback else { return }
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        VoiceAudioSessionCoordinator.shared.deactivateAfterCardPlayback()
     }
 
     /// `endingSession` false: another item starts right away.
@@ -500,7 +498,7 @@ private struct RichPersonRow: View {
                         RichPersonAction(title: Text("Message"), symbol: "message.fill") { openURL(url) }
                     }
                 }
-                if let email = person.email, let url = URL(string: "mailto:\(email)") {
+                if let email = person.email, let url = RichPerson.mailtoURL(email) {
                     RichPersonAction(title: Text("Email"), symbol: "envelope.fill") { openURL(url) }
                 }
                 if let url = person.url {

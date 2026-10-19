@@ -128,15 +128,17 @@ enum GrokLiveProtocol {
 
     /// The frames that carry one client message, in order. A message the
     /// model should answer ends with `response.create`; the session holds
-    /// that back while a response is still running.
-    static func frames(for message: LiveVoiceClientMessage) -> (frames: [[String: Any]], wantsResponse: Bool) {
+    /// that back while a response is still running. `upsampler` is the
+    /// connection's, so its capture is upsampled as one stream.
+    static func frames(for message: LiveVoiceClientMessage, upsampler: inout GrokInputUpsampler) -> (frames: [[String: Any]], wantsResponse: Bool) {
         switch message {
         case .audio(let pcm16):
-            let audio = upsampledForInput(pcm16).base64EncodedString()
+            let audio = upsampler.upsample(pcm16).base64EncodedString()
             return ([["type": "input_audio_buffer.append", "audio": audio]], false)
         case .audioStreamEnd:
             // Server turn detection ends a turn on silence, and a muted
             // microphone sends none: a short silence closes the turn now.
+            upsampler.reset()
             return ([["type": "input_audio_buffer.append", "audio": silence.base64EncodedString()]], false)
         case .textTurn(let text):
             return ([[
@@ -314,5 +316,54 @@ enum GrokLiveProtocol {
             }
         }
         return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: GeminiLiveProtocol.FunctionCall.stringArguments(parsed))
+    }
+}
+
+/// 16 kHz capture as 24 kHz PCM16 (little-endian), by linear
+/// interpolation: three output samples for every two captured, across the
+/// whole stream. Capture comes in odd-sized chunks (1 024 frames at 48 kHz
+/// are 341 at 16 kHz), so the position between samples and the last
+/// sample carry over to the next chunk, and an output sample that needs
+/// the next chunk's first sample waits for it: no chunk loses half a
+/// sample or restarts the 3:2 step.
+struct GrokInputUpsampler {
+    /// The previous chunk's last sample.
+    private var last: Int16?
+    /// Where the next output sample falls, in thirds of a captured sample
+    /// from `last` (from the chunk's first sample when there is none).
+    private var position = 0
+
+    /// A new stream: the call (re)connected, or its turn ended.
+    mutating func reset() {
+        last = nil
+        position = 0
+    }
+
+    mutating func upsample(_ pcm16: Data) -> Data {
+        // The step below is the fixed 3:2 from the capture rate.
+        assert(GrokLiveProtocol.inputSampleRate == GeminiLiveProtocol.inputSampleRate * 3 / 2, "Grok Live upsampling assumes 16 kHz capture and 24 kHz input")
+        let bytes = [UInt8](pcm16)
+        let count = bytes.count / 2
+        guard count > 0 else { return Data() }
+        var samples = (0..<count).map { Int16(bitPattern: UInt16(bytes[2 * $0]) | UInt16(bytes[2 * $0 + 1]) << 8) }
+        if let last { samples.insert(last, at: 0) }
+        var output = Data(capacity: (count * 3 / 2 + 1) * 2)
+        var numerator = position
+        while true {
+            // Position in the captured stream: numerator / 3 samples in.
+            let lower = numerator / 3
+            let fraction = numerator % 3
+            let upper = fraction == 0 ? lower : lower + 1
+            guard upper < samples.count else { break }
+            let a = Double(samples[lower])
+            let b = Double(samples[upper])
+            let value = UInt16(bitPattern: Int16(clamping: Int((a + (b - a) * Double(fraction) / 3).rounded())))
+            output.append(UInt8(value & 0xFF))
+            output.append(UInt8(value >> 8))
+            numerator += 2
+        }
+        last = samples.last
+        position = numerator - 3 * (samples.count - 1)
+        return output
     }
 }

@@ -305,10 +305,17 @@ final class MediaPreviewPresenter {
     // MARK: - Download
 
     nonisolated static func boundedDownload(_ url: URL, limit: Int = DataURLLimits.maxDecodedBytes) async -> (Data, URLResponse)? {
+        guard case .downloaded(let data, let response) = await boundedDownloadResult(url, limit: limit) else { return nil }
+        return (data, response)
+    }
+
+    /// `boundedDownload`, telling a body over `limit` apart from a failed
+    /// fetch.
+    nonisolated static func boundedDownloadResult(_ url: URL, limit: Int = DataURLLimits.maxDecodedBytes) async -> BoundedDownloadResult {
         do {
             let (bytes, response) = try await URLSession.shared.bytes(from: url)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-            if response.expectedContentLength > Int64(limit) { return nil }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return .failed }
+            if response.expectedContentLength > Int64(limit) { return .tooLarge }
             var data = Data()
             if response.expectedContentLength > 0 { data.reserveCapacity(Int(response.expectedContentLength)) }
             // Gather into a fixed chunk and append in bulk: appending each
@@ -321,14 +328,14 @@ final class MediaPreviewPresenter {
                 if chunk.count == chunkSize {
                     data.append(contentsOf: chunk)
                     chunk.removeAll(keepingCapacity: true)
-                    if data.count > limit { return nil }
+                    if data.count > limit { return .tooLarge }
                 }
             }
             data.append(contentsOf: chunk)
-            guard data.count <= limit else { return nil }
-            return data.isEmpty ? nil : (data, response)
+            guard data.count <= limit else { return .tooLarge }
+            return data.isEmpty ? .failed : .downloaded(data, response)
         } catch {
-            return nil
+            return .failed
         }
     }
 
@@ -421,4 +428,13 @@ extension View {
     func opensMediaPreview(_ action: @escaping () -> Void) -> some View {
         modifier(MediaPreviewTapModifier(action: action))
     }
+}
+
+/// A streamed download against a size ceiling.
+enum BoundedDownloadResult {
+    case downloaded(Data, URLResponse)
+    /// The body was larger than the ceiling: abandoned, not buffered whole.
+    case tooLarge
+    /// Not a 2xx answer, no body, or the fetch failed.
+    case failed
 }

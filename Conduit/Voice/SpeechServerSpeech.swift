@@ -207,7 +207,8 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
     // MARK: Responses
 
     private func enqueue(_ text: String) {
-        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Markdown marks are written, not said, as for on-device speech.
+        let words = PreviewText.plain(text).trimmingCharacters(in: .whitespacesAndNewlines)
         // Punctuation or emoji alone has nothing to read back or check.
         guard !Self.comparable(words).isEmpty else { return }
         queued.append(words)
@@ -420,6 +421,25 @@ extension HermesVoiceGateway {
 
 /// What the notifier says about speaking through the speech server
 /// (`/local-live/status`): whether it can, and what to set on the server.
+/// The host's fast model for Local (agent mode), from Local Live's status.
+struct LocalLiveFrontModelStatus: Equatable {
+    var configured: Bool
+    var available: Bool
+    var baseURL: String?
+    var model: String?
+    var hasKey: Bool
+    var reason: String?
+
+    init(response: [String: Any]) {
+        configured = response["configured"] as? Bool ?? false
+        available = response["available"] as? Bool ?? false
+        baseURL = (response["base_url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        model = (response["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        hasKey = response["has_key"] as? Bool ?? false
+        reason = (response["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+}
+
 struct SpeechServerVoiceStatus: Equatable {
     var available: Bool
     var reason: String?
@@ -433,6 +453,8 @@ struct SpeechServerVoiceStatus: Equatable {
     /// The speech server's address the Hermes host dials (Speech to text's).
     var speechServerURL: String?
     var pluginMissing: Bool
+    /// Local's fast model (agent mode); nil from a plugin before it.
+    var frontModel: LocalLiveFrontModelStatus?
 
     static var pluginMissingReason: String {
         AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.")
@@ -453,6 +475,7 @@ struct SpeechServerVoiceStatus: Equatable {
         lastRequestAt = nil
         speechServerURL = nil
         pluginMissing = false
+        frontModel = nil
     }
 
     init(response: [String: Any], dashboardBaseURL: String?) {
@@ -465,6 +488,7 @@ struct SpeechServerVoiceStatus: Equatable {
         lastRequestAt = (response["last_request_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
         speechServerURL = ((response["speech_server"] as? [String: Any])?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         pluginMissing = false
+        frontModel = (response["front_model"] as? [String: Any]).map(LocalLiveFrontModelStatus.init(response:))
     }
 
     /// `baseURL` (the dashboard, maybe with a path prefix) joined with the

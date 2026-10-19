@@ -48,6 +48,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertTrue(harness.appState.compressingSessionIDs.isEmpty)
     }
 
+    /// The compressed transcript holds only Hermes' rows. The chat's own
+    /// notes, which Hermes never stores, stay: here the row they followed
+    /// was compressed away, so they land after the new tail.
+    func testCompressionKeepsTheChatsLocalNotes() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in Self.compressedResult() }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.messages = [
+            ChatMessage(id: "m1", role: .user, content: "Old question", timestamp: "2026-09-13T07:00:00Z")
+        ]
+        harness.appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: origin.id, kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "what did we decide?"))
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+
+        XCTAssertEqual(harness.appState.messages.map(\.content), [
+            "Summary carrier",
+            "Tail answer",
+            "[btw \"what did we decide?\"]\nShip on Friday.",
+            "Compressed 13 → 4 messages"
+        ])
+    }
+
     func testCompactAliasRoutesIdentically() async throws {
         let recorder = SlashCallRecorder()
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

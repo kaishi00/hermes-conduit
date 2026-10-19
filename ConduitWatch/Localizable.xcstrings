@@ -9610,6 +9610,88 @@
           }
         }
       }
+    },
+    "To approve it, open the chat in Conduit on your iPhone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um sie freizugeben, öffne den Chat in Conduit auf deinem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para aprobarla, abre el chat en Conduit en tu iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour l'approuver, ouvrez la conversation dans Conduit sur votre iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk menyetujuinya, buka obrolan di Conduit di iPhone Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per approvarla, apri la chat in Conduit sul tuo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認するには、iPhone の Conduit でチャットを開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "승인하려면 iPhone의 Conduit에서 채팅을 여세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby to zatwierdzić, otwórz czat w Conduit na iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para aprovar, abra a conversa no Conduit no seu iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы одобрить, откройте чат в Conduit на iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onaylamak için iPhone'unuzda Conduit'te sohbeti açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如需批准，请在 iPhone 上的 Conduit 中打开聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如需核准，請在 iPhone 上的 Conduit 中開啟聊天。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

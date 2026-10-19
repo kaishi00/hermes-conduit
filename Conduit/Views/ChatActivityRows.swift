@@ -320,6 +320,25 @@ struct ChatStepGroup: Equatable {
 struct ChatStepPlacement: Equatable {
     let group: ChatStepGroup
     let index: Int
+
+    /// Whether this step's row draws anything (ChatStepRowBody): one hidden
+    /// by the display settings, or inside a collapsed run (whose first row
+    /// draws the run's line), draws nothing. The transcript leaves such rows
+    /// out, because a LazyVStack spaces every row it is given, empty or not:
+    /// a collapsed run of seven steps sat seven row spacings above the reply.
+    @MainActor
+    func drawsRow(
+        messageID: String,
+        preferences: ProfileDisplayPreferences,
+        isBusy: Bool,
+        disclosure: ChatRowDisclosure
+    ) -> Bool {
+        let visible = group.visibleMembers(showReasoning: preferences.showReasoning, showTools: preferences.showToolProgress)
+        guard let position = visible.firstIndex(where: { $0.messageID == messageID }) else { return false }
+        guard visible.count >= 2, position > 0 else { return true }
+        let live = group.isTrailing && isBusy
+        return disclosure.isGroupExpanded(group.id, default: live || preferences.expandToolsByDefault)
+    }
 }
 
 /// How long steps took. Live steps are timed by Conduit (start stamped on

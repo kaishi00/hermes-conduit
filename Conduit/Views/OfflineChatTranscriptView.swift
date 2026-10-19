@@ -96,9 +96,20 @@ private struct OfflineChatRows: View {
     /// Which step cards are open, for this conversation only: the scroll
     /// view's `.id` starts the next one with its own.
     @State private var disclosure = ChatRowDisclosure()
+    @State private var stepToggleRevision: UInt64 = 0
+
+    /// As the live transcript: a step that draws nothing gets no row, or the
+    /// stack would space it (ChatStepPlacement.drawsRow).
+    private var drawnRows: [ChatMessageScrollTarget] {
+        _ = stepToggleRevision
+        let preferences = appState.displayPreferences
+        return rows.filter { row in
+            row.step?.drawsRow(messageID: row.id, preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure) ?? true
+        }
+    }
 
     var body: some View {
-        ForEach(rows) { row in
+        ForEach(drawnRows) { row in
             MessageBubble(
                 message: row.message,
                 gatewayResolver: appState.gatewayMediaResolver,
@@ -107,6 +118,7 @@ private struct OfflineChatRows: View {
             .equatable()
         }
         .environment(\.chatRowDisclosure, disclosure)
+        .onReceive(disclosure.groupToggles.$revision) { stepToggleRevision = $0 }
     }
 }
 

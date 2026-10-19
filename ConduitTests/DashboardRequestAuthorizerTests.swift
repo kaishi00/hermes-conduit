@@ -373,6 +373,34 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
             for: [cookie("d", domain: ".example.test")], url: url("wss://badexample.test/api/ws")))
     }
 
+    /// A request made without the dashboard's page (the ticket CarPlay asks
+    /// for with the phone locked) carries the auth proxy's parent-domain
+    /// session, as the page and the socket upgrade do. Without it the proxy
+    /// redirected the ticket request to sign-in and CarPlay never connected.
+    func testRequestWithoutThePageCarriesTheProxySessionSetForTheParentDomain() {
+        let cookies = [
+            cookie("_oauth2_proxy", domain: ".example.test"),
+            cookie("dashboard_session", domain: "dashboard.example.test"),
+            cookie("sibling_only", domain: "other.example.test"),
+            cookie("parent_host_only", domain: "example.test"),
+            cookie("lookalike", domain: ".badexample.test"),
+        ]
+        let header = NativeAuthCookiePolicy.headerFields(
+            for: cookies, url: url("https://dashboard.example.test/api/auth/ws-ticket"))["Cookie"] ?? ""
+        XCTAssertEqual(
+            Set(header.components(separatedBy: "; ")),
+            ["_oauth2_proxy=_oauth2_proxy-value", "dashboard_session=dashboard_session-value"]
+        )
+        // The parent domain itself takes its Domain cookie and its own
+        // host-only one, not a subdomain's.
+        let parentHeader = NativeAuthCookiePolicy.headerFields(
+            for: cookies, url: url("https://example.test/api/auth/ws-ticket"))["Cookie"] ?? ""
+        XCTAssertEqual(
+            Set(parentHeader.components(separatedBy: "; ")),
+            ["_oauth2_proxy=_oauth2_proxy-value", "parent_host_only=parent_host_only-value"]
+        )
+    }
+
     func testInvalidatedAuthorizerAuthorizesNothing() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }

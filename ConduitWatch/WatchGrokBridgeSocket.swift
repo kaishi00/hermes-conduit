@@ -33,6 +33,8 @@ struct WatchGrokBridge {
     var engine: String = WatchAudioBridgeWire.grok
     /// Local Live: the call's Hermes chat so far, read at each start.
     var resumeSessionID: (@MainActor () -> String?)? = nil
+    /// Local Live: the Watch answers Hermes' approval requests on its card.
+    var takesApprovals = false
 
     var isLocalLive: Bool { engine == WatchAudioBridgeWire.localLive }
 }
@@ -95,6 +97,9 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     var onNote: ((String, [String: Any]) -> Void)?
     /// The host started the engine, with what it said.
     var onStarted: ((WatchAudioBridgeWire.Started) -> Void)?
+    /// Local Live: Hermes' approval requests, which the host sends beside
+    /// the call's events. They never reach the session.
+    var onApproval: ((WatchAudioBridgeWire.ApprovalFrame) -> Void)?
 
     private let socket: WatchBridgeSocket?
     private var stream: WatchAudioBridgeStream?
@@ -167,6 +172,12 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
         return Data(base64Encoded: audio)
     }
 
+    /// The Watch's answer to Hermes' approval request `id`, on this stream.
+    func sendApprovalAnswer(id: String, approve: Bool) async throws {
+        try await waitForStart()
+        try await seal(try WatchAudioBridgeWire.approvalAnswer(id: id, approve: approve), kind: .event)
+    }
+
     func receive() async throws -> Data {
         if !inbox.isEmpty { return inbox.removeFirst() }
         if let failure { throw failure }
@@ -233,7 +244,8 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             // carries only the engine and voice, and a rejoining Local Live
             // call's chat.
             let start = WatchAudioBridgeWire.start(engine: bridge.engine, voice: bridge.voice, briefing: nil, greeting: nil, history: [],
-                                                   resumeSessionID: bridge.resumeSessionID?())
+                                                   resumeSessionID: bridge.resumeSessionID?(),
+                                                   approvals: bridge.takesApprovals)
             do {
                 try sealNow(start, kind: .control, stream: stream)
             } catch {
@@ -274,6 +286,10 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             guard let control = WatchAudioBridgeWire.control(opened.plain) else { return }
             handle(control)
         case .event:
+            if bridge.takesApprovals, let approval = WatchAudioBridgeWire.approvalFrame(opened.plain) {
+                onApproval?(approval)
+                return
+            }
             deliver(opened.plain)
         case .audio:
             // As xAI sent it, before the host took it out to pace it.

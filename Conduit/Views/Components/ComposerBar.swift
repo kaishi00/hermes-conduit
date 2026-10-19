@@ -364,6 +364,7 @@ struct ComposerBar: View, Equatable {
             selectionBehavior: .ordered,
             matching: .any(of: [.images, .videos])
         )
+        .conduitOutOfProcessAccentTint()
         .onChange(of: text) { _, newValue in
             let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
             suppressNextTextChangeSuggestions = false

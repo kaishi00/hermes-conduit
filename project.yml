@@ -18,6 +18,11 @@ settings:
     CODE_SIGN_STYLE: Manual
     MARKETING_VERSION: "0.1.15"
     CURRENT_PROJECT_VERSION: "162"
+    # The push relay used when Settings is blank (Info.plist
+    # ConduitDefaultRelayURL). Empty means https://push.milim.dev; a build
+    # signed for its own relay sets an https URL, e.g.
+    # xcodebuild CONDUIT_DEFAULT_RELAY_URL=https://push.example.com
+    CONDUIT_DEFAULT_RELAY_URL: ""
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.

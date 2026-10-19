@@ -123,7 +123,10 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
             if finishRequested { complete(.success(sampleRate != nil)) }
             return
         }
-        let text = queue.removeFirst()
+        // Markdown marks are written, not said: "**Québec**" reads "Québec".
+        // Hermes' own speech strips them on the gateway; this voice is ours.
+        let text = PreviewText.plain(queue.removeFirst())
+        guard !text.isEmpty else { return speakNext() }
         if language == nil { language = Self.language(of: text) ?? fallbackLanguage }
         speaking = true
         synthesizer.speak(

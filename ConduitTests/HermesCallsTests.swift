@@ -1556,9 +1556,9 @@ extension VoiceConversationControllerTests {
         var voices = WatchCallVoices()
         voices.note(.localLive, ready: true, scope: "d|default")
         // Local Live on the phone (0.42), before the Watch could use it.
-        let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["local-live", "watch-audio", "hermes-calls"])
+        let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "hermes-calls"])
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: phoneOnly), ["localLive": false])
-        let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["local-live", "watch-audio", "watch-local-live", "hermes-calls"])
+        let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "watch-local-live", "hermes-calls"])
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["localLive": true])
     }
 

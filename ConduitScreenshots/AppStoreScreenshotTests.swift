@@ -194,9 +194,14 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     /// Back to the Chats list. The list and tab bar stay in the hierarchy
     /// under a pushed chat, so the chat's own menu button is the sign a
-    /// chat is still showing.
+    /// chat is still showing. Beside the list on an iPad, the chat's Close.
     private func backToTabs() {
         let chatMenu = app.buttons["conversation.menu"]
+        let close = app.buttons["conversation.close"]
+        if close.exists {
+            close.tap()
+            _ = chatMenu.waitForNonExistence(timeout: 4)
+        }
         for _ in 0..<3 where chatMenu.exists {
             // The V2 conversation's Back: the small round button top left.
             let screen = app.frame
@@ -259,7 +264,16 @@ final class AppStoreScreenshotTests: XCTestCase {
         let notNow = app.buttons["finish-setup.not-now"]
         if notNow.waitForExistence(timeout: 10) {
             snap("debug-finish-setup")
-            notNow.tap()
+            // Beside the empty chat column on an iPad, accessibility's hit
+            // test misses the button though a touch lands; tap its point.
+            if notNow.isHittable {
+                notNow.tap()
+            } else {
+                notNow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
+            if !notNow.waitForNonExistence(timeout: 5) {
+                snap("debug-finish-setup-stayed")
+            }
         }
         settle()
     }

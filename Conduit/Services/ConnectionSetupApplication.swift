@@ -25,6 +25,9 @@ struct ConnectionSetupApplication: Equatable, CustomStringConvertible, CustomDeb
     /// Always present, even when nothing moves, so `perform` can resolve the
     /// right dashboard without re-deriving it.
     let targetDashboardURL: String
+    /// The normalized address the applied setup was edited from: the saved
+    /// dashboard that moves when the address changed.
+    let sourceDashboardURL: String
     /// Replacement saved credentials. Non-nil only when credentials were
     /// already saved for the current connection AND the tested values differ:
     /// an explicit apply updates an existing saved configuration, it never
@@ -120,21 +123,48 @@ extension ConnectionSetupApplication {
         return ConnectionSetupApplication(
             dashboardURLToRemember: urlChanged ? newURL : nil,
             targetDashboardURL: newURL,
+            sourceDashboardURL: currentURL,
             credentialsToSave: credentialsToSave,
             clearsSavedCredentials: clearsSavedCredentials,
             cloudflareTokenRewrite: rewrite
         )
     }
 
+    enum Outcome: Equatable {
+        case applied
+        /// The edited address is another saved dashboard's: nothing was
+        /// written, so the two never merge.
+        case addressBelongsToDashboard(label: String)
+    }
+
     /// Performs the plan's writes. The live connection — AppState's
     /// `connection`, `client`, session, and chat state — is never touched:
     /// only the saved/login configuration moves, so the current session keeps
     /// running and the new settings take effect on the next explicit
-    /// reconnect (an app relaunch, or signing in again). Every write is
+    /// reconnect (an app relaunch, or signing in again).
+    ///
+    /// `movingSavedDashboard` (Settings): an edited address stays the same
+    /// saved dashboard, which moves there at its next sign-in, launch or
+    /// switch (`AppState.stageDashboardMove`); a new password is saved on it
+    /// now, while dropping the old address's password and re-binding its
+    /// Cloudflare token wait for the move. Without it (an activated repair,
+    /// already connected and adopted at the tested address) every write is
     /// scoped to the saved dashboard the plan's target address belongs to
     /// (registering the entry when new); the active selection never moves.
     @MainActor
-    func perform(appState: AppState) {
+    @discardableResult
+    func perform(appState: AppState, movingSavedDashboard: Bool = true) -> Outcome {
+        if movingSavedDashboard,
+           let sourceID = appState.resolveDashboardID(forNormalizedURL: sourceDashboardURL, registerIfMissing: false) {
+            if let owner = appState.savedDashboardRegistry.dashboard(claiming: targetDashboardURL), owner.id != sourceID {
+                return .addressBelongsToDashboard(label: owner.label)
+            }
+            if let credentials = credentialsToSave {
+                KeychainHelper.saveCredentials(credentials, dashboardID: sourceID)
+            }
+            appState.stageDashboardMove(sourceID, toNormalizedURL: targetDashboardURL)
+            return .applied
+        }
         if let dashboardID = appState.resolveDashboardID(forURL: targetDashboardURL, registerIfMissing: true) {
             if let credentials = credentialsToSave {
                 KeychainHelper.saveCredentials(credentials, dashboardID: dashboardID)
@@ -147,6 +177,7 @@ extension ConnectionSetupApplication {
             }
         }
         if let url = dashboardURLToRemember { appState.rememberDashboardURL(url) }
+        return .applied
     }
 }
 

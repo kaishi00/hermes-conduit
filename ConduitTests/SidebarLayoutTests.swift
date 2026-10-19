@@ -180,6 +180,47 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 0)
     }
 
+    /// Beside a chat on a wide iPad the list shows, but a burst of publishes
+    /// (a streaming reply) draws it once, after the delay; its own setting
+    /// writes still draw at once.
+    @MainActor
+    func testChatsListBesideAChatDrawsABurstOnce() {
+        let state = makeAppState()
+        let suite = "SidebarLayoutTests.beside.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let updates = V2ShownUpdates(state, defaults: defaults, defaultsKeys: ["list.filter"])
+        updates.coalesces = true
+        updates.coalescingDelay = 0.05
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        for index in 0..<20 { state.sessions = [pinnedTestSession("s\(index)")] }
+        XCTAssertEqual(sent, 0, "the burst drew before the delay")
+        waitUntil { sent > 0 }
+        XCTAssertEqual(sent, 1)
+
+        updates.set("scheduled", forKey: "list.filter")
+        XCTAssertEqual(sent, 2, "the list's own write waited")
+
+        // Covered before the delay ran out, it draws when shown again.
+        sent = 0
+        state.sessions = [pinnedTestSession("late")]
+        updates.isShown = false
+        settle()
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+    }
+
+    private func waitUntil(_ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+    }
+
     /// SwiftUI redraws every `@AppStorage` view on any defaults write, and a
     /// chat saves its scroll position there: the list reads its settings
     /// through the gate, which passes on only its own keys' changes, and

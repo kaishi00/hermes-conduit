@@ -2128,8 +2128,14 @@ private struct RemoteMarkdownImage: View {
     let gatewayMediaDataURL: ((String) async -> String?)?
     @State private var gatewayImage: UIImage?
     @State private var gatewayLoadFailed = false
+    /// A web picture, fetched and decoded within bounds; nil while loading.
+    @State private var remoteOutcome: BoundedRemoteImage.Outcome?
     @State private var openingRemote = false
     @State private var openTask: Task<Void, Never>?
+
+    /// Shown at most 360 pt tall and a phone's width: twice that, at 3x,
+    /// stays sharp.
+    private static let remoteMaxPixelSize: CGFloat = 2048
 
     private var isGatewayMedia: Bool { url.hasPrefix("MEDIA:") }
     private var gatewayPath: String {
@@ -2156,20 +2162,20 @@ private struct RemoteMarkdownImage: View {
             } else if isGatewayMedia {
                 gatewayMediaContent
             } else {
-                AsyncImage(url: URL(string: url), transaction: .init(animation: .easeInOut(duration: 0.2))) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            switch remoteOutcome {
+            case .image(let image):
+                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .overlay { if openingRemote { ProgressView() } }
                     .opensMediaPreview(openRemoteImage)
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
-            case .failure:
+            case .unavailable:
                 WebFallbackImage(url: url, alt: alt)
-            default:
+            case .tooLarge:
+                WebFallbackImage(url: url, alt: alt, loadsInPage: false)
+            case nil:
                 HStack(spacing: 8) { ProgressView(); Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt).font(.footnote).foregroundStyle(.secondary) }
                     .padding(12)
             }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2179,15 +2185,41 @@ private struct RemoteMarkdownImage: View {
             openingRemote = false
         }
         .task(id: url) {
-            guard isGatewayMedia, gatewayFileKind == nil else { return }
+            guard isGatewayMedia else {
+                // A URL that isn't RFC-valid goes to the web view, which
+                // escapes it.
+                guard let remoteURL = URL(string: url) else {
+                    remoteOutcome = .unavailable
+                    return
+                }
+                if let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) {
+                    remoteOutcome = .image(cached)
+                    return
+                }
+                remoteOutcome = nil
+                let outcome = await BoundedRemoteImage.load(remoteURL, maxPixelSize: Self.remoteMaxPixelSize)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
+                return
+            }
+            guard gatewayFileKind == nil else { return }
             gatewayImage = nil
             gatewayLoadFailed = false
             guard let gatewayMediaDataURL, !gatewayPath.isEmpty,
                   let dataURL = await gatewayMediaDataURL(gatewayPath),
                   !Task.isCancelled,
-                  let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/"),
-                  let image = UIImage(data: data) else {
+                  let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else {
                 guard !Task.isCancelled else { return }
+                gatewayLoadFailed = true
+                return
+            }
+            // Downsampled off the main thread, within the same pixel bound.
+            let maxPixelSize = Self.remoteMaxPixelSize
+            let decoded = await Task.detached(priority: .userInitiated) {
+                BoundedRemoteImage.decode(data, maxPixelSize: maxPixelSize)
+            }.value
+            guard !Task.isCancelled else { return }
+            guard case .image(let image) = decoded else {
                 gatewayLoadFailed = true
                 return
             }
@@ -2572,12 +2604,14 @@ enum WebFallbackImageLabel {
 private struct WebFallbackImage: View {
     let url: String
     let alt: String
+    /// False for a picture too large to load here: just the link.
+    var loadsInPage = true
     @State private var height: CGFloat = 220
     @State private var failed = false
 
     var body: some View {
         Group {
-            if failed {
+            if failed || !loadsInPage {
                 // A model-authored URL is not guaranteed to be RFC-valid
                 // (unencoded non-ASCII paths are common); force-unwrapping
                 // here crashed the app on exactly the images most likely to

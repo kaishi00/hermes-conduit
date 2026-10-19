@@ -338,6 +338,10 @@ enum DashboardTicketBridgeError: LocalizedError {
             return AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.")
         case 403 where SessionMutationIdentity.isRefusalDetail(trimmed):
             return AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
+        case 403 where isMeaningful:
+            // Hermes' own refusal to someone signed in (a sensitive path, a
+            // file it can't write): its reason says what to do.
+            return trimmed
         case 401, 403:
             if trimmed == signInRefreshedDetail { return trimmed }
             return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
@@ -363,6 +367,16 @@ enum DashboardTicketBridgeError: LocalizedError {
             if isMeaningful { return trimmed }
             return AppLocalization.string("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
         }
+    }
+
+    /// Whether a dashboard request's failure means its sign-in is gone.
+    /// Hermes turns a signed-out request away with 401. Its 403 refuses
+    /// someone signed in (a sensitive path, a file it can't write, a chat
+    /// this sign-in may not change) and gives the reason as a JSON `detail`:
+    /// signing in again can't change that. An auth proxy in front of Hermes
+    /// answers 403 with its own page and no such reason, which still does.
+    static func meansSignIn(status: Int, hermesDetail: String?) -> Bool {
+        status == 401 || (status == 403 && hermesDetail == nil)
     }
 
     /// Default HTTP reason phrases and browser fetch errors, which say
@@ -1393,11 +1407,13 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
 
         let status = payload["status"] as? Int ?? 0
         let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
-        // Hermes' session writes answer 403 for a chat this sign-in may not
-        // change (old local history only its own computer may claim). That
-        // is a verdict on the chat, not an expired sign-in: signing in again
-        // can't change it.
-        if status == 401 || (status == 403 && !SessionMutationIdentity.isRefusalDetail(detail)) {
+        // Hermes' own 403 (its `detail` says why, such as a chat this
+        // sign-in may not change or a file it won't serve) is a verdict on
+        // the request, not an expired sign-in: signing in again can't change
+        // it.
+        let hermesDetail = (payload["body"] as? [String: Any])?["detail"] as? String
+        if DashboardTicketBridgeError.meansSignIn(status: status, hermesDetail: hermesDetail),
+           !SessionMutationIdentity.isRefusalDetail(detail) {
             continuation.resume(throwing: DashboardTicketBridgeError.signInRequired)
             return
         }
