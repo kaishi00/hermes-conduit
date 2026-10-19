@@ -1632,6 +1632,44 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertTrue(harness.appState.isBusy, "a side agent finishing doesn't end the main turn")
     }
 
+    /// Hermes keeps no copy of a side agent's answer, so one that lands
+    /// while a reconcile is open must still show when that reconcile is
+    /// dropped instead of committed (here: a compaction under a live turn).
+    func testSideAgentAnswerDuringADroppedReconcileStillLands() throws {
+        let harness = makeHarness()
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.handleStreamEvent(.messageStart(sessionId: origin.id))
+        _ = harness.appState.beginReconciliation()
+
+        harness.appState.handleStreamEvent(try frame(#"""
+        {"type": "btw.complete", "session_id": "composer-origin", "payload": {"task_id": "btw_1a2b3c", "question": "what did we decide?", "text": "Ship on Friday."}}
+        """#))
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacted, text: nil))
+
+        let notes = harness.appState.messages.filter { $0.role == .system }.map(\.content)
+        XCTAssertEqual(notes, ["[btw \"what did we decide?\"]\nShip on Friday."])
+    }
+
+    /// A reconcile that settles shows the answer after it, once.
+    func testSideAgentAnswerDuringASettledReconcileLandsOnce() throws {
+        let harness = makeHarness()
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        let token = harness.appState.beginReconciliation()
+
+        harness.appState.handleStreamEvent(try frame(#"""
+        {"type": "background.complete", "session_id": "composer-origin", "payload": {"task_id": "bg_4d5e6f", "text": "Logs are clean."}}
+        """#))
+        XCTAssertTrue(harness.appState.messages.isEmpty, "held while the reconcile is open")
+        _ = harness.appState.settleReconciliationAndPublish(token)
+
+        let notes = harness.appState.messages.filter { $0.role == .system }.map(\.content)
+        XCTAssertEqual(notes, ["[bg bg_4d5e6f]\nLogs are clean."])
+    }
+
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
         conversationIdentityIndex: ConversationIdentityIndex? = nil

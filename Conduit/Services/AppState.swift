@@ -4095,6 +4095,11 @@ final class AppState: ObservableObject {
     /// retire a saved automatic-return target instead of retrying it forever.
     private var reconciliationSessionWasNotFound = false
     private var reconciliation: Reconciliation?
+    /// Side-agent answers that came in while a reconciliation was open.
+    /// Hermes keeps no copy of them, so unlike the buffered stream they
+    /// can't come back with a later transcript: they show once the boundary
+    /// closes, whether its reconcile committed or was dropped.
+    private var heldSideAgentCompletions: [StreamEvent] = []
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
     private var activeReasoningMessageId: String?
@@ -13110,6 +13115,16 @@ final class AppState: ObservableObject {
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
+        releaseHeldSideAgentCompletions()
+    }
+
+    /// Shows the side-agent answers held while the reconciliation was open,
+    /// after any transcript it committed.
+    private func releaseHeldSideAgentCompletions() {
+        guard reconciliation == nil, !heldSideAgentCompletions.isEmpty else { return }
+        let held = heldSideAgentCompletions
+        heldSideAgentCompletions = []
+        held.forEach { applyStreamEvent($0) }
     }
 
     @discardableResult
@@ -13140,6 +13155,7 @@ final class AppState: ObservableObject {
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
+        releaseHeldSideAgentCompletions()
         return true
     }
 
@@ -23163,7 +23179,8 @@ final class AppState: ObservableObject {
         // reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
         messages.append(ChatMessage(
-            id: "slash-\(Date().timeIntervalSince1970)",
+            // Unique: two notes can land in the same instant.
+            id: "slash-\(UUID().uuidString)",
             role: .system,
             content: text,
             rawContent: nil,
@@ -27543,6 +27560,10 @@ final class AppState: ObservableObject {
     private func bufferIfReconciling(_ event: StreamEvent) -> Bool {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
+        if case .sideAgentComplete = event {
+            heldSideAgentCompletions.append(event)
+            return true
+        }
         reconciliation.bufferedEvents.append(event)
         self.reconciliation = reconciliation
         return true
@@ -27565,8 +27586,8 @@ final class AppState: ObservableObject {
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _),
                 .sideAgentComplete(let sessionId, _, _, _, _):
-            // Unreachable through bufferIfReconciling (status.update returns
-            // early); kept for switch completeness.
+            // `.sessionTitle` and `.statusUpdate` never reach
+            // bufferIfReconciling (handleStreamEvent returns early for them).
             return sessionId
         case .unparsed:
             return ""
