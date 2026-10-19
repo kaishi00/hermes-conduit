@@ -41,7 +41,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 **Your phone, if you allow it**
 
-Each is off until you turn it on, and goes only to your own Hermes host, encrypted end to end:
+Each is off until you turn it on, and goes only to your own Hermes host, encrypted end to end. The keys are agreed over your dashboard connection, so use HTTPS or a private tunnel such as Tailscale to keep anyone on the network from stepping into that exchange:
 
 - Location and place rules, travel times, directions and navigation
 - Calendar and reminders, with each change asked first unless you allow adds
@@ -92,7 +92,7 @@ hermes plugins install kaishi00/hermes-conduit-notifier --enable
 hermes gateway restart
 ```
 
-Then turn on notifications under Settings > Notifications; Conduit pairs the signed-in profile by itself. Settings > Conduit plugin shows the installed version and can update it.
+Then turn on notifications under Settings > Notifications; Conduit pairs the signed-in profile by itself when no other iPhone receives its notifications; if one does, Settings > Notifications offers to move them to this one. Settings > Conduit plugin shows the installed version and can update it.
 
 The app uses a shared relay by default (`push.milim.dev`) so notifications work out of the box with no extra setup.
 
