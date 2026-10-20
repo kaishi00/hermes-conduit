@@ -20,6 +20,9 @@ private final class FakeHermes {
     var resumeFails = false
     var submitted: [(runtimeID: String, text: String)] = []
     var submitOutcome: PromptSubmissionOutcome = .accepted
+    /// Runtimes Hermes no longer has: a send to one answers "session not found".
+    var goneRuntimes: Set<String> = []
+    var reopened: [VoiceThreadTarget] = []
     /// One list per poll; the last one repeats.
     var polls: [[LiveSessionStatus]] = []
     var replies: [ShortcutReply?] = []
@@ -42,7 +45,14 @@ private final class FakeHermes {
                 if self.resumeFails { throw HermesError.invalidResponse }
                 return "resumed-\(self.resumed.count)"
             },
+            reopenChat: { chat in
+                self.reopened.append(chat)
+                return "reopened-\(self.reopened.count)"
+            },
             submit: { _, runtimeID, text in
+                if self.goneRuntimes.contains(runtimeID) {
+                    throw RpcError(code: 4001, message: "session not found")
+                }
                 self.submitted.append((runtimeID, text))
                 return self.submitOutcome
             },
@@ -134,6 +144,40 @@ extension ScreenQuestionTests {
         XCTAssertEqual(hermes.created.count, 2)
         XCTAssertEqual(hermes.resumed.map(\.storedSessionID), ["stored-1", "stored-2"])
         XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["run-1", "run-2", "resumed-2"])
+    }
+
+    @MainActor
+    func testARuntimeHermesNoLongerHasIsReopenedAndTheTextSentOnce() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        // A cold launch: the chat's runtime is the one from before.
+        hermes.goneRuntimes = ["resumed-1"]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+        _ = try await sender(hermes, chats).send(shortcutRequest("three", chat: "Drop box"), deadline: deadline)
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.created.count, 1)
+        XCTAssertEqual(hermes.reopened.map(\.storedSessionID), ["stored-1"])
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one", "two", "three"])
+        XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["run-1", "reopened-1", "resumed-2"])
+        XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.storedSessionID, "stored-1")
+    }
+
+    @MainActor
+    func testOtherSendFailuresAreNotRetried() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let backend = hermes.backend()
+        var failing = backend
+        failing.submit = { _, _, _ in throw HermesError.invalidResponse }
+        do {
+            _ = try await ShortcutSender(backend: failing, chats: chats)
+                .send(shortcutRequest("one", chat: "Drop box"), deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("the send should fail")
+        } catch {}
+        XCTAssertTrue(hermes.reopened.isEmpty)
     }
 
     @MainActor

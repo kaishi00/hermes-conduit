@@ -43,6 +43,11 @@ extension AppState {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.liveVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
+            reopenChat: { [weak self] chat in
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                let scoped = self.scopedShortcutChat(chat)
+                return try await client.openSession(scoped.storedSessionID ?? scoped.runtimeSessionID, profile: scoped.profile).sessionId
+            },
             submit: { [weak self] chat, runtimeID, text in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 // Shortcut text is literal: "/…" never runs a composer command.
