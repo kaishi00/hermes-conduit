@@ -100,6 +100,27 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
     }
 
+    func testALabelAfterALargeContentViewerNamesTheButton() {
+        // The viewer's icon belongs to the same control; it must not end the
+        // scan before the label below it.
+        let source = """
+            Button { dictate() } label: {
+                Image(systemName: "mic")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityShowsLargeContentViewer {
+                Label {
+                    Text("Dictate")
+                } icon: {
+                    Image(systemName: "mic")
+                }
+            }
+            .accessibilityLabel(Text("Dictate"))
+        """
+        XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
+    }
+
     func testTheNextControlsLabelDoesNotNameAnEarlierOne() {
         let source = """
             HStack {
@@ -155,7 +176,12 @@ final class AccessibilityLabelAuditTests: XCTestCase {
                 guard !trimmed.isEmpty else { continue }
                 let lineIndent = indent(l)
                 if lineIndent < ownerIndent { break }
-                if !inLabelClosure, l.contains("Image(systemName:") { break }
+                // Another control's image ends the span; an image with no
+                // owner of its own (a large content viewer's icon) doesn't.
+                if !inLabelClosure, l.contains("Image(systemName:"),
+                   (max(0, k - 5)..<(k - 1)).contains(where: { j in owners.contains { lines[j].contains($0) } }) {
+                    break
+                }
                 if lineIndent <= ownerIndent, trimmed.hasPrefix("Button") || trimmed.hasPrefix("Menu") { break }
                 if naming.contains(where: { l.contains($0) }) { named = true; break }
                 if inLabelClosure {
