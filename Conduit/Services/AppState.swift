@@ -1641,11 +1641,11 @@ final class AppState: ObservableObject {
         canonicalProfile: String? = nil,
         attemptID: UUID,
         transitionGeneration: UInt64
-    ) async -> Bool {
+    ) async -> NotificationOpenOutcome {
         guard let bot = botOwningNotificationTarget(target, rowIDs: rowIDs, canonicalProfile: canonicalProfile),
               target.call != nil || !Self.namesProfileOnlyWithCaseFolded(notifiedProfile, bot: bot) else {
             refuseBotOwnedRouting(for: notifiedProfile)
-            return false
+            return .failed
         }
         if target.call != nil {
             HermesCallTrace.shared.note("Call from a Bot Chat: opening it in Bots")
@@ -1680,7 +1680,7 @@ final class AppState: ObservableObject {
                     sessionIDs: [requestedID]
                 )
             }
-            return false
+            return .retry
         }
         // The resume restores cards only from the chat's tip ids, and the
         // card may sit under the durable id the push named. Once the chat is
@@ -1729,9 +1729,9 @@ final class AppState: ObservableObject {
                 )
             }
         }
-        guard attemptIsCurrent else { return false }
+        guard attemptIsCurrent else { return .retry }
         showSidebar = false
-        return true
+        return .opened
     }
 
     /// Whether a push's profile stamp differs from the owning bot's name
@@ -20263,9 +20263,23 @@ final class AppState: ObservableObject {
         return .opened
     }
 
+    /// How a notification open ended, for the route that retries it (#789):
+    /// `.retry` is a read or switch that can succeed once the connection or
+    /// the session catalog is ready; `.failed` already told the user why it
+    /// can't open, and retrying would only repeat that.
+    enum NotificationOpenOutcome: Equatable {
+        case opened
+        case retry
+        case failed
+    }
+
+    func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
+        await openNotificationTargetOutcome(target) == .opened
+    }
+
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
-    func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
+    func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
         widgetLaunchCoordinator.supersede()
         // Where an open for a call from Hermes stopped (#449).
         var traceStage = "dashboard check"
@@ -20284,7 +20298,7 @@ final class AppState: ObservableObject {
             savedDashboardIDs: savedDashboardRegistry.dashboards.map(\.id)
         ) {
         case .route:
-            guard connection != nil else { return false }
+            guard connection != nil else { return .retry }
         case .switchFirst(let dashboardID):
             await switchDashboard(to: dashboardID)
             guard isConnected, activeDashboardID == dashboardID, client != nil else {
@@ -20292,7 +20306,7 @@ final class AppState: ObservableObject {
                 // sign-in/repair surface, and the notification routes
                 // nowhere. No other dashboard is auto-connected.
                 errorMessage = AppLocalization.string("Could not connect to that dashboard to open this notification.")
-                return false
+                return .failed
             }
         case .failClosed(let failure):
             switch failure {
@@ -20301,7 +20315,7 @@ final class AppState: ObservableObject {
             case .unscopedPush:
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
             }
-            return false
+            return .failed
         }
         traceStage = "open start"
         let notificationAttemptID = UUID()
@@ -20318,7 +20332,7 @@ final class AppState: ObservableObject {
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
-        ) else { return false }
+        ) else { return .retry }
         // A push is a Bot Chat decision when its CONVERSATION is a bot's
         // canonical chat, never because of the profile it names. Every Hermes
         // profile is listed by `profiles.list` (the Bots roster), and the
@@ -20359,7 +20373,7 @@ final class AppState: ObservableObject {
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
-            ) else { return false }
+            ) else { return .retry }
             if notificationTargetIsBotChat(target) {
                 // Opened in Bots, never by switching: making the bot's
                 // profile this dashboard's workspace would turn its Bot Chat
@@ -20380,7 +20394,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 )
-                return false
+                return .failed
             }
             // Ask the TARGET profile for its canonical Bot Chat before
             // adopting it: the exact-title lookup reads the lineage tip
@@ -20398,16 +20412,16 @@ final class AppState: ObservableObject {
                 guard notificationOpenAttemptIsCurrent(
                     id: notificationAttemptID,
                     transitionGeneration: transitionGeneration
-                ) else { return false }
+                ) else { return .retry }
                 errorMessage = AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 )
-                return false
+                return .failed
             }
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
-            ) else { return false }
+            ) else { return .retry }
             if pushesCanonicalChat {
                 traceStage = "bot chat"
                 return await routeBotOwnedNotification(
@@ -20435,7 +20449,7 @@ final class AppState: ObservableObject {
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
                 transitionGeneration: transitionGeneration
-            ) else { return false }
+            ) else { return .retry }
             if pushesCanonicalChat {
                 traceStage = "bot chat"
                 return await routeBotOwnedNotification(
@@ -20454,23 +20468,27 @@ final class AppState: ObservableObject {
             if target.isChatLink, isVoiceCallInProgress {
                 traceStage = "call in progress"
                 errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
-                return false
+                return .failed
             }
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration,
                 sparingCalls: target.isChatLink
-            ) else { return false }
+            ) else {
+                // A call that started during the switch refuses it the
+                // same way, and says so; anything else may pass on a retry.
+                return target.isChatLink && isVoiceCallInProgress ? .failed : .retry
+            }
         }
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else {
-            return false
+            return .retry
         }
-        if let targetProfile, activeProfile != targetProfile { return false }
-        guard client != nil else { return false }
+        if let targetProfile, activeProfile != targetProfile { return .retry }
+        guard client != nil else { return .retry }
         showSidebar = false
 
         // Pushes can arrive before this device has seen the scheduled run.
@@ -20485,13 +20503,13 @@ final class AppState: ObservableObject {
         guard await loadSessions(
             forceRefresh: true,
             requiredViewportTransitionGeneration: transitionGeneration
-        ) else { return false }
+        ) else { return .retry }
         traceStage = "bot chat check"
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else {
-            return false
+            return .retry
         }
         let requestedID = target.sessionId
         // The fresh catalog was just published (its labeled rows are already
@@ -20600,8 +20618,8 @@ final class AppState: ObservableObject {
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
-        ) else { return false }
-        return opened
+        ) else { return .retry }
+        return opened ? .opened : .retry
     }
 
     /// The stable decision key a push-delivered card was recorded under

@@ -661,9 +661,18 @@ final class PushNotificationService: ObservableObject {
     /// Callers waiting for another proof to finish: each nonce works once.
     private var tokenProofWaiters: [CheckedContinuation<Void, Never>] = []
     private var navigationRetryTask: Task<Void, Never>?
+    /// Retrying a failed open is bounded by time from the tap, not by a
+    /// count (#789): a cold launch on a slow network can fail several reads
+    /// while it connects and loads the session catalog, and the tap should
+    /// still open once it has. A disconnected app makes no attempt (the
+    /// route waits for `isConnected`), and the reconnect retries the target
+    /// while it is still pending.
     private var pendingRetryCount = 0
-    private let maxNotificationRetriesPerTarget = 1
+    private var pendingRouteDeadline: ContinuousClock.Instant?
     private let retryDelay: Duration
+    private let maxRetryDelay: Duration = .seconds(8)
+    private let routeRetryWindow: Duration
+    private let now: () -> ContinuousClock.Instant
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
@@ -673,8 +682,14 @@ final class PushNotificationService: ObservableObject {
         return AppLocalization.string("Off")
     }
 
-    init(retryDelay: Duration = .seconds(1.5)) {
+    init(
+        retryDelay: Duration = .seconds(1),
+        routeRetryWindow: Duration = .seconds(30),
+        now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now }
+    ) {
         self.retryDelay = retryDelay
+        self.routeRetryWindow = routeRetryWindow
+        self.now = now
         if let data = KeychainHelper.loadPushRegistration(),
            var saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
             // Registrations saved before the relay was recorded don't say
@@ -1777,6 +1792,7 @@ final class PushNotificationService: ObservableObject {
         navigationRetryTask = nil
         pendingTarget = target
         pendingRetryCount = 0
+        pendingRouteDeadline = now().advanced(by: routeRetryWindow)
         navigationAttempt += 1
     }
 
@@ -1805,18 +1821,36 @@ final class PushNotificationService: ObservableObject {
         navigationRetryTask = nil
         pendingTarget = nil
         pendingRetryCount = 0
+        pendingRouteDeadline = nil
     }
 
+    /// An open of `target` is starting: a retry still waiting would only
+    /// cancel it when it fires, so it stands down.
+    func beginNotificationRoute(_ target: ConduitNotificationTarget) {
+        guard pendingTarget == target else { return }
+        navigationRetryTask?.cancel()
+        navigationRetryTask = nil
+    }
+
+    /// Schedules another open of `target` after one that can still succeed
+    /// failed, backing off (1 s, 2 s, 4 s, then every 8 s) until the window
+    /// that started at the tap runs out; the failure after that clears the
+    /// target. Returns whether a retry is scheduled.
     @discardableResult
     func handleFailedNotificationRoute(_ target: ConduitNotificationTarget) -> Bool {
-        guard pendingTarget == target,
-              pendingRetryCount < maxNotificationRetriesPerTarget else {
+        guard pendingTarget == target, let deadline = pendingRouteDeadline else {
             clearPendingTarget(target)
             return false
         }
+        let failedAt = now()
+        guard failedAt < deadline else {
+            clearPendingTarget(target)
+            return false
+        }
+        let backoff = min(self.retryDelay * (1 << min(pendingRetryCount, 3)), maxRetryDelay)
+        let retryDelay = min(backoff, failedAt.duration(to: deadline))
         pendingRetryCount += 1
         navigationRetryTask?.cancel()
-        let retryDelay = self.retryDelay
         navigationRetryTask = Task { [weak self] in
             try? await Task.sleep(for: retryDelay)
             guard !Task.isCancelled else { return }

@@ -818,8 +818,59 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget?.decision)
     }
 
-    func testFailedNotificationRouteRetriesOnceThenClearsTarget() async {
+    /// Waits for the scheduled retry to bump `navigationAttempt`. A cap, not
+    /// a timing: the loop exits as soon as the retry lands. A busy simulator
+    /// can stall the main actor for seconds inside one yield, and a 1s cap
+    /// then expired before the retry got its turn.
+    private func waitForNotificationRetry(
+        _ service: PushNotificationService,
+        after attempt: Int,
+        cap: Duration = .seconds(10)
+    ) async {
+        let deadline = ContinuousClock.now.advanced(by: cap)
+        while service.navigationAttempt == attempt,
+              ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+    }
+
+    /// #789: a cold launch on a slow network can fail the open several times
+    /// while the session catalog is still loading. The tap stays pending and
+    /// is retried for as long as the retry window lasts, however many reads
+    /// fail inside it.
+    func testFailedNotificationRouteKeepsRetryingInsideTheWindow() async {
         let service = PushNotificationService(retryDelay: .zero)
+        service.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-123",
+                "type": "response_ready"
+            ] as [String: Any]
+        ])
+        guard let target = service.pendingTarget else {
+            return XCTFail("Expected the notification target to be pending")
+        }
+
+        for failure in 1...4 {
+            let attempt = service.navigationAttempt
+            XCTAssertTrue(
+                service.handleFailedNotificationRoute(target),
+                "Failure \(failure) inside the window dropped the tap"
+            )
+            await waitForNotificationRetry(service, after: attempt)
+            XCTAssertEqual(service.navigationAttempt, attempt + 1)
+            XCTAssertEqual(service.pendingTarget, target)
+        }
+    }
+
+    /// The window, counted from the tap, is a cap: once it has run out, the
+    /// next failure clears the tap and schedules nothing more.
+    func testFailedNotificationRouteClearsTargetOnceTheWindowRunsOut() async {
+        var now = ContinuousClock.now
+        let service = PushNotificationService(
+            retryDelay: .zero,
+            routeRetryWindow: .seconds(30),
+            now: { now }
+        )
         service.receiveNotificationPayload([
             "conduit": [
                 "session_id": "runtime-123",
@@ -832,26 +883,69 @@ final class MessageNormalizerTests: XCTestCase {
 
         let initialAttempt = service.navigationAttempt
         XCTAssertTrue(service.handleFailedNotificationRoute(target))
-        // A cap, not a timing: the loop exits as soon as the retry lands. A
-        // busy simulator can stall the main actor for seconds inside one
-        // yield, and a 1s cap then expired before the retry got its turn.
-        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(10))
-        while service.navigationAttempt == initialAttempt,
-              ContinuousClock.now < retryDeadline {
-            await Task.yield()
-        }
+        await waitForNotificationRetry(service, after: initialAttempt)
         XCTAssertEqual(service.navigationAttempt, initialAttempt + 1)
+
+        now = now.advanced(by: .seconds(29))
+        let lateAttempt = service.navigationAttempt
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        await waitForNotificationRetry(service, after: lateAttempt)
         XCTAssertEqual(service.pendingTarget, target)
 
+        now = now.advanced(by: .seconds(2))
         XCTAssertFalse(service.handleFailedNotificationRoute(target))
         XCTAssertNil(service.pendingTarget)
         let terminalAttempt = service.navigationAttempt
-        let terminalDeadline = ContinuousClock.now.advanced(by: .milliseconds(100))
-        while service.navigationAttempt == terminalAttempt,
-              ContinuousClock.now < terminalDeadline {
-            await Task.yield()
-        }
+        await waitForNotificationRetry(service, after: terminalAttempt, cap: .milliseconds(100))
         XCTAssertEqual(service.navigationAttempt, terminalAttempt)
+    }
+
+    /// An open that starts while a retry is still waiting stands the retry
+    /// down: firing later would cancel the open in flight.
+    func testStartingAnOpenCancelsTheWaitingRetry() async {
+        let service = PushNotificationService(retryDelay: .milliseconds(50))
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-123", "type": "response_ready"] as [String: Any]
+        ])
+        guard let target = service.pendingTarget else {
+            return XCTFail("Expected the notification target to be pending")
+        }
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        let attempt = service.navigationAttempt
+        service.beginNotificationRoute(target)
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(service.navigationAttempt, attempt)
+        XCTAssertEqual(service.pendingTarget, target)
+    }
+
+    /// A new tap gets a window of its own, so an earlier tap's failures don't
+    /// shorten it.
+    func testNewNotificationTapStartsAFreshRetryWindow() async {
+        var now = ContinuousClock.now
+        let service = PushNotificationService(
+            retryDelay: .zero,
+            routeRetryWindow: .seconds(30),
+            now: { now }
+        )
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response_ready"] as [String: Any]
+        ])
+        guard let first = service.pendingTarget else {
+            return XCTFail("Expected the first target to be pending")
+        }
+        XCTAssertTrue(service.handleFailedNotificationRoute(first))
+
+        now = now.advanced(by: .seconds(25))
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-2", "type": "response_ready"] as [String: Any]
+        ])
+        guard let second = service.pendingTarget, second != first else {
+            return XCTFail("Expected the second target to replace the first")
+        }
+        XCTAssertTrue(service.handleFailedNotificationRoute(second))
+        now = now.advanced(by: .seconds(10))
+        XCTAssertTrue(service.handleFailedNotificationRoute(second))
+        XCTAssertEqual(service.pendingTarget, second)
     }
 
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {
