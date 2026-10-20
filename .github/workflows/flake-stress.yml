@@ -4,6 +4,10 @@ name: Flake stress
 on:
   push:
     branches: [claude/project-thread-bzfumk]
+env:
+  SIMULATOR_NAME: "iPhone 17 Pro"
+  DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
+  BUILD_TIMEOUT_SECS: "1200"
 jobs:
   stress:
     name: Long-context stress (${{ matrix.n }})
