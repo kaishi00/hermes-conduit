@@ -2133,6 +2133,7 @@ private struct ProfileModelSettingsDetail: View {
     }
     private func persist() {
         Task {
+            guard defaults != nil else { return }
             saving = true
             error = nil
             if !(await save(provider, model, reasoning)) {
@@ -2205,7 +2206,7 @@ private struct DelegationModelSettings: View {
                 }
             } else { ProgressView("Loading available models…") }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
-                .disabled(saving).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
+                .disabled(saving || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
         .task { await reload() }
