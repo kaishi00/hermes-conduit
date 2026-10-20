@@ -612,6 +612,14 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(blank.current, "", "no invented board identity: the server resolves its own")
     }
 
+    func testOneMalformedDiagnosticKeepsTheOthers() throws {
+        let json = #"{"id":"t1","title":"t","status":"todo","diagnostics":["junk",{"kind":"stuck","title":"Stuck"},null]}"#
+        let task = try JSONDecoder().decode(KanbanTask.self, from: Data(json.utf8))
+        XCTAssertEqual(task.diagnostics?.map(\.kind), ["stuck"])
+        let absent = try JSONDecoder().decode(KanbanTask.self, from: Data(#"{"id":"t2","title":"t","status":"todo"}"#.utf8))
+        XCTAssertNil(absent.diagnostics)
+    }
+
     // MARK: - Capabilities request-scoped outcome contract
 
     func testCapabilityOutcomeMappingIsRequestScoped() {

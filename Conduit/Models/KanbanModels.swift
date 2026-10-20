@@ -317,7 +317,11 @@ struct KanbanTask: Codable, Identifiable, Equatable {
         workspacePath = try? container.decodeIfPresent(String.self, forKey: .workspacePath)
         branchName = try? container.decodeIfPresent(String.self, forKey: .branchName)
         consecutiveFailures = container.decodeLossyInt(forKey: .consecutiveFailures)
-        diagnostics = try? container.decodeIfPresent([KanbanDiagnostic].self, forKey: .diagnostics)
+        // Element-wise like the other collections: one non-object entry
+        // must not drop every diagnostic. Absent stays nil.
+        diagnostics = container.contains(.diagnostics)
+            ? container.decodeLossyArray(KanbanDiagnostic.self, forKey: .diagnostics)
+            : nil
     }
 }
 
