@@ -292,7 +292,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
         let coveredRows = Set(offenderSpans.compactMap(spanSource)).count
         let offendingRows = Set(unmountedRerenders).count
         let spansLabel: String = offenderSpans.isEmpty
-            ? " — spans (mounted rows only; no offending row's was recorded):\n"
+            ? " — spans (mounted rows only; no offending row's span was recorded):\n"
             : " — spans of \(coveredRows) of \(offendingRows) offending rows:\n"
         let spans: String = printedSpans.isEmpty ? "" : spansLabel + printedSpans.joined(separator: "\n")
         XCTAssertTrue(

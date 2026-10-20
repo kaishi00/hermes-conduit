@@ -398,6 +398,8 @@ enum TranscriptPerf {
     /// tolerated; interior rows are the cascade signature.
     static var recentPreWindowRepeatSources: [String] {
         #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
         return storage.recentPreWindowRepeatSources
         #else
         return []
@@ -464,8 +466,8 @@ enum TranscriptPerf {
     /// far as already-at-rest.
     static func reset() {
         #if DEBUG
-        // Under the lock an off-main gate comparison writes with, so it
-        // neither overlaps these reads nor writes into the discarded
+        // Under the lock, so a concurrent off-main gate comparison neither
+        // overlaps these reads nor writes its report into the discarded
         // instance.
         gateReopenLock.lock()
         defer { gateReopenLock.unlock() }
