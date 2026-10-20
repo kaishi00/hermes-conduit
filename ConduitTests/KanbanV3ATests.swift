@@ -26,6 +26,20 @@ final class KanbanV3ATests: XCTestCase {
         return store
     }
 
+    /// The board-context stamp a UI tap would capture: Specify, Decompose
+    /// and the nudge require it (#790).
+    private func ownedStamp(
+        _ store: KanbanStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> KanbanBoardContextStamp {
+        guard let stamp = store.loadedContextStamp else {
+            XCTFail("expected a loaded board context", file: file, line: line)
+            return KanbanBoardContextStamp(boardSlug: "", configurationGeneration: -1)
+        }
+        return stamp
+    }
+
     private func routes(
         boardSlug: String = "alpha",
         task: KanbanTask? = nil,
@@ -318,8 +332,9 @@ final class KanbanV3ATests: XCTestCase {
         let requester = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
-        try await store.nudgeDispatcher()
+        try await store.nudgeDispatcher(expectedContext: stamp)
 
         let dispatchCalls = requester.calls.filter { $0.method == "POST" && $0.path.contains("/dispatch") }
         XCTAssertEqual(dispatchCalls.count, 1)
@@ -347,13 +362,14 @@ final class KanbanV3ATests: XCTestCase {
         }
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
         XCTAssertTrue(store.isSelectedSnapshotLoaded)
 
         await store.selectBoard(slug: "beta")
         XCTAssertFalse(store.isSelectedSnapshotLoaded)
 
         do {
-            try await store.nudgeDispatcher()
+            try await store.nudgeDispatcher(expectedContext: stamp)
             XCTFail("expected the navigation guard to refuse the nudge")
         } catch KanbanServiceError.boardNavigationInProgress {
             // expected: fail-closed
@@ -367,9 +383,10 @@ final class KanbanV3ATests: XCTestCase {
         let requesterA = V3AMockRequester(responsesByPath: routes(boardSlug: "alpha"))
         let store = makeStore(requester: requesterA)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         requesterA.suspend(method: "POST", basePath: "/api/plugins/kanban/dispatch")
-        let task = Task { try? await store.nudgeDispatcher() }
+        let task = Task { try? await store.nudgeDispatcher(expectedContext: stamp) }
         await requesterA.waitForSuspension()
         XCTAssertEqual(requesterA.calls.filter { $0.path.contains("/dispatch") }.count, 1)
 
@@ -398,9 +415,10 @@ final class KanbanV3ATests: XCTestCase {
         ]
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
         XCTAssertEqual(store.board?.columns.first { $0.name == "triage" }?.tasks.first?.id, "t1")
 
-        let outcome = try await store.specifyTask(id: "t1")
+        let outcome = try await store.specifyTask(id: "t1", expectedContext: stamp)
 
         XCTAssertTrue(outcome.ok)
         XCTAssertEqual(outcome.newTitle, "Tightened title")
@@ -424,9 +442,10 @@ final class KanbanV3ATests: XCTestCase {
         ]
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         do {
-            _ = try await store.specifyTask(id: "t1")
+            _ = try await store.specifyTask(id: "t1", expectedContext: stamp)
             XCTFail("semantic failure must throw")
         } catch let error as KanbanServiceError {
             XCTAssertEqual(error, .actionDeclined(reason: "task is not in triage (status='todo')"))
@@ -444,9 +463,10 @@ final class KanbanV3ATests: XCTestCase {
         requester.errorsByPath["/api/plugins/kanban/tasks/t1/specify"] = URLError(.timedOut)
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         do {
-            _ = try await store.specifyTask(id: "t1")
+            _ = try await store.specifyTask(id: "t1", expectedContext: stamp)
             XCTFail("expected failure")
         } catch is KanbanServiceError {
             XCTFail("a network failure is not a semantic actionDeclined")
@@ -464,9 +484,10 @@ final class KanbanV3ATests: XCTestCase {
         ]
         let store = makeStore(requester: requesterA)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         requesterA.suspend(method: "POST", basePath: "/api/plugins/kanban/tasks/t1/specify")
-        let task = Task { try? await store.specifyTask(id: "t1") }
+        let task = Task { try? await store.specifyTask(id: "t1", expectedContext: stamp) }
         await requesterA.waitForSuspension()
 
         let requesterB = V3AMockRequester(responsesByPath: routes(boardSlug: "beta"))
@@ -1044,10 +1065,11 @@ final class KanbanV3ATests: XCTestCase {
         let requester = V3AMockRequester(responsesByPath: routes())
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         requester.suspend(method: "POST", basePath: "/api/plugins/kanban/dispatch")
         let waiter = Task { await requester.waitForSuspension() }
-        let operation = Task { try? await store.nudgeDispatcher() }
+        let operation = Task { try? await store.nudgeDispatcher(expectedContext: stamp) }
         await waiter.value // wakes the moment the request parks
         XCTAssertEqual(requester.calls.filter { $0.path.contains("/dispatch") }.count, 1)
 
@@ -1120,8 +1142,9 @@ final class KanbanV3ATests: XCTestCase {
         }
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
-        let outcome = try await store.decomposeTask(id: "t1")
+        let outcome = try await store.decomposeTask(id: "t1", expectedContext: stamp)
 
         XCTAssertTrue(outcome.ok)
         XCTAssertEqual(outcome.childIDs, ["c1", "c2"])
@@ -1144,9 +1167,10 @@ final class KanbanV3ATests: XCTestCase {
         ]
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         do {
-            _ = try await store.decomposeTask(id: "t1")
+            _ = try await store.decomposeTask(id: "t1", expectedContext: stamp)
             XCTFail("semantic failure must throw")
         } catch let error as KanbanServiceError {
             XCTAssertEqual(error, .actionDeclined(reason: "task moved out of triage before decomposition"))
@@ -1173,8 +1197,9 @@ final class KanbanV3ATests: XCTestCase {
         }
         let store = makeStore(requester: requester)
         await store.reload()
+        let stamp = ownedStamp(store)
 
-        let outcome = try await store.decomposeTask(id: "t1")
+        let outcome = try await store.decomposeTask(id: "t1", expectedContext: stamp)
         XCTAssertTrue(outcome.ok, "the decompose itself succeeded")
         XCTAssertNil(store.mutationErrorMessage, "the mutation must not be presented as failed")
         XCTAssertNotNil(store.board, "cached board content survives a failed refresh")
@@ -1191,9 +1216,10 @@ final class KanbanV3ATests: XCTestCase {
         ]
         let store = makeStore(requester: requesterA)
         await store.reload()
+        let stamp = ownedStamp(store)
 
         requesterA.suspend(method: "POST", basePath: "/api/plugins/kanban/tasks/t1/decompose")
-        let task = Task { try? await store.decomposeTask(id: "t1") }
+        let task = Task { try? await store.decomposeTask(id: "t1", expectedContext: stamp) }
         await requesterA.waitForSuspension()
 
         let requesterB = V3AMockRequester(responsesByPath: routes(boardSlug: "beta"))
@@ -1457,5 +1483,43 @@ private final class V3AMockRequester: DashboardJSONRequester {
         }
         if let response = responsesByPath[path] ?? responsesByPath[basePath] { return response }
         return [:]
+    }
+}
+
+// MARK: - Triage/nudge ownership stamp is required by type (#790)
+
+final class KanbanTriageStampContractTests: XCTestCase {
+    /// Static source contract: Specify, Decompose and the dispatcher nudge
+    /// take the board-context stamp as a REQUIRED parameter, like the V3B
+    /// board-admin routes. validateExpectedContext() returns early on nil,
+    /// so an optional stamp (or a `= nil` default) would let a caller that
+    /// lost or never captured the stamp mutate whatever board is loaded
+    /// when the request fires. The compiler enforces the rest: every call
+    /// site must pass a stamp.
+    func testTriageAndNudgeMutationsRequireTheOwnershipStamp() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // ConduitTests
+            .deletingLastPathComponent()   // repo root
+        let source = try String(
+            contentsOf: repoRoot.appendingPathComponent("Conduit/Services/KanbanStore.swift"),
+            encoding: .utf8
+        )
+        for name in ["specifyTask", "decomposeTask", "nudgeDispatcher"] {
+            // Every declaration counts: an added optional overload would
+            // reopen the hole for callers that omit the argument.
+            let declarations = source.components(separatedBy: "func \(name)(").dropFirst()
+            XCTAssertFalse(declarations.isEmpty, "KanbanStore.\(name) declaration not found")
+            for declaration in declarations {
+                guard let end = declaration.range(of: ") async throws") else {
+                    XCTFail("KanbanStore.\(name) is no longer `async throws`; update this contract")
+                    continue
+                }
+                let signature = String(declaration[..<end.lowerBound])
+                XCTAssertTrue(
+                    signature.contains("expectedContext: KanbanBoardContextStamp,"),
+                    "KanbanStore.\(name) must take a required (non-optional) ownership stamp; found: \(signature)"
+                )
+            }
+        }
     }
 }
