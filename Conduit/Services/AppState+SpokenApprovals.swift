@@ -14,6 +14,7 @@ extension AppState {
     func spokenApprovalsWaiting() -> SpokenApprovals.Waiting {
         var waiting = SpokenApprovals.Waiting()
         waiting.phoneChanges = phoneSync.prompts.map(\.id)
+        waiting.cancellingAlarms = Set(phoneSync.prompts.filter { $0.change.kind == .cancelAlarm }.map(\.id))
         waiting.presented = presentedScreens.prompts.filter { !$0.isExpired() }
         if let sessionId = activeSessionId, !sessionId.isEmpty {
             let open = chatOwnSessionIDs(for: sessionId)
@@ -69,6 +70,9 @@ extension AppState {
         }) {
             await respondToApproval(messageId: message.id, choice: choice)
             let status = messages.first { $0.id == message.id }?.approval?.status
+            // The card's own error: the answer didn't reach Hermes, which
+            // may still wait, so it isn't too late.
+            if status == .error { throw HermesError.notConnected }
             return status == .approved || status == .rejected
         }
         guard let client else { throw HermesError.notConnected }

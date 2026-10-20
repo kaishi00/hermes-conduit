@@ -30,6 +30,9 @@ enum SpokenApprovals {
     /// What waits on the user while they speak.
     struct Waiting {
         var phoneChanges: [String] = []
+        /// The phone changes among them that cancel an alarm, where "cancel
+        /// it" is a yes rather than a no.
+        var cancellingAlarms: Set<String> = []
         var presented: [PresentedConfirm] = []
         var chatApprovals: [String] = []
         var jobApprovals: [UUID] = []
@@ -50,7 +53,7 @@ enum SpokenApprovals {
         if let id = waiting.phoneChanges.first {
             target = .phoneChange(id: id)
             // A yes, or a short "change it" / "delete it" naming the change.
-            approves = PhoneVoiceTools.confirmsChange(words)
+            approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: waiting.cancellingAlarms.contains(id))
         } else if let prompt = waiting.presented.first {
             target = .presented(id: prompt.id)
             // A yes, or one of the phrases Hermes gave ("send it").

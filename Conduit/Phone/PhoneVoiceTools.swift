@@ -24,9 +24,10 @@ enum PhoneVoiceTools {
     static let alarmTool = "phone_alarm"
     /// What seals them: nothing, they never leave the phone.
     static let key = "local"
-    /// The user turns that already agreed to a change or deletion: each yes
-    /// answers one.
-    static var usedConfirmations: Set<UUID> = []
+    /// The user turn that last agreed to a change or deletion: each yes
+    /// answers one. Only the latest turn can agree, so earlier ones needn't
+    /// be kept.
+    static var usedConfirmation: UUID?
 
     /// The tools for what's shared: changes whenever sharing is on (Hermes
     /// can ask for one), adding when events or reminders can be written,
@@ -232,7 +233,7 @@ enum PhoneVoiceTools {
     /// deletion or cancellation (it changes what the user already has, so
     /// the model's word isn't enough).
     static func run(_ tool: VoiceHostTool, arguments: [String: Any], engine: PhoneSyncEngine,
-                    confirmed: () async -> Bool = { true },
+                    confirmed: (_ cancelsAlarm: Bool) async -> Bool = { _ in true },
                     answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         switch tool.name {
         case changesTool:
@@ -343,7 +344,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runUpdate(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                  confirmed: () async -> Bool) async -> [String: String] {
+                                  confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
         let allowed = removable(engine.preferences, access: engine.calendarSource.eventAccess,
                                 remindersAuthorized: engine.calendarSource.remindersAuthorized)
         guard let itemID = (arguments["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -407,7 +408,7 @@ enum PhoneVoiceTools {
         guard let change = PhoneChange(json: ["id": id, "kind": kind, "target": [target: itemID], "fields": fields]) else {
             return ["error": "That couldn't be changed; check the id and times."]
         }
-        guard await confirmed() else {
+        guard await confirmed(false) else {
             return ["error": "Not changed: the user's own last words weren't a yes. Say back the change and make it only "
                 + "once they say yes."]
         }
@@ -422,7 +423,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runRemove(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                  confirmed: () async -> Bool) async -> [String: String] {
+                                  confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
         let allowed = removable(engine.preferences, access: engine.calendarSource.eventAccess,
                                 remindersAuthorized: engine.calendarSource.remindersAuthorized)
         guard let itemID = (arguments["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -448,7 +449,7 @@ enum PhoneVoiceTools {
                                               "target": [target: itemID], "fields": fields]) else {
             return ["error": "That couldn't be deleted; check the id."]
         }
-        guard await confirmed() else {
+        guard await confirmed(false) else {
             return ["error": "Not deleted: the user's own last words weren't a yes. Say back which one you'll delete and "
                 + "delete it only once they say yes."]
         }
@@ -463,7 +464,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runAlarm(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                 confirmed: () async -> Bool) async -> [String: String] {
+                                 confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
         guard engine.preferences.alarms, engine.alarmSource.authorized else {
             return ["error": "The user doesn't let Hermes set alarms. They can turn it on in Conduit's Settings."]
         }
@@ -484,7 +485,7 @@ enum PhoneVoiceTools {
             guard let change = PhoneChange(json: ["id": id, "kind": "cancel_alarm", "target": ["alarm_id": alarmID]]) else {
                 return ["error": "That couldn't be cancelled; check the id."]
             }
-            guard await confirmed() else {
+            guard await confirmed(true) else {
                 return ["error": "Not cancelled: the user's own last words weren't a yes. Say back which one you'll cancel "
                     + "and cancel it only once they say yes."]
             }
@@ -562,16 +563,22 @@ enum PhoneVoiceTools {
     /// a yes (in any language the call's own yes check knows), or a short
     /// "delete it" / "yes, move it" / "mark it done" naming it. Never a
     /// question, never a longer request.
-    static func confirmsChange(_ words: String) -> Bool {
+    static func confirmsChange(_ words: String, cancelsAlarm: Bool = false) -> Bool {
         if VoiceCallDecisionOutcome.isYes(words) { return true }
         guard !words.contains("?"), !words.contains("？") else { return false }
         let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
-        let agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it",
-                                     "delete", "remove", "cancel", "that", "this", "one", "them", "both", "the", "event",
+        // "Cancel" is how people decline, so it agrees only to cancelling an
+        // alarm: "cancel it" there means do it.
+        var agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it",
+                                     "delete", "remove", "that", "this", "one", "them", "both", "the", "event",
                                      "reminder", "all", "of", "change", "move", "update", "rename", "reschedule", "mark",
                                      "complete", "done", "as", "alarm", "timer"]
-        let verbs: Set<String> = ["delete", "remove", "cancel", "change", "move", "update", "rename", "reschedule", "mark",
+        var verbs: Set<String> = ["delete", "remove", "change", "move", "update", "rename", "reschedule", "mark",
                                   "complete"]
+        if cancelsAlarm {
+            agreeing.insert("cancel")
+            verbs.insert("cancel")
+        }
         return (1...8).contains(said.count) && said.allSatisfy(agreeing.contains) && said.contains(where: verbs.contains)
     }
 

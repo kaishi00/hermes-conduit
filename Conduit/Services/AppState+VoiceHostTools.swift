@@ -120,15 +120,15 @@ extension AppState {
             return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
         }
         if tool.key == PhoneVoiceTools.key {
-            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: {
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm in
                 // Their words reach Conduit a moment after the model heard
                 // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
                 while true {
                     let turn = self.liveCallLastUserTurn()
-                    if let id = turn.id, !PhoneVoiceTools.usedConfirmations.contains(id),
-                       PhoneVoiceTools.confirmsChange(turn.text) {
-                        PhoneVoiceTools.usedConfirmations.insert(id)
+                    if let id = turn.id, PhoneVoiceTools.usedConfirmation != id,
+                       PhoneVoiceTools.confirmsChange(turn.text, cancelsAlarm: cancelsAlarm) {
+                        PhoneVoiceTools.usedConfirmation = id
                         return true
                     }
                     guard ContinuousClock.now < deadline else { return false }

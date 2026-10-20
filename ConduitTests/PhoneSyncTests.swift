@@ -536,7 +536,7 @@ extension HermesVoiceGatewayTimeoutTests {
         engine.savePreferences(phonePreferences())
         // Only on the user's own yes.
         let unconfirmed = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_gym"], engine: engine,
-                                                    confirmed: { false }, answer: answer)
+                                                    confirmed: { _ in false }, answer: answer)
         XCTAssertNotNil(unconfirmed["error"])
         XCTAssertNotEqual(source.appliedChanges.last?.eventID, "e_gym")
         XCTAssertTrue(PhoneVoiceTools.confirmsChange("Yes, delete it."))
@@ -548,6 +548,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(PhoneVoiceTools.confirmsChange("what's on my calendar tomorrow"))
         XCTAssertFalse(PhoneVoiceTools.confirmsChange(""))
         XCTAssertFalse(PhoneVoiceTools.confirmsChange("of the event"), "Agreeing words without a yes or a verb")
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("Cancel."), "Cancel is a no to a change or deletion")
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("cancel it"))
+        XCTAssertTrue(PhoneVoiceTools.confirmsChange("cancel it", cancelsAlarm: true), "But a yes to cancelling an alarm")
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("No, cancel", cancelsAlarm: true))
         let noID = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event"], engine: engine, answer: answer)
         XCTAssertNotNil(noID["error"])
         let badSpan = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_1", "span": "all"],
@@ -848,7 +852,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(badTime["error"])
         // Only on the user's own yes.
         let unconfirmed = await PhoneVoiceTools.run(tool, arguments: ["kind": "reminder", "id": "r_milk", "title": "Oat milk"],
-                                                    engine: engine, confirmed: { false }, answer: answer)
+                                                    engine: engine, confirmed: { _ in false }, answer: answer)
         XCTAssertNotNil(unconfirmed["error"])
         // Not in a calendar the user left out since the id was read.
         source.itemCalendars["e_hidden"] = "ek_work"
@@ -881,7 +885,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let listed = await PhoneVoiceTools.run(tool, arguments: ["kind": "list"], engine: engine, answer: answer)
         XCTAssertTrue(listed["result"]?.contains("alarm_wake") == true, listed["error"] ?? "")
         let unconfirmed = await PhoneVoiceTools.run(tool, arguments: ["kind": "cancel", "id": "alarm_wake"], engine: engine,
-                                                    confirmed: { false }, answer: answer)
+                                                    confirmed: { _ in false }, answer: answer)
         XCTAssertNotNil(unconfirmed["error"])
         XCTAssertEqual(alarms.cancelled, [], "Not without the user's yes")
         let noID = await PhoneVoiceTools.run(tool, arguments: ["kind": "cancel"], engine: engine, answer: answer)
@@ -903,6 +907,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SpokenApprovals.answer("No, make it five instead", waiting: words), "A change is Hermes' to make")
         XCTAssertNil(SpokenApprovals.answer("What's on my calendar tomorrow?", waiting: words))
         XCTAssertNil(SpokenApprovals.answer("yes?", waiting: words), "Never a question")
+        XCTAssertEqual(SpokenApprovals.answer("Cancel", waiting: words)?.approve, false, "Cancel declines a change")
+        XCTAssertEqual(SpokenApprovals.answer("Cancel it", waiting: words)?.approve, false)
+        XCTAssertEqual(SpokenApprovals.answer("Never mind", waiting: words)?.approve, false)
+        let alarm = SpokenApprovals.Waiting(phoneChanges: ["ch_2"], cancellingAlarms: ["ch_2"])
+        XCTAssertEqual(SpokenApprovals.answer("Cancel it", waiting: alarm)?.approve, true, "Cancelling an alarm: cancel it is the yes")
 
         let approval = SpokenApprovals.Waiting(chatApprovals: ["m_1"])
         XCTAssertEqual(SpokenApprovals.answer("go ahead", waiting: approval)?.target, .chatApproval(messageID: "m_1"))

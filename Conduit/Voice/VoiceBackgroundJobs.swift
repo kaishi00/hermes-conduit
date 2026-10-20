@@ -2447,6 +2447,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if jobs[index].result == nil { jobs[index].result = job.heldCompletion }
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
+            jobs[index].waitingApproval = nil
             changed = true
         }
         for id in settledJobs {
@@ -2469,6 +2470,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if $0.result == nil { $0.result = $0.heldCompletion }
                 $0.followUp = nil
                 $0.heldCompletion = nil
+                $0.waitingApproval = nil
             }
             changed = true
         }
@@ -2492,6 +2494,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if $0.result == nil { $0.result = $0.heldCompletion }
                 $0.followUp = nil
                 $0.heldCompletion = nil
+                $0.waitingApproval = nil
             }
             changed = true
         }
