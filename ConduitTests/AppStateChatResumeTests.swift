@@ -666,6 +666,51 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeChatScrollSessionIdentity.canonicalSessionID, "stored-a")
     }
 
+    func testFailedPreserveCurrentRecoveryKeepsApprovalAnnouncedDuringResume() async {
+        // Hermes announces an approval once (`approval.request`) and never
+        // re-sends it. When it lands while a preserve-current resume is in
+        // flight it is buffered; a resume that then FAILS must not throw it
+        // away with the rest of the buffer, or the chat never draws the
+        // card while Hermes waits on it (seen on a new chat whose stored id
+        // was not saved yet: the resume answered "session not found").
+        let openGate = ControlledSuspension()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("unrelated"), self.session("stored-a")] },
+            openSession: { _, _, _ in
+                await openGate.suspend()
+                throw URLError(.timedOut)
+            },
+            refreshContext: { _, _ in }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        harness.appState.sessions = [self.session("stored-a", alternateIDs: ["runtime-a"])]
+        harness.appState.activeSessionId = "runtime-a"
+
+        let sync = Task { @MainActor in
+            await harness.appState.syncSession()
+        }
+        await openGate.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.approval(sessionId: "runtime-a", activity: ApprovalActivity(
+            sessionId: "runtime-a",
+            requestId: "req-1",
+            command: "chmod 777 /tmp/push-approval-test",
+            description: "world/other-writable permissions",
+            choices: nil,
+            allowPermanent: true,
+            smartDenied: false,
+            status: .pending,
+            choice: nil,
+            error: nil
+        )))
+        openGate.resume()
+        await sync.value
+
+        let card = harness.appState.messages.first { $0.approval?.requestId == "req-1" }?.approval
+        XCTAssertNotNil(card, "The approval announced during the failed resume must still be drawn")
+        XCTAssertEqual(card?.status, .pending)
+    }
+
     func testContradictoryResumeIsRejectedWithoutMutatingSelectedConversation() async {
         // Selected durable stored-a; the resume explicitly says stored-b.
         // The claim is rejected before transcript, identity, navigation, or
