@@ -57,6 +57,13 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://100.64.not-an-ip")))
         // 3-octet partial addresses should not match (not a valid IPv4)
         XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://100.64.1")))
+        // A leading zero is octal to the resolver: these dial public hosts
+        // (8.0.0.1, 64.64.0.1), not the private ones Int() would read.
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://010.0.0.1")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://0100.64.0.1")))
+        XCTAssertFalse(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://192.168.01.1")))
+        // A lone zero octet is still an ordinary address.
+        XCTAssertTrue(ConnectionURLPolicy.isAllowedTransport(URL(string: "http://10.0.0.1")))
     }
 
     func testPrivateLANHTTPIsAllowed() {
