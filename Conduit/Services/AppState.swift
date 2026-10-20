@@ -27411,22 +27411,23 @@ final class AppState: ObservableObject {
 
     func toggleSkill(name: String, enabled: Bool) async {
         let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        let dashboardTicketBridge = owner.bridge
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
-        guard let dashboardTicketBridge else { return }
         // After every switch flipped before it; a failure puts back what
         // Hermes last confirmed, unless a newer flip is on its way.
-        let outcome = await capabilityToggleWrites.send("\(profile)|skill|\(name)", enabled: enabled, current: current) {
+        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|skill|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/skills/toggle",
                 method: "PUT",
                 body: ["name": name, "enabled": enabled, "profile": profile]
             )
         }
-        guard let error = outcome.error, profile == activeProfile else { return }
+        guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = restore
         }
@@ -27435,22 +27436,23 @@ final class AppState: ObservableObject {
 
     func toggleToolset(name: String, enabled: Bool) async {
         let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        let dashboardTicketBridge = owner.bridge
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
-        guard let dashboardTicketBridge else { return }
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         // In the same order as skill switches: Hermes rewrites one config.
-        let outcome = await capabilityToggleWrites.send("\(profile)|toolset|\(name)", enabled: enabled, current: current) {
+        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|toolset|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/tools/toolsets/\(encodedName)",
                 method: "PUT",
                 body: ["enabled": enabled, "profile": profile]
             )
         }
-        guard let error = outcome.error, profile == activeProfile else { return }
+        guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = restore
         }
