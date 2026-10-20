@@ -262,36 +262,28 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
-    /// Beside a chat the scroll holds too, and a scroll past the hold
-    /// limit still draws, after the coalescing delay.
+    /// Beside a chat the scroll holds too, and when the hold runs out the
+    /// coalesced draw still comes, with no other publish to prompt it.
     @MainActor
-    func testScrollingChatsListBesideAChatDrawsPastTheHoldLimit() {
+    func testScrollingChatsListBesideAChatDrawsWhenTheHoldRunsOut() {
         let state = makeAppState()
         let updates = V2ShownUpdates(state)
         updates.coalesces = true
         updates.coalescingDelay = 0.05
-        var clock = Date(timeIntervalSinceReferenceDate: 0)
-        updates.now = { clock }
+        updates.scrollHoldLimit = 0.2
         var sent = 0
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
 
         updates.setScrolling(true, by: "list")
-        state.sessions = [pinnedTestSession("early")]
-        settle()
+        state.sessions = [pinnedTestSession("held")]
         XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
-
-        clock += updates.scrollHoldLimit
-        state.sessions = [pinnedTestSession("late")]
         waitUntil { sent > 0 }
-        XCTAssertEqual(sent, 1, "the hold limit never drew beside a chat")
+        XCTAssertEqual(sent, 1, "the hold ran out beside a chat without drawing")
 
-        state.sessions = [pinnedTestSession("later")]
-        settle()
-        XCTAssertEqual(sent, 1, "the draw didn't restart the hold")
         updates.setScrolling(false, by: "list")
-        waitUntil { sent > 1 }
-        XCTAssertEqual(sent, 2)
+        settle()
+        XCTAssertEqual(sent, 1, "a rest with nothing held drew again")
     }
 
     /// A held publish draws once the hold runs out even when nothing else
