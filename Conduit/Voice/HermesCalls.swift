@@ -517,7 +517,7 @@ enum VoiceCallbackPhrases {
             || folded.range(of: #"\bgive me a (call|ring) (when|once|after|as soon as)\b"#, options: .regularExpression) != nil else {
             return false
         }
-        return folded.range(of: #"\b(don't|do not|never|no need to|stop)( \w+)? (call|ring|phone|give)\b"#, options: .regularExpression) == nil
+        return folded.range(of: #"\b(don't|do not|never|no need to|stop)( \w+)* (call|ring|phone|give)\b"#, options: .regularExpression) == nil
     }
 }
 
