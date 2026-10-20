@@ -572,6 +572,9 @@ final class HermesSpeechStream: VoiceSpeechStream {
         finishTimeoutTask = nil
         finishSendTask?.cancel()
         finishSendTask = nil
+        receiveTask?.cancel()
+        receiveTask = nil
+        task.cancel(with: .goingAway, reason: nil)
         if case .failure(let error) = result { terminalError = error }
         let continuation = completed
         completed = nil
