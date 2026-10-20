@@ -2019,6 +2019,36 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         XCTAssertEqual(interrupts.value, 0)
     }
 
+    /// CarPlay's Stop on a route where the microphone stays open while
+    /// Hermes speaks: it is still authoritative, retiring the running turn
+    /// and listening, not left to the acoustic talk-over rule.
+    func testStopWhileSpeakingWithTheMicrophoneOpenRetiresTheTurnAndListens() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let playback = MockPlayback()
+        let interrupts = AwaitableCounter()
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: playback,
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts.increment(); return true }
+        )
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertEqual(controller.state, .speaking)
+        XCTAssertFalse(controller.isPlaybackCaptureSuspended, "the microphone stays open on this route")
+
+        await controller.stopAssistantReply()
+
+        XCTAssertEqual(interrupts.value, 1, "the running Hermes turn is retired")
+        XCTAssertEqual(gateway.streams.first?.cancelCount, 1, "the in-flight speech stream is retired")
+        XCTAssertFalse(playback.isPlaying)
+        XCTAssertEqual(controller.state, .listening)
+    }
+
     func testInterruptOnSpeakerRouteStopsPlaybackAndStartsFreshListening() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Why is the kanji cursed", startsPlaybackOnOpen: true)

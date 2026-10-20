@@ -469,6 +469,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Stop even bothering to call me when it's done"))
         XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("You needn't call me when it's done"))
         XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("you haven't got to ring me once it finishes"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("You shouldn't call me when it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("don't you dare call me when it's done"))
         // Other words between the negator and the verb are no refusal.
         XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("Don't forget to call me when it's done"))
         XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("Never hesitate to call me once it's ready"))
