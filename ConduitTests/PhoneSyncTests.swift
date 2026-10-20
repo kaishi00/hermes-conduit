@@ -117,6 +117,38 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((host.batches.last?["events"] as? [String: Any])?["full"] as? Bool, true)
     }
 
+    /// Only a 409 that says the host lost the key clears it. The notifier's
+    /// other 409s (a store from a newer plugin, too many devices) can't be
+    /// fixed by a new key: they pause with the host's reason and keep it.
+    func testOnlyAKeyLoss409ForgetsThePhoneKey() async {
+        let source = FakePhoneCalendarSource()
+        source.events = [phoneEvent("e_1", "Dentist")]
+        let host = FakePhoneHost()
+        let keys = PhoneKeyBox()
+        let engine = makePhoneEngine(source: source, keys: keys)
+        engine.savePreferences(phonePreferences())
+        // The key is agreed, then the first batch is refused.
+        let newerStore = "This was written by a newer plugin; update Conduit."
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: newerStore)
+        let refused = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(refused, .paused(.refused(newerStore)))
+        XCTAssertNotNil(keys.key, "A newer store is no reason to give up the key")
+        XCTAssertEqual(host.keyRequests, 1)
+
+        host.ingestError = DashboardTicketBridgeError.http(
+            status: 409, detail: "This device's calendar key isn't on this profile; set it up again"
+        )
+        let lost = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(lost, .unfinished)
+        XCTAssertNil(keys.key, "The host lost the key: the next pass agrees a new one")
+
+        host.ingestError = nil
+        let rekeyed = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(rekeyed, .synced)
+        XCTAssertEqual(host.keyRequests, 2)
+        XCTAssertNotNil(keys.key)
+    }
+
     func testALargePhoneSnapshotGoesInPartsTheHostTakes() async throws {
         // The fake host refuses what the notifier does: bodies over 4 MiB and
         // batches over 5,000 items.
@@ -965,6 +997,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(alarms.applied.last?.fields.repeats, ["sat", "sun"])
         let bad = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0], engine: engine, confirmed: { _, _ in true }, answer: answer)
         XCTAssertNotNil(bad["error"])
+        // Past what an Int holds: refused as out of range, not trapped on.
+        let short = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0.01], engine: engine, confirmed: { _ in true }, answer: answer)
+        let huge = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 1e30], engine: engine, confirmed: { _ in true }, answer: answer)
+        XCTAssertNotNil(huge["error"])
+        XCTAssertEqual(huge["error"], short["error"], "The same range error as a too-short timer")
         let both = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "07:00", "date": "2030-01-05",
                                                            "days": ["mon"]], engine: engine, confirmed: { _, _ in true }, answer: answer)
         XCTAssertNotNil(both["error"], "A date and days together is asked about, not half-dropped")
@@ -1254,6 +1291,8 @@ private final class FakePhoneHost {
     /// Answers this upload (1-based, counted from when it's set) with a 503.
     var failIngest: Int? { didSet { ingestsSinceFail = 0 } }
     private var ingestsSinceFail = 0
+    /// Thrown by every upload while set, as the notifier's refusals are.
+    var ingestError: Error?
 
     func forgetKey() {
         keys = nil
@@ -1312,6 +1351,7 @@ private final class FakePhoneHost {
         let sealed = try XCTUnwrap(NotificationE2E.base64URLDecoded(try XCTUnwrap(body["ct"] as? String)))
         let box = try ChaChaPoly.SealedBox(combined: nonce + sealed)
         if path == "\(base)/ingest" {
+            if let ingestError { throw ingestError }
             ingestsSinceFail += 1
             if let failIngest, ingestsSinceFail == failIngest {
                 throw DashboardTicketBridgeError.http(status: 503, detail: "busy")

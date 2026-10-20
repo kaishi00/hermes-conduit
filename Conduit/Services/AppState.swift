@@ -26171,8 +26171,8 @@ final class AppState: ObservableObject {
 
             let rawHasMore = response["has_more"] ?? response["hasMore"]
             let explicitHasMore = rawHasMore.map { booleanValue($0) }
-            let nextOffset = integerValue(response["next_offset"] ?? response["nextOffset"])
-            let total = integerValue(response["total"])
+            let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
+            let total = Self.integerValue(response["total"])
             let hasExplicitTerminalSignal = explicitHasMore == false
                 || (nextOffset.map { $0 <= offset } ?? false)
                 || (total.map { offset + batch.count >= $0 } ?? false)
@@ -26211,8 +26211,8 @@ final class AppState: ObservableObject {
             let batch = response["sessions"] as? [Any] ?? []
             sessions += dashboardOwnedSessions(batch, profile: profile)
 
-            let nextOffset = integerValue(response["next_offset"] ?? response["nextOffset"])
-            let total = integerValue(response["total"])
+            let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
+            let total = Self.integerValue(response["total"])
             let hasMore = booleanValue(response["has_more"] ?? response["hasMore"])
                 || (nextOffset ?? 0) > offset
                 || (total.map { offset + batch.count < $0 } ?? false)
@@ -27767,11 +27767,11 @@ final class AppState: ObservableObject {
               let id = stringValue(object["id"] ?? object["session_id"] ?? object["run_id"]), !id.isEmpty else { return nil }
         return CronRun(
             id: id,
-            lastActive: integerValue(object["last_active"] ?? object["lastActive"]),
+            lastActive: Self.integerValue(object["last_active"] ?? object["lastActive"]),
             model: stringValue(object["model"]),
             preview: stringValue(object["preview"] ?? object["summary"]),
             profile: stringValue(object["profile"]),
-            startedAt: integerValue(object["started_at"] ?? object["startedAt"]),
+            startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
             title: stringValue(object["title"] ?? object["name"])
         )
     }
@@ -27789,9 +27789,12 @@ final class AppState: ObservableObject {
         return []
     }
 
-    private func integerValue(_ value: Any?) -> Int? {
+    /// A loosely typed JSON integer. Floats truncate toward zero (an epoch
+    /// with a fraction), and a number no Int can hold is nil, the same as
+    /// for strings, rather than NSNumber.intValue's wrapped garbage.
+    nonisolated static func integerValue(_ value: Any?) -> Int? {
         if let integer = value as? Int { return integer }
-        if let number = value as? NSNumber { return number.intValue }
+        if let number = value as? NSNumber { return Int(exactly: number.doubleValue.rounded(.towardZero)) }
         if let string = value as? String {
             return Int(string) ?? Double(string).flatMap { Int(exactly: $0.rounded(.towardZero)) }
         }
