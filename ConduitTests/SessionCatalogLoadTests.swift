@@ -236,6 +236,91 @@ final class SessionCatalogLoadTests: XCTestCase {
         XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
     }
 
+    /// Two list reads overlap and the older one answers last: the list
+    /// keeps the newer answer. Before, the older answer replaced it and a
+    /// chat started meanwhile left the list until the next read (#786).
+    func testAnOlderListReadThatAnswersLastKeepsTheNewerList() async {
+        var reads: [CheckedContinuation<[String], Never>] = []
+        var appState: AppState!
+        appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionCatalogLoader: { _ in
+                let ids = await withCheckedContinuation { reads.append($0) }
+                return ids.map { self.row($0, profile: appState.activeProfile) }
+            }
+        )
+        appState.isConnected = true
+
+        async let older: Void = appState.loadSessions()
+        while reads.count < 1 { await Task.yield() }
+        async let newer: Void = appState.loadSessions()
+        while reads.count < 2 { await Task.yield() }
+        // The newer read saw the chat started in between and answers first.
+        reads[1].resume(returning: ["a", "new"])
+        await newer
+        XCTAssertEqual(appState.sessions.map(\.id), ["a", "new"])
+        reads[0].resume(returning: ["a"])
+        await older
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["a", "new"], "the older answer arrived last but is older")
+    }
+
+    /// An older read that fails after a newer one listed puts up no
+    /// banner: the list shown is current.
+    func testAnOlderListReadThatFailsLastSaysNothing() async {
+        var reads: [CheckedContinuation<[String], Error>] = []
+        var appState: AppState!
+        appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionCatalogLoader: { _ in
+                let ids = try await withCheckedThrowingContinuation { reads.append($0) }
+                return ids.map { self.row($0, profile: appState.activeProfile) }
+            }
+        )
+        appState.isConnected = true
+
+        async let older: Void = appState.loadSessions()
+        while reads.count < 1 { await Task.yield() }
+        async let newer: Void = appState.loadSessions()
+        while reads.count < 2 { await Task.yield() }
+        reads[1].resume(returning: ["a"])
+        await newer
+        reads[0].resume(throwing: URLError(.timedOut))
+        await older
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["a"])
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// A newer read that fails leaves the list to the older read still on
+    /// its way: that answer is still the freshest one.
+    func testAnOlderListReadStillLandsWhenTheNewerOneFails() async {
+        var reads: [CheckedContinuation<[String], Error>] = []
+        var appState: AppState!
+        appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionCatalogLoader: { _ in
+                let ids = try await withCheckedThrowingContinuation { reads.append($0) }
+                return ids.map { self.row($0, profile: appState.activeProfile) }
+            }
+        )
+        appState.isConnected = true
+
+        async let older: Void = appState.loadSessions()
+        while reads.count < 1 { await Task.yield() }
+        async let newer: Void = appState.loadSessions()
+        while reads.count < 2 { await Task.yield() }
+        reads[1].resume(throwing: URLError(.timedOut))
+        await newer
+        reads[0].resume(returning: ["a"])
+        await older
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["a"])
+    }
+
     /// A failed first read stays failed (with Try Again) instead of the
     /// list retrying on its own in a loop.
     func testAFailedFirstReadIsNotRetriedAutomatically() async {
@@ -298,6 +383,31 @@ final class SessionCatalogLoadTests: XCTestCase {
         XCTAssertEqual(placeholder(appState), .loading)
         await appState.syncSession()
         XCTAssertEqual(appState.sessions.map(\.id), ["a"])
+        XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
+    }
+
+    /// A connect sync whose catalog answers after a newer list read landed
+    /// keeps the newer list, and still resumes its chat.
+    func testAnOlderSyncReadThatAnswersLastKeepsTheNewerList() async {
+        var reads: [CheckedContinuation<[String], Never>] = []
+        var appState: AppState!
+        appState = makeSyncingAppState { _, _ in
+            let ids = await withCheckedContinuation { reads.append($0) }
+            return ids.map { self.row($0, profile: appState.activeProfile) }
+        }
+        appState.activeSessionId = "a"
+
+        async let sync: Void = appState.syncSession()
+        while reads.count < 1 { await Task.yield() }
+        async let newer: Void = appState.loadSessions()
+        while reads.count < 2 { await Task.yield() }
+        reads[1].resume(returning: ["a", "new"])
+        await newer
+        reads[0].resume(returning: ["a"])
+        await sync
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["a", "new"], "the sync's answer arrived last but is older")
+        XCTAssertEqual(appState.activeSessionId, "a")
         XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
     }
 

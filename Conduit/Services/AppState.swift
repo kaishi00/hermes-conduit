@@ -4348,6 +4348,13 @@ final class AppState: ObservableObject {
     /// Counts catalog reads as they start, so the slow read a chat sync left
     /// for later can tell that a newer read began while it was paging.
     private var catalogReadSequence: UInt64 = 0
+    /// Ticket for each read that replaces the published list wholesale
+    /// (`loadSessions` and a chat sync), taken when the read starts, and
+    /// the newest ticket whose answer is listed. Reads overlap (a reconnect,
+    /// a return to the list, a pull to refresh), and an older answer that
+    /// lands after a newer one would put back a list from before it (#786).
+    private var sessionListReadTicket: UInt64 = 0
+    private var sessionListListedTicket: UInt64 = 0
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
     private(set) var leaveCatalogRefreshTask: Task<Void, Never>?
@@ -12840,11 +12847,13 @@ final class AppState: ObservableObject {
             // sequence: discover the live gateway's current sessions first,
             // then resume the newest chat. A persisted runtime id can belong
             // to a process that no longer exists after a relaunch.
+            let readTicket = takeSessionListReadTicket()
             let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
             // The rest of a due full read runs once this sync is over, so
             // the drawer still fills in without holding up the chat. Only a
-            // sync that published its list schedules it: an abandoned one
-            // leaves the read to the sync that replaced it.
+            // sync that reached its list schedules it (a newer list read may
+            // have listed in its place): an abandoned one leaves the read to
+            // the sync that replaced it.
             var publishedCatalog = false
             defer {
                 if catalogLoad.olderPagesDeferred, publishedCatalog {
@@ -12889,12 +12898,16 @@ final class AppState: ObservableObject {
                 )
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
-            sessions = allSessions.filter { $0.source != .cron }
-            cronSessions = allSessions.filter { $0.source == .cron }
-            savedChatListReplacedByLiveList(
-                newestPageOnly: catalogLoad.olderPagesDeferred,
-                dashboardID: dashboardID
-            )
+            // A list read that started after this sync's read already
+            // listed newer rows; the sync still resumes its chat.
+            if claimSessionListListing(readTicket) {
+                sessions = allSessions.filter { $0.source != .cron }
+                cronSessions = allSessions.filter { $0.source == .cron }
+                savedChatListReplacedByLiveList(
+                    newestPageOnly: catalogLoad.olderPagesDeferred,
+                    dashboardID: dashboardID
+                )
+            }
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             if let dashboardID {
                 widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
@@ -17954,6 +17967,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
+        let readTicket = takeSessionListReadTicket()
         do {
             let loadedSessions: [SessionSummary]
             if let sessionCatalogLoaderOverride {
@@ -17972,6 +17986,10 @@ final class AppState: ObservableObject {
                 guard let activeClient, self.client === activeClient else { return false }
             }
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
+            // A read that started later already listed what it saw: this
+            // older answer is no news, and the list it would put back is
+            // older than the one shown.
+            guard claimSessionListListing(readTicket) else { return true }
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
@@ -18025,6 +18043,9 @@ final class AppState: ObservableObject {
             // A read cancelled under it (a pull to refresh the list left)
             // says nothing about the catalog: the next showing reads again.
             if error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled { return false }
+            // A read that started later already listed: the list is current,
+            // and this older failure is no news.
+            guard readTicket > sessionListListedTicket else { return true }
             guard reportsFailure else { return false }
             errorMessage = AppLocalization.string("Failed to load sessions: \(UserFacingError.message(for: error))")
             sessionCatalogLoadState.markFailed(
@@ -18033,6 +18054,20 @@ final class AppState: ObservableObject {
             )
             return false
         }
+    }
+
+    private func takeSessionListReadTicket() -> UInt64 {
+        sessionListReadTicket &+= 1
+        return sessionListReadTicket
+    }
+
+    /// Whether the read holding `ticket` may replace the list: only if no
+    /// read that started after it has. A newer read that failed leaves the
+    /// list to this one.
+    private func claimSessionListListing(_ ticket: UInt64) -> Bool {
+        guard ticket > sessionListListedTicket else { return false }
+        sessionListListedTicket = ticket
+        return true
     }
 
     /// Hermes pushes no catalog changes, so returning to the list from a
