@@ -440,6 +440,12 @@ struct KanbanBoardsResponse: Codable, Equatable {
         self.boards = boards
         self.current = current
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        current = try container.decode(String.self, forKey: .current)
+        boards = container.decodeLossyArray(KanbanBoardMetadata.self, forKey: .boards)
+    }
 }
 
 // MARK: - Detail collections
