@@ -521,7 +521,7 @@ final class CarPlayVoiceCoordinator {
                 // resolves, so it was built for the classic mode; the
                 // controls may also have changed while it was on its way.
                 // Either way the car gets a template built for them.
-                guard self.controls == builtControls else {
+                if self.controls != builtControls, !self.isBrowsing {
                     self.reinstallRootTemplate()
                     return
                 }
@@ -613,7 +613,7 @@ final class CarPlayVoiceCoordinator {
         controls = newControls
         // Before presentation the install completion compares the controls
         // and reinstalls itself.
-        guard isConnected, template != nil, isTemplatePresented,
+        guard isConnected, template != nil, isTemplatePresented, !isBrowsing,
               templateControls != newControls else { return }
         reinstallRootTemplate()
     }
@@ -889,6 +889,10 @@ final class CarPlayVoiceCoordinator {
     func handleTemplateDidAppear(_ appeared: CPTemplate) {
         guard let template, appeared === template else { return }
         isBrowsing = false
+        if isTemplatePresented, templateControls != controls {
+            reinstallRootTemplate()
+            return
+        }
         // A chat picked or renamed while a list was up shows in the title.
         scheduleChatTitleRefresh()
     }
