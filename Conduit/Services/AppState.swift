@@ -27757,7 +27757,7 @@ final class AppState: ObservableObject {
         let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             displayPreferences = ProfileDisplayPreferences(
@@ -27787,7 +27787,7 @@ final class AppState: ObservableObject {
         let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return [:] }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             return Dictionary(uniqueKeysWithValues: keys.compactMap { key in
                 profileSettingValue(in: config, key: key).map { (key, $0) }
             })
@@ -27835,7 +27835,7 @@ final class AppState: ObservableObject {
             async let infoRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/info", profile: profile))
             async let configRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             let (options, info, config) = try await (optionsRequest, infoRequest, configRequest)
-            guard profile == activeProfile else { return nil }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             let optionsObject = AnyCodable.from(options).objectValue ?? [:]
             let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
             // Profile config is the persisted default. Hermes stores it under
@@ -27966,7 +27966,7 @@ final class AppState: ObservableObject {
         let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return nil }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             return ProfileFallbackModel.list(from: config["fallback_providers"])
         } catch {
             // A failure from the dashboard or profile switched away from is
@@ -28014,10 +28014,13 @@ final class AppState: ObservableObject {
             try await updateProfileConfig(profile: profile) { [weak self] config in
                 self?.setProfileSettingValue(value, in: &config, key: key)
             }
+            // The write landed on its own profile; what's mirrored on screen
+            // must still be that dashboard's and profile's.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
-            if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
+            if key == "approvals.mode", let mode = value.textValue?.lowercased() {
                 // Mirror the saved profile mode immediately and re-resolve the
                 // effective indicator state through the same precedence
                 // applyRuntime uses, so the floor and the picker lock take
