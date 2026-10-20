@@ -152,6 +152,7 @@ final class HermesWatchCalls: NSObject {
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
         let rings = ring != nil && !late && !busy && !settled
+            && WatchVoiceCall.shared.engine != .localLive
         let callerName = Self.callerName(userInfo)
         if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled])
@@ -267,12 +268,12 @@ final class HermesWatchCalls: NSObject {
     private func connect(_ id: UUID, ring: HermesRing) async {
         // A Watch call the user started meanwhile keeps going, and the
         // iPhone goes on ringing: nothing is settled.
-        guard !WatchVoiceCall.shared.isActive else {
+        let engine = WatchVoiceCall.shared.engine
+        guard !WatchVoiceCall.shared.isActive, engine != .localLive else {
             finish(id, reason: .failed)
             return
         }
         noteSettled(ring.id)
-        let engine = WatchVoiceCall.shared.engine
         let answer = handoffKey.map { HermesRingAnswer(ring: ring, callID: UInt32.random(in: 1...UInt32.max), key: $0) }
         let start = answer.flatMap { HermesRingHandoff.sealStart(WatchVoiceCall.startRequest(engine: engine, callID: $0.callID, ring: ring.id), answer: $0) }
         let settling = Task { await HermesRingSettler.settle(ring, by: .watch, outcome: .answered, start: start) }
