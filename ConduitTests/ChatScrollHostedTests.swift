@@ -603,6 +603,8 @@ final class ChatScrollHostedTests: XCTestCase {
         let composerTop = view.bounds.height - view.adjustedContentInset.bottom
         if composerRests {
             XCTAssertGreaterThan(view.adjustedContentInset.bottom, 40, "the scroll view insets for the resting composer")
+        } else {
+            XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the scroll view")
         }
         XCTAssertEqual(
             composerTop - rowBottom,

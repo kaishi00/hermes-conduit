@@ -67,7 +67,8 @@ struct OfflineChatTranscriptView: View {
                 .padding(.top, 18)
                 // As the live transcript ends (ChatView's bottom anchor,
                 // one row spacing below the last row): one row spacing above
-                // the composer, so the copy lines up when it hands over.
+                // the composer, so the copy lines up when it hands over. The
+                // live anchor's own 1 pt height is the only difference.
                 .padding(.bottom, ChatStepStyle.transcriptRowSpacing)
             }
             .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
