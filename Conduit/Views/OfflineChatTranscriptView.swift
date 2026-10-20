@@ -65,7 +65,9 @@ struct OfflineChatTranscriptView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
-                .padding(.bottom, 126)
+                // As the live transcript ends: one row spacing above the
+                // composer.
+                .padding(.bottom, ChatStepStyle.transcriptRowSpacing)
             }
             .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
             .defaultScrollAnchor(.bottom)
