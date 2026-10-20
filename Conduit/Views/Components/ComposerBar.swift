@@ -1144,63 +1144,89 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    /// With other ways to send, a menu whose tap is the action and whose
+    /// touch and hold lists them. A context menu on the button lost the
+    /// hold to the button's large content viewer, so a hold sent like a
+    /// tap; the menu form has no large content viewer (as ChatTitleControl).
+    @ViewBuilder
     private var composerActionButton: some View {
-        Button {
-            if stopOnly {
-                dismissComposer()
-                isShowingFullEditor = false
-                Haptics.warning()
-                Task { await appState.cancelCurrent() }
-            } else {
-                submit()
+        let choices = sendChoices
+        if choices.isEmpty {
+            Button(action: performComposerAction) {
+                composerActionFace
             }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: actionSymbol)
-                    .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
-                    .contentTransition(.symbolEffect(.replace))
-                if let actionTitle {
-                    Text(actionTitle)
-                        .font(.caption.weight(.semibold))
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+            .disabled(action == .unavailable)
+            .modifier(composerActionChrome)
+            .accessibilityShowsLargeContentViewer {
+                Label {
+                    Text(actionTitle ?? accessibilityLabel)
+                } icon: {
+                    Image(systemName: actionSymbol)
                 }
             }
-            .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
-            .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
-            .padding(.horizontal, actionTitle == nil ? 0 : 4)
-            .contentShape(Self.controlHitShape)
-            .animation(ConduitMotion.transition, value: action)
-        }
-        .disabled(action == .unavailable)
-        .conduitGlassControl(
-            cornerRadius: Self.controlSize / 2,
-            tint: actionSurfaceTint,
-            prominent: action == .send,
-            interactive: action != .unavailable
-        )
-        .accessibilityShowsLargeContentViewer {
-            Label {
-                Text(actionTitle ?? accessibilityLabel)
-            } icon: {
-                Image(systemName: actionSymbol)
+            .accessibilityLabel(accessibilityLabel)
+        } else {
+            Menu {
+                ForEach(choices) { choice in
+                    Button {
+                        submit(choice)
+                    } label: {
+                        Label(choice.title, systemImage: choice.symbol)
+                    }
+                }
+            } label: {
+                composerActionFace
+            } primaryAction: {
+                performComposerAction()
             }
-        }
-        // Touch and hold: another way to send this message only.
-        .contextMenu {
-            ForEach(sendChoices) { choice in
-                Button {
-                    submit(choice)
-                } label: {
-                    Label(choice.title, systemImage: choice.symbol)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .modifier(composerActionChrome)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
+            .accessibilityAction(named: Text(accessibilityLabel)) {
+                performComposerAction()
+            }
+            .accessibilityActions {
+                ForEach(choices) { choice in
+                    Button(choice.title) { submit(choice) }
                 }
             }
         }
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityActions {
-            ForEach(sendChoices) { choice in
-                Button(choice.title) { submit(choice) }
+    }
+
+    private func performComposerAction() {
+        if stopOnly {
+            dismissComposer()
+            isShowingFullEditor = false
+            Haptics.warning()
+            Task { await appState.cancelCurrent() }
+        } else {
+            submit()
+        }
+    }
+
+    private var composerActionFace: some View {
+        HStack(spacing: 6) {
+            Image(systemName: actionSymbol)
+                .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+            if let actionTitle {
+                Text(actionTitle)
+                    .font(.caption.weight(.semibold))
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
+        .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
+        .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
+        .padding(.horizontal, actionTitle == nil ? 0 : 4)
+        .contentShape(Self.controlHitShape)
+        .animation(ConduitMotion.transition, value: action)
+    }
+
+    private var composerActionChrome: ComposerActionChrome {
+        ComposerActionChrome(tint: actionSurfaceTint, action: action)
     }
 
     /// What touch and hold on the action button offers: the busy modes the
@@ -2379,5 +2405,20 @@ private struct SlashSuggestionsOverlay: View {
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+/// The action button's glass, shared by its button and menu forms.
+private struct ComposerActionChrome: ViewModifier {
+    let tint: Color
+    let action: ComposerAction
+
+    func body(content: Content) -> some View {
+        content.conduitGlassControl(
+            cornerRadius: ComposerBar.controlSize / 2,
+            tint: tint,
+            prominent: action == .send,
+            interactive: action != .unavailable
+        )
     }
 }
