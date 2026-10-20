@@ -166,7 +166,9 @@ struct SpeechServerSettingsView: View {
                 await refreshStatus(submittedURL: submitted)
                 return
             }
-            keyDraft = ""
+            if keyDraft.trimmingCharacters(in: .whitespacesAndNewlines) == key {
+                keyDraft = ""
+            }
         }
         await refreshStatus(submittedURL: submitted)
         if status?.available == true { await runTest() }
