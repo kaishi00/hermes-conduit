@@ -272,7 +272,7 @@ final class LongContextScalingFixtureTests: XCTestCase {
             ? ""
             : " (gate reopens: "
                 + (TranscriptPerf.firstGateReopenReport.map { first in
-                    TranscriptPerf.recentGateReopenReports.contains(first) ? "" : "first " + first + "; latest "
+                    TranscriptPerf.recentGateReopenReports.contains(first) ? "" : "first " + first + "; then "
                 } ?? "")
                 + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
         let spans: String = TranscriptPerf.preWindowRepeatSpans.isEmpty
