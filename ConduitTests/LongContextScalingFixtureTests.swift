@@ -278,9 +278,11 @@ final class LongContextScalingFixtureTests: XCTestCase {
         // Spans of rows not mounted at window open (the offenders) when
         // any were recorded; a span's `src=` is its source's first 24
         // characters.
+        func spanSource(_ span: String) -> String? {
+            span.range(of: " src=").map { String(span[$0.upperBound...].prefix(24)) }
+        }
         let offenderSpans = TranscriptPerf.preWindowRepeatSpans.filter { span in
-            guard let src = span.range(of: " src=") else { return true }
-            let prefix = String(span[src.upperBound...].prefix(24))
+            guard let prefix = spanSource(span) else { return true }
             return !mountedAtWindowOpen.contains { $0.hasPrefix(prefix) }
         }
         let printedSpans = offenderSpans.isEmpty ? TranscriptPerf.preWindowRepeatSpans : offenderSpans
@@ -288,7 +290,8 @@ final class LongContextScalingFixtureTests: XCTestCase {
             ? ""
             : (offenderSpans.isEmpty
                 ? " — spans (mounted rows only; no offending row's was recorded):\n"
-                : " — spans of \(offenderSpans.count) of \(Set(unmountedRerenders).count) offending rows:\n")
+                : " — spans of \(Set(offenderSpans.compactMap(spanSource)).count) of "
+                    + "\(Set(unmountedRerenders).count) offending rows:\n")
                 + printedSpans.joined(separator: "\n")
         XCTAssertTrue(
             unmountedRerenders.isEmpty,
