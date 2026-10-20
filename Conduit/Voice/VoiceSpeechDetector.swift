@@ -89,11 +89,19 @@ struct VoiceSpeechDetector {
     }
 
     /// Noise-floor-relative level that continues an active utterance
-    /// (hysteresis: lower than the speech-start threshold).
+    /// (hysteresis: never stricter than the speech-start threshold). In a
+    /// loud room the adaptive start threshold is capped at the conservative
+    /// ceiling while the uncapped floor-relative continuation threshold can
+    /// exceed it — a level that just started the utterance would then count
+    /// as silence and end the turn mid-speech — so the onset threshold caps
+    /// continuation too.
     private var speechContinuationThreshold: Float {
-        max(
-            constants.minimumSpeechContinuationThreshold,
-            noiseFloor * constants.speechContinuationRiseFactor
+        min(
+            speechStartThreshold,
+            max(
+                constants.minimumSpeechContinuationThreshold,
+                noiseFloor * constants.speechContinuationRiseFactor
+            )
         )
     }
 
