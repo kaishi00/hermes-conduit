@@ -394,6 +394,7 @@ struct ClarifyActivity: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case requestId = "request_id"
+        case legacyRequestId = "requestId"
         case questions
         case isExpired
         case error
@@ -403,7 +404,11 @@ struct ClarifyActivity: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        requestId = try container.decode(String.self, forKey: .requestId)
+        if let currentID = try container.decodeIfPresent(String.self, forKey: .requestId) {
+            requestId = currentID
+        } else {
+            requestId = try container.decode(String.self, forKey: .legacyRequestId)
+        }
         isExpired = try container.decodeIfPresent(Bool.self, forKey: .isExpired) ?? false
         error = try container.decodeIfPresent(String.self, forKey: .error)
         if let questions = try? container.decode([ClarifyQuestion].self, forKey: .questions), !questions.isEmpty {
