@@ -124,6 +124,56 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(socket.isCancelled)
     }
 
+    func testSpeechStreamWhosePathComesBackAfterAudioIsWatchedAgain() async throws {
+        let socket = DeadPathSocket(answersPings: false)
+        var chunks = 0
+        let stream = HermesSpeechStream(
+            task: socket,
+            finishIdleTimeout: .seconds(30),
+            keepaliveInterval: .milliseconds(20),
+            fallback: { _ in
+                XCTFail("audio already played: no fallback")
+                return Data()
+            },
+            onStart: { _ in },
+            onPCM16: { _, _ in chunks += 1 },
+            onEncodedAudio: { _ in }
+        )
+        try await stream.append("Hello there.")
+        socket.deliver(.data(Data([1, 0, 2, 0])))
+        let played = await Self.keepaliveEventually { chunks == 1 }
+        XCTAssertTrue(played)
+        // The keepalive judges the quiet path dead and stops pinging.
+        var pingsAtDeath = -1
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            let before = socket.pingCount
+            try await Task.sleep(for: .milliseconds(150))
+            if before >= 2, socket.pingCount == before {
+                pingsAtDeath = before
+                break
+            }
+        }
+        XCTAssertGreaterThanOrEqual(pingsAtDeath, 2, "unanswered pings must stop once the path is judged dead")
+
+        // A frame that was in flight arrives: the path flapped back.
+        socket.deliver(.data(Data([3, 0])))
+        let replayed = await Self.keepaliveEventually { chunks == 2 }
+        XCTAssertTrue(replayed)
+        let watched = await Self.keepaliveEventually { socket.pingCount > pingsAtDeath }
+        XCTAssertTrue(watched, "a path that came back must be pinged again")
+
+        // It dies again before finish(): finish() still fails at once.
+        let started = ContinuousClock.now
+        do {
+            _ = try await stream.finish()
+            XCTFail("a speak socket that died again must fail the reply")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+        }
+        XCTAssertLessThan(ContinuousClock.now - started, .seconds(5))
+    }
+
     func testSpeechStreamWhoseDoneSendHangsOnADeadPathStillSpeaksTheFallback() async throws {
         let socket = DeadPathSocket(answersPings: false, sendsHang: true)
         var fallbackText: String?

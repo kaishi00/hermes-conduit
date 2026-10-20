@@ -295,6 +295,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
     private var lastActivity = ContinuousClock.now
     private var finishSendTask: Task<Void, Never>?
     private var keepalive: VoiceSocketKeepalive?
+    private let keepaliveInterval: Duration
     /// The keepalive found the socket dead after audio arrived, before
     /// finish(): the audio already received keeps playing, and finish()
     /// fails at once instead of waiting out the idle window.
@@ -317,14 +318,13 @@ final class HermesSpeechStream: VoiceSpeechStream {
     ) {
         self.task = task
         self.finishIdleTimeout = finishIdleTimeout
+        self.keepaliveInterval = keepaliveInterval
         self.fallback = fallback
         self.onStart = onStart
         self.onPCM16 = onPCM16
         self.onEncodedAudio = onEncodedAudio
         receiveTask = Task { [weak self] in await self?.receiveLoop() }
-        keepalive = VoiceSocketKeepalive(socket: task, interval: keepaliveInterval) { [weak self] in
-            self?.socketWentSilent()
-        }
+        startKeepalive()
     }
 
     deinit {
@@ -467,6 +467,12 @@ final class HermesSpeechStream: VoiceSpeechStream {
         startFallbackIfNeeded()
     }
 
+    private func startKeepalive() {
+        keepalive = VoiceSocketKeepalive(socket: task, interval: keepaliveInterval) { [weak self] in
+            self?.socketWentSilent()
+        }
+    }
+
     private static var pathLostError: Error {
         VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))
     }
@@ -484,7 +490,14 @@ final class HermesSpeechStream: VoiceSpeechStream {
                 let message = try await task.receive()
                 lastActivity = .now
                 keepalive?.heard()
-                pathLost = false
+                if pathLost {
+                    // A frame after the keepalive judged the path dead: it
+                    // came back. The keepalive stopped itself when it fired,
+                    // so watch the socket again, or a second death before
+                    // finish() waits out the whole idle window.
+                    pathLost = false
+                    startKeepalive()
+                }
                 switch message {
                 case .data(let data):
                     if let control = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
