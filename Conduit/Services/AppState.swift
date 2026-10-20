@@ -27779,7 +27779,8 @@ final class AppState: ObservableObject {
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return [:] }
+        guard let owner = currentDashboardRuntimeOwner() else { return [:] }
+        let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard profile == activeProfile else { return [:] }
@@ -27787,6 +27788,9 @@ final class AppState: ObservableObject {
                 profileSettingValue(in: config, key: key).map { (key, $0) }
             })
         } catch {
+            // A read that fails after a dashboard or profile switch belongs to
+            // the settings page that was left; the one on screen has no error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return [:]
         }
@@ -27820,7 +27824,8 @@ final class AppState: ObservableObject {
 
     func loadProfileModelDefaults() async -> ProfileModelDefaults? {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         do {
             async let optionsRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/options?explicit_only=true", profile: profile))
             async let infoRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/info", profile: profile))
@@ -27842,6 +27847,9 @@ final class AppState: ObservableObject {
             let reasoning = Self.profileReasoningEffort(in: config)
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
+            // Same fence as the success path: a failure from the dashboard or
+            // profile switched away from is not the on-screen page's error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -27950,12 +27958,16 @@ final class AppState: ObservableObject {
     /// The profile's `fallback_providers`, or nil when the config couldn't load.
     func loadProfileFallbackModels() async -> [ProfileFallbackModel]? {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard profile == activeProfile else { return nil }
             return ProfileFallbackModel.list(from: config["fallback_providers"])
         } catch {
+            // A failure from the dashboard or profile switched away from is
+            // not the on-screen page's error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -27965,7 +27977,7 @@ final class AppState: ObservableObject {
     /// objects but replaces lists, so the whole list goes up each time.
     func setProfileFallbackModels(_ entries: [ProfileFallbackModel]) async -> Bool {
         let profile = activeProfile
-        guard dashboardTicketBridge != nil else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
         let list = entries.filter(\.isComplete).map(\.jsonObject)
         do {
             try await updateProfileConfig(profile: profile) { config in
@@ -27975,6 +27987,9 @@ final class AppState: ObservableObject {
         } catch is CancellationError {
             return false
         } catch {
+            // As for the sibling savers: a save that fails after a dashboard
+            // or profile switch has nothing to report to the page on screen.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
             return false
         }
