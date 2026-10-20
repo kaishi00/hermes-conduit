@@ -501,6 +501,7 @@ private final class LocalLiveTurnScript {
     private(set) var spoken: [String] = []
     private(set) var done: [String] = []
     private(set) var shown: [String] = []
+    private(set) var approvalAnswers: [String] = []
     var hasScreen = true
 
     func makeRunner() -> LocalLiveTurnRunner {
@@ -518,6 +519,10 @@ private final class LocalLiveTurnScript {
                 self.redirected.append(text)
                 self.duringRedirect?()
                 return self.redirectResult
+            },
+            respondToApproval: { [unowned self] _, choice, _ in
+                self.approvalAnswers.append(choice)
+                return true
             }
         ))
         runner.onDelta = { [unowned self] id, text in self.spoken.append("\(id):\(text)") }
@@ -532,6 +537,28 @@ private final class LocalLiveTurnScript {
 
 @MainActor
 extension VoiceConversationControllerTests {
+    func testLocalLiveYesAnswersTheApprovalTheReplyWaitsOn() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Clear the old logs")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        let approval = ApprovalActivity(sessionId: "rt-1", requestId: "req-1", command: "rm -rf logs/old",
+                                        description: "Delete the old logs", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        runner.observe(.approval(sessionId: "rt-1", activity: approval))
+        XCTAssertTrue(script.spoken.last?.contains("Delete the old logs") == true, "the call says what it asks")
+
+        // The yes answers it: it isn't put into the paused reply or sent as a turn.
+        runner.start(turnID: "t2", text: "Yes")
+        await localLiveSettle(until: { !script.approvalAnswers.isEmpty })
+        XCTAssertEqual(script.approvalAnswers, ["once"])
+        XCTAssertEqual(script.redirected, [])
+        XCTAssertEqual(script.submitted, ["Clear the old logs"])
+        // The reply goes on and answers the turn that said yes.
+        runner.observe(.messageDelta(sessionId: "rt-1", text: "Done."))
+        XCTAssertEqual(script.spoken.last, "t2:Done.")
+    }
+
     func testLocalLiveTurnStreamsHermesReplyAsItIsWritten() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()

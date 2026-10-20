@@ -3445,8 +3445,6 @@ final class AppState: ObservableObject {
         },
         submit: { [weak self] chat, text in
             guard let self, let client = self.client else { throw HermesError.notConnected }
-            // As in Classic voice: a yes or no to the one card waiting.
-            await self.answerWaitingBySpeech(text)
             if chat.runtimeID == self.activeSessionId {
                 // On screen it goes through the composer, so the chat shows
                 // and streams it like Classic voice's turns.
@@ -3474,6 +3472,14 @@ final class AppState: ObservableObject {
         redirect: { [weak self] runtimeID, text in
             guard let self else { return .notRunning }
             return try await self.redirectLiveVoiceFollowUp(sessionID: runtimeID, text: text)
+        },
+        // As in Classic voice: a yes or no to the one card waiting.
+        answerWaiting: { [weak self] text in
+            await self?.answerWaitingBySpeech(text) ?? false
+        },
+        respondToApproval: { [weak self] approval, choice, profile in
+            guard let self else { return false }
+            return (try? await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)) ?? false
         }
     ))
 
