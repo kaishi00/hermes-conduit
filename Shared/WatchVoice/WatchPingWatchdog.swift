@@ -1,7 +1,8 @@
 import Foundation
 
 /// Keepalive pings on a Watch bridge socket, as `WatchBridgeCallModel`
-/// counts them. A socket that died without closing (after a suspension)
+/// counts them (and the iPhone's dashboard voice sockets, through
+/// `VoiceSocketKeepalive`). A socket that died without closing (after a suspension)
 /// never fails its receive, so only its pings tell: a ping still
 /// unanswered when the next is due, or one that failed, is a miss.
 struct WatchPingWatchdog {

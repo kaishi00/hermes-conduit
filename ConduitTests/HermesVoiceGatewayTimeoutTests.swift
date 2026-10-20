@@ -276,6 +276,10 @@ private final class FakeSpeechSocket: HermesSpeechSocket, @unchecked Sendable {
         }
     }
 
+    func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void) {
+        pongReceiveHandler(nil)
+    }
+
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let waiting: CheckedContinuation<URLSessionWebSocketTask.Message, Error>? = lock.withLock {
             cancels += 1
@@ -330,6 +334,10 @@ private final class ScriptedSpeechSocket: HermesSpeechSocket, @unchecked Sendabl
             case .park: break
             }
         }
+    }
+
+    func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void) {
+        pongReceiveHandler(nil)
     }
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {

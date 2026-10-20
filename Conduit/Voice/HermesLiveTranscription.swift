@@ -15,7 +15,9 @@ import Foundation
 /// this profile has no live STT (stt.streaming off, a provider without a
 /// live wire), so `onUnavailable` tells the conversation to stop opening it.
 /// A transport failure (a network blip, a Hermes without the socket) only
-/// sends this utterance to the upload; the next one tries again.
+/// sends this utterance to the upload; the next one tries again. A path
+/// that died without a close counts as one: the keepalive's unanswered
+/// pings find it (#787).
 @MainActor
 final class HermesLiveTranscription: VoiceLiveTranscription {
     private enum Outcome {
@@ -30,6 +32,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
     private let onUnavailable: @MainActor () -> Void
     private let finishTimeout: Duration
     private var receiveTask: Task<Void, Never>?
+    private var keepalive: VoiceSocketKeepalive?
     /// Sends run one after another so frames reach Hermes in order.
     private var sendChain: Task<Void, Never>?
     private var outcome: Outcome?
@@ -41,6 +44,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
         socket: any HermesSpeechSocket,
         sampleRate: Double,
         finishTimeout: Duration = .seconds(10),
+        keepaliveInterval: Duration = VoiceSocketKeepalive.interval,
         onPartial: @escaping @MainActor (String) -> Void,
         onUnavailable: @escaping @MainActor () -> Void
     ) {
@@ -50,6 +54,9 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
         self.onUnavailable = onUnavailable
         enqueue(.string("{\"sample_rate\":\(Int(sampleRate))}"))
         receiveTask = Task { [weak self] in await self?.receiveLoop() }
+        keepalive = VoiceSocketKeepalive(socket: socket, interval: keepaliveInterval) { [weak self] in
+            self?.resolve(.failed)
+        }
     }
 
     deinit {
@@ -113,6 +120,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
                 resolve(.failed)
                 return
             }
+            keepalive?.heard()
             guard let frame = Self.frame(message), let type = frame["type"] as? String else { continue }
             switch type {
             case "partial":
@@ -133,6 +141,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
     private func resolve(_ result: Outcome) {
         guard outcome == nil else { return }
         outcome = result
+        keepalive?.stop()
         if case .refused = result, !sawPartial, !ended { onUnavailable() }
         waiter?.resume(returning: Self.transcript(result))
         waiter = nil

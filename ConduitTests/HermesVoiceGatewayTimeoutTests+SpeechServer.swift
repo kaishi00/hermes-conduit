@@ -443,6 +443,10 @@ private final class SpeechServerSocket: HermesSpeechSocket, @unchecked Sendable 
         }
     }
 
+    func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void) {
+        pongReceiveHandler(nil)
+    }
+
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let waiting: CheckedContinuation<URLSessionWebSocketTask.Message, Error>? = lock.withLock {
             cancelled = true
