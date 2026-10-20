@@ -457,8 +457,9 @@ struct ChatView: View {
                 // found the scroll view. The composer is a bar the scroll
                 // view already insets for (V2's safe-area bar, or the
                 // stack below it), so the latest row ends one row spacing
-                // above it; extra padding here was empty space over the
-                // composer.
+                // (plus this row's 1 pt) above it; extra padding here was
+                // empty space over the composer. OfflineChatTranscriptView
+                // ends with the same row.
                 Color.clear
                     .frame(height: 1)
                     .id(bottomAnchor)

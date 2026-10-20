@@ -587,7 +587,8 @@ final class ChatScrollHostedTests: XCTestCase {
     }
 
     private func assertLatestReplyEndsJustAboveTheComposer(composerRests: Bool) throws {
-        let mounted = try mount(Self.transcript(0..<40), composerRests: composerRests)
+        let count = 40
+        let mounted = try mount(Self.transcript(0..<count), composerRests: composerRests)
         // Scrolled to the very bottom, whoever placed the offset: this
         // measures the layout under the latest row, not the follow logic.
         let view = mounted.scrollView
@@ -597,7 +598,7 @@ final class ChatScrollHostedTests: XCTestCase {
         }
         XCTAssertEqual(view.contentOffset.y, maxOffset(view), accuracy: 1, "still at the very bottom when measured")
 
-        let last = try XCTUnwrap(mounted.engine.rowFrame(for: "hosted-39"), "the latest row is laid out")
+        let last = try XCTUnwrap(mounted.engine.rowFrame(for: "hosted-\(count - 1)"), "the latest row is laid out")
         let surface = try XCTUnwrap(mounted.engine.surface)
         let rowBottom = surface.transcriptOriginY + last.maxY - view.contentOffset.y
         let composerTop = view.bounds.height - view.adjustedContentInset.bottom
