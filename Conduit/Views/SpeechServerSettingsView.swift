@@ -22,6 +22,8 @@ struct SpeechServerSettingsView: View {
     /// Why the last save failed, shown here rather than only at the top of
     /// the Voice screen.
     @State private var saveError: String?
+    /// The profile whose saved values the drafts were loaded from.
+    @State private var draftsProfile: String?
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
@@ -125,6 +127,7 @@ struct SpeechServerSettingsView: View {
 
     /// A profile switch starts from that profile's saved values.
     private func load() async {
+        draftsProfile = service.profile
         status = nil
         urlDraft = ""
         keyDraft = ""
@@ -153,15 +156,23 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
+        // The drafts belong to this profile. A switch during a save loads the
+        // new profile's values; nothing after the switch may touch them, or
+        // clearing a key that happens to match would empty the new profile's
+        // draft. `draftsProfile` is view state, so it reads the profile now
+        // on screen, not the one this call's copy of the view captured.
+        let profile = draftsProfile
         let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         var submitted: String?
         if url != savedURL {
-            guard await save(url, for: Self.urlKey) else { return }
+            guard await save(url, for: Self.urlKey), draftsProfile == profile else { return }
             submitted = url
         }
         let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
-            guard await save(key, for: Self.apiKeyKey) else {
+            let saved = await save(key, for: Self.apiKeyKey)
+            guard draftsProfile == profile else { return }
+            guard saved else {
                 // The address may have landed; show what the host has now.
                 await refreshStatus(submittedURL: submitted)
                 return
@@ -171,6 +182,7 @@ struct SpeechServerSettingsView: View {
             }
         }
         await refreshStatus(submittedURL: submitted)
+        guard draftsProfile == profile else { return }
         if status?.available == true { await runTest() }
     }
 
