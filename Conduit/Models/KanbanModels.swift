@@ -402,7 +402,14 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        slug = container.decodeLossyString(forKey: .slug) ?? "default"
+        guard let slug = container.decodeLossyString(forKey: .slug), !slug.isEmpty else {
+            // A missing/blank slug must not be manufactured into the real
+            // default board's identity: the lossy collection walkers skip
+            // the element instead.
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath, debugDescription: "board slug missing or blank"))
+        }
+        self.slug = slug
         name = try? container.decodeIfPresent(String.self, forKey: .name)
         description = try? container.decodeIfPresent(String.self, forKey: .description)
         isCurrent = try? container.decodeIfPresent(Bool.self, forKey: .isCurrent)
