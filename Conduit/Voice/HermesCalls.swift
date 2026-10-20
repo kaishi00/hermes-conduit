@@ -520,7 +520,7 @@ enum VoiceCallbackPhrases {
         // Only hedges may sit between the negator and the verb ("don't
         // need to call me", "don't even call me"): any word at all would
         // read "don't forget to call me" as a refusal.
-        return folded.range(of: #"\b(don't|do not|never|no need to|stop)( (need|needs|want|have|has|got|to|even|bother|really|ever|you))* (call|ring|phone|give)\b"#, options: .regularExpression) == nil
+        return folded.range(of: #"\b(don't|do not|never|no need to|needn't|haven't|hasn't|stop)( (need|needs|want|have|has|got|to|even|bother|bothering|really|ever|you))* (call|ring|phone|give)\b"#, options: .regularExpression) == nil
     }
 }
 
