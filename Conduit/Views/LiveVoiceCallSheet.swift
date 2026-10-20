@@ -78,14 +78,14 @@ struct LiveVoiceCallSheet: View {
     /// What the sheet over the call shows.
     private enum Selection: Identifiable {
         case job(UUID)
-        case screen(VoiceScreenCard)
+        case screen(VoiceScreenCard, identity: UUID)
 
         /// A live card keeps its sheet open as it's brought up to date.
         var id: String {
             switch self {
             case .job(let id): return "job-\(id)"
-            case .screen(let card):
-                return card.liveNames.min().map { "live-\($0)" } ?? "screen-\(card.id)"
+            case .screen(_, let identity):
+                return "screen-\(identity)"
             }
         }
     }
@@ -137,7 +137,7 @@ struct LiveVoiceCallSheet: View {
                         pendingJobChat = chatID
                         selection = nil
                     }
-                case .screen(let card):
+                case .screen(let card, _):
                     LiveVoiceScreenCardSheet(card: card)
                 }
             }
@@ -167,7 +167,7 @@ struct LiveVoiceCallSheet: View {
 
     private func selectScreen(_ card: VoiceScreenCard) {
         selectionIsAutomatic = false
-        selection = .screen(card)
+        selection = .screen(card, identity: card.id)
     }
 
     /// Opens what the voice model just put on screen; the model tells the
@@ -175,10 +175,10 @@ struct LiveVoiceCallSheet: View {
     /// isn't replaced: the card waits in the strip and the transcript.
     private func showNewScreenCard(_ cards: [VoiceScreenCard]) {
         // An open live card follows its updates, whoever opened it.
-        if case .screen(let open) = selection, let card = cards.last, card.id != open.id,
+        if case .screen(let open, let identity) = selection, let card = cards.last, card.id != open.id,
            card.callAnchor.callID == jobs.liveCallID, open.isUpdated(by: card) {
             autoOpenedCardIDs.insert(card.id)
-            selection = .screen(card)
+            selection = .screen(card, identity: identity)
             return
         }
         guard let card = cards.last,
@@ -189,7 +189,7 @@ struct LiveVoiceCallSheet: View {
               Date().timeIntervalSince(card.shownAt) < Self.screenCardFreshness else { return }
         autoOpenedCardIDs.insert(card.id)
         selectionIsAutomatic = true
-        selection = .screen(card)
+        selection = .screen(card, identity: card.id)
     }
 
     /// Only a running call minimises; dismissing any other closes it.
