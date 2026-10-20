@@ -151,6 +151,20 @@ extension CronScheduleTextTests {
         XCTAssertEqual(CronBlueprint.clockText(hour: 7, minute: 5), "07:05")
     }
 
+    func testBlueprintKeepsTheFirstOfARepeatedFieldName() throws {
+        let raw: [String: Any] = [
+            "key": "double-time",
+            "title": "Double time",
+            "fields": [
+                ["name": "time", "type": "time", "label": "What time?", "default": "08:00", "options": []],
+                ["name": "time", "type": "time", "label": "Or this time?", "default": "09:00", "options": []]
+            ]
+        ]
+        let blueprint = try XCTUnwrap(CronBlueprint(raw))
+        XCTAssertEqual(blueprint.fields.map(\.name), ["time"])
+        XCTAssertEqual(blueprint.defaultValues, ["time": "08:00"], "the first one wins, and reading defaults doesn't trap")
+    }
+
     func testDeliveryChoicesKeepTheJobsOwnTarget() {
         let targets = [
             CronDeliveryTarget(["id": "local", "name": "Local (save only)", "home_target_set": true]),
