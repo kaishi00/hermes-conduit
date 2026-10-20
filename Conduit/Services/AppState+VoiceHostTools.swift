@@ -296,8 +296,6 @@ extension AppState {
         let supervisor = voiceBackgroundJobSupervisor
         Self.voiceToolsGeneration += 1
         let mine = Self.voiceToolsGeneration
-        // A new call starts with no yes spent.
-        PhoneVoiceTools.usedConfirmation = nil
         // A reconnect on the same mode keeps its tools while this fetches
         // (each read still checks consent); another mode's go now.
         if supervisor.hostToolsMode != mode {
