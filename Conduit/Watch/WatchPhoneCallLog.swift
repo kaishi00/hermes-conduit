@@ -51,9 +51,9 @@ final class WatchPhoneCallLog: ObservableObject {
     /// from an older Watch, a batch of them from a newer one
     /// (WatchCallLogBatch).
     func watchNote(_ text: String) {
-        for line in WatchCallLogBatch.lines(in: text) {
-            append(line)
-        }
+        let lines = WatchCallLogBatch.lines(in: text)
+        guard !lines.isEmpty else { return }
+        append(lines.joined(separator: "\n"))
     }
 
     func clear() {
