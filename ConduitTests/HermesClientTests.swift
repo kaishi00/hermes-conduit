@@ -224,7 +224,8 @@ final class HermesClientTests: XCTestCase {
         // socket with close code 1009 as soon as a single message exceeds it,
         // which is how resuming large sessions used to disconnect Conduit in
         // a loop. The production transport must install the explicit bounded
-        // 4 MiB limit on the real socket.
+        // 64 MiB limit on the real socket (4 MiB still closed it on a tool
+        // result carrying a video).
         let transport = URLSessionWebSocketTransport()
         defer { transport.invalidate() }
         let request = URLRequest(url: URL(string: "wss://gateway.example/api/ws")!)
@@ -237,7 +238,7 @@ final class HermesClientTests: XCTestCase {
         let task = socket as? URLSessionWebSocketTask
         XCTAssertNotNil(task, "The production transport must produce a URLSessionWebSocketTask")
         XCTAssertEqual(task?.maximumMessageSize, URLSessionWebSocketTransport.maximumMessageSize)
-        XCTAssertEqual(URLSessionWebSocketTransport.maximumMessageSize, 4 * 1024 * 1024)
+        XCTAssertEqual(URLSessionWebSocketTransport.maximumMessageSize, 64 * 1024 * 1024)
         XCTAssertNotEqual(
             URLSessionWebSocketTransport.maximumMessageSize,
             1_048_576,

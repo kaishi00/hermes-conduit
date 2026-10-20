@@ -818,10 +818,13 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
     /// own default (1 MiB) closes the connection with close code 1009 as soon
     /// as a single WebSocket message exceeds it, which is how resuming a large
     /// session — one huge `session.resume` frame — used to kill Conduit's
-    /// connection in a reconnect loop (issue #106). 4 MiB comfortably covers
-    /// legitimate control payloads while staying bounded; the compact resume
-    /// keeps transcript-sized payloads off the socket entirely.
-    static let maximumMessageSize = 4 * 1024 * 1024
+    /// connection in a reconnect loop (issue #106). The compact resume keeps
+    /// transcript-sized payloads off the socket, but other frames can still
+    /// be large (Hermes sends a tool's whole result in `tool.complete`): a
+    /// bot that sent videos made 4 MiB too small, and the socket closed with
+    /// 1009 after each of its replies. 64 MiB takes those while staying
+    /// bounded.
+    static let maximumMessageSize = 64 * 1024 * 1024
 
     private var session: URLSession?
     private var delegate: DashboardWebSocketDelegate?
