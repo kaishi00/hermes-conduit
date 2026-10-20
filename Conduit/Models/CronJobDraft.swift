@@ -279,9 +279,13 @@ struct CronBlueprint: Identifiable, Equatable {
         summary = dict["description"] as? String ?? ""
         category = dict["category"] as? String ?? ""
         scheduleText = dict["scheduleHuman"] as? String ?? ""
+        // A gateway blueprint can repeat a field name; keep the first so
+        // `defaultValues` never traps and the form's field identities stay unique.
+        var seenFieldNames = Set<String>()
         fields = (dict["fields"] as? [Any] ?? []).compactMap { raw in
             guard let field = raw as? [String: Any], let name = field["name"] as? String,
-                  let kind = Field.Kind(rawValue: field["type"] as? String ?? "") else { return nil }
+                  let kind = Field.Kind(rawValue: field["type"] as? String ?? ""),
+                  seenFieldNames.insert(name).inserted else { return nil }
             return Field(
                 name: name,
                 kind: kind,
