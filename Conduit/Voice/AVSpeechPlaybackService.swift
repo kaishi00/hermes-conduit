@@ -349,7 +349,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func stop() {
         playbackGeneration &+= 1
-        observedPlaybackGeneration.withLock { $0 = playbackGeneration }
+        let generation = playbackGeneration
+        observedPlaybackGeneration.withLock { $0 = generation }
         isFinishing = false
         if isPaused { endPause() }
         // Pause time only matters to this stream's drain watchdog, which
