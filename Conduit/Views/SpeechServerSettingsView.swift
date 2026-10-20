@@ -76,7 +76,7 @@ struct SpeechServerSettingsView: View {
                     Button("Save") { Task { await saveAll() } }
                         .disabled(isSaving || !hasChanges)
                     Button {
-                        Task { await runTest() }
+                        Task { await runTest(profile: draftsProfile) }
                     } label: {
                         if isTesting {
                             ProgressView()
@@ -147,8 +147,9 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
-        let saved = await save(url, for: Self.urlKey)
-        await refreshStatus(submittedURL: saved ? url : nil)
+        let profile = draftsProfile
+        let saved = await save(url, for: Self.urlKey, profile: profile)
+        await refreshStatus(submittedURL: saved ? url : nil, profile: profile)
     }
 
     private func saveAll() async {
@@ -165,25 +166,25 @@ struct SpeechServerSettingsView: View {
         let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         var submitted: String?
         if url != savedURL {
-            guard await save(url, for: Self.urlKey), draftsProfile == profile else { return }
+            guard await save(url, for: Self.urlKey, profile: profile), draftsProfile == profile else { return }
             submitted = url
         }
         let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
-            let saved = await save(key, for: Self.apiKeyKey)
+            let saved = await save(key, for: Self.apiKeyKey, profile: profile)
             guard draftsProfile == profile else { return }
             guard saved else {
                 // The address may have landed; show what the host has now.
-                await refreshStatus(submittedURL: submitted)
+                await refreshStatus(submittedURL: submitted, profile: profile)
                 return
             }
             if keyDraft.trimmingCharacters(in: .whitespacesAndNewlines) == key {
                 keyDraft = ""
             }
         }
-        await refreshStatus(submittedURL: submitted)
+        await refreshStatus(submittedURL: submitted, profile: profile)
         guard draftsProfile == profile else { return }
-        if status?.available == true { await runTest() }
+        if status?.available == true { await runTest(profile: profile) }
     }
 
     private func removeKey() async {
@@ -191,21 +192,28 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
-        _ = await save("", for: Self.apiKeyKey)
-        await refreshStatus(submittedURL: nil)
+        let profile = draftsProfile
+        _ = await save("", for: Self.apiKeyKey, profile: profile)
+        await refreshStatus(submittedURL: nil, profile: profile)
     }
 
+    // Each helper below writes view state only while the drafts still
+    // belong to `profile`: after a switch, the old profile's error, status
+    // or test result must not show under the new one (where a stale "Remove
+    // key" would act on the new profile).
+
     /// Saves one value; on failure the service's reason is kept for this view.
-    private func save(_ value: String, for key: String) async -> Bool {
+    private func save(_ value: String, for key: String, profile: String?) async -> Bool {
         let saved = await service.save(value: value, for: key)
-        if !saved {
+        if !saved, draftsProfile == profile {
             saveError = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
         }
         return saved
     }
 
-    private func refreshStatus(submittedURL: String?) async {
+    private func refreshStatus(submittedURL: String?, profile: String?) async {
         let loaded = await service.speechServerStatus()
+        guard draftsProfile == profile else { return }
         status = loaded
         // Show what the host will dial (http becomes ws, a bare host gets
         // the realtime path) once it accepted the address, unless the user
@@ -216,9 +224,11 @@ struct SpeechServerSettingsView: View {
         }
     }
 
-    private func runTest() async {
+    private func runTest(profile: String?) async {
         isTesting = true
         defer { isTesting = false }
-        testResult = await service.testSpeechServer()
+        let result = await service.testSpeechServer()
+        guard draftsProfile == profile else { return }
+        testResult = result
     }
 }
