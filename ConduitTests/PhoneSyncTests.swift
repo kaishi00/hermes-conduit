@@ -490,7 +490,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(unconfirmedApproval["error"], "Approving takes the user's own yes")
         XCTAssertTrue(source.applied.isEmpty)
         let approved = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
-                                                 engine: engine, confirmed: { _ in true }, answer: answer)
+                                                 engine: engine, confirmed: { _ in true },
+                                                 lastUserTurn: { (UUID(), "yes") }, answer: answer)
         XCTAssertNotNil(approved["result"])
         XCTAssertEqual(source.applied, ["ch_voice"])
         let missing = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
@@ -589,6 +590,42 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(PhoneVoiceTools.localTime("2026-10-16T15:00"))
         XCTAssertEqual(PhoneVoiceTools.localTime("2026-10-16")?.isDate, true)
         XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
+    }
+
+    func testPhoneChangeApproveWaitsForTheUsersOwnYes() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        host.changes = [["id": "ch_yes", "kind": "add_reminder", "auto": false,
+                         "fields": ["title": "Call the plumber"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences(), access: .full,
+                                                              remindersAuthorized: true).first)
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
+        // The turn current when the model first heard of it can't approve it.
+        let arrival = UUID()
+        _ = await PhoneVoiceTools.run(changesTool, arguments: ["action": "list"], engine: engine,
+                                      lastUserTurn: { (arrival, "what did Hermes ask for") }, answer: answer)
+        let stale = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_yes"],
+                                              engine: engine, confirmed: { _ in true },
+                                              lastUserTurn: { (arrival, "yes") }, answer: answer)
+        XCTAssertNotNil(stale["error"], "A yes said before the change was known can't approve it")
+        XCTAssertFalse(source.applied.contains("ch_yes"))
+        // A yes said after it was known does.
+        let approved = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_yes"],
+                                                 engine: engine, confirmed: { _ in true },
+                                                 lastUserTurn: { (UUID(), "yes") }, answer: answer)
+        XCTAssertNotNil(approved["result"], approved["error"] ?? "")
+        XCTAssertEqual(source.applied, ["ch_yes"])
+        // Dismissing needs no yes.
+        host.changes = [["id": "ch_dismiss", "kind": "add_reminder", "auto": false,
+                         "fields": ["title": "Move the car"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let dismissed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "dismiss", "id": "ch_dismiss"],
+                                                  engine: engine, answer: answer)
+        XCTAssertNotNil(dismissed["result"])
+        XCTAssertFalse(source.applied.contains("ch_dismiss"))
     }
 
     // MARK: Voice mode setting hint
