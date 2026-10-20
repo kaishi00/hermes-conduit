@@ -52,6 +52,10 @@ extension AppState {
             await answerPresentedConfirm(prompt, outcome: approve ? .confirmed : .declined, via: .voice)
         case .chatApproval(let messageID):
             await respondToApproval(messageId: messageID, choice: approve ? "once" : "deny")
+            // Not taken (the card moved on or the send failed): the words go
+            // on as speech.
+            let status = messages.first { $0.id == messageID }?.approval?.status
+            guard status == .approved || status == .rejected else { return false }
         case .jobApproval(let id):
             // Gone by the time it was answered: the words go on as speech.
             switch await voiceBackgroundJobSupervisor.answerJobApproval(id, choice: approve ? "once" : "deny") {

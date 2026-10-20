@@ -51,7 +51,10 @@ enum SpokenApprovals {
         guard waiting.count == 1 else { return nil }
         // "No", "no thanks", "never mind": a no with nothing more. "No, make
         // it 5" is a change, which only Hermes can make.
-        let declines = VoiceThreadRouting.heldRequestAnswer(words) == .no(change: nil)
+        let heard = VoiceThreadRouting.heldRequestAnswer(words)
+        let declines = heard == .no(change: nil)
+        var ledByNo = false
+        if case .no = heard { ledByNo = true }
         let target: SpokenApprovalTarget
         let approves: Bool
         if let id = waiting.phoneChanges.first {
@@ -71,6 +74,11 @@ enum SpokenApprovals {
         } else {
             return nil
         }
+        // Words led by a no ("cancel it", "don't send it") never approve,
+        // even when they repeat a phrase that would; only cancelling an
+        // alarm takes "cancel it" as the yes.
+        let cancelsAlarm = waiting.phoneChanges.first.map(waiting.cancellingAlarms.contains) ?? false
+        if ledByNo, !cancelsAlarm { return declines ? (target, false) : nil }
         if approves { return (target, true) }
         return declines ? (target, false) : nil
     }

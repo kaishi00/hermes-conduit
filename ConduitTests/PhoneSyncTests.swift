@@ -927,6 +927,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let presented = SpokenApprovals.Waiting(presented: [confirm])
         XCTAssertEqual(SpokenApprovals.answer("send it", waiting: presented)?.target, .presented(id: "p_1"))
         XCTAssertEqual(SpokenApprovals.answer("no", waiting: presented)?.approve, false)
+        XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: presented)?.approve, false, "A no-led phrase never confirms")
 
         // Nothing waiting, or more than one: a yes answers nothing.
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting()))
