@@ -165,6 +165,23 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertTrue(detections.contains(.started), "a later real rise must still be recognized in a loud room")
     }
 
+    /// In a room calibrated loud the start threshold is capped at the
+    /// ceiling (0.075) while the floor-relative continuation threshold
+    /// (floor × 1.6 ≈ 0.08) is not: a level that would have started the
+    /// utterance must still continue it, not end the turn mid-speech.
+    func testCalibratedLoudRoomContinuesAtLevelsThatCouldStartSpeech() {
+        var detector = VoiceSpeechDetector()
+        for _ in 0..<40 { _ = detector.observe(0.05) }
+        XCTAssertEqual(detector.noiseFloor, 0.05, accuracy: 0.005)
+        XCTAssertEqual(detector.observe(0.09), .started)
+
+        XCTAssertEqual(detector.observe(0.078), .continued, "a level above the start ceiling continues speech")
+        XCTAssertEqual(detector.observe(0.075), .continued, "the start ceiling itself continues speech")
+        // With the band collapsed at the ceiling, a dip below it is silence;
+        // trailing-silence timing lives with the controller.
+        XCTAssertEqual(detector.observe(0.05), .none, "the calibrated floor still ends speech")
+    }
+
     func testImmediateQuietSpeechWithNaturalDynamicsIsAccepted() {
         var detector = VoiceSpeechDetector()
 
