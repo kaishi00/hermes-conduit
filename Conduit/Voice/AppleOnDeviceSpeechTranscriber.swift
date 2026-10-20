@@ -17,6 +17,9 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var continuation: CheckedContinuation<String, Error>?
     private var temporaryAudioURL: URL?
+    /// Bumps on every cancel(): a late callback from a cancelled attempt
+    /// must never complete the next transcription.
+    private var operationGeneration: UInt64 = 0
 
     static func currentAvailability(locale: Locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)) -> AppleSpeechRecognitionAvailability {
         let identifier = locale.identifier
@@ -37,11 +40,15 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         cancel()
+        let generation = operationGeneration
         let locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
             throw VoiceAudioError.unavailable(AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier)."))
         }
-        guard await requestPermission() else {
+        let permissionGranted = await requestPermission()
+        guard generation == operationGeneration else { throw CancellationError() }
+        try Task.checkCancellation()
+        guard permissionGranted else {
             throw VoiceAudioError.unavailable(AppLocalization.string("Speech Recognition permission is required for on-device transcription."))
         }
         guard recognizer.isAvailable else {
@@ -67,6 +74,7 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
+                    self.cancel(generation: generation)
                     continuation.resume(throwing: CancellationError())
                     return
                 }
@@ -76,20 +84,26 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
                     let isFinal = result?.isFinal ?? false
                     let errorDescription = error?.localizedDescription
                     Task { @MainActor [weak self] in
-                        self?.receive(transcript: transcript, isFinal: isFinal, errorDescription: errorDescription)
+                        self?.receive(transcript: transcript, isFinal: isFinal, errorDescription: errorDescription, generation: generation)
                     }
                 }
-                if Task.isCancelled { self.cancel() }
+                if Task.isCancelled { self.cancel(generation: generation) }
             }
         } onCancel: { [weak self] in
-            Task { @MainActor [weak self] in self?.cancel() }
+            Task { @MainActor [weak self] in self?.cancel(generation: generation) }
         }
     }
 
     func cancel() {
+        operationGeneration &+= 1
         recognitionTask?.cancel()
         recognitionTask = nil
         complete(.failure(CancellationError()))
+    }
+
+    private func cancel(generation: UInt64) {
+        guard generation == operationGeneration else { return }
+        cancel()
     }
 
     private func requestAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -102,7 +116,8 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
         }
     }
 
-    private func receive(transcript: String?, isFinal: Bool, errorDescription: String?) {
+    private func receive(transcript: String?, isFinal: Bool, errorDescription: String?, generation: UInt64) {
+        guard generation == operationGeneration else { return }
         if let errorDescription {
             // The framework's text ("kAFAssistantErrorDomain error 1101") is for
             // the log; the person gets what to try.
