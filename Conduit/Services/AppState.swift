@@ -629,7 +629,8 @@ final class AppState: ObservableObject {
     /// creates no retain cycle.
     var gatewayMediaResolver: GatewayMediaDataURLResolver {
         if let cached = cachedGatewayMediaResolver,
-           cached.profile == activeProfile {
+           cached.profile == activeProfile,
+           cached.resolver.dashboardID == activeDashboardID {
             return cached.resolver
         }
         let resolver = GatewayMediaDataURLResolver(appState: self, profile: activeProfile)
@@ -643,7 +644,8 @@ final class AppState: ObservableObject {
     /// ran there), cached so views read the same instance on every pass.
     func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {
         if profile == activeProfile { return gatewayMediaResolver }
-        if let cached = otherProfileGatewayMediaResolvers[profile] { return cached }
+        if let cached = otherProfileGatewayMediaResolvers[profile],
+           cached.dashboardID == activeDashboardID { return cached }
         let resolver = GatewayMediaDataURLResolver(appState: self, profile: profile)
         otherProfileGatewayMediaResolvers[profile] = resolver
         return resolver
