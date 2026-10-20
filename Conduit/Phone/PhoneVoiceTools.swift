@@ -514,8 +514,10 @@ enum PhoneVoiceTools {
             guard let minutes = (arguments["minutes"] as? NSNumber)?.doubleValue, minutes > 0 else {
                 return ["error": "A timer needs minutes, like 10."]
             }
-            let seconds = Int((minutes * 60).rounded())
-            guard (5...86_400).contains(seconds) else { return ["error": "A timer runs from 5 seconds to 24 hours."] }
+            guard let seconds = Int(exactly: (minutes * 60).rounded()),
+                  (5...86_400).contains(seconds) else {
+                return ["error": "A timer runs from 5 seconds to 24 hours."]
+            }
             fields["seconds"] = seconds
             kind = "set_timer"
         case "alarm":
