@@ -418,11 +418,14 @@ struct ClarifyActivity: Codable, Equatable {
         // Migration: presentation caches written by older builds stored the
         // legacy single-question fields. Decode what is still usable instead
         // of failing the whole cache load; a degenerate empty-text record
-        // yields an empty question list rather than a phantom question.
+        // yields an empty question list rather than a phantom question, and
+        // is expired because a card with nothing to answer would otherwise
+        // derive pending and render an inert "needs your input" prompt.
         let question = (try? container.decode(String.self, forKey: .question)) ?? ""
         let choices = (try? container.decode([ClarifyChoice].self, forKey: .choices)) ?? []
         let status = (try? container.decode(ClarifyQuestion.Status.self, forKey: .status)) ?? .pending
         let answer = try? container.decode(String.self, forKey: .answer)
+        if question.isEmpty { isExpired = true }
         questions = question.isEmpty
             ? []
             : [
