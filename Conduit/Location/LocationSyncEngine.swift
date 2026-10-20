@@ -275,7 +275,7 @@ final class LocationSyncEngine: ObservableObject {
             } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && Self.needsNewKey(detail) {
                 // unknown_key or bad_seal: the host forgot or replaced this
                 // phone's key (a wipe, a new store). Agree a new one, once.
-                Self.log.info("Location ingest answered 409 \(detail, privacy: .public); agreeing the key again")
+                Self.log.info("Location ingest answered 409 \(detail, privacy: .private); agreeing the key again")
                 clearKey()
                 key = try await ensureKey(deviceID: config.deviceID, voice: voice, maps: maps, request: request)
                 batch.places = config.places

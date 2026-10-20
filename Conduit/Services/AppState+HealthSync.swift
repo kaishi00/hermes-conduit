@@ -104,7 +104,7 @@ extension AppState {
                 timeoutMilliseconds: max(1_000, min(30_000, Int(deadline.timeIntervalSinceNow * 1_000)))
             )
         }
-        Self.healthSyncLog.info("Health sync (\(reason.rawValue, privacy: .public)): \(String(describing: outcome), privacy: .public)")
+        Self.healthSyncLog.info("Health sync (\(reason.rawValue, privacy: .public)): \(String(describing: outcome), privacy: .private)")
         return outcome
     }
 
