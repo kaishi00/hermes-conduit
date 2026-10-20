@@ -275,9 +275,19 @@ final class LongContextScalingFixtureTests: XCTestCase {
                     TranscriptPerf.recentGateReopenReports.contains(first) ? "" : "first " + first + "; then "
                 } ?? "")
                 + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
-        let spans: String = TranscriptPerf.preWindowRepeatSpans.isEmpty
+        // Spans of rows not mounted at window open (the offenders) when
+        // any were recorded; a span's `src=` is its source's first 24
+        // characters.
+        let offenderSpans = TranscriptPerf.preWindowRepeatSpans.filter { span in
+            guard let src = span.range(of: " src=") else { return true }
+            let prefix = String(span[src.upperBound...].prefix(24))
+            return !mountedAtWindowOpen.contains { $0.hasPrefix(prefix) }
+        }
+        let printedSpans = offenderSpans.isEmpty ? TranscriptPerf.preWindowRepeatSpans : offenderSpans
+        let spans: String = printedSpans.isEmpty
             ? ""
-            : " — spans:\n" + TranscriptPerf.preWindowRepeatSpans.joined(separator: "\n")
+            : (offenderSpans.isEmpty ? " — spans (mounted rows only):\n" : " — spans:\n")
+                + printedSpans.joined(separator: "\n")
         XCTAssertTrue(
             unmountedRerenders.isEmpty,
             "live reasoning re-rendered \(unmountedRerenders.count) settled rows that were not mounted "
