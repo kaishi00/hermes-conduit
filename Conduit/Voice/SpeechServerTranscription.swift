@@ -287,7 +287,10 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
 
     private func handleClose() {
         guard outcome == nil else { return }
-        if ended, finishedSegments >= startedSegments, !segments.isEmpty {
+        // Every segment the server started has finished: what it heard is
+        // complete, even if that was nothing, so a close during the quiet
+        // grace is no failure.
+        if ended, startedSegments > 0, finishedSegments >= startedSegments {
             resolve(.finished(joinedTranscript))
         } else {
             resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.")))
