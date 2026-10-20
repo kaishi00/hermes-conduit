@@ -40,7 +40,11 @@ enum SpokenApprovals {
         var count: Int { phoneChanges.count + presented.count + chatApprovals.count + jobApprovals.count }
     }
 
-    /// The one thing `words` answer and whether they approve it. Nil when
+    /// The one thing `words` answer and whether they approve it. A phone
+    /// change also takes a short phrase naming it ("delete it", "mark it
+    /// done"), and a confirmation the phrases Hermes gave for it; an
+    /// approval of a command takes a plain yes, since "run it" or "delete
+    /// it" could as well be a new request about the command. Nil when
     /// they aren't a plain yes or no for it, or when nothing or more than one
     /// thing waits: which one a bare yes meant would be a guess.
     static func answer(_ words: String, waiting: Waiting) -> (target: SpokenApprovalTarget, approve: Bool)? {

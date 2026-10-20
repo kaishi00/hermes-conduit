@@ -53,7 +53,11 @@ extension AppState {
         case .chatApproval(let messageID):
             await respondToApproval(messageId: messageID, choice: approve ? "once" : "deny")
         case .jobApproval(let id):
-            _ = await voiceBackgroundJobSupervisor.answerJobApproval(id, choice: approve ? "once" : "deny")
+            // Gone by the time it was answered: the words go on as speech.
+            switch await voiceBackgroundJobSupervisor.answerJobApproval(id, choice: approve ? "once" : "deny") {
+            case .approved, .denied: break
+            default: return false
+            }
         }
         return true
     }
