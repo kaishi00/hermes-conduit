@@ -469,7 +469,8 @@ enum TranscriptPerf {
         fresh.everSeenMarkdownSources = storage.everSeenMarkdownSources
         fresh.settledMarkdownFreshMountBody = storage.settledMarkdownFreshMountBody
         fresh.windowOpenedAt = Date()
-        // Under the lock an off-main gate comparison writes reports with.
+        // Under the lock, so an off-main gate comparison can't write its
+        // report into the discarded instance.
         gateReopenLock.lock()
         storage = fresh
         gateReopenLock.unlock()

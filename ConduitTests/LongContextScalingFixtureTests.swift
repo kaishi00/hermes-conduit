@@ -268,31 +268,33 @@ final class LongContextScalingFixtureTests: XCTestCase {
             .filter { !mountedAtWindowOpen.contains($0) }
         // What drove the window's first re-renders of earlier rows, for a
         // failure on a hosted runner.
-        let reopens: String = TranscriptPerf.recentGateReopenReports.isEmpty
+        let reports = TranscriptPerf.recentGateReopenReports
+        let firstReport = TranscriptPerf.firstGateReopenReport
+        let repeatSpans = TranscriptPerf.preWindowRepeatSpans
+        let reopens: String = reports.isEmpty
             ? ""
             : " (gate reopens: "
-                + (TranscriptPerf.firstGateReopenReport.map { first in
-                    TranscriptPerf.recentGateReopenReports.contains(first) ? "" : "first " + first + "; then "
+                + (firstReport.map { first in
+                    reports.contains(first) ? "" : "first " + first + "; then "
                 } ?? "")
-                + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
+                + reports.joined(separator: "; ") + ")"
         // Spans of rows not mounted at window open (the offenders) when
         // any were recorded; a span's `src=` is its source's first 24
         // characters.
         func spanSource(_ span: String) -> String? {
             span.range(of: " src=").map { String(span[$0.upperBound...].prefix(24)) }
         }
-        let offenderSpans = TranscriptPerf.preWindowRepeatSpans.filter { span in
+        let offenderSpans = repeatSpans.filter { span in
             guard let prefix = spanSource(span) else { return true }
             return !mountedAtWindowOpen.contains { $0.hasPrefix(prefix) }
         }
-        let printedSpans = offenderSpans.isEmpty ? TranscriptPerf.preWindowRepeatSpans : offenderSpans
-        let spans: String = printedSpans.isEmpty
-            ? ""
-            : (offenderSpans.isEmpty
-                ? " — spans (mounted rows only; no offending row's was recorded):\n"
-                : " — spans of \(Set(offenderSpans.compactMap(spanSource)).count) of "
-                    + "\(Set(unmountedRerenders).count) offending rows:\n")
-                + printedSpans.joined(separator: "\n")
+        let printedSpans = offenderSpans.isEmpty ? repeatSpans : offenderSpans
+        let coveredRows = Set(offenderSpans.compactMap(spanSource)).count
+        let offendingRows = Set(unmountedRerenders).count
+        let spansLabel: String = offenderSpans.isEmpty
+            ? " — spans (mounted rows only; no offending row's was recorded):\n"
+            : " — spans of \(coveredRows) of \(offendingRows) offending rows:\n"
+        let spans: String = printedSpans.isEmpty ? "" : spansLabel + printedSpans.joined(separator: "\n")
         XCTAssertTrue(
             unmountedRerenders.isEmpty,
             "live reasoning re-rendered \(unmountedRerenders.count) settled rows that were not mounted "
