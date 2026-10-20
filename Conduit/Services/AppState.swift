@@ -2266,19 +2266,22 @@ final class AppState: ObservableObject {
 
     func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: dashboardPath("/api/model/set", profile: profile),
                 method: "POST",
                 body: setting.assignmentBody(profile: profile)
             )
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
                 return false
             }
             return true
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
             return false
         }
@@ -27839,13 +27842,15 @@ final class AppState: ObservableObject {
 
     func setProfileMainModel(provider: String, model: String, reasoning: String) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: dashboardPath("/api/model/set", profile: profile),
                 method: "POST",
                 body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
             )
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
                 return false
@@ -27868,6 +27873,7 @@ final class AppState: ObservableObject {
         } catch is CancellationError {
             return false
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save model defaults: \(UserFacingError.message(for: error))")
             return false
         }
@@ -27969,12 +27975,14 @@ final class AppState: ObservableObject {
 
     func setProfileSetting(_ key: String, value: ProfileSettingValue) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             if profile == "default" && (key == "context.engine" || key == "memory.provider") {
                 let raw = value.textValue ?? ""
                 let body = key == "context.engine" ? ["context_engine": raw] : ["memory_provider": raw]
                 _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
             try await updateProfileConfig(profile: profile) { [weak self] config in
@@ -28007,6 +28015,7 @@ final class AppState: ObservableObject {
             // was sent, and the dashboard on screen has nothing to report.
             return false
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
         }
