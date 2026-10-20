@@ -30017,7 +30017,8 @@ final class AppState: ObservableObject {
     }
 
     func workspaceDownloadURL(for entry: WorkspaceEntry) async -> URL? {
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         let profile = activeProfile
         do {
             guard let path = DashboardPath.encodedQueryComponent(entry.path) else {
@@ -30027,7 +30028,7 @@ final class AppState: ObservableObject {
                 path: DashboardPath.withProfile("/api/fs/read-data-url?path=\(path)", profile: profile),
                 maxResponseBytes: DataURLLimits.maxJSONResponseBytes
             )
-            guard profile == activeProfile else { return nil }
+            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
             guard let dataURL = result["dataUrl"] as? String,
                   let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
                 throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The gateway returned an invalid file payload."))
@@ -30038,6 +30039,7 @@ final class AppState: ObservableObject {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
+            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
             workspaceFileError = UserFacingError.message(for: error)
             return nil
         }
