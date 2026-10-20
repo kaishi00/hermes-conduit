@@ -440,7 +440,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         if let priority = fields.priority { reminder.priority = max(0, min(9, priority)) }
         if let due = fields.due {
             let allDay = fields.dueAllDay ?? (fields.dueText?.count == 10)
-            var calendar = Calendar.current
+            var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = .current
             if allDay {
                 reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day], from: due)

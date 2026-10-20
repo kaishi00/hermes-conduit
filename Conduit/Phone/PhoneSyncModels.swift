@@ -432,7 +432,7 @@ enum PhoneDates {
         if let date = formatter.date(from: text) { return date }
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard text.count == 10, parts.count == 3 else { return nil }
-        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        return Calendar(identifier: .gregorian).date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 }
 
