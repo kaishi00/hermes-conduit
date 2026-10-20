@@ -168,6 +168,12 @@ extension AppState {
     func answerPresentedConfirm(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome,
                                 via source: PresentedConfirmAnswerSource) async {
         presentedScreens.answer(prompt, outcome: outcome, via: source)
+        await reportPresentedAnswer(prompt, outcome: outcome)
+    }
+
+    /// An answer already taken: the host hears it, and a confirmed one
+    /// opens its Maps directions.
+    func reportPresentedAnswer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome) async {
         await syncPresentedScreens()
         if outcome == .confirmed { await openPresentedMaps(prompt) }
     }

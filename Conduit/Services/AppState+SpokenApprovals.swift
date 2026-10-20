@@ -45,11 +45,15 @@ extension AppState {
         switch answer.target {
         case .phoneChange(let id):
             guard let prompt = phoneSync.prompts.first(where: { $0.id == id }) else { return false }
-            // Answered and reported, so Hermes' next look at it sees how it went.
-            await answerPhoneChange(prompt, approve: approve)
+            // Applied now; reported in the background, so the words reach
+            // Hermes without waiting on the sync.
+            await phoneSync.answer(prompt, approve: approve)
+            Task { await self.runPhoneSync(reason: .answered) }
         case .presented(let id):
             guard let prompt = presentedScreens.prompts.first(where: { $0.id == id && !$0.isExpired() }) else { return false }
-            await answerPresentedConfirm(prompt, outcome: approve ? .confirmed : .declined, via: .voice)
+            presentedScreens.answer(prompt, outcome: approve ? .confirmed : .declined, via: .voice)
+            // Reported (and Maps opened) in the background, as with the phone's changes.
+            Task { await self.reportPresentedAnswer(prompt, outcome: approve ? .confirmed : .declined) }
         case .chatApproval(let messageID):
             await respondToApproval(messageId: messageID, choice: approve ? "once" : "deny")
             // Not taken (the card moved on or the send failed): the words go

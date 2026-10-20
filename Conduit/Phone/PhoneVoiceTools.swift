@@ -233,7 +233,7 @@ enum PhoneVoiceTools {
     /// deletion or cancellation (it changes what the user already has, so
     /// the model's word isn't enough).
     static func run(_ tool: VoiceHostTool, arguments: [String: Any], engine: PhoneSyncEngine,
-                    confirmed: (_ cancelsAlarm: Bool) async -> Bool = { _ in true },
+                    confirmed: (_ cancelsAlarm: Bool) async -> Bool = { _ in false },
                     answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         switch tool.name {
         case changesTool:
@@ -575,7 +575,8 @@ enum PhoneVoiceTools {
         let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
         // "Cancel" is how people decline, so it agrees only to cancelling an
         // alarm: "cancel it" there means do it.
-        var agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it",
+        var agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it", "and",
+                                     "then", "just",
                                      "delete", "remove", "that", "this", "one", "them", "both", "the", "event",
                                      "reminder", "all", "of", "change", "move", "update", "rename", "reschedule", "mark",
                                      "complete", "done", "as", "alarm", "timer"]
@@ -585,7 +586,13 @@ enum PhoneVoiceTools {
             agreeing.insert("cancel")
             verbs.insert("cancel")
         }
+        // A yes, or a word pointing back at what was said back ("delete
+        // it", "remove that one"): "delete the event" alone is how the user
+        // asks, not how they agree.
+        let pointing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "ahead", "it", "that", "this", "them",
+                                     "both", "one"]
         return (1...8).contains(said.count) && said.allSatisfy(agreeing.contains) && said.contains(where: verbs.contains)
+            && said.contains(where: pointing.contains)
     }
 
     // MARK: Wording for the model
