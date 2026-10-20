@@ -343,14 +343,14 @@ struct ConnectionSetupView: View {
                 return
             }
             guard !Task.isCancelled, request.isCurrent(in: flow), let interactive = resolved else { return }
+            guard let dashboardID = appState.resolveDashboardID(
+                forURL: request.configuration.serverURL,
+                registerIfMissing: true
+            ) else {
+                activationFailure = .unexpectedServerResponse
+                return
+            }
             if case .nativeOAuth = interactive {
-                guard let dashboardID = appState.resolveDashboardID(
-                    forURL: request.configuration.serverURL,
-                    registerIfMissing: true
-                ) else {
-                    activationFailure = .unexpectedServerResponse
-                    return
-                }
                 repairNativeOAuthDashboardID = dashboardID
             }
             repairSignIn = interactive
