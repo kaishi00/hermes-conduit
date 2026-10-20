@@ -503,6 +503,12 @@ final class VoiceConversationController: ObservableObject {
     /// may contain the assistant's own TTS.
     func interruptAssistantPlayback() async {
         guard isPlaybackCaptureSuspended else { return }
+        await stopAssistantReplyAndListen()
+    }
+
+    private func stopAssistantReplyAndListen() async {
+        bargeInTask?.cancel()
+        bargeInTask = nil
         cachedRoutePolicy = nil
         // Deliberately leaves lastBargeInState alone: that property records
         // acoustic barge-in provenance, and this path always lands in
@@ -513,6 +519,7 @@ final class VoiceConversationController: ObservableObject {
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
         assistantFinished = false
+        let turnStillRunning = isAwaitingVoiceAssistant
         // The in-flight assistant response is intentionally interrupted; its
         // terminal event belongs to the retired turn, not the next one.
         isAwaitingVoiceAssistant = false
@@ -524,7 +531,7 @@ final class VoiceConversationController: ObservableObject {
         // Manual Interrupt proceeds on the attempt regardless of the
         // cancellation result: the local turn retirement below already
         // re-opened the listening window.
-        _ = await interrupt()
+        if turnStillRunning { _ = await interrupt() }
         // The interruption is a real re-entrant async boundary (Hermes
         // cancellation/recovery), and the sheet can close while it is in
         // flight — stop() then advances the generation and tears the session
@@ -539,11 +546,8 @@ final class VoiceConversationController: ObservableObject {
     /// while Hermes speaks this is the sheet's Interrupt; where it is open
     /// (talking over is allowed) it is what talking over does.
     func stopAssistantReply() async {
-        if isPlaybackCaptureSuspended {
-            await interruptAssistantPlayback()
-        } else if isTalkOverAvailable {
-            scheduleBargeIn()
-        }
+        guard isPlaybackCaptureSuspended || state == .speaking else { return }
+        await stopAssistantReplyAndListen()
     }
 
     func stop() {
