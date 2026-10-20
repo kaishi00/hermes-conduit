@@ -166,14 +166,29 @@ enum TranscriptPerf {
         // Newest wins: dropping the report that names the violating field
         // (what a drop-newest cap would do after saturation) would recreate
         // the misdiagnosis this diagnostic exists to prevent.
+        let report = "t=\(offset)s \(component) opened by: \(fields.joined(separator: ", "))"
+        // The ring can evict the window's first reopen, the one a storm
+        // starts with, so it is kept too.
+        if storage.firstGateReopenReport == nil {
+            storage.firstGateReopenReport = report
+        }
         if storage.recentGateReopenReports.count >= 32 {
             storage.recentGateReopenReports.removeFirst()
         }
-        storage.recentGateReopenReports.append(
-            "t=\(offset)s \(component) opened by: \(fields.joined(separator: ", "))"
-        )
+        storage.recentGateReopenReports.append(report)
     }
     #endif
+
+    /// The current window's first gate-reopen report (DEBUG diagnostics).
+    static var firstGateReopenReport: String? {
+        #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
+        return storage.firstGateReopenReport
+        #else
+        return nil
+        #endif
+    }
 
     /// Most recent gate-reopen reports (bounded ring, DEBUG diagnostics).
     static var recentGateReopenReports: [String] {
@@ -538,6 +553,8 @@ enum TranscriptPerf {
         /// Bounded ring of gate-reopen reports (DEBUG diagnostics, see
         /// `recentGateReopenReports`); newest wins on overflow.
         var recentGateReopenReports: [String] = []
+        /// The window's first gate-reopen report, which the ring can evict.
+        var firstGateReopenReport: String?
         /// Settled-content gate consultations (DEBUG diagnostics, see
         /// `settledContentGateComparisons`).
         var settledContentGateComparison = 0

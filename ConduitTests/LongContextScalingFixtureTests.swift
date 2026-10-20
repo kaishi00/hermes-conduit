@@ -265,7 +265,8 @@ final class LongContextScalingFixtureTests: XCTestCase {
         // failure on a hosted runner.
         let reopens: String = TranscriptPerf.recentGateReopenReports.isEmpty
             ? ""
-            : " (gate reopens: " + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
+            : " (first gate reopen: " + (TranscriptPerf.firstGateReopenReport ?? "?")
+                + "; gate reopens: " + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
         let spans: String = TranscriptPerf.preWindowRepeatSpans.isEmpty
             ? ""
             : " — spans:\n" + TranscriptPerf.preWindowRepeatSpans.joined(separator: "\n")
