@@ -86,6 +86,9 @@ enum TranscriptPerf {
                 if storage.recentPreWindowRepeatSources.count < 128 {
                     storage.recentPreWindowRepeatSources.append(context)
                 }
+                if storage.preWindowRepeatSpans.count < 8 {
+                    storage.preWindowRepeatSpans.append(span(context: context, ownFrames: 2))
+                }
             } else if storage.settledMarkdownWindowSources.contains(context) {
                 storage.settledMarkdownWindowDuplicateBody += 1
             } else {
@@ -113,6 +116,12 @@ enum TranscriptPerf {
     #if DEBUG
     private static func recordWindowSpan(context: String) {
         guard storage.windowEvaluationSpans.count < 8 else { return }
+        storage.windowEvaluationSpans.append(span(context: context, ownFrames: 3))
+    }
+
+    /// `ownFrames`: this file's frames atop the stack (`span`, `note`, and
+    /// `recordWindowSpan` when it is the caller), left out of the record.
+    private static func span(context: String, ownFrames: Int) -> String {
         let offset: String
         if let openedAt = storage.windowOpenedAt {
             offset = String(format: "%.3f", Date().timeIntervalSince(openedAt))
@@ -120,12 +129,11 @@ enum TranscriptPerf {
             offset = "?"
         }
         let stack = Thread.callStackSymbols
-            .dropFirst(2)
+            .dropFirst(ownFrames)
             .prefix(14)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .joined(separator: " <- ")
-        storage.windowEvaluationSpans
-            .append("t=\(offset)s src=\(context.prefix(24)) [\(stack)]")
+        return "t=\(offset)s src=\(context.prefix(24)) [\(stack)]"
     }
     #endif
 
@@ -408,6 +416,17 @@ enum TranscriptPerf {
         #endif
     }
 
+    /// The same records, kept only for re-evaluations of rows that rendered
+    /// before the window opened (the first 8), so a cascade's driver is
+    /// named even when fresh mounts fill `windowEvaluationSpans`. DEBUG-only.
+    static var preWindowRepeatSpans: [String] {
+        #if DEBUG
+        return storage.preWindowRepeatSpans
+        #else
+        return []
+        #endif
+    }
+
     /// Whether a settled-Markdown source matching `predicate` was first
     /// rendered inside the current measurement window. Lets a fixture wait
     /// for ONE specific row instead of any settled evaluation, which an
@@ -513,6 +532,9 @@ enum TranscriptPerf {
         /// Bounded evaluation spans inside the current window (DEBUG
         /// diagnostics, see `windowEvaluationSpans`).
         var windowEvaluationSpans: [String] = []
+        /// Bounded spans of pre-window repeats only (DEBUG diagnostics, see
+        /// `preWindowRepeatSpans`).
+        var preWindowRepeatSpans: [String] = []
         /// Bounded ring of gate-reopen reports (DEBUG diagnostics, see
         /// `recentGateReopenReports`); newest wins on overflow.
         var recentGateReopenReports: [String] = []

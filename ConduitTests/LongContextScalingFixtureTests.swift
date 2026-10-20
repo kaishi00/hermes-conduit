@@ -261,14 +261,14 @@ final class LongContextScalingFixtureTests: XCTestCase {
         let atRestRerenders = TranscriptPerf.settledMarkdownPreWindowRepeatEvaluations
         let unmountedRerenders = TranscriptPerf.recentPreWindowRepeatSources
             .filter { !mountedAtWindowOpen.contains($0) }
-        // What drove the window's first evaluations, for a failure on a
-        // hosted runner.
+        // What drove the window's first re-renders of earlier rows, for a
+        // failure on a hosted runner.
         let reopens: String = TranscriptPerf.recentGateReopenReports.isEmpty
             ? ""
-            : "; gate reopens: " + TranscriptPerf.recentGateReopenReports.joined(separator: "; ")
-        let spans: String = TranscriptPerf.windowEvaluationSpans.isEmpty
+            : " (gate reopens: " + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
+        let spans: String = TranscriptPerf.preWindowRepeatSpans.isEmpty
             ? ""
-            : "; spans:\n" + TranscriptPerf.windowEvaluationSpans.joined(separator: "\n")
+            : " — spans:\n" + TranscriptPerf.preWindowRepeatSpans.joined(separator: "\n")
         XCTAssertTrue(
             unmountedRerenders.isEmpty,
             "live reasoning re-rendered \(unmountedRerenders.count) settled rows that were not mounted "
