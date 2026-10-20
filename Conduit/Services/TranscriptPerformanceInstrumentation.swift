@@ -469,7 +469,10 @@ enum TranscriptPerf {
         fresh.everSeenMarkdownSources = storage.everSeenMarkdownSources
         fresh.settledMarkdownFreshMountBody = storage.settledMarkdownFreshMountBody
         fresh.windowOpenedAt = Date()
+        // Under the lock an off-main gate comparison writes reports with.
+        gateReopenLock.lock()
         storage = fresh
+        gateReopenLock.unlock()
         #endif
     }
 
@@ -485,8 +488,11 @@ enum TranscriptPerf {
     /// dormancy fixtures measure.
     static func resetRenderLedgerForTesting() {
         #if DEBUG
-        storage = Storage()
-        storage.windowOpenedAt = Date()
+        var fresh = Storage()
+        fresh.windowOpenedAt = Date()
+        gateReopenLock.lock()
+        storage = fresh
+        gateReopenLock.unlock()
         #endif
     }
 

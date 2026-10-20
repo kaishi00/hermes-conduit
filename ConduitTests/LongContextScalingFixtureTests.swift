@@ -286,7 +286,9 @@ final class LongContextScalingFixtureTests: XCTestCase {
         let printedSpans = offenderSpans.isEmpty ? TranscriptPerf.preWindowRepeatSpans : offenderSpans
         let spans: String = printedSpans.isEmpty
             ? ""
-            : (offenderSpans.isEmpty ? " — spans (mounted rows only):\n" : " — spans:\n")
+            : (offenderSpans.isEmpty
+                ? " — spans (mounted rows only; no offending row's was recorded):\n"
+                : " — spans of \(offenderSpans.count) of \(Set(unmountedRerenders).count) offending rows:\n")
                 + printedSpans.joined(separator: "\n")
         XCTAssertTrue(
             unmountedRerenders.isEmpty,
