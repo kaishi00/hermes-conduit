@@ -57,10 +57,12 @@ enum SpokenApprovals {
         if case .no = heard { ledByNo = true }
         let target: SpokenApprovalTarget
         let approves: Bool
+        // Cancelling an alarm: "cancel it" is the yes there.
+        let cancelsAlarm = waiting.phoneChanges.first.map(waiting.cancellingAlarms.contains) ?? false
         if let id = waiting.phoneChanges.first {
             target = .phoneChange(id: id)
             // A yes, or a short "change it" / "delete it" naming the change.
-            approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: waiting.cancellingAlarms.contains(id))
+            approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: cancelsAlarm)
         } else if let prompt = waiting.presented.first {
             target = .presented(id: prompt.id)
             // A yes, or one of the phrases Hermes gave ("send it").
@@ -77,7 +79,6 @@ enum SpokenApprovals {
         // Words led by a no ("cancel it", "don't send it") never approve,
         // even when they repeat a phrase that would; only cancelling an
         // alarm takes "cancel it" as the yes.
-        let cancelsAlarm = waiting.phoneChanges.first.map(waiting.cancellingAlarms.contains) ?? false
         if ledByNo, !cancelsAlarm { return declines ? (target, false) : nil }
         if approves { return (target, true) }
         return declines ? (target, false) : nil

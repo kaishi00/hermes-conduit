@@ -376,8 +376,7 @@ final class LocalLiveTurnRunner {
         let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let what = asked.isEmpty ? approval.command : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
-        let name = "Hermes"
-        return AppLocalization.string("\(name) needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
+        return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }
 
     static var needsInputLine: String {

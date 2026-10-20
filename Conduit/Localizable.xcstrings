@@ -41537,6 +41537,94 @@
         }
       }
     },
+    "Hermes needs your OK to go on: %@. Say yes to allow it once, or no." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes braucht dein OK, um weiterzumachen: %@. Sag Ja, um es einmal zu erlauben, oder Nein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes needs your OK to go on: %@. Say yes to allow it once, or no."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes necesita tu visto bueno para seguir: %@. Di sí para permitirlo una vez, o no."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a besoin de votre accord pour continuer : %@. Dites oui pour l’autoriser une fois, ou non."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes perlu persetujuan Anda untuk lanjut: %@. Katakan ya untuk mengizinkannya sekali, atau tidak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha bisogno del tuo OK per continuare: %@. Di' sì per consentirlo una volta, oppure no."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが続けるにはあなたの許可が必要です：%@。1回だけ許可するなら「はい」、しないなら「いいえ」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 계속하려면 승인이 필요해요: %@. 한 번 허용하려면 '네', 아니면 '아니요'라고 말하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes potrzebuje Twojej zgody, by kontynuować: %@. Powiedz „tak”, aby zezwolić jednorazowo, albo „nie”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes precisa do seu OK para continuar: %@. Diga sim para permitir uma vez, ou não."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes нужно ваше разрешение, чтобы продолжить: %@. Скажите «да», чтобы разрешить один раз, или «нет»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes devam etmek için onayınızı bekliyor: %@. Bir kez izin vermek için evet, vermemek için hayır deyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你同意才能继续：%@。说“是”允许这一次，或说“不”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你同意才能繼續：%@。說「是」允許這一次，或說「不」。"
+          }
+        }
+      }
+    },
     "%@ needs your OK to go on: %@. Say yes to allow it once, or no." : {
       "localizations" : {
         "de" : {
