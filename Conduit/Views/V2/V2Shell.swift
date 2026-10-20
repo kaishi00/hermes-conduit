@@ -188,10 +188,12 @@ final class V2ShownUpdates: ObservableObject {
     var isScrolling: Bool { !scrollingLists.isEmpty }
     private var scrollingLists: Set<AnyHashable> = []
 
-    /// A list's scroll began or came to rest. Each start restarts the hold.
+    /// A list's scroll moved on a phase or came to rest. Each new phase
+    /// (a drag, then the fling after it) restarts the hold.
     func setScrolling(_ scrolling: Bool, by list: AnyHashable) {
         if scrolling {
-            if scrollingLists.insert(list).inserted { scrollStartedAt = now() }
+            scrollingLists.insert(list)
+            scrollStartedAt = now()
         } else if scrollingLists.remove(list) != nil, scrollingLists.isEmpty {
             scrollEnded()
         }
@@ -338,12 +340,14 @@ private struct V2ScrollHold: ViewModifier {
     let updates: V2ShownUpdates
     /// This list, among the ones `updates` draws.
     @State private var id = UUID()
+    /// VoiceOver reads the rows as they scroll by, so they stay current.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
                 .onScrollPhaseChange { _, phase in
-                    updates.setScrolling(phase != .idle, by: id)
+                    updates.setScrolling(phase != .idle && !voiceOver, by: id)
                 }
                 .onDisappear { updates.setScrolling(false, by: id) }
         } else {
