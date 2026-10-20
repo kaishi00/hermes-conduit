@@ -207,7 +207,10 @@ enum ConnectionURLPolicy {
 
     private static func ipv4Octets(_ value: String) -> [Int]? {
         let components = value.split(separator: ".", omittingEmptySubsequences: false)
-        guard components.count == 4 else { return nil }
+        guard components.count == 4,
+              components.allSatisfy({ component in
+                  !component.isEmpty && component.utf8.allSatisfy({ (48...57).contains($0) })
+              }) else { return nil }
         let octets = components.compactMap { Int($0) }
         guard octets.count == 4,
               octets.allSatisfy({ (0...255).contains($0) }) else { return nil }
