@@ -62,14 +62,14 @@ struct OfflineChatTranscriptView: View {
                     if let pending = appState.pendingComposerSendOnScreen {
                         PendingComposerSendBubble(pending: pending)
                     }
+                    // Ends as the live transcript does (ChatView's bottom
+                    // anchor): a 1 pt row one row spacing below the last, so
+                    // the copy lines up with it when it hands over.
+                    Color.clear
+                        .frame(height: 1)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
-                // As the live transcript ends (ChatView's bottom anchor,
-                // one row spacing below the last row): one row spacing above
-                // the composer, so the copy lines up when it hands over. The
-                // live anchor's own 1 pt height is the only difference.
-                .padding(.bottom, ChatStepStyle.transcriptRowSpacing)
             }
             .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
             .defaultScrollAnchor(.bottom)

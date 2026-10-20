@@ -606,6 +606,7 @@ final class ChatScrollHostedTests: XCTestCase {
         } else {
             XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the scroll view")
         }
+        XCTAssertLessThan(composerTop - rowBottom, 30, "no band of empty space above the composer")
         XCTAssertEqual(
             composerTop - rowBottom,
             ChatStepStyle.transcriptRowSpacing,
