@@ -26358,6 +26358,7 @@ final class AppState: ObservableObject {
         // Set once the target's client and identity are installed: from
         // then on a superseded switch still finishes or rolls back.
         var adoptedTarget = false
+        var previousClient: HermesClient?
 
         do {
             let ticket: String
@@ -26385,7 +26386,7 @@ final class AppState: ObservableObject {
                 return false
             }
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
-            let previousClient = client
+            previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
 
             markChatViewportReplacement()
@@ -26439,7 +26440,10 @@ final class AppState: ObservableObject {
             // widget launch or a newer navigation still finishes the switch
             // (only the chat is theirs), or the old socket and a
             // half-switched profile would be left behind.
-            guard self.client === nextClient else { return false }
+            guard self.client === nextClient else {
+                previousClient?.disconnect()
+                return false
+            }
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
@@ -26522,6 +26526,7 @@ final class AppState: ObservableObject {
             // attempt stale.
             setActiveProfile(previousProfile)
             connection = savedConnection
+            previousClient?.disconnect()
             client?.disconnect()
             client = nil
             isConnected = false
