@@ -25,6 +25,15 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         }
     }
 
+    /// Conduit's screen in the car comes back to the front (from Maps, a
+    /// podcast app, the car's home screen). The connection may have died
+    /// while another app was up (#1060).
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        MainActor.assumeIsolated {
+            CarPlayVoiceCoordinator.shared.handleSceneWillEnterForeground()
+        }
+    }
+
     /// The car's back button reports here, so a list that leaves the screen
     /// stops being kept current.
     func templateDidDisappear(_ aTemplate: CPTemplate, animated: Bool) {

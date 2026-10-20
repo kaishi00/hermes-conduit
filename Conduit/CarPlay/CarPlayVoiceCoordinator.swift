@@ -324,6 +324,13 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
+    /// The car's screen shows Conduit again. A connection lost meanwhile
+    /// reconnects now, so the driver's next request finds Hermes (#1060).
+    func handleSceneWillEnterForeground() {
+        guard isConnected else { return }
+        (lastBoundAppState ?? appStateProvider()).handleCarPlaySceneWillEnterForeground()
+    }
+
     /// `CPTemplateApplicationSceneDelegate` disconnect. Rotates the fence so
     /// in-flight establishment becomes stale, unbinds presentation, and hands
     /// the lifecycle decision to the BOUND AppState: an active phone Voice
