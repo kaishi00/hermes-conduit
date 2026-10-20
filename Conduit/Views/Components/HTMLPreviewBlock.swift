@@ -454,7 +454,9 @@ enum HTMLPreviewPage {
     }
 
     private static func doctypeEnd(in document: String) -> String.Index? {
-        guard let range = document.range(of: #"^\s*<!doctype[^>]*>"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        // Only HTML whitespace may precede the doctype. Other Unicode
+        // whitespace starts the body, where a CSP meta would be ignored.
+        guard let range = document.range(of: #"^[\t\n\f\r ]*<!doctype[^>]*>"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return range.upperBound
     }
 
