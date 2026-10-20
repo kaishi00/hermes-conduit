@@ -117,6 +117,7 @@ struct LocalLiveFrontModelSettingsView: View {
                 statusLine
             }
         }
+        .disabled(isSaving)
         .task(id: service.profile) { await load() }
     }
 
