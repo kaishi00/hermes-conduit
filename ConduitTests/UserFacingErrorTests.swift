@@ -69,6 +69,32 @@ extension ConnectionFailureTests {
         )
         XCTAssertEqual(text(400, "Dashboard request failed (400)."), "Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
     }
+
+    // #792: the location settings banner (turn on, delete a rule, delete
+    // location data) showed NSURLErrorDomain text.
+    func testLocationSettingsBannerIsPlainLanguage() {
+        XCTAssertEqual(
+            LocationSettingsPage.bannerMessage(for: URLError(.notConnectedToInternet)),
+            ConnectionFailure.offline.userMessage
+        )
+        XCTAssertEqual(
+            LocationSettingsPage.bannerMessage(for: NSError(domain: NSURLErrorDomain, code: URLError.timedOut.rawValue)),
+            ConnectionFailure.timedOut.userMessage
+        )
+        XCTAssertEqual(
+            LocationSettingsPage.bannerMessage(for: CancellationError()),
+            "That was interrupted before it finished. Try again."
+        )
+        // Conduit's own errors keep their text.
+        XCTAssertEqual(
+            LocationSettingsPage.bannerMessage(for: LocationSharingError.permissionDenied),
+            LocationSharingError.permissionDenied.errorDescription
+        )
+        XCTAssertEqual(
+            LocationSettingsPage.bannerMessage(for: DashboardTicketBridgeError.signInRequired),
+            DashboardTicketBridgeError.signInRequired.errorDescription
+        )
+    }
 }
 
 private extension Result {
