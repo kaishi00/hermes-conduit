@@ -27724,7 +27724,9 @@ final class AppState: ObservableObject {
     private func integerValue(_ value: Any?) -> Int? {
         if let integer = value as? Int { return integer }
         if let number = value as? NSNumber { return number.intValue }
-        if let string = value as? String { return Int(string) ?? Double(string).map(Int.init) }
+        if let string = value as? String {
+            return Int(string) ?? Double(string).flatMap { Int(exactly: $0.rounded(.towardZero)) }
+        }
         return nil
     }
 
