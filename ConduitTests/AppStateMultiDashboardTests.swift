@@ -1375,6 +1375,34 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
     }
 
+    /// A switch invalidates the Mac's bridge, so its listing in flight
+    /// fails; that failure isn't reported over the VPS's workspace.
+    func testAWorkspaceListingFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let folder = WorkspaceEntry(name: "mac", path: "/w/mac", isDirectory: true)
+        let expand = Task { await appState.toggleWorkspaceFolder(folder) }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        await expand.value
+
+        XCTAssertNil(appState.workspaceError, "the Mac's failed listing isn't reported over the VPS")
+    }
+
+    func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let save = Task { await appState.setDisplayPreference(.expandTools, enabled: true) }
+        try await held.waitForRequests(1)   // the save's config read
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        let saved = await save.value
+
+        XCTAssertFalse(saved)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed save isn't reported over the VPS")
+    }
+
     func testAVoiceCallTranscriptOpenOnTheOldDashboardIsClosedBySwitching() async {
         let (appState, _, vps) = heldSwitchFixture()
         appState.chatCallTranscript = VoiceChatCall(callID: "mac-call", turns: [])
