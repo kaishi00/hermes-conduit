@@ -227,6 +227,35 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(windows(since: sent).contains("steps/hour"))
     }
 
+    func testACategoryTurnedOnLaterGetsItsHistory() async throws {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        func windows(since count: Int, _ kind: String) -> Int {
+            host.batches.dropFirst(count).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+                .filter { "\($0["metric"] as? String ?? "")/\($0["grain"] as? String ?? "")" == kind }.count
+        }
+        var preferences = healthPreferences(history: .days30)
+        preferences.categories = [.activity, .workouts]
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        XCTAssertEqual(windows(since: 0, "sleep/night"), 0)
+
+        // Sleep on: its older nights go too, not just the recent days.
+        var sent = host.batches.count
+        preferences.categories = [.activity, .sleep, .workouts]
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertGreaterThan(windows(since: sent, "sleep/night"), 1, "The recent days and the history walked again")
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "All 30 days are in again")
+
+        // Sleep off: what stays on already has its history.
+        sent = host.batches.count
+        preferences.categories = [.activity, .workouts]
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(windows(since: sent, "steps/day"), 1, "Only the recent days go again")
+        XCTAssertEqual(windows(since: sent, "sleep/night"), 0)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+    }
+
     func testLowDataModeLeavesOlderHistoryForLater() async throws {
         let host = FakeHealthHost()
         let engine = makeHealthEngine(source: FakeHealthSource())
