@@ -30247,7 +30247,14 @@ final class AppState: ObservableObject {
         workspaceError = nil
         defer { if workspaceLoadingPath == path { workspaceLoadingPath = nil } }
         do {
-            workspaceEntries[path] = try await workspaceDirectoryEntries(at: path)
+            let entries = try await workspaceDirectoryEntries(at: path)
+            // The bridge's invalidation makes a late answer throw; this
+            // re-check also covers a switch landing between that answer and
+            // this resumption, so no other dashboard's listing merges in.
+            if let owner {
+                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            }
+            workspaceEntries[path] = entries
             return true
         } catch {
             // A dashboard switch invalidates the bridge, so a listing still in
