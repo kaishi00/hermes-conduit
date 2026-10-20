@@ -472,6 +472,15 @@ extension NotificationE2ETests {
         failure = DashboardTicketBridgeError.notReady
         _ = await engine.send(batch, config: config, request: request)
         XCTAssertEqual(engine.lastError, DashboardTicketBridgeError.notReady.errorDescription)
+
+        // So does an HTTP status with no special handling: the page shows
+        // the bridge's own wording for it, unchanged by the plain-language
+        // mapping.
+        let unhandled = DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+        failure = unhandled
+        _ = await engine.send(batch, config: config, request: request)
+        XCTAssertNotNil(unhandled.errorDescription)
+        XCTAssertEqual(engine.lastError, unhandled.errorDescription)
     }
 
     func testAnUnsentSettingsChangeIsRememberedInTheSharedConfig() throws {
