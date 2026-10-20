@@ -18,12 +18,6 @@ struct PendingScreenshot: Equatable {
     /// The dashboard the chat belongs to; a screenshot never joins
     /// another dashboard's chat, however their session ids line up.
     let dashboardID: UUID?
-
-    init(sessionID: String, attachment: Attachment, dashboardID: UUID? = nil) {
-        self.sessionID = sessionID
-        self.attachment = attachment
-        self.dashboardID = dashboardID
-    }
 }
 
 /// Asks the composer of one chat to take focus. Another chat's composer
@@ -147,18 +141,17 @@ extension AppState {
     }
 
     /// A send that failed puts its screenshot back, unless a newer one
-    /// already landed on the chat meanwhile.
-    func restorePendingScreenshot(_ attachment: Attachment, forSession sessionID: String) {
-        guard pendingScreenshotIndex(forSession: sessionID) == nil else {
+    /// already landed on the chat meanwhile. It goes back under the
+    /// dashboard it was taken from, even when another is active by now.
+    func restorePendingScreenshot(_ entry: PendingScreenshot) {
+        if let index = pendingScreenshotIndex(forSession: entry.sessionID, dashboardID: entry.dashboardID) {
             // It will never be sent now.
-            if pendingScreenshot(forSession: sessionID)?.uri != attachment.uri {
-                Self.deleteStagedScreenshot(attachment)
+            if pendingScreenshots[index].attachment.uri != entry.attachment.uri {
+                Self.deleteStagedScreenshot(entry.attachment)
             }
             return
         }
-        pendingScreenshots.append(
-            PendingScreenshot(sessionID: sessionID, attachment: attachment, dashboardID: activeDashboardID)
-        )
+        pendingScreenshots.append(entry)
         trimPendingScreenshots()
     }
 
@@ -173,10 +166,14 @@ extension AppState {
         }
     }
 
+    /// Only the dashboard the screenshot was staged for can take it: the
+    /// active one unless a caller names the dashboard it belongs to.
     private func pendingScreenshotIndex(forSession sessionID: String?) -> Int? {
+        pendingScreenshotIndex(forSession: sessionID, dashboardID: activeDashboardID)
+    }
+
+    private func pendingScreenshotIndex(forSession sessionID: String?, dashboardID: UUID?) -> Int? {
         guard let sessionID, !sessionID.isEmpty, !pendingScreenshots.isEmpty else { return nil }
-        // Only the dashboard the screenshot was staged for can take it.
-        let dashboardID = activeDashboardID
         if let exact = pendingScreenshots.lastIndex(where: {
             $0.sessionID == sessionID && $0.dashboardID == dashboardID
         }) {
@@ -313,7 +310,7 @@ extension AppState {
         let earlierError = errorMessage
         await createNewSession()
         guard let created = activeSessionId, created != previous else {
-            restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
+            restorePendingScreenshot(entry)
             // Where the screenshot is first, then Hermes's own reason when
             // this attempt gave one.
             let reason = errorMessage != earlierError ? errorMessage : nil
