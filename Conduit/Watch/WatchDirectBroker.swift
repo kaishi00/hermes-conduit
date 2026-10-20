@@ -221,6 +221,7 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
                 return
             }
+            adoptIfKnown(id)
             let end = Self.beginBackgroundTask("conduit.watchDirect.token")
             Task {
                 defer { end() }
@@ -871,6 +872,7 @@ final class WatchDirectBroker {
     private func poll(_ id: UInt32) async -> WatchVoiceWire.DirectToolResult {
         // The supervisor's jobs are another connection's now.
         guard onCallsConnection(id) else { return WatchVoiceWire.DirectToolResult(outgoing: [.endConversation], runningJobs: 0) }
+        adoptIfKnown(id)
         // An ended call's poll would take the running call's news.
         if callID != id {
             return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount)
