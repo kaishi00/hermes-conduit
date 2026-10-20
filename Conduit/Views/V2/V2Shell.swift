@@ -173,7 +173,12 @@ final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     /// Set by the list from the shell's context.
     var isShown = true {
-        didSet { if isShown, !oldValue, missedUpdate { missedUpdate = false; objectWillChange.send() } }
+        didSet {
+            // Covered, it isn't scrolling: what the scroll held waits for
+            // the list to show again.
+            if !isShown { isScrolling = false }
+            if isShown, !oldValue, missedUpdate { missedUpdate = false; draw() }
+        }
     }
     /// Set by the list: a chat is open beside it.
     var coalesces = false
@@ -195,6 +200,7 @@ final class V2ShownUpdates: ObservableObject {
     var scrollHoldLimit: TimeInterval = 2
     private var scrollStartedAt = Date.distantPast
     private var missedScrollUpdate = false
+    private var holdLimitScheduled = false
     /// The clock the hold reads; tests set their own.
     var now: () -> Date = Date.init
     /// How long the list beside a chat waits to draw the publishes since.
@@ -241,7 +247,7 @@ final class V2ShownUpdates: ObservableObject {
 
     private func passOn() {
         guard isShown else { missedUpdate = true; return }
-        guard !holdsForScroll() else { missedScrollUpdate = true; return }
+        guard !holdsForScroll() else { holdForScroll(); return }
         guard coalesces else { draw(); return }
         guard !drawScheduled else { return }
         drawScheduled = true
@@ -255,7 +261,7 @@ final class V2ShownUpdates: ObservableObject {
             if !isShown {
                 missedUpdate = true
             } else if holdsForScroll() {
-                missedScrollUpdate = true
+                holdForScroll()
             } else {
                 draw()
             }
@@ -266,6 +272,22 @@ final class V2ShownUpdates: ObservableObject {
     /// draw during it) hasn't run out.
     private func holdsForScroll() -> Bool {
         isScrolling && now().timeIntervalSince(scrollStartedAt) < scrollHoldLimit
+    }
+
+    /// Holds a publish until the scroll rests, or until the hold runs out
+    /// even if nothing else publishes meanwhile.
+    private func holdForScroll() {
+        missedScrollUpdate = true
+        guard !holdLimitScheduled else { return }
+        holdLimitScheduled = true
+        let wait = max(scrollHoldLimit - now().timeIntervalSince(scrollStartedAt), 0.05)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard let self else { return }
+            holdLimitScheduled = false
+            // A draw meanwhile restarted the hold; passing on holds again.
+            if missedScrollUpdate { passOn() }
+        }
     }
 
     /// A draw during a scroll restarts its hold.
@@ -280,7 +302,7 @@ final class V2ShownUpdates: ObservableObject {
         let values = Self.values(of: defaultsKeys, in: defaults)
         guard values != defaultsValues else { return }
         defaultsValues = values
-        if atOnce, isShown { objectWillChange.send() } else { passOn() }
+        if atOnce, isShown { draw() } else { passOn() }
     }
 
     /// Property-list values, compared by `isEqual:`.

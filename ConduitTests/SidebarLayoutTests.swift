@@ -294,6 +294,27 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 2)
     }
 
+    /// A held publish draws once the hold runs out even when nothing else
+    /// publishes, and covering the list ends its scroll.
+    @MainActor
+    func testScrollHoldRunsOutWithoutAnotherPublish() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        updates.scrollHoldLimit = 0.1
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.isScrolling = true
+        state.sessions = [pinnedTestSession("held")]
+        XCTAssertEqual(sent, 0)
+        waitUntil { sent > 0 }
+        XCTAssertEqual(sent, 1, "the hold never ran out on its own")
+
+        updates.isShown = false
+        XCTAssertFalse(updates.isScrolling, "a covered list stayed scrolling")
+    }
+
     private func waitUntil(_ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {

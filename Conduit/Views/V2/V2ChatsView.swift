@@ -1368,6 +1368,7 @@ struct V2ChatsView: View, Equatable {
         // Scrolling the list puts the keyboard away; the search stays.
         .scrollDismissesKeyboard(.immediately)
         .environment(\.defaultMinListRowHeight, 1)
+        .v2HoldsUpdatesWhileScrolling(updates)
         .refreshable {
             await appState.refreshProjects()
         }
