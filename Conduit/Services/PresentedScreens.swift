@@ -140,6 +140,14 @@ struct PresentedConfirm: Identifiable, Equatable {
     func isConfirmed(by words: String) -> Bool {
         if VoiceCallDecisionOutcome.isYes(words) { return true }
         guard !words.contains("?"), !words.contains("？") else { return false }
+        // What a refusal is, the handset decides, not Hermes: whatever
+        // phrases it put in spoken_yes, the user's "no", "cancel" or
+        // "wait" in any shipped language never confirms. "No problem"
+        // still does: the handset's own check classifies it as a yes.
+        switch VoiceThreadRouting.heldRequestAnswer(words) {
+        case .no, .notYet: return false
+        default: break
+        }
         let said = Self.words(in: words)
         guard !said.isEmpty else { return false }
         let leads: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please"]
