@@ -11,7 +11,9 @@ private extension KeyedDecodingContainer {
             let index = walker.currentIndex
             if let value = try? walker.decode(type) {
                 values.append(value)
-            } else {
+            } else if walker.currentIndex == index {
+                // JSONDecoder leaves the cursor on a failed element; consume
+                // it here, and never a valid sibling if a decoder did move.
                 _ = try? walker.decode(AnyCodable.self)
             }
             guard walker.currentIndex > index else { break }
@@ -451,8 +453,16 @@ struct KanbanBoardsResponse: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        current = try container.decode(String.self, forKey: .current)
         boards = container.decodeLossyArray(KanbanBoardMetadata.self, forKey: .boards)
+        // A missing or blank current pointer doesn't cost the boards list.
+        // It falls back to the board the server marks current, then to ""
+        // (no board= on the request, so the server resolves its own), never
+        // to a made-up "default" identity.
+        let sent = container.decodeLossyString(forKey: .current)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        current = sent.flatMap { $0.isEmpty ? nil : $0 }
+            ?? boards.first(where: { $0.isCurrent == true })?.slug
+            ?? ""
     }
 }
 

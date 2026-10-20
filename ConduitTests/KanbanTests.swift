@@ -598,6 +598,20 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(response.current, "alpha")
     }
 
+    /// A boards response without a usable current pointer keeps its
+    /// boards, and takes the board the server marks current.
+    func testABoardsResponseWithoutCurrentKeepsItsBoards() throws {
+        let marked = #"{"boards":[{"slug":"alpha"},{"slug":"beta","is_current":true}]}"#
+        let response = try JSONDecoder().decode(KanbanBoardsResponse.self, from: Data(marked.utf8))
+        XCTAssertEqual(response.boards.map(\.slug), ["alpha", "beta"])
+        XCTAssertEqual(response.current, "beta")
+
+        let unmarked = #"{"boards":[{"slug":"alpha"}],"current":"  "}"#
+        let blank = try JSONDecoder().decode(KanbanBoardsResponse.self, from: Data(unmarked.utf8))
+        XCTAssertEqual(blank.boards.map(\.slug), ["alpha"])
+        XCTAssertEqual(blank.current, "", "no invented board identity: the server resolves its own")
+    }
+
     // MARK: - Capabilities request-scoped outcome contract
 
     func testCapabilityOutcomeMappingIsRequestScoped() {
