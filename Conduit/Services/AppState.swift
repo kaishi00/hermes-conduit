@@ -14504,6 +14504,9 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 return false
             }
+            // Before the failure state, which the replayed prompts' running
+            // edge must not overwrite.
+            replayBufferedDecisionPrompts(for: token)
             turnState = .reconnecting
             reconciliationSessionWasNotFound = resumeRPCFailedSessionNotFound
             switch error {
@@ -26690,7 +26693,10 @@ final class AppState: ObservableObject {
                 queued = try await client.pendingApprovals(sessionId: card.sessionId, profile: profile)
             }
         } catch {
-            return HermesClient.isMissingRPCMethod(error) ? .sessionQueue : .unknown
+            if HermesClient.isMissingRPCMethod(error) { return .sessionQueue }
+            // The card's runtime is gone, and with it the wait.
+            if HermesClient.isSessionNotFoundError(error) { return .noLongerPending }
+            return .unknown
         }
         return Self.legacyApprovalTarget(for: card, in: queued)
     }
@@ -26858,6 +26864,11 @@ final class AppState: ObservableObject {
             if Self.isExpiredPromptError(error) {
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            } else if HermesClient.isSessionNotFoundError(error) {
+                // The card's runtime is gone (reaped, or re-opened
+                // elsewhere), so nothing waits on this answer any more.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
             } else {
                 messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
                 errorMessage = UserFacingError.message(for: error)
@@ -28447,6 +28458,25 @@ final class AppState: ObservableObject {
         // user sees the compressed transcript without leaving the session.
         Task { [weak self] in
             await self?.syncSession()
+        }
+    }
+
+    /// A resume that fails drops what it buffered, and streamed text comes
+    /// back with the next resume. A decision prompt does not: Hermes
+    /// announces an approval, clarify or input request once and then waits,
+    /// so dropping it leaves the chat without the card Hermes is waiting
+    /// on. Replay those (and their withdrawals, in order) while the
+    /// reconciliation's accepted ids still route them to this chat.
+    private func replayBufferedDecisionPrompts(for token: UUID) {
+        guard let reconciliation, reconciliation.token == token else { return }
+        for event in reconciliation.bufferedEvents {
+            switch event {
+            case .approval, .approvalWithdrawn, .clarify, .clarifyExpire,
+                    .inputPrompt, .inputPromptExpire:
+                applyStreamEvent(event)
+            default:
+                continue
+            }
         }
     }
 
