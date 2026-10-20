@@ -1710,6 +1710,7 @@ final class CarPlayVoiceCoordinator {
         attachingTo thread: VoiceThreadTarget? = nil
     ) async {
         let startRequest = voiceStartRequest
+        let driverRequest = driverStartRequest
         guard await waitForHermes(appState: appState, generation: generation) else { return }
         // The setting may have changed while Hermes was being reached; the
         // controls start whichever mode is current on the next tap. End
@@ -1737,7 +1738,9 @@ final class CarPlayVoiceCoordinator {
         }
         // End tapped while the call was starting: the call it closed may
         // not have been running yet, so close whatever started after it.
-        if isCurrent(generation), isConnected, voiceStartRequest != startRequest {
+        // A newer driver start now owns the call and must not be closed.
+        if isCurrent(generation), isConnected, voiceStartRequest != startRequest,
+           driverStartRequest == driverRequest {
             endConversation()
             forward(.ready)
         }
