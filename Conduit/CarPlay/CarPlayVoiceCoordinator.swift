@@ -1249,7 +1249,7 @@ final class CarPlayVoiceCoordinator {
             settleUnopenedChat(opened)
             return
         }
-        let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        guard let outcome = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
         guard voiceStartRequest == startRequest else {
             closeStartEndedMeanwhile(outcome)
             return
@@ -1453,7 +1453,8 @@ final class CarPlayVoiceCoordinator {
                 }
             }
         } else {
-            outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+            guard let prepared = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
+            outcome = prepared
             guard voiceStartRequest == startRequest else {
                 closeStartEndedMeanwhile(outcome)
                 return
@@ -1488,11 +1489,11 @@ final class CarPlayVoiceCoordinator {
         // A new chat is no longer the one picked from the list.
         chosenChat = nil
         let startRequest = voiceStartRequest
-        let outcome = await prepareWaitingForConnection(
+        guard let outcome = await prepareWaitingForConnection(
             appState: appState,
             generation: generation,
             startsFreshConversation: true
-        )
+        ) else { return }
         guard voiceStartRequest == startRequest else {
             closeStartEndedMeanwhile(outcome)
             return
@@ -1687,7 +1688,7 @@ final class CarPlayVoiceCoordinator {
             return
         }
         let startRequest = voiceStartRequest
-        let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        guard let outcome = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
         guard voiceStartRequest == startRequest else {
             closeStartEndedMeanwhile(outcome)
             return
@@ -1741,12 +1742,13 @@ final class CarPlayVoiceCoordinator {
     /// Runs the shared prepare path; when it defers because Hermes is not
     /// connected yet, waits (bounded) for the connection and prepares once
     /// more. A connection that never arrives keeps `.deferred`, which the
-    /// callers settle into the error state.
+    /// callers settle into the error state. A cancelled or superseded wait
+    /// returns nil without changing the surface's state.
     func prepareWaitingForConnection(
         appState: AppState,
         generation: UInt64,
         startsFreshConversation: Bool = false
-    ) async -> AppState.VoiceConversationPrepareOutcome {
+    ) async -> AppState.VoiceConversationPrepareOutcome? {
         appState.keepVoiceFromHermesCallCleanup()
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
@@ -1759,7 +1761,7 @@ final class CarPlayVoiceCoordinator {
         appState.recoverTransportForCarPlayIfNeeded()
         // Show that Hermes is being reached instead of sitting on Ready.
         handleControllerState(.thinking)
-        let connected = await awaitConnectionCancellably(appState) ?? false
+        guard let connected = await awaitConnectionCancellably(appState) else { return nil }
         guard connected, isCurrent(generation), isConnected else {
             return .deferred
         }
