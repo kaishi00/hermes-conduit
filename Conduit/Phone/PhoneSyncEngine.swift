@@ -374,13 +374,13 @@ final class PhoneSyncEngine: ObservableObject {
             case .http(let status, _) where status == 404:
                 state.pause = .pluginMissing
                 return .paused(.pluginMissing)
-            case .http(let status, let detail) where status == 409:
+            case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key: set it up again.
                 keys.clear()
                 state.forgetSent()
                 lastError = detail
                 return .unfinished
-            case .http(let status, let detail) where status == 400 || status == 413:
+            case .http(let status, let detail) where status == 400 || status == 409 || status == 413:
                 state.pause = .refused(detail)
                 return .paused(.refused(detail))
             default:
