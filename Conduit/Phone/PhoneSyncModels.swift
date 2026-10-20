@@ -417,7 +417,9 @@ enum PhoneDates {
     private static let formattersLock = NSLock()
     nonisolated(unsafe) private static var formatters: [String: ISO8601DateFormatter] = [:]
 
-    static func day(_ date: Date, calendar: Calendar = .current) -> String {
+    /// A wire `YYYY-MM-DD` day: Gregorian whatever the device's calendar,
+    /// or a Japanese-calendar device would send its era year.
+    static func day(_ date: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 2000, parts.month ?? 1, parts.day ?? 1)
     }
