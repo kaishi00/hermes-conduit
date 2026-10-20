@@ -71,6 +71,7 @@ final class TranscriptPerfLedgerContractTests: XCTestCase {
         )
     }
 
+    #if DEBUG
     /// The failure diagnostics LongContextScalingFixtureTests prints: spans
     /// only for pre-window repeats, the window's first gate reopen kept past
     /// the ring's eviction, and both scoped to one window.
@@ -94,6 +95,7 @@ final class TranscriptPerfLedgerContractTests: XCTestCase {
         XCTAssertTrue(TranscriptPerf.preWindowRepeatSpans.isEmpty, "reset() opens a window without spans")
         XCTAssertNil(TranscriptPerf.firstGateReopenReport, "reset() clears the first gate reopen")
     }
+    #endif
 
     /// The ever-seen mount ledger behind the fresh-mount diagnostic is
     /// bounded (4096 entries). Once SATURATED, classification must stop:

@@ -436,6 +436,8 @@ enum TranscriptPerf {
     /// named even when fresh mounts fill `windowEvaluationSpans`. DEBUG-only.
     static var preWindowRepeatSpans: [String] {
         #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
         return storage.preWindowRepeatSpans
         #else
         return []
@@ -462,6 +464,11 @@ enum TranscriptPerf {
     /// far as already-at-rest.
     static func reset() {
         #if DEBUG
+        // Under the lock an off-main gate comparison writes with, so it
+        // neither overlaps these reads nor writes into the discarded
+        // instance.
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
         var fresh = Storage()
         fresh.settledMarkdownKnownSources =
             storage.settledMarkdownKnownSources.union(storage.settledMarkdownWindowSources)
@@ -469,11 +476,7 @@ enum TranscriptPerf {
         fresh.everSeenMarkdownSources = storage.everSeenMarkdownSources
         fresh.settledMarkdownFreshMountBody = storage.settledMarkdownFreshMountBody
         fresh.windowOpenedAt = Date()
-        // Under the lock, so an off-main gate comparison can't write its
-        // report into the discarded instance.
-        gateReopenLock.lock()
         storage = fresh
-        gateReopenLock.unlock()
         #endif
     }
 
