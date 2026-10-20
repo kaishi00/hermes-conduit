@@ -5,6 +5,7 @@
 
 import AVFAudio
 import Foundation
+import os
 
 @MainActor
 final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
@@ -44,6 +45,13 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// AVAudioPlayerNode fires them for unplayed buffers when stopped — can
     /// never drain the next stream's counters.
     private(set) var playbackGeneration: UInt64 = 0
+    /// Mirror of `playbackGeneration` readable off the main actor: session
+    /// notifications arrive on any thread and must capture the lifetime they
+    /// observed before hopping.
+    private let observedPlaybackGeneration = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+    nonisolated private var generationForSessionObservers: UInt64 {
+        observedPlaybackGeneration.withLock { $0 }
+    }
     private var drainWaiters: [CheckedContinuation<Void, Never>] = []
     private var encodedPlayer: AVAudioPlayer?
     /// Set once `finish()` is requested: when the last scheduled buffer (or
@@ -341,6 +349,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func stop() {
         playbackGeneration &+= 1
+        observedPlaybackGeneration.withLock { $0 = playbackGeneration }
         isFinishing = false
         if isPaused { endPause() }
         // Pause time only matters to this stream's drain watchdog, which
@@ -448,8 +457,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     @objc private func handleInterruption(_ notification: Notification) {
         guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue), type == .began else { return }
+        let generation = generationForSessionObservers
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.playbackGeneration == generation else { return }
             if self.ownershipIntent == .standalonePlayback, self.lease != nil {
                 self.interruptedStandaloneStream = true
             }
@@ -463,7 +473,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     @objc private func handleMediaServicesReset(_ notification: Notification) {
-        Task { @MainActor [weak self] in self?.stop() }
+        let generation = generationForSessionObservers
+        Task { @MainActor [weak self] in
+            guard let self, self.playbackGeneration == generation else { return }
+            self.stop()
+        }
     }
 
     /// A route change can stop the rendering engine under a live lease
