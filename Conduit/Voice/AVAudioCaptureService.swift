@@ -265,6 +265,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         paused = false
         heldForPlayback = false
         shouldKeepEngineRunning = false
+        capturedPCM = Data()
+        preRollPCM = Data()
         // Deliberately unguarded (unlike pause): a redundant stop bumps the
         // generation again, which is always fail-closed.
         captureGeneration &+= 1
