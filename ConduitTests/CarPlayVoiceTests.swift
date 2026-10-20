@@ -2072,6 +2072,39 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.activations.last, .listening)
     }
 
+    /// End, then Listen, while the first start's prepare is still on its
+    /// way: End closes what that start opens, but not the conversation the
+    /// driver's Listen opened meanwhile (there is one classic conversation).
+    func testAStartEndedThenSupersededByListenLeavesTheListenConversationOpen() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        let requester = HeldOnceVoiceConfigRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let generation = harness.coordinator.connectionGeneration
+
+        let first = Task { @MainActor in
+            await harness.coordinator.establishVoice(generation: generation)
+        }
+        for _ in 0..<500 where !requester.isHolding { await Task.yield() }
+        XCTAssertTrue(requester.isHolding, "the first start's prepare is in flight")
+
+        harness.coordinator.endTapped()
+        harness.coordinator.startListeningTurn()
+        for _ in 0..<500 where harness.controller.state != .listening { await Task.yield() }
+        XCTAssertEqual(harness.controller.state, .listening, "the driver's Listen opened a conversation")
+
+        requester.release()
+        await first.value
+
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the ended start closed the driver's Listen conversation")
+        XCTAssertFalse(harness.activations.contains(.error), "\(harness.activations)")
+    }
+
     func testWaitingForTheConnectionShowsProcessingInsteadOfReady() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
@@ -3010,5 +3043,28 @@ extension CarPlayVoiceCoordinatorTests {
         await harness.coordinator.performStartNewChat(generation: harness.coordinator.connectionGeneration)
 
         XCTAssertNil(harness.coordinator.chosenChat)
+    }
+}
+
+/// Capability requester that holds its first request until released (a
+/// prepare still on its way) and answers the rest at once with full support.
+@MainActor
+final class HeldOnceVoiceConfigRequester: VoiceConfigurationRequesting {
+    private let answers = ImmediateVoiceConfigRequester(mode: .fullSupport)
+    private var held: CheckedContinuation<Void, Never>?
+    private var didHold = false
+    var isHolding: Bool { held != nil }
+
+    func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
+        if !didHold {
+            didHold = true
+            await withCheckedContinuation { held = $0 }
+        }
+        return try await answers.requestJSON(path: path, method: method, body: body)
+    }
+
+    func release() {
+        held?.resume()
+        held = nil
     }
 }
