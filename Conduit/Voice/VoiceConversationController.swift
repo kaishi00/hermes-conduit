@@ -544,9 +544,13 @@ final class VoiceConversationController: ObservableObject {
     /// Stop (the CarPlay voice screen): Hermes' spoken reply stops and the
     /// conversation listens, on any route. Where the microphone is closed
     /// while Hermes speaks this is the sheet's Interrupt; where it is open
-    /// (talking over is allowed) it is what talking over does.
+    /// (talking over is allowed) it is what talking over does. A Stop in the
+    /// silent gap between spoken sentences (still `.speaking`) retires the
+    /// in-flight turn the same way. A Settings speech-provider test also
+    /// reads as `.speaking`, but it is no conversation to stop or reopen.
     func stopAssistantReply() async {
-        guard isPlaybackCaptureSuspended || state == .speaking else { return }
+        guard !isProviderTestRunning,
+              isPlaybackCaptureSuspended || state == .speaking else { return }
         await stopAssistantReplyAndListen()
     }
 

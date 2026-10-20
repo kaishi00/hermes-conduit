@@ -307,6 +307,29 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(speech.passed)
     }
 
+    /// CarPlay's Stop reads a `.speaking` controller as a spoken reply. A
+    /// Settings speech-provider test is no conversation: Stop leaves it be.
+    func testStopAssistantReplyLeavesASpeechProviderTestAlone() async {
+        let gateway = MockGateway(blocksFirstStreamAppend: true, deliversPCM: true)
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        let test = Task { await controller.runSpeechTest(text: "test") }
+        await gateway.waitUntilSpeechAppended()
+        XCTAssertEqual(controller.state, .speaking)
+
+        await controller.stopAssistantReply()
+
+        XCTAssertEqual(gateway.stream?.cancelCount, 0, "Stop must not cancel the provider test's stream")
+        XCTAssertEqual(controller.state, .speaking)
+        gateway.stream?.cancel()
+        _ = await test.value
+    }
+
     func testProviderTestsRefuseWhileTheApplicationIsBackgrounded() async {
         let controller = VoiceConversationController(
             capture: MockCapture(permissionGranted: true),
