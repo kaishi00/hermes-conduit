@@ -2356,6 +2356,13 @@ final class AppState: ObservableObject {
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
     /// The transcript `submitVoiceTranscript` is submitting, while it is.
     private var spokenSubmissionText: String?
+    /// Where a caller of `submitComposer` says `text` came from (a Shortcut,
+    /// a live call's request), for the plugin's report (#888). Keyed by the
+    /// text like `spokenSubmissionText`, so a typed send interleaving on
+    /// another text never takes it.
+    var submissionTurnSurface: (text: String, surface: TurnSurface)?
+    /// Seam for tests: takes the plugin's turn-surface reports.
+    var turnSurfaceSender: (([String: Any]) async throws -> Void)?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -3444,6 +3451,7 @@ final class AppState: ObservableObject {
                 if foundBusy { throw VoiceThreadBusyError() }
                 throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
             }
+            await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
             switch try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true) {
             case .accepted:
                 return .started(runtimeID: chat.runtimeID)
@@ -7448,6 +7456,8 @@ final class AppState: ObservableObject {
             // probe, is waited for: never steered or interrupted.
             var foundBusy = isBusy
             if !foundBusy {
+                submissionTurnSurface = (text, messageTurnSurface(spoken: true))
+                defer { submissionTurnSurface = nil }
                 let sent = await submitComposer(text: text, onBusy: { foundBusy = true })
                 // The id captured before the send: the user may have moved to
                 // another chat while it was in flight.
@@ -7457,6 +7467,8 @@ final class AppState: ObservableObject {
             throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
         }
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
+        // Alongside the read below, so it adds no wait between the read and the send.
+        let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
         // Re-read right before the send: a turn running there (typed on
         // another device) is waited for. A failed read fails the send rather
         // than risk steering it.
@@ -7467,6 +7479,7 @@ final class AppState: ObservableObject {
         }) {
             throw VoiceThreadBusyError()
         }
+        await surfaceReport?.value
         switch try await client.sendPrompt(target, text: text) {
         case .accepted:
             return target
@@ -22503,7 +22516,15 @@ final class AppState: ObservableObject {
         // The bubble keeps the typed text; Hermes gets the files' references
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
+        // Where in Conduit this was sent from, for its turn's line (#888).
+        let surfaceReport = reportTurnSurface(
+            submissionTurnSurface.flatMap { $0.text == text ? $0.surface : nil }
+                ?? messageTurnSurface(spoken: surface == Self.spokenPromptSurface),
+            runtimeSessionID: sessionId,
+            text: promptText
+        )
         await locationShare?.value
+        await surfaceReport?.value
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
         if !joinsRunningTurn {

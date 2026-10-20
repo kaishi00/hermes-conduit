@@ -56,11 +56,14 @@ extension AppState {
                 if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy, Self.parseSlashCommand(text) == nil {
                     // A turn the composer finds running is never steered or
                     // interrupted from here: it declines and the gateway queues.
+                    self.submissionTurnSurface = (text, .shortcut)
+                    defer { self.submissionTurnSurface = nil }
                     if await self.submitComposer(text: text, onBusy: {}) { return .accepted }
                 }
                 // Off screen, a turn running there, or a composer that couldn't
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
+                await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 return try await client.sendPrompt(runtimeID, text: text)
             },
             liveSessions: { [weak self] profile in
