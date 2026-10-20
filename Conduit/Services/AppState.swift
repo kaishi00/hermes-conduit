@@ -11705,13 +11705,10 @@ final class AppState: ObservableObject {
         }
         guard let baseURL else { return }
         DashboardCookiePersistence.clearNativeCookies(for: baseURL)
-        Task { @MainActor in
-            if let url = URL(string: baseURL) {
-                await DashboardCookiePersistence.clear(
-                    from: WKWebsiteDataStore.default().httpCookieStore,
-                    for: url
-                )
-            }
+        if let url = URL(string: baseURL) {
+            // Ordered: the next default-store sign-in waits for this clear
+            // (#788).
+            DashboardCookiePersistence.clearDefaultStore(for: url)
         }
     }
 

@@ -219,12 +219,68 @@ enum DashboardCookiePersistence {
 
     /// Removes dashboard-origin cookies from a WebKit cookie store. Disconnect
     /// must not leave a reusable HttpOnly session behind in the persistent
-    /// default data store; clearing only the origin-matching cookies keeps any
-    /// unrelated cookies intact.
+    /// default data store; clearing only the cookies whose domain is exactly
+    /// the dashboard host keeps unrelated cookies intact, and leaves a
+    /// parent-domain cookie shared with a sibling dashboard alone (#788).
     static func clear(from cookieStore: WKHTTPCookieStore, for url: URL?) async {
         guard let host = url?.host?.lowercased() else { return }
-        for cookie in await cookieStore.allCookies() where cookieMatchesHost(cookie, host: host) {
+        for cookie in await cookieStore.allCookies() where cookieExactlyMatchesHost(cookie, host: host) {
             await cookieStore.deleteCookie(cookie)
+        }
+    }
+
+    /// The legacy disconnect's default-store clear while it runs. WebKit
+    /// answers over IPC, so the clear outlives the disconnect; a bridge or
+    /// sign-in page that uses the default store waits for it first
+    /// (`awaitPendingDefaultStoreClear`), or the late clear could delete the
+    /// new session's cookies (#788).
+    private static var pendingDefaultStoreClear: (generation: UInt64, task: Task<Void, Never>)?
+    private static var defaultStoreClearGeneration: UInt64 = 0
+
+    /// Clears the dashboard's cookies from the default WebKit store, after any
+    /// clear already running.
+    static func clearDefaultStore(for url: URL) {
+        defaultStoreClearGeneration &+= 1
+        let generation = defaultStoreClearGeneration
+        let previous = pendingDefaultStoreClear?.task
+        let task = Task { @MainActor in
+            await previous?.value
+            await clear(from: WKWebsiteDataStore.default().httpCookieStore, for: url)
+            if pendingDefaultStoreClear?.generation == generation { pendingDefaultStoreClear = nil }
+        }
+        pendingDefaultStoreClear = (generation, task)
+    }
+
+    static var hasPendingDefaultStoreClear: Bool { pendingDefaultStoreClear != nil }
+
+    /// Waits for a running default-store clear. Bounded: a WebKit reply that
+    /// never comes must not hold the next sign-in forever.
+    static func awaitPendingDefaultStoreClear(timeout: Duration = .seconds(10)) async {
+        guard let task = pendingDefaultStoreClear?.task else { return }
+        await awaitClear(task, timeout: timeout)
+    }
+
+    /// Waits for `task` or `timeout`, whichever comes first. Neither waiter
+    /// is a structured child: a task group would join the clear's waiter,
+    /// which cancellation cannot stop, and so wait for WebKit anyway.
+    static func awaitClear(_ task: Task<Void, Never>, timeout: Duration) async {
+        final class Once { var resumed = false }
+        let once = Once()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let finish: @MainActor () -> Void = {
+                guard !once.resumed else { return }
+                once.resumed = true
+                continuation.resume()
+            }
+            let deadline = Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                finish()
+            }
+            Task { @MainActor in
+                await task.value
+                deadline.cancel()
+                finish()
+            }
         }
     }
 
@@ -241,25 +297,33 @@ enum DashboardCookiePersistence {
         for cookie in jar.cookies ?? [] {
             jar.deleteCookie(cookie)
         }
-        guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
-        for cookie in HTTPCookieStorage.shared.cookies ?? [] {
-            let canonicalDomain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            if canonicalDomain == host {
-                HTTPCookieStorage.shared.deleteCookie(cookie)
-            }
-        }
+        clearSharedJarCookies(for: baseURL)
     }
 
-    /// Legacy global cleanup for callers without a dashboard identity
-    /// (pre-#148 shapes and tests): suffix-matched clearing of the shared jar.
+    /// Cleanup for callers without a dashboard identity (pre-#148 shapes and
+    /// tests): the same exact-host rule as the registered path, so a
+    /// parent-domain cookie shared with a sibling survives (#788).
     nonisolated static func clearNativeCookies(for baseURL: String) {
+        clearSharedJarCookies(for: baseURL)
+    }
+
+    nonisolated private static func clearSharedJarCookies(for baseURL: String) {
         guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
-        for cookie in HTTPCookieStorage.shared.cookies ?? [] where cookieMatchesHost(cookie, host: host) {
+        for cookie in HTTPCookieStorage.shared.cookies ?? [] where cookieExactlyMatchesHost(cookie, host: host) {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
     }
 
+    /// Clearing matches the canonical domain exactly: a parent-domain cookie
+    /// (Domain=.example.com) is shared with every sibling under it, so it
+    /// never belongs to one dashboard alone.
+    nonisolated private static func cookieExactlyMatchesHost(_ cookie: HTTPCookie, host: String) -> Bool {
+        cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == host
+    }
 
+
+    /// Which cookies apply to `host` (its own and its parent domains'): for
+    /// reading only. Clearing uses `cookieExactlyMatchesHost`.
     nonisolated private static func cookieMatchesHost(_ cookie: HTTPCookie, host: String) -> Bool {
         let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return host == domain || host.hasSuffix(".\(domain)")
@@ -677,6 +741,11 @@ final class DashboardTicketBridge: NSObject {
         }
         Task { [weak self] in
             guard let self else { return }
+            // A legacy bridge shares the default store with the disconnect
+            // before it, whose clear may still be running (#788).
+            if self.dashboardID == nil {
+                await DashboardCookiePersistence.awaitPendingDefaultStoreClear()
+            }
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID
@@ -769,6 +838,11 @@ final class DashboardTicketBridge: NSObject {
         rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
             guard let self else { return }
+            // A legacy bridge shares the default store with the disconnect
+            // before it, whose clear may still be running (#788).
+            if self.dashboardID == nil {
+                await DashboardCookiePersistence.awaitPendingDefaultStoreClear()
+            }
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID

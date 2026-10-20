@@ -6,11 +6,10 @@ import XCTest
 /// issue #20, finding #3: Disconnect must not leave a reusable dashboard
 /// session in the shared Foundation cookie store.
 ///
-/// The origin-scoping logic (`cookieMatchesHost`) is the security-relevant
+/// The origin-scoping logic (exact-host clearing) is the security-relevant
 /// part and is exercised here through the public `clearNativeCookies(for:)`
-/// surface. The WebKit `WKHTTPCookieStore` path mirrors the same matcher but
-/// requires a live WebKit process to test, so it is covered by the shared
-/// matcher coverage below rather than duplicated.
+/// surface. The WebKit `WKHTTPCookieStore` path uses the same matcher; its
+/// live-store coverage is in DashboardSessionIsolationTests.
 final class DashboardCookieClearingTests: XCTestCase {
 
     // MARK: - clearNativeCookies
