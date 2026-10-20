@@ -76,9 +76,13 @@ final class DevicePhoneStatusSource: PhoneStatusSource {
         case .unplugged: value["charging"] = false
         default: break
         }
-        let activity = await latestActivity()
-        value["activity"] = activity.kind
-        if let confidence = activity.confidence { value["activity_confidence"] = confidence }
+        if CMMotionActivityManager.authorizationStatus() == .authorized {
+            let activity = await latestActivity()
+            value["activity"] = activity.kind
+            if let confidence = activity.confidence { value["activity_confidence"] = confidence }
+        } else {
+            value["activity"] = "unknown"
+        }
         return value
     }
 
