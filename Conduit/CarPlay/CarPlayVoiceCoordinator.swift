@@ -1749,8 +1749,10 @@ final class CarPlayVoiceCoordinator {
     /// Runs the shared prepare path; when it defers because Hermes is not
     /// connected yet, waits (bounded) for the connection and prepares once
     /// more. A connection that never arrives keeps `.deferred`, which the
-    /// callers settle into the error state. A cancelled or superseded wait
-    /// returns nil without changing the surface's state.
+    /// callers settle into the error state. A wait cancelled by End, a
+    /// disconnect or a newer start returns nil without settling a terminal
+    /// state (the car may still show the Thinking state set before the
+    /// wait): whatever cancelled the wait owns the car's next state.
     func prepareWaitingForConnection(
         appState: AppState,
         generation: UInt64,
