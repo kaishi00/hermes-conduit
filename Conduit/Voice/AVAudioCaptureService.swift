@@ -331,11 +331,6 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             nodeOutput: engine.inputNodeOutputFormat,
             hardware: hardwareFormat
         )
-        if tapFormat != nil {
-            voiceAudioLogger.notice(
-                "Input node output format disagrees with hardware rate \(hardwareFormat.sampleRate, privacy: .public); tapping at the hardware format"
-            )
-        }
         converter = nil
         // Defensive: a recovery restart (e.g. after a route change stops the
         // engine) can reach startEngine while a stale tap still hangs on bus

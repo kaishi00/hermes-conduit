@@ -86,6 +86,11 @@ enum VoiceAudioEngineRecovery {
     static func tapFormat(nodeOutput: AVAudioFormat, hardware: AVAudioFormat) -> AVAudioFormat? {
         guard nodeOutput.sampleRate > 0,
               abs(nodeOutput.sampleRate - hardware.sampleRate) >= 0.5 else { return nil }
+        // Logged here, for every mic-start path that asks: the field
+        // breadcrumb that this route-dependent guard engaged.
+        engineRecoveryLogger.notice(
+            "Input node output rate \(nodeOutput.sampleRate, privacy: .public) disagrees with hardware rate \(hardware.sampleRate, privacy: .public); tapping at the hardware format"
+        )
         return hardware
     }
 
