@@ -32,6 +32,10 @@ struct HealthSyncState: Codable, Equatable {
     var history: HealthHistoryDepth?
     /// The oldest day already sent; history before it is still to go.
     var backfillCursor: Date?
+    /// The categories the history walk covers (its chunks go out with the
+    /// categories on now). Nil in a state from before this was kept, or
+    /// before the first walk: the next walk starts over to be safe.
+    var backfilledCategories: Set<HealthCategory>?
     var anchors: [String: Data] = [:]
     /// Each recent window the host last took, by metric, grain and range,
     /// as a hash of what it carried (HealthBatch.windowPrints), and when
@@ -383,6 +387,7 @@ final class HealthSyncEngine: ObservableObject {
         state.recentWindows = nil
         state.recentWholeAt = nil
         state.backfillCursor = nil
+        state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
     }
@@ -571,6 +576,21 @@ private struct Session {
     /// One step further back per loop, newest first, until history is in.
     mutating func sendHistory() async throws {
         guard let target = engine.state.historyStart else { return }
+        // A category turned on after some history went still needs its
+        // older days: walk the range again for the new set. The host
+        // replaces windows, so re-sending what it has is harmless. The
+        // cursor goes back to the days the recent-days pass keeps fresh
+        // (HealthSyncLimits.recomputedDays); nothing older is covered
+        // anywhere else.
+        if categories != engine.state.backfilledCategories {
+            let missing = categories.subtracting(engine.state.backfilledCategories ?? [])
+            let today = calendar.startOfDay(for: engine.currentNow)
+            let from = calendar.date(byAdding: .day, value: -(HealthSyncLimits.recomputedDays - 1), to: today) ?? today
+            engine.acknowledged { state in
+                state.backfilledCategories = categories
+                if !missing.isEmpty { state.backfillCursor = from }
+            }
+        }
         while let cursor = engine.state.backfillCursor, cursor > target {
             try checkTime()
             let start = max(target, calendar.date(byAdding: .day, value: -HealthSyncLimits.backfillChunkDays, to: cursor) ?? target)
