@@ -219,6 +219,7 @@ extension MarkdownLargeDocumentTests {
             for presentation in [HTMLPreviewPage.Presentation.inline, .fullScreen] {
                 let page = HTMLPreviewPage.framed(document, theme: HTMLPreviewTheme(light: true), presentation: presentation)
                 XCTAssertTrue(page.hasPrefix(policyTag), page)
+                XCTAssertEqual(page.components(separatedBy: policyTag).count - 1, 1, "the policy is inserted once")
             }
         }
     }
