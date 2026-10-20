@@ -29683,10 +29683,21 @@ final class AppState: ObservableObject {
     private func expireInputPrompt(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
               var activity = messages[index].inputPrompt else { return }
-        if activity.status == .submitting {
+        if activity.status == .submitting,
+           liveInputPromptSubmissions.contains(requestId) {
             // The in-flight send owns the card; its completion reports the
             // withdrawal instead of a success Hermes never received.
             withdrawnInFlightInputPrompts[requestId] = reason ?? ""
+            return
+        }
+        if activity.status == .submitting {
+            // A `.submitting` card no send owns any more: its send was
+            // fenced off by a client replacement, and only an open-request
+            // replay could re-arm it. A withdrawn request never comes back
+            // in one, so the withdrawal settles the card now.
+            activity.status = .expired
+            activity.error = Self.inputPromptWithdrawnNotice(reason: reason)
+            messages[index].inputPrompt = activity
             return
         }
         guard activity.isAnswerable else { return }
@@ -29715,6 +29726,17 @@ final class AppState: ObservableObject {
         messages[index].inputPrompt?.status = .expired
         messages[index].inputPrompt?.error = Self.inputPromptWithdrawnNotice(reason: reason)
         return true
+    }
+
+    /// A send whose completion failed the ownership fence leaves its card to
+    /// the replacement client, which can re-arm it from an open-request
+    /// replay. A request withdrawn mid-send never comes back in one, so its
+    /// card settles as withdrawn here, on the profile it belongs to.
+    private func settleFencedOffWithdrawnInputPrompt(messageId: String, requestId: String, profile: String) {
+        guard profile == activeProfile,
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              messages[index].inputPrompt?.status == .submitting else { return }
+        _ = settleWithdrawnInFlightInputPrompt(at: index, requestId: requestId)
     }
 
     /// Sends the value typed into a masked input card, or `nil` to skip.
@@ -29746,13 +29768,19 @@ final class AppState: ObservableObject {
             try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
-                  messages[updated].inputPrompt?.status == .submitting else { return }
+                  messages[updated].inputPrompt?.status == .submitting else {
+                settleFencedOffWithdrawnInputPrompt(messageId: messageId, requestId: current.requestId, profile: profile)
+                return
+            }
             if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
         } catch {
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
-                  messages[updated].inputPrompt?.status == .submitting else { return }
+                  messages[updated].inputPrompt?.status == .submitting else {
+                settleFencedOffWithdrawnInputPrompt(messageId: messageId, requestId: current.requestId, profile: profile)
+                return
+            }
             if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = .error
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")

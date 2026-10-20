@@ -501,6 +501,48 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(replacement.sentTexts.contains { $0.contains("srq-sudo00000001") })
     }
 
+    /// A request withdrawn while this device's answer was in flight, whose
+    /// completion then fails the ownership fence: no open-request replay
+    /// will ever re-arm it, so the card settles as withdrawn instead of
+    /// staying `.submitting`.
+    func testInputPromptWithdrawnMidSendSettlesEvenWhenItsCompletionIsFencedOff() async throws {
+        let (appState, _) = makeAppState()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        socket.holdSendCompletion = true
+        let message = try inputPromptMessage(status: .pending)
+        appState.messages = [message]
+
+        let answer = Task { @MainActor in
+            await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+        }
+        for _ in 0..<500 where socket.heldSendCount == 0 { await Task.yield() }
+        XCTAssertEqual(socket.heldSendCount, 1, "The reply frame must be in flight")
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "timeout"))
+
+        _ = try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+        socket.releaseSends(error: nil)
+        await answer.value
+
+        let settled = try XCTUnwrap(appState.messages.first?.inputPrompt)
+        XCTAssertEqual(settled.status, .expired, "A withdrawn request must not stay `.submitting` with no send to settle it")
+        XCTAssertEqual(settled.error, AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued."))
+        XCTAssertFalse(AppState.hasPendingDecision(in: appState.messages))
+    }
+
+    /// A withdrawal that arrives after a fenced-off completion settles the
+    /// card at once: no send is left to report it.
+    func testInputPromptWithdrawnAfterItsAnswerWasFencedOffSettles() async throws {
+        let (appState, _) = makeAppState()
+        try await fenceOffInputPromptAnswer(appState)
+
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "resolved"))
+
+        let settled = try XCTUnwrap(appState.messages.first?.inputPrompt)
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertEqual(settled.error, AppLocalization.string("This request was answered elsewhere."))
+    }
+
     func testStreamRedeliveryLeavesFencedOffInputPromptAlone() async throws {
         let (appState, _) = makeAppState()
         try await fenceOffInputPromptAnswer(appState)
@@ -612,12 +654,13 @@ final class ClarifyBatchStateTests: XCTestCase {
         appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "resolved"))
         XCTAssertEqual(appState.messages.first?.inputPrompt?.error, AppLocalization.string("This request was answered elsewhere."))
 
+        // A `.submitting` card with no send of this device behind it (its
+        // send was fenced off) has nothing left to settle it: the
+        // withdrawal does. An answer actually in flight still owns the
+        // card (testInputPromptWithdrawnMidSendSettlesAsWithdrawnNotSent).
         appState.messages = [try inputPromptMessage(status: .submitting)]
         appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001"))
-        XCTAssertEqual(
-            appState.messages.first?.inputPrompt?.status, .submitting,
-            "An answer this device has in flight owns the card's outcome"
-        )
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .expired)
     }
 
     // MARK: - Duplicate / replay identity
