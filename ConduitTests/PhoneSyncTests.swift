@@ -998,8 +998,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let bad = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0], engine: engine, confirmed: { _, _ in true }, answer: answer)
         XCTAssertNotNil(bad["error"])
         // Past what an Int holds: refused as out of range, not trapped on.
-        let short = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0.01], engine: engine, confirmed: { _ in true }, answer: answer)
-        let huge = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 1e30], engine: engine, confirmed: { _ in true }, answer: answer)
+        let short = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 0.01], engine: engine, confirmed: { _, _ in true }, answer: answer)
+        let huge = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 1e30], engine: engine, confirmed: { _, _ in true }, answer: answer)
         XCTAssertNotNil(huge["error"])
         XCTAssertEqual(huge["error"], short["error"], "The same range error as a too-short timer")
         let both = await PhoneVoiceTools.run(tool, arguments: ["kind": "alarm", "time": "07:00", "date": "2030-01-05",
