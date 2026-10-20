@@ -65,8 +65,9 @@ struct OfflineChatTranscriptView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
-                // As the live transcript ends: one row spacing above the
-                // composer.
+                // As the live transcript ends (ChatView's bottom anchor,
+                // one row spacing below the last row): one row spacing above
+                // the composer, so the copy lines up when it hands over.
                 .padding(.bottom, ChatStepStyle.transcriptRowSpacing)
             }
             .modifier(V2SoftTopScrollEdge(isOn: composerFloats))

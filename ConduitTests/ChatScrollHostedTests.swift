@@ -595,6 +595,7 @@ final class ChatScrollHostedTests: XCTestCase {
             view.contentOffset.y = maxOffset(view)
             settle(mounted.host.view, seconds: 0.3)
         }
+        XCTAssertEqual(view.contentOffset.y, maxOffset(view), accuracy: 1, "still at the very bottom when measured")
 
         let last = try XCTUnwrap(mounted.engine.rowFrame(for: "hosted-39"), "the latest row is laid out")
         let surface = try XCTUnwrap(mounted.engine.surface)
