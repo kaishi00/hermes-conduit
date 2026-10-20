@@ -164,7 +164,10 @@ extension EnvironmentValues {
 /// every update. Hidden, the list waits; shown again, it draws once with
 /// everything it missed. Beside a chat (a wide iPad), the list shows but
 /// draws at most a few times a second, so a streaming reply's publishes
-/// don't each redraw it.
+/// don't each redraw it. While the list scrolls it waits too, and draws
+/// once when the scroll comes to rest: right after launch the connection,
+/// catalog, projects and live statuses publish many times a second, and a
+/// redraw of the whole list on each cost the scroll its frames.
 @MainActor
 final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
@@ -174,6 +177,26 @@ final class V2ShownUpdates: ObservableObject {
     }
     /// Set by the list: a chat is open beside it.
     var coalesces = false
+    /// Set by the list while it scrolls (a drag, a fling, or a scroll the
+    /// app runs).
+    var isScrolling = false {
+        didSet {
+            guard isScrolling != oldValue else { return }
+            if isScrolling {
+                scrollStartedAt = now()
+            } else if missedScrollUpdate {
+                missedScrollUpdate = false
+                passOn()
+            }
+        }
+    }
+    /// A scroll that never rests (a slow drag held on screen) draws what it
+    /// held back after this long, so the list doesn't stay stale.
+    var scrollHoldLimit: TimeInterval = 2
+    private var scrollStartedAt = Date.distantPast
+    private var missedScrollUpdate = false
+    /// The clock the hold reads; tests set their own.
+    var now: () -> Date = Date.init
     /// How long the list beside a chat waits to draw the publishes since.
     var coalescingDelay: TimeInterval = 0.5
     private var missedUpdate = false
@@ -218,6 +241,15 @@ final class V2ShownUpdates: ObservableObject {
 
     private func passOn() {
         guard isShown else { missedUpdate = true; return }
+        if isScrolling {
+            guard now().timeIntervalSince(scrollStartedAt) >= scrollHoldLimit else {
+                missedScrollUpdate = true
+                return
+            }
+            // Drawn now; the next hold starts here.
+            scrollStartedAt = now()
+            missedScrollUpdate = false
+        }
         guard coalesces else { objectWillChange.send(); return }
         guard !drawScheduled else { return }
         drawScheduled = true
@@ -226,8 +258,15 @@ final class V2ShownUpdates: ObservableObject {
             try? await Task.sleep(for: .seconds(delay))
             guard let self else { return }
             drawScheduled = false
-            // Covered meanwhile, it waits for the list to show again.
-            if isShown { objectWillChange.send() } else { missedUpdate = true }
+            // Covered meanwhile, it waits for the list to show again;
+            // scrolling, for the scroll to rest.
+            if !isShown {
+                missedUpdate = true
+            } else if isScrolling, now().timeIntervalSince(scrollStartedAt) < scrollHoldLimit {
+                missedScrollUpdate = true
+            } else {
+                objectWillChange.send()
+            }
         }
     }
 
@@ -242,6 +281,30 @@ final class V2ShownUpdates: ObservableObject {
     /// Property-list values, compared by `isEqual:`.
     private static func values(of keys: [String], in defaults: UserDefaults) -> [NSObject?] {
         keys.map { defaults.object(forKey: $0) as? NSObject }
+    }
+}
+
+extension View {
+    /// Tells `updates` while this scroll view moves, so a burst of publishes
+    /// waits for it to rest (iOS 18; earlier systems draw each one).
+    func v2HoldsUpdatesWhileScrolling(_ updates: V2ShownUpdates) -> some View {
+        modifier(V2ScrollHold(updates: updates))
+    }
+}
+
+private struct V2ScrollHold: ViewModifier {
+    let updates: V2ShownUpdates
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollPhaseChange { _, phase in
+                    updates.isScrolling = phase != .idle
+                }
+                .onDisappear { updates.isScrolling = false }
+        } else {
+            content
+        }
     }
 }
 

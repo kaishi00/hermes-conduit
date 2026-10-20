@@ -214,6 +214,54 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
+    /// Right after launch the connection and the catalog publish many
+    /// times a second: while the list scrolls they wait, and draw once when
+    /// it rests. A scroll that never rests still draws after the hold limit.
+    @MainActor
+    func testScrollingChatsListDrawsHeldPublishesOnceItRests() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var clock = Date(timeIntervalSinceReferenceDate: 0)
+        updates.now = { clock }
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.isScrolling = true
+        for index in 0..<20 { state.sessions = [pinnedTestSession("s\(index)")] }
+        XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
+        updates.isScrolling = false
+        XCTAssertEqual(sent, 1)
+
+        // Nothing held, nothing to draw.
+        sent = 0
+        updates.isScrolling = true
+        updates.isScrolling = false
+        XCTAssertEqual(sent, 0)
+
+        // A drag held past the limit draws, then holds again.
+        updates.isScrolling = true
+        state.sessions = [pinnedTestSession("early")]
+        XCTAssertEqual(sent, 0)
+        clock += updates.scrollHoldLimit
+        state.sessions = [pinnedTestSession("late")]
+        XCTAssertEqual(sent, 1)
+        state.sessions = [pinnedTestSession("later")]
+        XCTAssertEqual(sent, 1)
+        updates.isScrolling = false
+        XCTAssertEqual(sent, 2)
+
+        // Covered when the scroll rests, it waits to be shown.
+        sent = 0
+        updates.isScrolling = true
+        state.sessions = [pinnedTestSession("covered")]
+        updates.isShown = false
+        updates.isScrolling = false
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+    }
+
     private func waitUntil(_ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {
