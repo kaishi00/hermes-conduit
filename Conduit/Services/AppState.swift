@@ -12956,13 +12956,18 @@ final class AppState: ObservableObject {
         turnState = .synchronizing
         noteConnectionStep("Chat sync started")
 
+        // Set while this sync's catalog read is in flight: a failure there
+        // is news only if no list read that started later has listed.
+        var pendingCatalogReadTicket: UInt64?
         do {
             // This intentionally mirrors the proven React Native startup
             // sequence: discover the live gateway's current sessions first,
             // then resume the newest chat. A persisted runtime id can belong
             // to a process that no longer exists after a relaunch.
             let readTicket = takeSessionListReadTicket()
+            pendingCatalogReadTicket = readTicket
             let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
+            pendingCatalogReadTicket = nil
             // The rest of a due full read runs once this sync is over, so
             // the drawer still fills in without holding up the chat. Only a
             // sync that reached its list schedules it (a newer list read may
@@ -13510,11 +13515,18 @@ final class AppState: ObservableObject {
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
             turnState = .reconnecting
-            errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
-            sessionCatalogLoadState.markFailed(
-                UserFacingError.message(for: error),
-                owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
-            )
+            // A list read that started after this sync's catalog read
+            // already listed: the list is current, and this older failure
+            // is no news (as for loadSessions). The chat still did not
+            // resume, so the reconnect below still runs.
+            let catalogFailureIsSuperseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
+            if !catalogFailureIsSuperseded {
+                errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
+                sessionCatalogLoadState.markFailed(
+                    UserFacingError.message(for: error),
+                    owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+                )
+            }
             settleReconciliation(
                 token,
                 automaticSyncOperationID: automaticOperationID

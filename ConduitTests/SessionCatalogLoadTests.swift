@@ -411,6 +411,31 @@ final class SessionCatalogLoadTests: XCTestCase {
         XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
     }
 
+    /// A connect sync whose catalog read fails after a newer list read
+    /// listed puts up no banner: the list shown is current.
+    func testAnOlderSyncReadThatFailsLastSaysNothing() async {
+        var reads: [CheckedContinuation<[String], Error>] = []
+        var appState: AppState!
+        appState = makeSyncingAppState { _, _ in
+            let ids = try await withCheckedThrowingContinuation { reads.append($0) }
+            return ids.map { self.row($0, profile: appState.activeProfile) }
+        }
+        appState.activeSessionId = "a"
+
+        async let sync: Void = appState.syncSession()
+        while reads.count < 1 { await Task.yield() }
+        async let newer: Void = appState.loadSessions()
+        while reads.count < 2 { await Task.yield() }
+        reads[1].resume(returning: ["a", "new"])
+        await newer
+        reads[0].resume(throwing: URLError(.timedOut))
+        await sync
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["a", "new"])
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.sessionCatalogPhase, .loaded)
+    }
+
     /// A sync whose catalog read is refused leaves the failure, not
     /// "No Sessions".
     func testARefusedConnectSyncSaysItFailed() async {
