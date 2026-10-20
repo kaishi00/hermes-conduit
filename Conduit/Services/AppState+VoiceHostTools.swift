@@ -120,7 +120,7 @@ extension AppState {
             return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
         }
         if tool.key == PhoneVoiceTools.key {
-            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm in
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm, excluding in
                 // Their words reach Conduit a moment after the model heard
                 // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
@@ -130,7 +130,9 @@ extension AppState {
                     && self.watchCallUserTurn != nil
                 while true {
                     let turn = self.liveCallLastUserTurn()
-                    if let id = turn.id, PhoneVoiceTools.usedConfirmation != id,
+                    // The turn current when the change arrived answers
+                    // something else: wait for a later one.
+                    if let id = turn.id, id != excluding, PhoneVoiceTools.usedConfirmation != id,
                        PhoneVoiceTools.confirmsChange(turn.text, cancelsAlarm: cancelsAlarm) {
                         PhoneVoiceTools.usedConfirmation = id
                         return true
@@ -337,8 +339,7 @@ extension AppState {
         // What was waiting at the last update: a change Hermes withdraws and
         // asks for again is told again.
         var known = Set(phoneSync.prompts.map(\.id))
-        let turnAtStart = liveCallLastUserTurn().id
-        for id in known { PhoneVoiceTools.noteArrival(id, userTurn: turnAtStart) }
+        PhoneVoiceTools.beginWatch(waiting: known, turn: liveCallLastUserTurn().id)
         return phoneSync.$prompts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] prompts in

@@ -39,6 +39,13 @@ enum PhoneVoiceTools {
         arrivalTurns[promptID] = userTurn
     }
 
+    /// A call starts watching: arrivals noted in an earlier call are dropped,
+    /// so a change still waiting from one is anchored to this call's turn.
+    static func beginWatch(waiting: Set<String>, turn: UUID?) {
+        arrivalTurns = [:]
+        for id in waiting { noteArrival(id, userTurn: turn) }
+    }
+
     /// The tools for what's shared: changes whenever sharing is on (Hermes
     /// can ask for one), adding when events or reminders can be written,
     /// both by the user's choice and by what iOS still allows, and changing
@@ -241,11 +248,12 @@ enum PhoneVoiceTools {
     /// One call of a local tool. What the model hears back.
     /// `confirmed` says whether the user's own last words agree to a change,
     /// deletion or cancellation (it changes what the user already has, so
-    /// the model's word isn't enough).
+    /// the model's word isn't enough); a turn equal to `excluding` (the turn
+    /// current when a waiting change arrived) can't be that yes.
     /// `lastUserTurn` is the user's most recent turn in the call, which
     /// approving a waiting change needs to be a yes said after it was noted.
     static func run(_ tool: VoiceHostTool, arguments: [String: Any], engine: PhoneSyncEngine,
-                    confirmed: (_ cancelsAlarm: Bool) async -> Bool = { _ in false },
+                    confirmed: (_ cancelsAlarm: Bool, _ excluding: UUID?) async -> Bool = { _, _ in false },
                     lastUserTurn: @escaping @MainActor () -> (id: UUID?, text: String) = { (nil, "") },
                     answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         switch tool.name {
@@ -266,7 +274,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runChanges(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                   confirmed: (_ cancelsAlarm: Bool) async -> Bool,
+                                   confirmed: (_ cancelsAlarm: Bool, _ excluding: UUID?) async -> Bool,
                                    lastUserTurn: @escaping @MainActor () -> (id: UUID?, text: String),
                                    answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         let action = arguments["action"] as? String ?? ""
@@ -287,12 +295,12 @@ enum PhoneVoiceTools {
                 return ["error": "No change with that id is waiting. List them again."]
             }
             // Applying one takes the user's own yes, as a change made here does.
-            if action == "approve", !(await confirmed(prompt.change.kind == .cancelAlarm)) {
+            if action == "approve", !(await confirmed(prompt.change.kind == .cancelAlarm, arrivalTurns[prompt.id])) {
                 return ["error": "Not approved: the user's own last words weren't a yes. Say back the change and approve "
                     + "it only once they say yes."]
             }
             // The turn current when the model first heard of the change can't
-            // approve it: words from before it was there to hear about answer
+            // approve it (checked in the poll too; kept here as a backstop): words from before it was there to hear about answer
             // something else.
             if action == "approve", let shownAfter = arrivalTurns[prompt.id],
                lastUserTurn().id == shownAfter {
@@ -378,7 +386,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runUpdate(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                  confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
+                                  confirmed: (_ cancelsAlarm: Bool, _ excluding: UUID?) async -> Bool) async -> [String: String] {
         let allowed = removable(engine.preferences, access: engine.calendarSource.eventAccess,
                                 remindersAuthorized: engine.calendarSource.remindersAuthorized)
         guard let itemID = (arguments["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -442,7 +450,7 @@ enum PhoneVoiceTools {
         guard let change = PhoneChange(json: ["id": id, "kind": kind, "target": [target: itemID], "fields": fields]) else {
             return ["error": "That couldn't be changed; check the id and times."]
         }
-        guard await confirmed(false) else {
+        guard await confirmed(false, nil) else {
             return ["error": "Not changed: the user's own last words weren't a yes. Say back the change and make it only "
                 + "once they say yes."]
         }
@@ -457,7 +465,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runRemove(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                  confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
+                                  confirmed: (_ cancelsAlarm: Bool, _ excluding: UUID?) async -> Bool) async -> [String: String] {
         let allowed = removable(engine.preferences, access: engine.calendarSource.eventAccess,
                                 remindersAuthorized: engine.calendarSource.remindersAuthorized)
         guard let itemID = (arguments["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -483,7 +491,7 @@ enum PhoneVoiceTools {
                                               "target": [target: itemID], "fields": fields]) else {
             return ["error": "That couldn't be deleted; check the id."]
         }
-        guard await confirmed(false) else {
+        guard await confirmed(false, nil) else {
             return ["error": "Not deleted: the user's own last words weren't a yes. Say back which one you'll delete and "
                 + "delete it only once they say yes."]
         }
@@ -498,7 +506,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runAlarm(_ arguments: [String: Any], engine: PhoneSyncEngine,
-                                 confirmed: (_ cancelsAlarm: Bool) async -> Bool) async -> [String: String] {
+                                 confirmed: (_ cancelsAlarm: Bool, _ excluding: UUID?) async -> Bool) async -> [String: String] {
         guard engine.preferences.alarms, engine.alarmSource.authorized else {
             return ["error": "The user doesn't let Hermes set alarms. They can turn it on in Conduit's Settings."]
         }
@@ -519,7 +527,7 @@ enum PhoneVoiceTools {
             guard let change = PhoneChange(json: ["id": id, "kind": "cancel_alarm", "target": ["alarm_id": alarmID]]) else {
                 return ["error": "That couldn't be cancelled; check the id."]
             }
-            guard await confirmed(true) else {
+            guard await confirmed(true, nil) else {
                 return ["error": "Not cancelled: the user's own last words weren't a yes. Say back which one you'll cancel "
                     + "and cancel it only once they say yes."]
             }
