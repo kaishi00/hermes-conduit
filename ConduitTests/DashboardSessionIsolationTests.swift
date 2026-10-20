@@ -296,6 +296,44 @@ final class DashboardSessionIsolationTests: XCTestCase {
         XCTAssertFalse(cookies.contains { $0.value == "old-legacy" }, "the disconnected session is cleared")
     }
 
+    /// The identified-store analog of #788: Sign Out's wipe of a dashboard's
+    /// own WebKit store runs over IPC after Sign Out returns. Signing in to
+    /// that dashboard again waits for it (as the bridge and sign-in page
+    /// do), so the wipe can never land on the new session's cookies, and
+    /// the signed-out session is still gone. A sibling's store has nothing
+    /// to wait for.
+    func testSignInAgainWaitsForTheSignOutsIdentifiedStoreClear() async throws {
+        let a = track(UUID())
+        let b = track(UUID())
+        let host = "conduit-977-identified.example"
+        let dashboardA = SavedDashboard(id: a, label: "A", normalizedURL: "https://\(host)")
+        let dashboardB = SavedDashboard(id: b, label: "B", normalizedURL: "https://b.\(host)")
+        let store = attachWebView(to: DashboardCookiePersistence.webKitStore(for: a))
+        let old = try hostCookie(name: "session", value: "old-identified", domain: host)
+        try await awaitWebKit("setCookie old") { await store.httpCookieStore.setCookie(old) }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while try await !awaitWebKit("allCookies", { await store.httpCookieStore.allCookies() })
+            .contains(where: { $0.value == "old-identified" }) {
+            // Without the old session in the store, "cleared" proves nothing.
+            guard ContinuousClock.now < deadline else { return XCTFail("the old session never landed") }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: b, dashboards: [dashboardA, dashboardB]))
+        appState.signOutDashboard(a)
+        XCTAssertTrue(DashboardCookiePersistence.hasPendingStoreClear(for: a), "the identified-store clear is ordered, not detached")
+        XCTAssertFalse(DashboardCookiePersistence.hasPendingStoreClear(for: b), "a sibling's sign-in waits for nothing")
+
+        await DashboardCookiePersistence.awaitPendingStoreClear(for: a)
+        let new = try hostCookie(name: "session", value: "new-identified", domain: host)
+        try await awaitWebKit("setCookie new") { await store.httpCookieStore.setCookie(new) }
+
+        XCTAssertFalse(DashboardCookiePersistence.hasPendingStoreClear(for: a))
+        let cookies = try await awaitWebKit("allCookies after") { await store.httpCookieStore.allCookies() }
+        XCTAssertTrue(cookies.contains { $0.value == "new-identified" }, "the new sign-in's session survives the earlier Sign Out")
+        XCTAssertFalse(cookies.contains { $0.value == "old-identified" }, "the signed-out session is cleared")
+    }
+
     /// #788: the reconnect's wait is bounded. A WebKit reply that never
     /// comes must not hold the next sign-in forever.
     func testWaitingForADefaultStoreClearIsBounded() async {

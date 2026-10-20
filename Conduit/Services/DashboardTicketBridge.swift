@@ -139,6 +139,9 @@ enum DashboardCookiePersistence {
     /// same stable primitive the origin-scoped cleanup uses. The store is
     /// exclusively this dashboard's, so a full wipe is the correct scope and
     /// no other dashboard's session can ever be touched.
+    ///
+    /// Sign Out and Remove schedule it with `scheduleWebKitSessionClear`, so
+    /// a sign-in or bridge for the same dashboard waits for it first.
     static func clearWebKitSession(for dashboardID: UUID) async {
         removeNativeCookieStorage(for: dashboardID)
         let store = WKWebsiteDataStore(forIdentifier: dashboardID)
@@ -229,35 +232,65 @@ enum DashboardCookiePersistence {
         }
     }
 
-    /// The legacy disconnect's default-store clear while it runs. WebKit
-    /// answers over IPC, so the clear outlives the disconnect; a bridge or
-    /// sign-in page that uses the default store waits for it first
-    /// (`awaitPendingDefaultStoreClear`), or the late clear could delete the
-    /// new session's cookies (#788).
-    private static var pendingDefaultStoreClear: (generation: UInt64, task: Task<Void, Never>)?
-    private static var defaultStoreClearGeneration: UInt64 = 0
+    /// The store clears still running, keyed by the store they clear: a
+    /// dashboard's identified store, or nil for the default store a legacy
+    /// disconnect clears. WebKit answers over IPC, so a clear outlives the
+    /// Sign Out or disconnect that started it; a bridge or sign-in page on
+    /// the same store waits for it first (`awaitPendingStoreClear`), or the
+    /// late clear could delete the new session's cookies (#788).
+    private static var pendingStoreClears: [UUID?: (generation: UInt64, task: Task<Void, Never>)] = [:]
+    private static var storeClearGeneration: UInt64 = 0
+
+    /// Runs `clear` after any clear of the same store already running, and
+    /// records it until it is done.
+    private static func scheduleStoreClear(for dashboardID: UUID?, _ clear: @escaping @MainActor () async -> Void) {
+        storeClearGeneration &+= 1
+        let generation = storeClearGeneration
+        let previous = pendingStoreClears[dashboardID]?.task
+        let task = Task { @MainActor in
+            await previous?.value
+            await clear()
+            if pendingStoreClears[dashboardID]?.generation == generation {
+                pendingStoreClears[dashboardID] = nil
+            }
+        }
+        pendingStoreClears[dashboardID] = (generation, task)
+    }
 
     /// Clears the dashboard's cookies from the default WebKit store, after any
     /// clear already running.
     static func clearDefaultStore(for url: URL) {
-        defaultStoreClearGeneration &+= 1
-        let generation = defaultStoreClearGeneration
-        let previous = pendingDefaultStoreClear?.task
-        let task = Task { @MainActor in
-            await previous?.value
+        scheduleStoreClear(for: nil) {
             await clear(from: WKWebsiteDataStore.default().httpCookieStore, for: url)
-            if pendingDefaultStoreClear?.generation == generation { pendingDefaultStoreClear = nil }
         }
-        pendingDefaultStoreClear = (generation, task)
     }
 
-    static var hasPendingDefaultStoreClear: Bool { pendingDefaultStoreClear != nil }
+    /// Clears a dashboard's identified WebKit session, after any clear of it
+    /// already running. Sign Out and Remove use this, not a detached
+    /// `clearWebKitSession`, so signing in to the same dashboard again
+    /// cannot have its new session deleted by the old one's clear.
+    static func scheduleWebKitSessionClear(for dashboardID: UUID) {
+        scheduleStoreClear(for: dashboardID) {
+            await clearWebKitSession(for: dashboardID)
+        }
+    }
 
-    /// Waits for a running default-store clear. Bounded: a WebKit reply that
-    /// never comes must not hold the next sign-in forever.
-    static func awaitPendingDefaultStoreClear(timeout: Duration = .seconds(10)) async {
-        guard let task = pendingDefaultStoreClear?.task else { return }
+    static func hasPendingStoreClear(for dashboardID: UUID?) -> Bool {
+        pendingStoreClears[dashboardID] != nil
+    }
+
+    static var hasPendingDefaultStoreClear: Bool { hasPendingStoreClear(for: nil) }
+
+    /// Waits for a running clear of the store `dashboardID` uses (the
+    /// default store for nil). Bounded: a WebKit reply that never comes must
+    /// not hold the next sign-in forever.
+    static func awaitPendingStoreClear(for dashboardID: UUID?, timeout: Duration = .seconds(10)) async {
+        guard let task = pendingStoreClears[dashboardID]?.task else { return }
         await awaitClear(task, timeout: timeout)
+    }
+
+    static func awaitPendingDefaultStoreClear(timeout: Duration = .seconds(10)) async {
+        await awaitPendingStoreClear(for: nil, timeout: timeout)
     }
 
     /// Waits for `task` or `timeout`, whichever comes first. Neither waiter
@@ -741,11 +774,9 @@ final class DashboardTicketBridge: NSObject {
         }
         Task { [weak self] in
             guard let self else { return }
-            // A legacy bridge shares the default store with the disconnect
-            // before it, whose clear may still be running (#788).
-            if self.dashboardID == nil {
-                await DashboardCookiePersistence.awaitPendingDefaultStoreClear()
-            }
+            // The Sign Out or disconnect before this bridge may still be
+            // clearing its store (#788).
+            await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID
@@ -838,11 +869,9 @@ final class DashboardTicketBridge: NSObject {
         rejectPending(with: DashboardTicketBridgeError.notReady)
         Task { [weak self] in
             guard let self else { return }
-            // A legacy bridge shares the default store with the disconnect
-            // before it, whose clear may still be running (#788).
-            if self.dashboardID == nil {
-                await DashboardCookiePersistence.awaitPendingDefaultStoreClear()
-            }
+            // The Sign Out or disconnect before this bridge may still be
+            // clearing its store (#788).
+            await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID

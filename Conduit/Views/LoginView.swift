@@ -281,11 +281,11 @@ struct AuthWebView: UIViewRepresentable {
             return webView
         }
         if let request = try? Self.dashboardRequest(normalizedBaseURL: normalized, cloudflareAccess: cloudflareAccess) {
-            if websiteDataStoreIdentifier == nil, DashboardCookiePersistence.hasPendingDefaultStoreClear {
-                // The default store's last disconnect is still clearing; a
-                // session minted before it lands would be deleted (#788).
+            if DashboardCookiePersistence.hasPendingStoreClear(for: websiteDataStoreIdentifier) {
+                // This store's last Sign Out or disconnect is still clearing;
+                // a session minted before it lands would be deleted (#788).
                 Task { @MainActor [weak webView] in
-                    await DashboardCookiePersistence.awaitPendingDefaultStoreClear()
+                    await DashboardCookiePersistence.awaitPendingStoreClear(for: websiteDataStoreIdentifier)
                     webView?.load(request)
                 }
             } else {
