@@ -214,7 +214,7 @@ extension MarkdownLargeDocumentTests {
 
     func testHTMLPreview_UnicodeWhitespaceCannotPrecedeThePolicy() {
         let policyTag = "<meta http-equiv=\"Content-Security-Policy\""
-        for prefix in ["\u{00A0}", "\u{2003}", "\u{2028}"] {
+        for prefix in ["\u{00A0}", "\u{2003}", "\u{2028}", " \u{00A0}", "\t\n\u{00A0}"] {
             let document = prefix + "<!doctype html><html><head></head><body><script>1</script></body></html>"
             for presentation in [HTMLPreviewPage.Presentation.inline, .fullScreen] {
                 let page = HTMLPreviewPage.framed(document, theme: HTMLPreviewTheme(light: true), presentation: presentation)
