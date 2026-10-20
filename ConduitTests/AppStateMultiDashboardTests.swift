@@ -1240,6 +1240,27 @@ extension AppStateMultiDashboardTests {
         )
     }
 
+    /// A model save whose /api/model/set landed before a profile switch on
+    /// the same dashboard still writes that profile's config: Hermes already
+    /// uses the new model there, and the defaults must say so.
+    func testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let save = Task { await appState.setProfileMainModel(provider: "p", model: "m", reasoning: "low") }
+        try await held.waitForRequests(1)       // /api/model/set
+        appState.setActiveProfileForTesting("work")
+        try await held.answer()                 // the model change landed
+        try await held.waitForRequests(2)       // the captured profile's config read
+        try await held.answer(["model": ["default": "old"]])
+        try await held.waitForRequests(3)       // ... and its write
+        try await held.answer()
+        let saved = await save.value
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(held.sent.last?.method, "PUT")
+        XCTAssertTrue(held.sent.allSatisfy { !$0.path.contains("work") }, "every request is the captured profile's")
+        XCTAssertNil(appState.errorMessage)
+    }
+
     func testAnArchiveAnsweredAfterASwitchChangesNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let archive = Task { await appState.archiveSession(self.macSession("mac-1")) }

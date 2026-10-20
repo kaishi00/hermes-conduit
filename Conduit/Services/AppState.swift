@@ -27869,9 +27869,15 @@ final class AppState: ObservableObject {
                 method: "POST",
                 body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
             )
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            // Another dashboard took over: stop. A profile switch on this
+            // dashboard doesn't stop the save: the model change already
+            // reached Hermes, and the captured profile's config must follow
+            // it; only what's shown on screen depends on the profile.
+            guard ownsDashboardRuntime(owner) else { return false }
             if result["confirm_required"] as? Bool == true {
-                errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                if profile == activeProfile {
+                    errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                }
                 return false
             }
             try await updateProfileConfig(profile: profile) { config in
