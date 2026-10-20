@@ -15,6 +15,15 @@ import Foundation
 struct PendingScreenshot: Equatable {
     let sessionID: String
     let attachment: Attachment
+    /// The dashboard the chat belongs to; a screenshot never joins
+    /// another dashboard's chat, however their session ids line up.
+    let dashboardID: UUID?
+
+    init(sessionID: String, attachment: Attachment, dashboardID: UUID? = nil) {
+        self.sessionID = sessionID
+        self.attachment = attachment
+        self.dashboardID = dashboardID
+    }
 }
 
 /// Asks the composer of one chat to take focus. Another chat's composer
@@ -29,6 +38,8 @@ struct ComposerFocusRequest: Equatable {
 struct ParkedScreenQuestion: Equatable {
     let request: ScreenQuestionRequest
     let profile: String?
+    /// The dashboard the screenshot was taken for: it resumes only there.
+    let dashboardID: UUID?
 }
 
 /// Pure rules for where a screenshot goes.
@@ -99,7 +110,9 @@ extension AppState {
                 )
             }
         }
-        pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
+        pendingScreenshots.append(
+            PendingScreenshot(sessionID: sessionID, attachment: attachment, dashboardID: activeDashboardID)
+        )
         trimPendingScreenshots()
     }
 
@@ -143,7 +156,9 @@ extension AppState {
             }
             return
         }
-        pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
+        pendingScreenshots.append(
+            PendingScreenshot(sessionID: sessionID, attachment: attachment, dashboardID: activeDashboardID)
+        )
         trimPendingScreenshots()
     }
 
@@ -160,13 +175,19 @@ extension AppState {
 
     private func pendingScreenshotIndex(forSession sessionID: String?) -> Int? {
         guard let sessionID, !sessionID.isEmpty, !pendingScreenshots.isEmpty else { return nil }
-        if let exact = pendingScreenshots.lastIndex(where: { $0.sessionID == sessionID }) {
+        // Only the dashboard the screenshot was staged for can take it.
+        let dashboardID = activeDashboardID
+        if let exact = pendingScreenshots.lastIndex(where: {
+            $0.sessionID == sessionID && $0.dashboardID == dashboardID
+        }) {
             return exact
         }
         // Reopened, the chat runs under a new runtime id; its own ids
         // still name it.
         let ids = screenshotChatIDs(for: sessionID)
-        return pendingScreenshots.lastIndex { !ids.isDisjoint(with: screenshotChatIDs(for: $0.sessionID)) }
+        return pendingScreenshots.lastIndex {
+            $0.dashboardID == dashboardID && !ids.isDisjoint(with: screenshotChatIDs(for: $0.sessionID))
+        }
     }
 
     static func deleteStagedScreenshot(_ attachment: Attachment) {
@@ -383,7 +404,9 @@ extension AppState {
         if let parked = parkedScreenQuestion, parked.request.attachment.uri != request.attachment.uri {
             Self.deleteStagedScreenshot(parked.request.attachment)
         }
-        parkedScreenQuestion = ParkedScreenQuestion(request: request, profile: profile)
+        parkedScreenQuestion = ParkedScreenQuestion(
+            request: request, profile: profile, dashboardID: activeDashboardID
+        )
         parkedScreenQuestionRevision &+= 1
     }
 
@@ -398,6 +421,9 @@ extension AppState {
     func resumeParkedScreenQuestion(now: Date = Date()) async {
         guard isConnected, !isConnecting, !isProfileSwitching, !isSettlingConnection,
               let parked = parkedScreenQuestion else { return }
+        // A screenshot parked for one dashboard never joins another's
+        // chat: it waits for its own dashboard to connect again.
+        guard parked.dashboardID == activeDashboardID else { return }
         parkedScreenQuestion = nil
         let isLate = now.timeIntervalSince(parked.request.enqueuedAt) >= PendingVoiceLaunchPolicy.externalLaunchBudget
         // Off screen, voice can't start: it waits with the keyboard.
@@ -454,7 +480,9 @@ extension AppState {
             }
             return
         }
-        parkedScreenQuestion = ParkedScreenQuestion(request: request, profile: profile)
+        parkedScreenQuestion = ParkedScreenQuestion(
+            request: request, profile: profile, dashboardID: activeDashboardID
+        )
     }
 
     private func openScreenQuestion(
