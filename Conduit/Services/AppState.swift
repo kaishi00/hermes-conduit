@@ -6914,7 +6914,7 @@ final class AppState: ObservableObject {
                 }
                 if owner != activeDashboardID {
                     guard !isVoiceCallInProgress else {
-                        errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                        errorMessage = AppLocalization.string("End the call to open a chat in another workspace.")
                         return
                     }
                     PushNotificationService.shared.routeChatLink(
@@ -20449,6 +20449,12 @@ final class AppState: ObservableObject {
         case .route:
             guard connection != nil else { return false }
         case .switchFirst(let dashboardID):
+            // A chat link routed before a call started can reach here after
+            // it did: switching dashboards would tear that call down.
+            if target.isChatLink, isVoiceCallInProgress {
+                errorMessage = AppLocalization.string("End the call to open a chat in another workspace.")
+                return false
+            }
             await switchDashboard(to: dashboardID)
             guard isConnected, activeDashboardID == dashboardID, client != nil else {
                 // The switch failed: the target stays selected with its
