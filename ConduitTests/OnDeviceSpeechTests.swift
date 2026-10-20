@@ -178,8 +178,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let hermes = ScriptedSpeechStream(finishError: DashboardTicketBridgeError.requestFailed("dropped"))
         let onDevice = ScriptedSpeechStream()
         let stream = try await FallbackSpeechStream.open(
-            hermes: { onStart, _, _ in
-                hermes.onFinish = { try onStart(24_000) }
+            hermes: { onStart, onPCM16, _ in
+                hermes.onFinish = {
+                    try onStart(24_000)
+                    try onPCM16(Data([0, 0]), 24_000)
+                }
                 return hermes
             },
             onDevice: { _, _ in onDevice },
