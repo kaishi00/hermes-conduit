@@ -147,11 +147,6 @@ struct LiveVoiceCallSheet: View {
         .onReceive(jobs.$screenCards) { cards in
             showNewScreenCard(cards)
         }
-        // VoiceOver hears the call change state (listening, speaking,
-        // muted), not every status word in between.
-        .onChange(of: phase) { _, _ in
-            AccessibilityNotification.Announcement(statusText).post()
-        }
     }
 
     /// Nothing is open, or only a card that opened by itself: what the
