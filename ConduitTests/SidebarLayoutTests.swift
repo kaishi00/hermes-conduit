@@ -227,20 +227,20 @@ final class SidebarLayoutTests: XCTestCase {
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
 
-        updates.isScrolling = true
+        updates.setScrolling(true, by: "list")
         for index in 0..<20 { state.sessions = [pinnedTestSession("s\(index)")] }
         XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
-        updates.isScrolling = false
+        updates.setScrolling(false, by: "list")
         XCTAssertEqual(sent, 1)
 
         // Nothing held, nothing to draw.
         sent = 0
-        updates.isScrolling = true
-        updates.isScrolling = false
+        updates.setScrolling(true, by: "list")
+        updates.setScrolling(false, by: "list")
         XCTAssertEqual(sent, 0)
 
         // A drag held past the limit draws, then holds again.
-        updates.isScrolling = true
+        updates.setScrolling(true, by: "list")
         state.sessions = [pinnedTestSession("early")]
         XCTAssertEqual(sent, 0)
         clock += updates.scrollHoldLimit
@@ -248,15 +248,15 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
         state.sessions = [pinnedTestSession("later")]
         XCTAssertEqual(sent, 1)
-        updates.isScrolling = false
+        updates.setScrolling(false, by: "list")
         XCTAssertEqual(sent, 2)
 
         // Covered when the scroll rests, it waits to be shown.
         sent = 0
-        updates.isScrolling = true
+        updates.setScrolling(true, by: "list")
         state.sessions = [pinnedTestSession("covered")]
         updates.isShown = false
-        updates.isScrolling = false
+        updates.setScrolling(false, by: "list")
         XCTAssertEqual(sent, 0)
         updates.isShown = true
         XCTAssertEqual(sent, 1)
@@ -276,7 +276,7 @@ final class SidebarLayoutTests: XCTestCase {
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
 
-        updates.isScrolling = true
+        updates.setScrolling(true, by: "list")
         state.sessions = [pinnedTestSession("early")]
         settle()
         XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
@@ -289,7 +289,7 @@ final class SidebarLayoutTests: XCTestCase {
         state.sessions = [pinnedTestSession("later")]
         settle()
         XCTAssertEqual(sent, 1, "the draw didn't restart the hold")
-        updates.isScrolling = false
+        updates.setScrolling(false, by: "list")
         waitUntil { sent > 1 }
         XCTAssertEqual(sent, 2)
     }
@@ -305,7 +305,7 @@ final class SidebarLayoutTests: XCTestCase {
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
 
-        updates.isScrolling = true
+        updates.setScrolling(true, by: "list")
         state.sessions = [pinnedTestSession("held")]
         XCTAssertEqual(sent, 0)
         waitUntil { sent > 0 }
@@ -313,6 +313,32 @@ final class SidebarLayoutTests: XCTestCase {
 
         updates.isShown = false
         XCTAssertFalse(updates.isScrolling, "a covered list stayed scrolling")
+    }
+
+    /// Sessions and Projects both show during their slide: one list coming
+    /// to rest doesn't end the other's scroll, and leaving the app ends all.
+    @MainActor
+    func testScrollHoldFollowsEachListsOwnScroll() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.setScrolling(true, by: "sessions")
+        updates.setScrolling(true, by: "projects")
+        state.sessions = [pinnedTestSession("held")]
+        updates.setScrolling(false, by: "sessions")
+        XCTAssertEqual(sent, 0, "one list's rest ended the other's scroll")
+        updates.setScrolling(false, by: "projects")
+        XCTAssertEqual(sent, 1)
+
+        sent = 0
+        updates.setScrolling(true, by: "sessions")
+        state.sessions = [pinnedTestSession("left")]
+        updates.endScrolling()
+        XCTAssertEqual(sent, 1)
+        XCTAssertFalse(updates.isScrolling)
     }
 
     private func waitUntil(_ condition: () -> Bool) {

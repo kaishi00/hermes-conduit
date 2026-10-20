@@ -472,6 +472,8 @@ struct V2ChatsView: View, Equatable {
         // Back in the app over the list: it reads the catalog again if its
         // last read is old (a chat started elsewhere meanwhile).
         .onChange(of: scenePhase) { _, phase in
+            // Off screen, a scroll may never report coming to rest.
+            if phase != .active { updates.endScrolling() }
             if phase == .active, isShown, listInView { appState.chatListBecameActive() }
         }
         .sheet(item: $projectPendingRename) { project in

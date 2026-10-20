@@ -176,24 +176,39 @@ final class V2ShownUpdates: ObservableObject {
         didSet {
             // Covered, it isn't scrolling: what the scroll held waits for
             // the list to show again.
-            if !isShown { isScrolling = false }
+            if !isShown { endScrolling() }
             if isShown, !oldValue, missedUpdate { missedUpdate = false; draw() }
         }
     }
     /// Set by the list: a chat is open beside it.
     var coalesces = false
-    /// Set by the list while it scrolls (a drag, a fling, or a scroll the
-    /// app runs).
-    var isScrolling = false {
-        didSet {
-            guard isScrolling != oldValue else { return }
-            if isScrolling {
-                scrollStartedAt = now()
-            } else if missedScrollUpdate {
-                missedScrollUpdate = false
-                passOn()
-            }
+    /// Whether a list it draws is scrolling (a drag, a fling, or a scroll
+    /// the app runs). Each list reports its own scroll, so one list's
+    /// teardown during the Sessions/Projects slide doesn't end another's.
+    var isScrolling: Bool { !scrollingLists.isEmpty }
+    private var scrollingLists: Set<AnyHashable> = []
+
+    /// A list's scroll began or came to rest. Each start restarts the hold.
+    func setScrolling(_ scrolling: Bool, by list: AnyHashable) {
+        if scrolling {
+            if scrollingLists.insert(list).inserted { scrollStartedAt = now() }
+        } else if scrollingLists.remove(list) != nil, scrollingLists.isEmpty {
+            scrollEnded()
         }
+    }
+
+    /// Every scroll ends: the list is covered, or the app left the screen,
+    /// where a scroll view may never report coming to rest.
+    func endScrolling() {
+        guard isScrolling else { return }
+        scrollingLists.removeAll()
+        scrollEnded()
+    }
+
+    private func scrollEnded() {
+        guard missedScrollUpdate else { return }
+        missedScrollUpdate = false
+        passOn()
     }
     /// A scroll that never rests (a slow drag held on screen) draws what it
     /// held back after this long, so the list doesn't stay stale.
@@ -321,14 +336,16 @@ extension View {
 
 private struct V2ScrollHold: ViewModifier {
     let updates: V2ShownUpdates
+    /// This list, among the ones `updates` draws.
+    @State private var id = UUID()
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
                 .onScrollPhaseChange { _, phase in
-                    updates.isScrolling = phase != .idle
+                    updates.setScrolling(phase != .idle, by: id)
                 }
-                .onDisappear { updates.isScrolling = false }
+                .onDisappear { updates.setScrolling(false, by: id) }
         } else {
             content
         }
