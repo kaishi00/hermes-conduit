@@ -2973,6 +2973,22 @@ enum VoiceThreadRouting {
         words.contains { answerNegations.contains($0) || $0.hasSuffix("n't") }
     }
 
+    /// A bare no said anywhere ("hell no", "that's a no"), not just as the
+    /// lead.
+    private static let answerBareNos: Set<String> = ["no", "nope", "nah", "nop", "nein", "nee", "nö"]
+
+    /// Whether the words say no or negate anywhere in them ("absolutely
+    /// not", "I don't want it", "hell no"), not only at the start. Read as
+    /// `heldRequestAnswer` reads them, apostrophes kept. A yes that starts
+    /// with a no ("no problem") is the caller's to accept first.
+    static func containsNegation(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+            .filter { !fillers.contains($0) }
+        return negates(words) || words.contains { answerBareNos.contains($0) }
+    }
+
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
         let spoken = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         if let cjk = cjkHeldRequestAnswer(spoken) { return cjk }

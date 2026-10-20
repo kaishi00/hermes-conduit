@@ -38,6 +38,23 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isConfirmed(by: ""))
     }
 
+    func testPresentedConfirmRefusalsNeverConfirmWhateverHermesListedAsAYes() {
+        let refusals = ["no", "cancel", "wait", "never", "not", "absolutely not", "definitely not", "of course not",
+                        "i don't want it", "hell no", "that's a no"]
+        let prompt = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                      spokenYes: ["send it", "no problem"] + refusals)
+        for refusal in refusals {
+            let listed = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                          spokenYes: [refusal])
+            XCTAssertFalse(listed.isConfirmed(by: refusal), refusal)
+            XCTAssertFalse(listed.isConfirmed(by: refusal.capitalized + "."), refusal)
+        }
+        // A genuine yes still confirms, a no-led one included.
+        XCTAssertTrue(prompt.isConfirmed(by: "send it"))
+        XCTAssertTrue(prompt.isConfirmed(by: "No problem"))
+        XCTAssertTrue(prompt.isConfirmed(by: "yes"))
+    }
+
     func testAVoiceConfirmNeedsWordsFromAfterThePanelAndYieldsToATap() async throws {
         let suite = "present-tests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

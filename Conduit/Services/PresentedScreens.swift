@@ -148,6 +148,9 @@ struct PresentedConfirm: Identifiable, Equatable {
         case .no, .notYet: return false
         default: break
         }
+        // "Absolutely not", "I don't want it", "hell no": a no or a
+        // negation anywhere in them never confirms either.
+        if VoiceThreadRouting.containsNegation(words) { return false }
         let said = Self.words(in: words)
         guard !said.isEmpty else { return false }
         let leads: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please"]
