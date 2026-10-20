@@ -251,7 +251,9 @@ struct LoginAddressStep: View {
             }
             Button {
                 focusedField = nil
-                flow.showsExtraHeaders = true
+                flow.extraHeadersRequest = LoginExtraHeadersRequest(
+                    serverURL: LoginAddress.bestGuess(flow.address)
+                )
             } label: {
                 HStack {
                     Text(AppLocalization.string("Extra headers"))
@@ -1143,13 +1145,12 @@ struct LoginFlowPresentations: ViewModifier {
                 ConnectionRepairSetupSheet(context: context)
                     .environmentObject(appState)
             }
-            .sheet(isPresented: $flow.showsExtraHeaders) {
-                let address = LoginAddress.bestGuess(flow.address)
+            .sheet(item: $flow.extraHeadersRequest) { request in
                 CustomHeadersEditorSheet(
-                    serverURL: address,
-                    headers: CustomHeaderStore.shared.headers(forServerURL: address)
+                    serverURL: request.serverURL,
+                    headers: CustomHeaderStore.shared.headers(forServerURL: request.serverURL)
                 ) { headers in
-                    CustomHeaderStore.shared.setHeaders(headers, forServerURL: address)
+                    CustomHeaderStore.shared.setHeaders(headers, forServerURL: request.serverURL)
                     flow.extraHeadersRevision += 1
                 }
             }
