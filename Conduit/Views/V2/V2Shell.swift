@@ -241,16 +241,8 @@ final class V2ShownUpdates: ObservableObject {
 
     private func passOn() {
         guard isShown else { missedUpdate = true; return }
-        if isScrolling {
-            guard now().timeIntervalSince(scrollStartedAt) >= scrollHoldLimit else {
-                missedScrollUpdate = true
-                return
-            }
-            // Drawn now; the next hold starts here.
-            scrollStartedAt = now()
-            missedScrollUpdate = false
-        }
-        guard coalesces else { objectWillChange.send(); return }
+        guard !holdsForScroll() else { missedScrollUpdate = true; return }
+        guard coalesces else { draw(); return }
         guard !drawScheduled else { return }
         drawScheduled = true
         let delay = coalescingDelay
@@ -262,12 +254,25 @@ final class V2ShownUpdates: ObservableObject {
             // scrolling, for the scroll to rest.
             if !isShown {
                 missedUpdate = true
-            } else if isScrolling, now().timeIntervalSince(scrollStartedAt) < scrollHoldLimit {
+            } else if holdsForScroll() {
                 missedScrollUpdate = true
             } else {
-                objectWillChange.send()
+                draw()
             }
         }
+    }
+
+    /// Scrolling, and the hold since the scroll started (or since the last
+    /// draw during it) hasn't run out.
+    private func holdsForScroll() -> Bool {
+        isScrolling && now().timeIntervalSince(scrollStartedAt) < scrollHoldLimit
+    }
+
+    /// A draw during a scroll restarts its hold.
+    private func draw() {
+        if isScrolling { scrollStartedAt = now() }
+        missedScrollUpdate = false
+        objectWillChange.send()
     }
 
     /// At once for the list's own write: a tap beside a chat doesn't wait.

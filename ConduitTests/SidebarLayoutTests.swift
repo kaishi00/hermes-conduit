@@ -262,6 +262,38 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
+    /// Beside a chat the scroll holds too, and a scroll past the hold
+    /// limit still draws, after the coalescing delay.
+    @MainActor
+    func testScrollingChatsListBesideAChatDrawsPastTheHoldLimit() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        updates.coalesces = true
+        updates.coalescingDelay = 0.05
+        var clock = Date(timeIntervalSinceReferenceDate: 0)
+        updates.now = { clock }
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.isScrolling = true
+        state.sessions = [pinnedTestSession("early")]
+        settle()
+        XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
+
+        clock += updates.scrollHoldLimit
+        state.sessions = [pinnedTestSession("late")]
+        waitUntil { sent > 0 }
+        XCTAssertEqual(sent, 1, "the hold limit never drew beside a chat")
+
+        state.sessions = [pinnedTestSession("later")]
+        settle()
+        XCTAssertEqual(sent, 1, "the draw didn't restart the hold")
+        updates.isScrolling = false
+        waitUntil { sent > 1 }
+        XCTAssertEqual(sent, 2)
+    }
+
     private func waitUntil(_ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {
