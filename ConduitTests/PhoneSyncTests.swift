@@ -485,6 +485,10 @@ extension HermesVoiceGatewayTimeoutTests {
         let listed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "list"], engine: engine, answer: answer)
         XCTAssertTrue(listed["result"]?.contains("Call the plumber") == true)
         XCTAssertTrue(PhoneVoiceTools.note(for: try XCTUnwrap(engine.prompts.first)).contains("ch_voice"))
+        let unconfirmedApproval = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
+                                                            engine: engine, confirmed: { _ in false }, answer: answer)
+        XCTAssertNotNil(unconfirmedApproval["error"], "Approving takes the user's own yes")
+        XCTAssertTrue(source.applied.isEmpty)
         let approved = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_voice"],
                                                  engine: engine, answer: answer)
         XCTAssertNotNil(approved["result"])

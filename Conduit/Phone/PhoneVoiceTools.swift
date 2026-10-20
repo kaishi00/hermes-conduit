@@ -237,7 +237,7 @@ enum PhoneVoiceTools {
                     answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         switch tool.name {
         case changesTool:
-            return await runChanges(arguments, engine: engine, answer: answer)
+            return await runChanges(arguments, engine: engine, confirmed: confirmed, answer: answer)
         case addTool:
             return await runAdd(arguments, engine: engine)
         case updateTool:
@@ -252,6 +252,7 @@ enum PhoneVoiceTools {
     }
 
     private static func runChanges(_ arguments: [String: Any], engine: PhoneSyncEngine,
+                                   confirmed: (_ cancelsAlarm: Bool) async -> Bool,
                                    answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         let action = arguments["action"] as? String ?? ""
         switch action {
@@ -264,6 +265,11 @@ enum PhoneVoiceTools {
             guard let id = arguments["id"] as? String,
                   let prompt = engine.prompts.first(where: { $0.id == id }) else {
                 return ["error": "No change with that id is waiting. List them again."]
+            }
+            // Applying one takes the user's own yes, as a change made here does.
+            if action == "approve", !(await confirmed(prompt.change.kind == .cancelAlarm)) {
+                return ["error": "Not approved: the user's own last words weren't a yes. Say back the change and approve "
+                    + "it only once they say yes."]
             }
             await answer(prompt, action == "approve")
             if action == "dismiss" { return ["result": "Dismissed. Hermes will hear the user said no."] }

@@ -49,9 +49,7 @@ extension AppState {
             await answerPhoneChange(prompt, approve: approve)
         case .presented(let id):
             guard let prompt = presentedScreens.prompts.first(where: { $0.id == id && !$0.isExpired() }) else { return false }
-            presentedScreens.answer(prompt, outcome: approve ? .confirmed : .declined, via: .voice)
-            await syncPresentedScreens()
-            if approve { await openPresentedMaps(prompt) }
+            await answerPresentedConfirm(prompt, outcome: approve ? .confirmed : .declined, via: .voice)
         case .chatApproval(let messageID):
             await respondToApproval(messageId: messageID, choice: approve ? "once" : "deny")
         case .jobApproval(let id):
