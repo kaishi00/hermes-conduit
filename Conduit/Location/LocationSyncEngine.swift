@@ -306,7 +306,7 @@ final class LocationSyncEngine: ObservableObject {
                 lastError = detail
                 return .refused
             default:
-                lastError = Self.describe(error)
+                lastError = UserFacingError.message(for: error)
             }
             return .failed
         } catch LocationSyncEngineError.keyRouteMissing {
@@ -315,7 +315,7 @@ final class LocationSyncEngine: ObservableObject {
             state.pause = .pluginMissing
             return .failed
         } catch {
-            lastError = Self.describe(error)
+            lastError = UserFacingError.message(for: error)
             Self.log.info("Location send failed: \(LogRedaction.redactingURLs(Self.describe(error)), privacy: .public)")
             return .failed
         }
