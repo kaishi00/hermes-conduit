@@ -122,12 +122,12 @@ extension AppState {
         if tool.key == PhoneVoiceTools.key {
             let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: {
                 // Their words reach Conduit a moment after the model heard
-                // them. Each yes answers one deletion.
+                // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
                 while true {
                     let turn = self.liveCallLastUserTurn()
                     if let id = turn.id, !PhoneVoiceTools.usedConfirmations.contains(id),
-                       PhoneVoiceTools.confirmsRemoval(turn.text) {
+                       PhoneVoiceTools.confirmsChange(turn.text) {
                         PhoneVoiceTools.usedConfirmations.insert(id)
                         return true
                     }
@@ -143,7 +143,8 @@ extension AppState {
                 Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
                 // Hermes' alarm list and calendar catch up with what was
                 // just set, added or deleted.
-                if [PhoneVoiceTools.alarmTool, PhoneVoiceTools.addTool, PhoneVoiceTools.removeTool].contains(tool.name) {
+                if [PhoneVoiceTools.alarmTool, PhoneVoiceTools.addTool, PhoneVoiceTools.updateTool,
+                    PhoneVoiceTools.removeTool].contains(tool.name) {
                     Task { await self.runPhoneSync(reason: .answered) }
                 }
             }
@@ -179,10 +180,17 @@ extension AppState {
         let action: String
         if tool.name == PhoneVoiceTools.addTool {
             action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
+        } else if tool.name == PhoneVoiceTools.updateTool {
+            action = (arguments["kind"] as? String).map { "change \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.removeTool {
             action = (arguments["kind"] as? String).map { "delete \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.alarmTool {
-            action = (arguments["kind"] as? String).map { "set \($0)" } ?? tool.name
+            switch arguments["kind"] as? String {
+            case "list": action = "alarms"
+            case "cancel": action = "cancel alarm"
+            case let kind?: action = "set \(kind)"
+            case nil: action = tool.name
+            }
         } else if tool.name == PhoneVoiceTools.changesTool {
             action = "changes \(arguments["action"] as? String ?? "")"
         } else {
@@ -332,7 +340,7 @@ extension AppState {
                 let fresh = prompts.filter { !known.contains($0.id) }
                 known = Set(prompts.map(\.id))
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
-                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive,
+                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive,
                       self.phoneSync.preferences.letsVoiceUse(mode) else { return }
                 for prompt in fresh { supervisor.notePhoneChange(PhoneVoiceTools.note(for: prompt)) }
             }

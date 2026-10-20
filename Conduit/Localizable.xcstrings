@@ -41537,6 +41537,94 @@
         }
       }
     },
+    "%@ needs your OK to go on: %@. Say yes to allow it once, or no." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht dein OK, um weiterzumachen: %@. Sag Ja, um es einmal zu erlauben, oder Nein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ needs your OK to go on: %@. Say yes to allow it once, or no."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ necesita tu visto bueno para seguir: %@. Di sí para permitirlo una vez, o no."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a besoin de votre accord pour continuer : %@. Dites oui pour l’autoriser une fois, ou non."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ perlu persetujuan Anda untuk lanjut: %@. Katakan ya untuk mengizinkannya sekali, atau tidak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il job %@ ha bisogno del tuo OK per continuare: %@. Di' sì per consentirlo una volta, oppure no."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@を続けるにはあなたの許可が必要です：%@。1回だけ許可するなら「はい」、しないなら「いいえ」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 작업을 계속하려면 승인이 필요해요: %@. 한 번 허용하려면 '네', 아니면 '아니요'라고 말하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zlecenie „%@” potrzebuje Twojej zgody, by kontynuować: %@. Powiedz „tak”, aby zezwolić jednorazowo, albo „nie”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O trabalho %@ precisa do seu OK para continuar: %@. Diga sim para permitir uma vez, ou não."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заданию «%@» нужно ваше разрешение, чтобы продолжить: %@. Скажите «да», чтобы разрешить один раз, или «нет»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ devam etmek için onayınızı bekliyor: %@. Bir kez izin vermek için evet, vermemek için hayır deyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要你同意才能继续：%@。说“是”允许这一次，或说“不”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要你同意才能繼續：%@。說「是」允許這一次，或說「不」。"
+          }
+        }
+      }
+    },
     "%@ is waiting for your input." : {
       "localizations" : {
         "de" : {
@@ -71249,6 +71337,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "壓縮已在進行中。"
+          }
+        }
+      }
+    },
+    "your Hermes host's model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "das Modell deines Hermes-Hosts"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "your Hermes host's model"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el modelo de tu host de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le modèle de votre hôte Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "model di host Hermes Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il modello del tuo host Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesホストのモデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트의 모델"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "model na Twoim hoście Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o modelo do seu host Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "модель на вашем хосте Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuzdaki model"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机上的模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主機上的模型"
           }
         }
       }

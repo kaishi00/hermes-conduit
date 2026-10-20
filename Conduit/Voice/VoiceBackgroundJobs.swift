@@ -123,6 +123,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     var outcomeDelivered = false
     /// Whether the current needs-input episode was announced.
     var inputRequestDelivered = false
+    /// The command approval the job's turn waits on, which the call can
+    /// answer out loud; nil while it waits on a question, or not at all.
+    var waitingApproval: ApprovalActivity?
     /// Consecutive liveness polls that found no registry row for the job.
     /// One miss can be transient; two settle it.
     var consecutiveMissedPolls = 0
@@ -317,6 +320,11 @@ struct VoiceBackgroundJobBackend {
     var readChat: @MainActor (_ sessionID: String) async throws -> VoiceResumeContext = { _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Reading chats isn't available on this call.")
+    }
+    /// Answers the approval a job's turn waits on (`once` or `deny`), as its
+    /// card in the chat would. False when Hermes no longer waits on it.
+    var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async throws -> Bool = { _, _, _ in
+        throw HermesError.notConnected
     }
 }
 
@@ -584,10 +592,39 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callDecisions?.waitsOn()
     }
 
-    /// The live model answered the approval the call is about with the
-    /// user's words.
+    /// The live model answered, with the user's words, the approval the
+    /// call from Hermes is about, or else the one a job of the call waits on.
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome {
-        await callDecisions?.approve(choice) ?? .nothingPending
+        if callWaitsOn == .approval { return await callDecisions?.approve(choice) ?? .nothingPending }
+        let waiting = jobsWaitingOnApproval
+        // Which one a bare yes meant would be a guess.
+        guard waiting.count <= 1 else { return .severalWaiting }
+        guard let jobID = waiting.first else { return await callDecisions?.approve(choice) ?? .nothingPending }
+        return await answerJobApproval(jobID, choice: choice)
+    }
+
+    /// The call's jobs waiting on the user's OK for a command.
+    var jobsWaitingOnApproval: [UUID] {
+        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil }.map(\.id)
+    }
+
+    /// Answers the approval `jobID` waits on, `once` or `deny`, as its card
+    /// would; the job goes on (or stops) from there.
+    func answerJobApproval(_ jobID: UUID, choice: String) async -> VoiceCallDecisionOutcome {
+        guard choice == "once" || choice == "deny",
+              let job = job(jobID), let approval = job.waitingApproval else { return .nothingPending }
+        let resolved: Bool
+        do {
+            resolved = try await backend.respondToApproval(approval, choice, job.profile)
+        } catch {
+            return .failed
+        }
+        if let index = jobs.firstIndex(where: { $0.id == jobID }), jobs[index].waitingApproval == approval {
+            jobs[index].waitingApproval = nil
+            if resolved, jobs[index].status == .needsInput { jobs[index].status = .running }
+        }
+        guard resolved else { return .expired }
+        return choice == "deny" ? .denied : .approved
     }
 
     /// The live model answered the question the call is about.
@@ -1555,7 +1592,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             heard = Self.cancelledNotice(job.title)
         case .needsInput:
             guard job.inputRequestDelivered else { return }
-            heard = Self.waitingNotice(job.title)
+            heard = Self.waitingNotice(for: job)
         case .starting, .running:
             return
         }
@@ -1963,10 +2000,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if before.status == .needsInput || before.status == .starting {
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
+                jobs[index].waitingApproval = nil
             }
-        case .approval, .clarify, .inputPrompt:
+        case .approval(_, let activity):
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
+            jobs[index].waitingApproval = activity
+        case .clarify, .inputPrompt:
+            jobs[index].status = .needsInput
+            jobs[index].inputRequestDelivered = false
+            jobs[index].waitingApproval = nil
         case .messageComplete(_, let messageID, let content, _, _):
             // A replay of a voice turn's own completion, once it no longer
             // owns the chat, is not a typed turn.
@@ -1990,6 +2033,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if !jobs[index].status.isActive {
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
+            jobs[index].waitingApproval = nil
         }
         if jobs[index] != before {
             // Read before notifying: the host delivers the notice right away,
@@ -2228,7 +2272,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn || liveThread == nil { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return (.speak(Self.waitingNotice(job.title)), job.id)
+                return (.speak(Self.waitingNotice(for: job)), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
@@ -2261,6 +2305,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     static func waitingNotice(_ title: String) -> String {
         AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
+    }
+
+    /// What a job waiting on the user says: the command it asks to run,
+    /// which a yes or no answers in the call, or else to open it.
+    static func waitingNotice(for job: VoiceBackgroundJob) -> String {
+        guard let approval = job.waitingApproval else { return waitingNotice(job.title) }
+        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? approval.command : asked
+        let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
+        return AppLocalization.string("\(job.title) needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }
 
     /// With Hermes' reason, when there is one, as the call is told it: its

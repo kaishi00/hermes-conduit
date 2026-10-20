@@ -460,7 +460,8 @@ extension HermesVoiceGatewayTimeoutTests {
         var eventsOnly = phonePreferences()
         eventsOnly.reminders = false
         let tools = PhoneVoiceTools.tools(for: eventsOnly, access: .full, remindersAuthorized: true)
-        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool, PhoneVoiceTools.removeTool])
+        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool, PhoneVoiceTools.updateTool,
+                                           PhoneVoiceTools.removeTool])
         let fullAccessAdd = try XCTUnwrap(tools.first { $0.name == PhoneVoiceTools.addTool })
         XCTAssertEqual(((fullAccessAdd.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences(), access: .full, remindersAuthorized: true).isEmpty)
@@ -538,12 +539,15 @@ extension HermesVoiceGatewayTimeoutTests {
                                                     confirmed: { false }, answer: answer)
         XCTAssertNotNil(unconfirmed["error"])
         XCTAssertNotEqual(source.appliedChanges.last?.eventID, "e_gym")
-        XCTAssertTrue(PhoneVoiceTools.confirmsRemoval("Yes, delete it."))
-        XCTAssertTrue(PhoneVoiceTools.confirmsRemoval("remove that one"))
-        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("delete it?"))
-        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("what's on my calendar tomorrow"))
-        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval(""))
-        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("of the event"), "Agreeing words without a yes or a delete verb")
+        XCTAssertTrue(PhoneVoiceTools.confirmsChange("Yes, delete it."))
+        XCTAssertTrue(PhoneVoiceTools.confirmsChange("remove that one"))
+        XCTAssertTrue(PhoneVoiceTools.confirmsChange("Yes, move it."))
+        XCTAssertTrue(PhoneVoiceTools.confirmsChange("mark it done"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("delete it?"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("move it to Friday instead"), "A different change, not a yes")
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("what's on my calendar tomorrow"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange(""))
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("of the event"), "Agreeing words without a yes or a verb")
         let noID = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event"], engine: engine, answer: answer)
         XCTAssertNotNil(noID["error"])
         let badSpan = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_1", "span": "all"],
@@ -790,6 +794,131 @@ extension HermesVoiceGatewayTimeoutTests {
                                                  engine: engine, answer: answer)
         XCTAssertNotNil(dateTime["error"], "Not turned into a daily alarm")
         XCTAssertEqual(alarms.applied.count, 2)
+    }
+
+    func testPhoneVoiceCallsChangeAndCompleteOnThePhone() async throws {
+        let source = FakePhoneCalendarSource()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { _, _ in }
+        let tool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: true)
+            .first { $0.name == PhoneVoiceTools.updateTool })
+        XCTAssertTrue(tool.description.contains("not Hermes"), "A change never goes to Hermes as a job")
+        let properties = try XCTUnwrap(tool.parameters["properties"] as? [String: Any])
+        XCTAssertNotNil(properties["due"])
+        XCTAssertNotNil(properties["completed"])
+
+        // Moving a reminder: an update, by its id.
+        let moved = await PhoneVoiceTools.run(tool, arguments: ["kind": "reminder", "id": "r_milk", "due": "2026-10-16T17:00"],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(moved["result"], moved["error"] ?? "")
+        let update = try XCTUnwrap(source.appliedChanges.last)
+        XCTAssertEqual(update.kind, .updateReminder)
+        XCTAssertEqual(update.reminderID, "r_milk")
+        XCTAssertNotNil(update.fields.due)
+        XCTAssertEqual(update.fields.dueAllDay, false)
+
+        // Marking it done alone is a completion.
+        let done = await PhoneVoiceTools.run(tool, arguments: ["kind": "reminder", "id": "r_milk", "completed": true],
+                                             engine: engine, answer: answer)
+        XCTAssertNotNil(done["result"], done["error"] ?? "")
+        XCTAssertEqual(source.appliedChanges.last?.kind, .completeReminder)
+        XCTAssertEqual(source.appliedChanges.last?.fields.completed, true)
+
+        // An event moved for this one of a series, keeping the rest.
+        let event = await PhoneVoiceTools.run(tool, arguments: ["kind": "event", "id": "e_dentist", "start": "2026-10-16T16:00",
+                                                                "title": "Dentist (moved)"],
+                                              engine: engine, answer: answer)
+        XCTAssertNotNil(event["result"], event["error"] ?? "")
+        let eventChange = try XCTUnwrap(source.appliedChanges.last)
+        XCTAssertEqual(eventChange.kind, .updateEvent)
+        XCTAssertEqual(eventChange.eventID, "e_dentist")
+        XCTAssertEqual(eventChange.span, "this")
+        XCTAssertEqual(eventChange.fields.title, "Dentist (moved)")
+        XCTAssertNil(eventChange.fields.end, "Moving the start keeps its length")
+
+        let count = source.appliedChanges.count
+        let nothing = await PhoneVoiceTools.run(tool, arguments: ["kind": "event", "id": "e_dentist"], engine: engine, answer: answer)
+        XCTAssertNotNil(nothing["error"], "Nothing to change")
+        let both = await PhoneVoiceTools.run(tool, arguments: ["kind": "reminder", "id": "r_milk", "completed": true, "title": "Oat milk"],
+                                             engine: engine, answer: answer)
+        XCTAssertNotNil(both["error"], "Done and renamed at once is asked about")
+        let badTime = await PhoneVoiceTools.run(tool, arguments: ["kind": "event", "id": "e_dentist", "start": "Friday"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(badTime["error"])
+        // Only on the user's own yes.
+        let unconfirmed = await PhoneVoiceTools.run(tool, arguments: ["kind": "reminder", "id": "r_milk", "title": "Oat milk"],
+                                                    engine: engine, confirmed: { false }, answer: answer)
+        XCTAssertNotNil(unconfirmed["error"])
+        // Not in a calendar the user left out since the id was read.
+        source.itemCalendars["e_hidden"] = "ek_work"
+        var leftOut = phonePreferences()
+        leftOut.hiddenCalendars = ["ek_work"]
+        engine.savePreferences(leftOut)
+        let hidden = await PhoneVoiceTools.run(tool, arguments: ["kind": "event", "id": "e_hidden", "title": "Moved"],
+                                               engine: engine, answer: answer)
+        XCTAssertNotNil(hidden["error"])
+        XCTAssertEqual(source.appliedChanges.count, count, "None of those reached the phone's calendar")
+        // Add-only events are never read: nothing to change them by.
+        var eventsOnly = phonePreferences()
+        eventsOnly.reminders = false
+        XCTAssertFalse(PhoneVoiceTools.tools(for: eventsOnly, access: .writeOnly, remindersAuthorized: true).map(\.name)
+            .contains(PhoneVoiceTools.updateTool))
+    }
+
+    func testPhoneVoiceCallsListAndCancelAlarms() async throws {
+        let alarms = FakePhoneAlarmSource()
+        alarms.list = [["id": "alarm_wake", "kind": "alarm", "label": "Wake up"]]
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), alarms: alarms)
+        var preferences = phonePreferences()
+        preferences.alarms = true
+        engine.savePreferences(preferences)
+        let tool = try XCTUnwrap(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true,
+                                                       alarmsAuthorized: true).last)
+        XCTAssertTrue(tool.description.contains("not Hermes"))
+        let answer: (PhoneChangePrompt, Bool) async -> Void = { _, _ in }
+
+        let listed = await PhoneVoiceTools.run(tool, arguments: ["kind": "list"], engine: engine, answer: answer)
+        XCTAssertTrue(listed["result"]?.contains("alarm_wake") == true, listed["error"] ?? "")
+        let unconfirmed = await PhoneVoiceTools.run(tool, arguments: ["kind": "cancel", "id": "alarm_wake"], engine: engine,
+                                                    confirmed: { false }, answer: answer)
+        XCTAssertNotNil(unconfirmed["error"])
+        XCTAssertEqual(alarms.cancelled, [], "Not without the user's yes")
+        let noID = await PhoneVoiceTools.run(tool, arguments: ["kind": "cancel"], engine: engine, answer: answer)
+        XCTAssertNotNil(noID["error"])
+        let cancelled = await PhoneVoiceTools.run(tool, arguments: ["kind": "cancel", "id": "alarm_wake"], engine: engine, answer: answer)
+        XCTAssertNotNil(cancelled["result"], cancelled["error"] ?? "")
+        XCTAssertEqual(alarms.cancelled, ["alarm_wake"])
+        // A timer set in the call answers with its id, to cancel it by.
+        let timer = await PhoneVoiceTools.run(tool, arguments: ["kind": "timer", "minutes": 5], engine: engine, answer: answer)
+        XCTAssertTrue(timer["result"]?.contains("alarm_1") == true, timer["error"] ?? "")
+    }
+
+    func testClassicVoiceAnswersTheOneCardWaiting() throws {
+        let words = SpokenApprovals.Waiting(phoneChanges: ["ch_1"])
+        XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: words)?.target, .phoneChange(id: "ch_1"))
+        XCTAssertEqual(SpokenApprovals.answer("Yes, change it.", waiting: words)?.approve, true)
+        XCTAssertEqual(SpokenApprovals.answer("No", waiting: words)?.approve, false)
+        XCTAssertEqual(SpokenApprovals.answer("No thanks", waiting: words)?.approve, false)
+        XCTAssertNil(SpokenApprovals.answer("No, make it five instead", waiting: words), "A change is Hermes' to make")
+        XCTAssertNil(SpokenApprovals.answer("What's on my calendar tomorrow?", waiting: words))
+        XCTAssertNil(SpokenApprovals.answer("yes?", waiting: words), "Never a question")
+
+        let approval = SpokenApprovals.Waiting(chatApprovals: ["m_1"])
+        XCTAssertEqual(SpokenApprovals.answer("go ahead", waiting: approval)?.target, .chatApproval(messageID: "m_1"))
+        XCTAssertEqual(SpokenApprovals.answer("go ahead", waiting: approval)?.approve, true)
+        XCTAssertNil(SpokenApprovals.answer("go to the store", waiting: approval))
+
+        let confirm = PresentedConfirm(id: "p_1", title: "Send the email", preview: "Hi Sam", actionLabel: "Send",
+                                       spokenYes: ["send it"], sessionID: nil, expiresAt: nil, maps: nil)
+        let presented = SpokenApprovals.Waiting(presented: [confirm])
+        XCTAssertEqual(SpokenApprovals.answer("send it", waiting: presented)?.target, .presented(id: "p_1"))
+        XCTAssertEqual(SpokenApprovals.answer("no", waiting: presented)?.approve, false)
+
+        // Nothing waiting, or more than one: a yes answers nothing.
+        XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting()))
+        XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(phoneChanges: ["ch_1"], chatApprovals: ["m_1"])))
+        XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(phoneChanges: ["ch_1", "ch_2"])))
     }
 
     // MARK: Helpers

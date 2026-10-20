@@ -160,7 +160,8 @@ final class GPTLiveDelegationBridge {
         // "Approve:", "Deny:" or "Answer: …" (#449 step 4): the user's answer
         // to what a call from Hermes waits on. Never reaches Hermes as work.
         // Only in such a call: anywhere else the words are a request.
-        if let decision = Self.decisionMarker(in: request), decision.answers(supervisor.callWaitsOn) {
+        if let decision = Self.decisionMarker(in: request),
+           decision.answers(supervisor.callWaitsOn) || (decision.isApproval && !supervisor.jobsWaitingOnApproval.isEmpty) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
             let outcome: VoiceCallDecisionOutcome
             if (spokenWords?.wordsMark() ?? 0) == 0 {
@@ -1304,6 +1305,9 @@ final class GPTLiveDelegationBridge {
         /// when the model gave none.
         case answer(String)
 
+        /// "Approve:" or "Deny:", which can also answer a job's approval.
+        var isApproval: Bool { self == .approve || self == .deny }
+
         /// Whether it answers what the call waits on.
         func answers(_ waitsOn: HermesCallRequest.Kind?) -> Bool {
             switch self {
@@ -1441,7 +1445,7 @@ final class GPTLiveDelegationBridge {
         case .cancelled:
             return relay(VoiceBackgroundJobSupervisor.cancelledNotice(job.title))
         case .starting, .running, .needsInput:
-            return relay(VoiceBackgroundJobSupervisor.waitingNotice(job.title))
+            return relay(VoiceBackgroundJobSupervisor.waitingNotice(for: job))
         }
     }
 

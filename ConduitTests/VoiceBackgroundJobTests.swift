@@ -650,6 +650,57 @@ extension VoiceConversationControllerTests {
         XCTAssertNotNil(supervisor.takePendingNotice(), "a new approval is a new episode")
     }
 
+    func testALiveCallAnswersAJobsApprovalOutLoud() async {
+        let fake = FakeVoiceJobBackend()
+        var backend = fake.backend
+        var answered: [(ApprovalActivity, String)] = []
+        var stillWaiting = true
+        backend.respondToApproval = { approval, choice, _ in
+            answered.append((approval, choice))
+            return stillWaiting
+        }
+        let supervisor = VoiceBackgroundJobSupervisor(backend: backend, pollInterval: .seconds(3_600))
+        _ = await supervisor.startJob(instructions: "clean the logs")
+        let approval = ApprovalActivity(sessionId: "rt-1", requestId: "req-1", command: "rm -rf /var/log/old",
+                                        description: "Delete old logs", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        let outcome1 = await supervisor.answerApproval(choice: "once")
+        XCTAssertEqual(outcome1, .nothingPending, "Nothing waits yet")
+
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        XCTAssertEqual(supervisor.jobsWaitingOnApproval.count, 1)
+        // The update says what it asks and that a yes answers it.
+        guard case .speak(let text)? = supervisor.takePendingNotice() else { return XCTFail("needs-input is spoken") }
+        XCTAssertTrue(text.contains("Delete old logs"), text)
+        XCTAssertTrue(text.contains("Say yes"), text)
+
+        let outcome2 = await supervisor.answerApproval(choice: "once")
+        XCTAssertEqual(outcome2, .approved)
+        XCTAssertEqual(answered.map(\.1), ["once"])
+        XCTAssertEqual(answered.first?.0.requestId, "req-1")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertTrue(supervisor.jobsWaitingOnApproval.isEmpty)
+
+        // Hermes stopped waiting meanwhile: too late.
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        stillWaiting = false
+        let outcome3 = await supervisor.answerApproval(choice: "deny")
+        XCTAssertEqual(outcome3, .expired)
+
+        // Two jobs waiting: a bare yes can't say which.
+        _ = await supervisor.startJob(instructions: "restart the server")
+        supervisor.observe(.approval(sessionId: "rt-1", activity: approval))
+        var second = approval
+        second.sessionId = "rt-2"
+        second.requestId = "req-2"
+        supervisor.observe(.approval(sessionId: "rt-2", activity: second))
+        let outcome4 = await supervisor.answerApproval(choice: "once")
+        XCTAssertEqual(outcome4, .severalWaiting)
+        // Hermes going on ends that job's wait.
+        supervisor.observe(.toolStart(sessionId: "rt-2", toolName: "terminal", toolInput: nil))
+        XCTAssertEqual(supervisor.jobsWaitingOnApproval.count, 1, "Activity after the answer ends the wait")
+    }
+
     func testActiveJobLimitRefusesWithoutCreatingASession() async {
         let (supervisor, fake) = makeSupervisor()
         for index in 0..<VoiceBackgroundJobSupervisor.maximumActiveJobs {

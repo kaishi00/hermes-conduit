@@ -837,6 +837,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .approval).contains { $0.name == "answer_approval" })
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .approval).contains { $0.name == "answer_question" })
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .done).contains { $0.name.hasPrefix("answer_") })
+        // A phone call can answer its jobs' approvals too.
+        XCTAssertTrue(GeminiLiveToolBridge.declarations(webSearch: false, jobApprovals: true).contains { $0.name == "answer_approval" })
 
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
         var spoke: Date?

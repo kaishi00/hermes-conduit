@@ -2437,7 +2437,8 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        chats: true
+                        chats: true,
+                        jobApprovals: true
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -2821,6 +2822,7 @@ final class AppState: ObservableObject {
                         + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                        + GPTLiveConversationController.jobApprovalRule
                         + (self?.gptLiveWebLookUps == true ? GPTLiveConversationController.webLookUpRule : "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -2854,6 +2856,7 @@ final class AppState: ObservableObject {
                     + (self.map { $0.liveVoiceThreadInstructions(delegation: true) + $0.phoneVoiceSettingHint(for: .gptLive) } ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
                     + VoiceHostTool.gptLiveRules(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                    + GPTLiveConversationController.jobApprovalRule
                     + (self?.gptLiveWebLookUps == true ? GPTLiveConversationController.webLookUpRule : "")
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                     + (self?.liveVoiceStyle.instructions ?? "")
@@ -3131,7 +3134,8 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        chats: true
+                        chats: true,
+                        jobApprovals: true
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     voice: self?.grokLiveVoice
                 )
@@ -3328,7 +3332,8 @@ final class AppState: ObservableObject {
     private var localLiveWebLookUps = false
 
     /// What an agent-mode call gives the host's fast model: the live
-    /// instructions and Grok Live's tools, run here. Nil outside agent mode.
+    /// instructions and Grok Live's tools, run here, with the phone's own
+    /// tools the user lets Local Live use. Nil outside agent mode.
     func localLiveAgentSetup() -> LocalLiveProtocol.AgentSetup? {
         guard isLocalLiveAgent else { return nil }
         let supervisor = voiceBackgroundJobSupervisor
@@ -3340,13 +3345,16 @@ final class AppState: ObservableObject {
         instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
         instructions += liveVoiceResumeContext?.instructionBlock ?? ""
         instructions += liveVoiceThreadInstructions(delegation: false)
+        instructions += phoneVoiceSettingHint(for: .localLive)
+        instructions += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
         instructions += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
         instructions += liveVoiceStyle.instructions
         let functions = GeminiLiveToolBridge.declarations(
             webSearch: localLiveWebLookUps,
             thread: supervisor.liveThread != nil,
-            chats: true
-        )
+            chats: true,
+            jobApprovals: true
+        ) + VoiceHostTool.declarations(supervisor.hostTools)
         return LocalLiveProtocol.AgentSetup(instructions: instructions, functions: functions)
     }
 
@@ -3437,6 +3445,8 @@ final class AppState: ObservableObject {
         },
         submit: { [weak self] chat, text in
             guard let self, let client = self.client else { throw HermesError.notConnected }
+            // As in Classic voice: a yes or no to the one card waiting.
+            await self.answerWaitingBySpeech(text)
             if chat.runtimeID == self.activeSessionId {
                 // On screen it goes through the composer, so the chat shows
                 // and streams it like Classic voice's turns.
@@ -3508,12 +3518,16 @@ final class AppState: ObservableObject {
                     throw LocalLiveClientError.unavailable(reason)
                 }
                 if let self, self.isLocalLiveAgent {
+                    // The phone's own tools (calendar, reminders, alarms,
+                    // maps, health, location) the user lets Local Live use.
+                    async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
                     // Off only when the user turned web lookups off.
                     if self.geminiLiveSearchMode != .off {
                         self.localLiveWebLookUps = await hostContext.webSearchAvailable()
                     } else {
                         self.localLiveWebLookUps = false
                     }
+                    await hostTools
                 }
                 return .available(model: status.modelName)
             },
@@ -3719,6 +3733,10 @@ final class AppState: ObservableObject {
             readChat: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.readChatForVoice(sessionID)
+            },
+            respondToApproval: { [weak self] approval, choice, profile in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -30156,6 +30174,9 @@ final class AppState: ObservableObject {
     /// the composer. Keeping this seam here prevents audio UI from inferring
     /// request state from transcript timing.
     func submitVoiceTranscript(_ transcript: String) async -> Bool {
+        // A yes or no to the one card waiting answers it first (Hermes can't
+        // approve for the user); Hermes then hears the words and how it went.
+        await answerWaitingBySpeech(transcript)
         // Marks this exact text as a spoken turn for the prompt.submit it
         // reaches, so Hermes asks for a reply meant to be read aloud. A typed
         // send interleaving on another text never matches.
@@ -30169,6 +30190,9 @@ final class AppState: ObservableObject {
     /// With no running turn the controller sends them as a new turn; a
     /// failed steer is never resubmitted, so it can't duplicate the words.
     func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
+        // A yes or no to the approval the running turn waits on (or another
+        // card waiting) answers it, and the turn goes on from there.
+        if await answerWaitingBySpeech(text) { return .steered }
         switch turnState {
         case .running:
             return await steer(text, surfacesFailure: false) ? .steered : .failed
