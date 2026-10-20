@@ -1,0 +1,59 @@
+# TEMPORARY: reproduces the LongContextScalingFixtureTests reasoning flake on
+# hosted runners. Delete before merging.
+name: Flake stress
+on:
+  push:
+    branches: [claude/project-thread-bzfumk]
+jobs:
+  stress:
+    name: Long-context stress (${{ matrix.n }})
+    runs-on: macos-26
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build and boot the simulator in parallel
+        run: bash scripts/ci-hosted-build.sh
+      - name: Run the class repeatedly
+        run: |
+          set +e
+          runs=0; fails=0
+          # First pass mirrors the nightly timing job (fresh simulator, all
+          # timing families); later passes run only the class.
+          for i in $(seq 1 10); do
+            if [ "$i" -eq 1 ]; then
+              sel=(-only-testing:ConduitTests/LongContextScalingFixtureTests -only-testing:ConduitTests/MarkdownRichContentHostedTests -only-testing:ConduitTests/SettledMessageIsolationTests -only-testing:ConduitTests/TranscriptPerfLedgerContractTests -only-testing:ConduitTests/TranscriptPerformanceFixtureTests)
+            else
+              sel=(-only-testing:ConduitTests/LongContextScalingFixtureTests)
+            fi
+            log="$RUNNER_TEMP/pass-$i.log"
+            xcodebuild test-without-building -xctestrun "$XCRUN_FILE" -destination "$DESTINATION" \
+              -parallel-testing-enabled NO -collect-test-diagnostics never \
+              -test-timeouts-enabled YES -default-test-execution-time-allowance 900 \
+              "${sel[@]}" > "$log" 2>&1
+            runs=$((runs+1))
+            if grep -q "testLiveReasoningPublishesAvoidTranscriptSizedWork\] : " "$log"; then
+              fails=$((fails+1))
+              # The assertion and its multi-line spans, up to the test's end.
+              msg=$(awk '/testLiveReasoningPublishesAvoidTranscriptSizedWork\] : /{p=1} p{print} /testLiveReasoningPublishesAvoidTranscriptSizedWork\]. failed/{exit}' "$log")
+              printf '%s' "$msg" > "$RUNNER_TEMP/fail-$i.txt"
+              python3 -c '
+          import sys
+          i = sys.argv[1]; s = open(sys.argv[2]).read()
+          enc = lambda t: t.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          for k in range(0, min(len(s), 18000), 6000):
+              print(f"::error title=pass {i} failure part {k//6000+1}::" + enc(s[k:k+6000]))
+          ' "$i" "$RUNNER_TEMP/fail-$i.txt"
+            fi
+            grep -E "Executed [0-9]+ tests?" "$log" | tail -1
+          done
+          echo "::notice title=stress ${{ matrix.n }}::$fails of $runs passes failed the reasoning test"
