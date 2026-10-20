@@ -229,6 +229,9 @@ final class CarPlayVoiceCoordinator {
     /// picked chat, a replayed job, a shortcut), however it ends: a resume after an interruption that
     /// sees it change leaves the conversation to the driver.
     private(set) var driverStartRequest: UInt64 = 0
+    /// `driverStartRequest` when End was last tapped: a driver start after
+    /// it owns the classic conversation an ended start would close.
+    private var driverStartRequestAtLastEnd: UInt64 = 0
     /// A list is pushed over the voice screen. A conversation that starts
     /// meanwhile (from the phone, say) brings the voice screen back (#378).
     private(set) var isBrowsing = false
@@ -1214,7 +1217,6 @@ final class CarPlayVoiceCoordinator {
         chatOpenRequest &+= 1
         let request = chatOpenRequest
         let startRequest = voiceStartRequest
-        let driverRequest = driverStartRequest
         // A newer pick, an End tap or a lost car ends this one.
         func isWanted() -> Bool {
             isCurrent(generation) && isConnected
@@ -1256,7 +1258,7 @@ final class CarPlayVoiceCoordinator {
         }
         guard let outcome = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
         guard voiceStartRequest == startRequest else {
-            closeStartEndedMeanwhile(outcome, driverRequest: driverRequest)
+            closeStartEndedMeanwhile(outcome)
             return
         }
         await completeListenTurn(generation: generation, outcome: outcome)
@@ -1423,7 +1425,6 @@ final class CarPlayVoiceCoordinator {
             return
         }
         let startRequest = voiceStartRequest
-        let driverRequest = driverStartRequest
         let controller = appState.voiceConversationController
         var outcome = AppState.VoiceConversationPrepareOutcome.handled
         if controller.hasLiveVoiceSession {
@@ -1462,7 +1463,7 @@ final class CarPlayVoiceCoordinator {
             guard let prepared = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
             outcome = prepared
             guard voiceStartRequest == startRequest else {
-                closeStartEndedMeanwhile(outcome, driverRequest: driverRequest)
+                closeStartEndedMeanwhile(outcome)
                 return
             }
         }
@@ -1495,14 +1496,13 @@ final class CarPlayVoiceCoordinator {
         // A new chat is no longer the one picked from the list.
         chosenChat = nil
         let startRequest = voiceStartRequest
-        let driverRequest = driverStartRequest
         guard let outcome = await prepareWaitingForConnection(
             appState: appState,
             generation: generation,
             startsFreshConversation: true
         ) else { return }
         guard voiceStartRequest == startRequest else {
-            closeStartEndedMeanwhile(outcome, driverRequest: driverRequest)
+            closeStartEndedMeanwhile(outcome)
             return
         }
         await completeListenTurn(generation: generation, outcome: outcome)
@@ -1594,6 +1594,7 @@ final class CarPlayVoiceCoordinator {
     func endTapped() {
         guard isConnected else { return }
         voiceStartRequest &+= 1
+        driverStartRequestAtLastEnd = driverStartRequest
         connectionWaitTask?.cancel()
         connectionWaitTask = nil
         endConversation()
@@ -1606,15 +1607,13 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// A classic start whose prepare finished after End was tapped: a
-    /// conversation it opened is closed again rather than left open. End
-    /// closes nothing a newer driver start (Listen, a picked chat, New
-    /// Chat) opened meanwhile: there is one classic conversation, and it is
-    /// that start's now.
-    private func closeStartEndedMeanwhile(
-        _ outcome: AppState.VoiceConversationPrepareOutcome,
-        driverRequest: UInt64
-    ) {
-        guard isConnected, outcome == .handled, driverStartRequest == driverRequest else { return }
+    /// conversation it opened is closed again rather than left open, unless
+    /// a driver start (Listen, a picked chat, New Chat) came after the
+    /// latest End: there is one classic conversation, and it is that
+    /// start's now. A driver start that a later End ended protects nothing.
+    private func closeStartEndedMeanwhile(_ outcome: AppState.VoiceConversationPrepareOutcome) {
+        guard isConnected, outcome == .handled,
+              driverStartRequest == driverStartRequestAtLastEnd else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         guard CarPlayVoiceMode.current(in: appState) == .classic else { return }
         appState.closeVoiceConversation()
@@ -1701,10 +1700,9 @@ final class CarPlayVoiceCoordinator {
             return
         }
         let startRequest = voiceStartRequest
-        let driverRequest = driverStartRequest
         guard let outcome = await prepareWaitingForConnection(appState: appState, generation: generation) else { return }
         guard voiceStartRequest == startRequest else {
-            closeStartEndedMeanwhile(outcome, driverRequest: driverRequest)
+            closeStartEndedMeanwhile(outcome)
             return
         }
         await completeVoiceEstablishment(generation: generation, outcome: outcome)

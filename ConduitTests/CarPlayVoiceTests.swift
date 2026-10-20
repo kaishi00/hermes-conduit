@@ -2105,6 +2105,40 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.activations.contains(.error), "\(harness.activations)")
     }
 
+    /// End, Listen, End while an older start's prepare is in flight: the
+    /// driver ended both, so the older start's late conversation is closed
+    /// too, not left running behind a Ready car.
+    func testAStartEndedThenListenThenEndedAgainLeavesNoConversationOpen() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        let requester = HeldOnceVoiceConfigRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let generation = harness.coordinator.connectionGeneration
+
+        let first = Task { @MainActor in
+            await harness.coordinator.establishVoice(generation: generation)
+        }
+        for _ in 0..<500 where !requester.isHolding { await Task.yield() }
+        XCTAssertTrue(requester.isHolding, "the first start's prepare is in flight")
+
+        harness.coordinator.endTapped()
+        harness.coordinator.startListeningTurn()
+        for _ in 0..<500 where harness.controller.state != .listening { await Task.yield() }
+        XCTAssertEqual(harness.controller.state, .listening, "the driver's Listen opened a conversation")
+        harness.coordinator.endTapped()
+
+        requester.release()
+        await first.value
+
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the driver ended every start; none may stay open")
+        XCTAssertFalse(harness.activations.contains(.error), "\(harness.activations)")
+    }
+
     func testWaitingForTheConnectionShowsProcessingInsteadOfReady() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
