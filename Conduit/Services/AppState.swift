@@ -6902,7 +6902,29 @@ final class AppState: ObservableObject {
     func openAppLink(_ link: ConduitAppLink) {
         widgetLaunchCoordinator.supersede()
         switch link {
-        case .session(let id, let profile):
+        case .session(let id, let profile, let dashboard):
+            // A chat a link places on another dashboard (a Live Activity's
+            // card outlives a dashboard switch) goes the way a notification
+            // for it does: owner-aware, switching to that saved dashboard
+            // first, failing closed for one this device doesn't know.
+            if let dashboard {
+                guard let owner = UUID(uuidString: dashboard) else {
+                    errorMessage = AppLocalization.string("That chat is no longer available.")
+                    return
+                }
+                if owner != activeDashboardID {
+                    guard !isVoiceCallInProgress else {
+                        errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                        return
+                    }
+                    PushNotificationService.shared.routeChatLink(
+                        ConduitNotificationTarget(
+                            profile: notificationProfileID(profile), sessionId: id, dashboardID: owner, type: nil, isChatLink: true
+                        )
+                    )
+                    return
+                }
+            }
             // A blank profile names none: the chat opens on the profile in use.
             if let named = notificationProfileID(profile), named != activeProfile {
                 Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: named) }

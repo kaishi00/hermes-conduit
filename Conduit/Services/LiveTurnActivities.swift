@@ -106,7 +106,7 @@ enum LiveTurnProgress {
     ) -> RegistryVerdict {
         guard !state.turnPhase.isFinished else { return .unknown }
         if let own = attributes.dashboardID, own != dashboardID { return .unknown }
-        if case .session(_, let own?)? = ConduitAppLink(url: attributes.link), own != profile { return .unknown }
+        if case .session(_, let own?, _)? = ConduitAppLink(url: attributes.link), own != profile { return .unknown }
         guard Set(attributes.sessionIDs).isDisjoint(with: liveSessionIDs) else { return .running }
         return now.timeIntervalSince(attributes.startedAt) >= grace ? .absent : .unknown
     }
@@ -274,7 +274,7 @@ final class LiveTurnActivities {
             chatTitle: title,
             startedAt: Date(),
             language: AppLanguageStore.shared.selection.rawValue,
-            link: ConduitAppLink.session(id: primaryID, profile: profile).url,
+            link: ConduitAppLink.session(id: primaryID, profile: profile, dashboard: dashboardID).url,
             sessionIDs: Array(sessionIDs).sorted(),
             profileName: profileName,
             glowHex: glowHex,

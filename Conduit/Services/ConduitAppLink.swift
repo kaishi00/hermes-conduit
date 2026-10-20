@@ -117,12 +117,14 @@ enum ConduitAppLink: Equatable {
         var components = URLComponents()
         components.scheme = Self.scheme
         switch self {
-        case .session(let id, let profile):
+        case .session(let id, let profile, let dashboard):
             components.host = "session"
             components.path = "/" + id
-            if let profile {
-                components.queryItems = [URLQueryItem(name: "profile", value: profile)]
-            }
+            let items = [
+                profile.map { URLQueryItem(name: "profile", value: $0) },
+                dashboard.map { URLQueryItem(name: "dashboard", value: $0) },
+            ].compactMap { $0 }
+            if !items.isEmpty { components.queryItems = items }
         case .bot(let profile):
             components.host = "bot"
             components.path = "/" + profile
