@@ -68,7 +68,7 @@ struct SpokenTextFilter {
                 continue
             }
             let held = remaining[open...]
-            if final || held.contains(where: \.isNewline) || held.count > Self.maximumHeldCharacters {
+            if final || held.count > Self.maximumHeldCharacters || held.contains(where: \.isNewline) {
                 // Never closed: not an action. Release the marker as text
                 // and keep scanning after it.
                 output.append(marker)
@@ -122,7 +122,8 @@ struct SpokenTextFilter {
 
     private static func closingMarker(_ marker: Character, in text: ArraySlice<Character>, final: Bool) -> Int? {
         var index = text.startIndex
-        while index < text.endIndex {
+        let limit = min(text.endIndex, text.startIndex + maximumHeldCharacters - 1)
+        while index < limit {
             let character = text[index]
             if character.isNewline { return nil }
             guard character == marker else {
