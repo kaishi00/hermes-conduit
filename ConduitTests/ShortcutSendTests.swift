@@ -166,6 +166,26 @@ extension ScreenQuestionTests {
     }
 
     @MainActor
+    func testARunEndedWhileTheChatReopensSendsNothing() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        hermes.goneRuntimes = ["resumed-1"]
+        var backend = hermes.backend()
+        backend.reopenChat = { _ in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return "reopened-1"
+        }
+        do {
+            _ = try await ShortcutSender(backend: backend, chats: chats)
+                .send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should end")
+        } catch is CancellationError {}
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
+    }
+
+    @MainActor
     func testOtherSendFailuresAreNotRetried() async throws {
         let hermes = FakeHermes()
         let chats = shortcutChats()

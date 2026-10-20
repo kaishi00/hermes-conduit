@@ -214,6 +214,7 @@ struct ShortcutSender {
             // after a cold launch the open chat's id is the one from before,
             // until the chat's own resume: reopen the chat and send once more.
             runtimeID = try await backend.reopenChat(chat)
+            try Task.checkCancellation()
             chat.runtimeSessionID = runtimeID
             if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
             guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }

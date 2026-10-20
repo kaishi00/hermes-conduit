@@ -51,7 +51,10 @@ extension AppState {
             submit: { [weak self] chat, runtimeID, text in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 // Shortcut text is literal: "/…" never runs a composer command.
-                if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy, Self.parseSlashCommand(text) == nil {
+                // A chat reopened after its runtime was gone runs on a runtime
+                // the composer doesn't have yet: that send goes straight there.
+                if self.isOpenChat(self.scopedShortcutChat(chat)), self.activeSessionId == runtimeID,
+                   !self.isBusy, Self.parseSlashCommand(text) == nil {
                     // A turn the composer finds running is never steered or
                     // interrupted from here: it declines and the gateway queues.
                     self.submissionTurnSurface = (text, .shortcut)
