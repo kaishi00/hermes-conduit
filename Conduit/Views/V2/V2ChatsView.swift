@@ -326,6 +326,8 @@ struct V2ChatsView: View, Equatable {
     }
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
+    /// The catalog walks one render shares (#1065).
+    @State private var renderMemo = V2ChatsRenderMemo()
     /// A conversation opened from elsewhere whose closed section still has
     /// to open once its row is listed.
     @State private var pendingSectionReveal: String?
@@ -381,6 +383,9 @@ struct V2ChatsView: View, Equatable {
     }
 
     var body: some View {
+        // A new render reads the catalog afresh; within it, the list, the
+        // filter menu and its counts share each walk.
+        let _ = renderMemo.reset()
         ZStack {
             V2Backdrop(isTabRoot: true)
             // Projects sits behind the folder button on the right, so it
@@ -678,16 +683,30 @@ struct V2ChatsView: View, Equatable {
     /// pinned ones in All, #485). Until this profile's live list lands,
     /// the rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
-        SidebarSourceRows.rows(
-            sessions: appState.listedSessions,
-            cronSessions: appState.listedCronSessions,
-            source: source,
-            category: appState.sessionCategory,
-            isPinned: appState.isSessionPinned
-        )
+        renderMemo.sourceRows(source) {
+            SidebarSourceRows.rows(
+                sessions: appState.listedSessions,
+                cronSessions: appState.listedCronSessions,
+                source: source,
+                category: category,
+                isPinned: appState.isSessionPinned
+            )
+        }
+    }
+
+    /// The row's filter source, worked out once per render: it looks up
+    /// the voice tags and voice jobs by every id the row answers to.
+    private func category(_ session: SessionSummary) -> SessionSource {
+        renderMemo.category(session.id) { appState.sessionCategory(for: session) }
     }
 
     private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
+        renderMemo.filterRows(selection.rawValue, searching: searching) {
+            uncachedFilterRows(selection, searching: searching)
+        }
+    }
+
+    private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
         guard !selection.isEmpty else {
             // Read once, not once per row.
             let projectChats = self.projectChats
@@ -701,7 +720,7 @@ struct V2ChatsView: View, Equatable {
             everything: sourceRows(nil),
             sessions: appState.listedSessions,
             cronSessions: appState.listedCronSessions,
-            category: appState.sessionCategory,
+            category: category,
             hasStatus: hasStatus
         )
     }
@@ -766,7 +785,7 @@ struct V2ChatsView: View, Equatable {
 
     private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
         // The project name a result shows finds it too.
-        [session.title, session.model, session.id, session.preview ?? "", appState.sessionCategory(for: session).label]
+        [session.title, session.model, session.id, session.preview ?? "", category(session).label]
             .contains { $0.localizedCaseInsensitiveContains(query) }
             || projectTitle(for: session)?.localizedCaseInsensitiveContains(query) == true
     }
@@ -1873,5 +1892,45 @@ final class V2NestExpansionCache {
             line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
         })
         return cached
+    }
+}
+
+/// What one render of the Chats list works out from the catalog, shared
+/// by the list, the filter menu and the menu's counts. Right after launch
+/// the catalog publishes many times a second, and each render used to walk
+/// it a dozen times (the menu alone once per filter). Emptied at the start
+/// of every render, so nothing outlives the state it was read from.
+@MainActor
+final class V2ChatsRenderMemo {
+    private var sources: [SessionSource?: [SessionSummary]] = [:]
+    private var categories: [String: SessionSource] = [:]
+    private var filtered: [String: [SessionSummary]] = [:]
+
+    func reset() {
+        sources.removeAll(keepingCapacity: true)
+        categories.removeAll(keepingCapacity: true)
+        filtered.removeAll(keepingCapacity: true)
+    }
+
+    func sourceRows(_ source: SessionSource?, _ make: () -> [SessionSummary]) -> [SessionSummary] {
+        if let rows = sources[source] { return rows }
+        let rows = make()
+        sources[source] = rows
+        return rows
+    }
+
+    func category(_ sessionID: String, _ make: () -> SessionSource) -> SessionSource {
+        if let category = categories[sessionID] { return category }
+        let category = make()
+        categories[sessionID] = category
+        return category
+    }
+
+    func filterRows(_ selection: String, searching: Bool, _ make: () -> [SessionSummary]) -> [SessionSummary] {
+        let key = searching ? selection + "\u{1F}searching" : selection
+        if let rows = filtered[key] { return rows }
+        let rows = make()
+        filtered[key] = rows
+        return rows
     }
 }

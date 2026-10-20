@@ -333,6 +333,36 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(updates.isScrolling)
     }
 
+    /// One render of the Chats list walks the catalog once per question,
+    /// however many filters ask it; the next render asks again.
+    @MainActor
+    func testChatsRenderMemoSharesWalksWithinARender() {
+        let memo = V2ChatsRenderMemo()
+        var walks = 0
+        let walk: () -> [SessionSummary] = { walks += 1; return [pinnedTestSession("a")] }
+
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.sourceRows(.cron, walk)
+        XCTAssertEqual(walks, 2)
+
+        _ = memo.filterRows("all", searching: false, walk)
+        _ = memo.filterRows("all", searching: false, walk)
+        _ = memo.filterRows("all", searching: true, walk)
+        XCTAssertEqual(walks, 4)
+
+        var lookups = 0
+        _ = memo.category("a") { lookups += 1; return .voice }
+        XCTAssertEqual(memo.category("a") { lookups += 1; return .cron }, .voice)
+        XCTAssertEqual(lookups, 1)
+
+        memo.reset()
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.category("a") { lookups += 1; return .cron }
+        XCTAssertEqual(walks, 5)
+        XCTAssertEqual(lookups, 2)
+    }
+
     private func waitUntil(_ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {
