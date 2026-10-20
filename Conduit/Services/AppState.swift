@@ -27865,6 +27865,8 @@ final class AppState: ObservableObject {
                 config["reasoning"] = nil
             }
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             errorMessage = AppLocalization.string("Could not save model defaults: \(UserFacingError.message(for: error))")
             return false
@@ -27957,6 +27959,8 @@ final class AppState: ObservableObject {
                 config["fallback_providers"] = list
             }
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
             return false
