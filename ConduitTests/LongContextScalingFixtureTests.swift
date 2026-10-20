@@ -29,9 +29,12 @@ final class LongContextScalingFixtureTests: XCTestCase {
     }
 
     override func tearDown() {
+        // A bounded pump, as in TranscriptPerformanceFixtureTests: a
+        // zero-interval tick lets cold-simulator dismantle transactions land
+        // inside the next test's measurement window.
         testWindow?.isHidden = true
         testWindow?.rootViewController = nil
-        RunLoop.current.run(until: Date())
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         testWindow = nil
         TranscriptPerf.reset()
         super.tearDown()
@@ -133,7 +136,9 @@ final class LongContextScalingFixtureTests: XCTestCase {
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
-        window.isHidden = false
+        // Key and visible now, so the key/attach transition completes in the
+        // mount drain, never inside a measurement window.
+        window.makeKeyAndVisible()
         testWindow = window
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
@@ -265,8 +270,11 @@ final class LongContextScalingFixtureTests: XCTestCase {
         // failure on a hosted runner.
         let reopens: String = TranscriptPerf.recentGateReopenReports.isEmpty
             ? ""
-            : " (first gate reopen: " + (TranscriptPerf.firstGateReopenReport ?? "?")
-                + "; gate reopens: " + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
+            : " (gate reopens: "
+                + (TranscriptPerf.recentGateReopenReports.count > 1
+                    ? "first " + (TranscriptPerf.firstGateReopenReport ?? "?") + "; latest "
+                    : "")
+                + TranscriptPerf.recentGateReopenReports.joined(separator: "; ") + ")"
         let spans: String = TranscriptPerf.preWindowRepeatSpans.isEmpty
             ? ""
             : " — spans:\n" + TranscriptPerf.preWindowRepeatSpans.joined(separator: "\n")
