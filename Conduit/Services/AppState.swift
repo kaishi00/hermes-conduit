@@ -14949,7 +14949,7 @@ final class AppState: ObservableObject {
         // transcript holds none: the gateway's open requests are the whole
         // truth, and a prompt withdrawn while detached simply stays gone.
         for prompt in result.snapshot.pendingInputPrompts {
-            applyInputPromptActivity(prompt)
+            applyInputPromptActivity(prompt, authoritative: true)
         }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
@@ -28504,7 +28504,7 @@ final class AppState: ObservableObject {
             // Empty from current Hermes (open requests ride session.resume
             // only); applied for parity should a gateway include them.
             for prompt in snapshot.pendingInputPrompts {
-                applyInputPromptActivity(prompt)
+                applyInputPromptActivity(prompt, authoritative: true)
             }
             if let payload = snapshot.pendingApprovalPayload,
                let pendingApproval = MessageNormalizer.approvalActivity(
@@ -28718,7 +28718,7 @@ final class AppState: ObservableObject {
             setRunning(true)
 
         case .inputPrompt(_, let activity):
-            applyInputPromptActivity(activity, commitsStreamedText: true)
+            applyInputPromptActivity(activity, authoritative: false, commitsStreamedText: true)
             setRunning(true)
 
         case .inputPromptExpire(_, let requestId, let reason):
@@ -28828,6 +28828,11 @@ final class AppState: ObservableObject {
     /// was in flight, with the cancel reason. The gateway drops an answer for
     /// a closed request, so the send's completion must not claim "Sent".
     private var withdrawnInFlightInputPrompts = [String: String]()
+    /// Request ids of input prompts whose answer this device is sending right
+    /// now. Like `liveApprovalSubmissions`: a `.submitting` card without one
+    /// lost its send to an ownership fence, and only an authoritative replay
+    /// of the still-open request can make it answerable again.
+    private var liveInputPromptSubmissions = Set<String>()
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -29128,25 +29133,42 @@ final class AppState: ObservableObject {
 
     /// Upserts one masked input card keyed by its server request id. A
     /// re-delivery (resume replay) never re-arms a card this device already
-    /// answered, skipped or has in flight.
+    /// answered, skipped or has in flight. The one exception mirrors
+    /// approvals: a `.submitting` card whose send was fenced off by a client
+    /// or profile replacement has no live submission left to settle it, so
+    /// the gateway's authoritative open-request list re-arms it. A one-shot
+    /// stream re-delivery is not authoritative and leaves it alone.
     private func applyInputPromptActivity(
         _ activity: InputPromptActivity,
+        authoritative: Bool,
         commitsStreamedText: Bool = false
     ) {
         if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
-            guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
+            guard let existing = messages[index].inputPrompt else { return }
+            let orphanedSubmission = authoritative
+                && existing.status == .submitting
+                && !liveInputPromptSubmissions.contains(activity.requestId)
+            guard existing.isAnswerable || orphanedSubmission else { return }
             messages[index].content = activity.title
             messages[index].inputPrompt = activity
             return
         }
         settleReasoningSegmentIntoTranscript()
         if commitsStreamedText { flushStreamingPartial() }
+        // A resume rebuild drops input cards (they are live-only), so a
+        // request whose answer is still in flight comes back here: it stays
+        // `.submitting` for that send to settle, never answerable twice.
+        var appended = activity
+        if liveInputPromptSubmissions.contains(activity.requestId) {
+            appended.status = .submitting
+            appended.error = nil
+        }
         messages.append(ChatMessage(
             id: "input-prompt-\(activity.requestId)",
             role: .inputPrompt,
             content: activity.title,
             timestamp: Self.localTimestamp(),
-            inputPrompt: activity
+            inputPrompt: appended
         ))
     }
 
@@ -29199,6 +29221,8 @@ final class AppState: ObservableObject {
               let current = messages[index].inputPrompt,
               current.isAnswerable else { return }
         let skipped = value == nil
+        liveInputPromptSubmissions.insert(current.requestId)
+        defer { liveInputPromptSubmissions.remove(current.requestId) }
         messages[index].inputPrompt?.status = .submitting
         messages[index].inputPrompt?.error = nil
         // Same as approvals and clarifies: answering resumes the turn.

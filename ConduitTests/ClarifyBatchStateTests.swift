@@ -447,6 +447,120 @@ final class ClarifyBatchStateTests: XCTestCase {
         }
     }
 
+    private func openInputPromptSnapshot() -> SessionRuntimeSnapshot {
+        SessionRuntimeSnapshot(object: [
+            "open_requests": .array([.object([
+                "id": .string("srq-sudo00000001"),
+                "method": .string("sudo"),
+                "params": .object(["session_id": .string("stored-a"), "command": .string("sudo ls")])
+            ])])
+        ])
+    }
+
+    /// Starts an answer, parks its send, connects a replacement client so
+    /// the completion fails the ownership fence, then releases the send.
+    /// Returns the replacement's socket.
+    @discardableResult
+    private func fenceOffInputPromptAnswer(_ appState: AppState) async throws -> ClarifyFakeSocket {
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        socket.holdSendCompletion = true
+        let message = try inputPromptMessage(status: .pending)
+        appState.messages = [message]
+
+        let answer = Task { @MainActor in
+            await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+        }
+        for _ in 0..<500 where socket.heldSendCount == 0 { await Task.yield() }
+        XCTAssertEqual(socket.heldSendCount, 1, "The reply frame must be in flight")
+
+        let replacement = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: replacement, transport: ClarifyFakeTransport())
+        socket.releaseSends(error: nil)
+        await answer.value
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting,
+                       "A fenced-off completion leaves the card for the replacement client")
+        return replacement
+    }
+
+    func testAuthoritativeReplayReArmsInputPromptWhoseAnswerWasFencedOff() async throws {
+        let (appState, _) = makeAppState()
+        let replacement = try await fenceOffInputPromptAnswer(appState)
+
+        appState.handleStreamEvent(.sessionInfo(sessionId: "stored-a", snapshot: openInputPromptSnapshot()))
+
+        let card = try XCTUnwrap(appState.messages.first?.inputPrompt)
+        XCTAssertEqual(appState.messages.count, 1)
+        XCTAssertEqual(card.status, .pending,
+                       "The gateway still waits on this request and no send owns the card: it must be answerable again")
+        XCTAssertTrue(card.isAnswerable)
+
+        await appState.respondToInputPrompt(messageId: "input-prompt-srq-sudo00000001", value: "hunter2")
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitted,
+                       "The re-armed card answers through the client that owns it now")
+        XCTAssertTrue(replacement.sentTexts.contains { $0.contains("srq-sudo00000001") })
+    }
+
+    func testStreamRedeliveryLeavesFencedOffInputPromptAlone() async throws {
+        let (appState, _) = makeAppState()
+        try await fenceOffInputPromptAnswer(appState)
+        let replay = try XCTUnwrap(try inputPromptMessage(status: .pending).inputPrompt)
+
+        appState.handleStreamEvent(.inputPrompt(sessionId: "stored-a", activity: replay))
+
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting,
+                       "A one-shot re-delivery is not the gateway's current truth")
+    }
+
+    func testAuthoritativeReplayLeavesALiveInputPromptAnswerAlone() async throws {
+        let (appState, _) = makeAppState()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        socket.holdSendCompletion = true
+        let message = try inputPromptMessage(status: .pending)
+        appState.messages = [message]
+
+        let answer = Task { @MainActor in
+            await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+        }
+        for _ in 0..<500 where socket.heldSendCount == 0 { await Task.yield() }
+        XCTAssertEqual(socket.heldSendCount, 1, "The reply frame must be in flight")
+
+        appState.handleStreamEvent(.sessionInfo(sessionId: "stored-a", snapshot: openInputPromptSnapshot()))
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting,
+                       "The in-flight send owns the card until it completes")
+
+        socket.releaseSends(error: nil)
+        await answer.value
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitted)
+    }
+
+    func testRebuiltInputPromptStaysSubmittingWhileItsAnswerIsInFlight() async throws {
+        let (appState, _) = makeAppState()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        socket.holdSendCompletion = true
+        let message = try inputPromptMessage(status: .pending)
+        appState.messages = [message]
+
+        let answer = Task { @MainActor in
+            await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+        }
+        for _ in 0..<500 where socket.heldSendCount == 0 { await Task.yield() }
+        XCTAssertEqual(socket.heldSendCount, 1, "The reply frame must be in flight")
+
+        // A resume rebuild drops live-only input cards, then re-adds the
+        // gateway's open requests.
+        appState.messages = []
+        appState.handleStreamEvent(.sessionInfo(sessionId: "stored-a", snapshot: openInputPromptSnapshot()))
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitting,
+                       "A request whose answer is in flight must not be answerable twice")
+
+        socket.releaseSends(error: nil)
+        await answer.value
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .submitted)
+    }
+
     func testMixedExpiredPendingClarifyStillAwaitsUserInputForHaptics() throws {
         let (appState, _) = makeAppState()
         var batch = makeBatchActivity()
