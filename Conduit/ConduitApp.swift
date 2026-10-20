@@ -316,9 +316,20 @@ struct ConduitApp: App {
             // Siri learns the cached profile names for its profile phrases.
             .task { SiriProfileShortcuts.refresh() }
             .task(id: notificationRouteKey) {
-                guard appState.isConnected, let target = notifications.pendingTarget else { return }
-                notifications.beginNotificationRoute(target)
-                switch await appState.openNotificationTargetOutcome(target) {
+                guard let target = notifications.pendingTarget else { return }
+                guard appState.isConnected else {
+                    notifications.notificationRouteAwaitsConnection(target)
+                    return
+                }
+                guard notifications.beginNotificationRoute(target) else {
+                    // Its window ran out while the app was offline.
+                    if target.call != nil {
+                        HermesNativeCalls.shared.routedAnswerFailed(target)
+                    }
+                    return
+                }
+                let outcome = await appState.openNotificationTargetOutcome(target)
+                switch outcome {
                 case .opened:
                     // A call from Hermes (#449) opens voice in its chat,
                     // unless its CallKit call ended meanwhile and let go of
@@ -328,12 +339,19 @@ struct ConduitApp: App {
                         HermesNativeCalls.shared.routedAnswerFailed(target)
                     }
                     notifications.clearPendingTarget(target)
-                case .retry:
+                case .retry, .unverified:
                     // Cancelled: a newer tap, a reconnect or a retry started
                     // this route over, and that run decides what happens.
                     guard !Task.isCancelled else { return }
-                    if !notifications.handleFailedNotificationRoute(target), target.call != nil {
-                        HermesNativeCalls.shared.routedAnswerFailed(target)
+                    if !notifications.handleFailedNotificationRoute(target) {
+                        // The window ran out: the last failure says why, if
+                        // it has something to say.
+                        if case .unverified(let message) = outcome {
+                            appState.errorMessage = message
+                        }
+                        if target.call != nil {
+                            HermesNativeCalls.shared.routedAnswerFailed(target)
+                        }
                     }
                 case .failed:
                     // The open already said why it can't; another try would

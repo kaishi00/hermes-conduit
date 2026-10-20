@@ -948,6 +948,88 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(service.pendingTarget, second)
     }
 
+    private func makeWindowedService(
+        now: @escaping () -> ContinuousClock.Instant
+    ) -> (PushNotificationService, ConduitNotificationTarget?) {
+        let service = PushNotificationService(
+            retryDelay: .zero,
+            routeRetryWindow: .seconds(30),
+            now: now
+        )
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-123", "type": "response_ready"] as [String: Any]
+        ])
+        return (service, service.pendingTarget)
+    }
+
+    /// #789: a launch that took longer than the window to connect still
+    /// makes the tap's first open.
+    func testFirstOpenRunsEvenAfterTheWindow() {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        now = now.advanced(by: .seconds(45))
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        XCTAssertEqual(service.pendingTarget, target)
+    }
+
+    /// An open that a lost connection cut short is not reopened by a
+    /// reconnect after the window: the tap is too old to open now.
+    func testReconnectAfterTheWindowDoesNotReopenAnOldTap() {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        now = now.advanced(by: .seconds(31))
+        XCTAssertFalse(service.beginNotificationRoute(target))
+        XCTAssertNil(service.pendingTarget)
+    }
+
+    /// A reconnect inside the window still opens the tap.
+    func testReconnectInsideTheWindowReopensTheTap() {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        now = now.advanced(by: .seconds(20))
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        XCTAssertEqual(service.pendingTarget, target)
+    }
+
+    /// The retry the window's end scheduled fires at the deadline, and runs.
+    func testRetryScheduledForTheWindowsEndStillRuns() async {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        now = now.advanced(by: .seconds(29))
+        let attempt = service.navigationAttempt
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        await waitForNotificationRetry(service, after: attempt)
+        XCTAssertEqual(service.navigationAttempt, attempt + 1)
+        now = now.advanced(by: .seconds(1))
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        XCTAssertEqual(service.pendingTarget, target)
+    }
+
+    /// A retry that came due while the app was offline is not what the late
+    /// reconnect runs: past the window, that reconnect drops the tap.
+    func testRetryDueWhileOfflineDoesNotOpenAfterTheWindow() async {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        now = now.advanced(by: .seconds(10))
+        let attempt = service.navigationAttempt
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        await waitForNotificationRetry(service, after: attempt)
+        XCTAssertEqual(service.navigationAttempt, attempt + 1)
+        service.notificationRouteAwaitsConnection(target)
+        now = now.advanced(by: .seconds(60))
+        XCTAssertFalse(service.beginNotificationRoute(target))
+        XCTAssertNil(service.pendingTarget)
+    }
+
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([

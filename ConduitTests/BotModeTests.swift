@@ -3311,6 +3311,67 @@ final class BotModeTests: XCTestCase {
         )
     }
 
+    /// #789: a roster or canonical lookup that failed leaves the workspace
+    /// unverified, not refused: nothing is adopted, the route retries, and
+    /// the error waits for its window to run out instead of showing while
+    /// a retry may still pass. The no-retry open says it at once.
+    func testUnverifiableWorkspaceIsRetriedNotRefused() async {
+        var rosterFails = true
+        var lookupFails = false
+        var resumedIDs: [String] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSessionWithProfile: { _, id, _, _ in
+                resumedIDs.append(id)
+                return SessionResumeResult(
+                    sessionId: id,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                if rosterFails { throw RpcError(code: 5000, message: "state.db is locked") }
+                return BotRosterSnapshot(
+                    bots: [self.makeBot(name: "Atlas", canonicalID: "stored-atlas")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                if lookupFails { throw RpcError(code: 5000, message: "state.db is locked") }
+                return []
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        let target = ConduitNotificationTarget(profile: "analyst", sessionId: "stored-1", type: "approval")
+        let unverified = AppState.NotificationOpenOutcome.unverified(
+            "Could not verify that workspace for this notification. Reconnect and try again."
+        )
+
+        let rosterOutcome = await harness.appState.openNotificationTargetOutcome(target)
+        XCTAssertEqual(rosterOutcome, unverified)
+        XCTAssertNil(harness.appState.errorMessage, "a retry may still pass")
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertTrue(resumedIDs.isEmpty)
+
+        rosterFails = false
+        lookupFails = true
+        let lookupOutcome = await harness.appState.openNotificationTargetOutcome(target)
+        XCTAssertEqual(lookupOutcome, unverified)
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertTrue(resumedIDs.isEmpty)
+
+        let opened = await harness.appState.openNotificationTarget(target)
+        XCTAssertFalse(opened)
+        XCTAssertEqual(
+            harness.appState.errorMessage,
+            "Could not verify that workspace for this notification. Reconnect and try again."
+        )
+    }
+
     /// A gateway that cannot list profiles has no Bot Mode at all — the probe
     /// IS `profiles.list` — so no profile on it can be a bot's. Refusing every
     /// cross-profile route there would break working routing to protect against

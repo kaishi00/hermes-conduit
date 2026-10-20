@@ -20139,7 +20139,30 @@ final class AppState: ObservableObject {
         preferredTitle: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
     ) async -> SessionOpenOutcome {
-        guard let client else { return .failed }
+        await performSessionOpenNotingRefusal(
+            sessionId,
+            reusing: viewportTransitionGeneration,
+            presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+            conversationProfile: conversationProfile,
+            preferredTitle: preferredTitle,
+            widgetLease: widgetLease
+        ).outcome
+    }
+
+    /// `performSessionOpen`, also saying whether a `.failed` open was
+    /// refused for good (#789): the conversation belongs to another
+    /// workspace, Hermes doesn't have it (4007), or Hermes resumed a
+    /// different one. Any other failure (a dropped connection, a read that
+    /// timed out) can pass on another try.
+    private func performSessionOpenNotingRefusal(
+        _ sessionId: String,
+        reusing viewportTransitionGeneration: UInt64?,
+        presentationMigrationSessionIDs: Set<String> = [],
+        conversationProfile: String? = nil,
+        preferredTitle: String? = nil,
+        widgetLease: WidgetLaunchLease? = nil
+    ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
+        guard let client else { return (.failed, false) }
         // A session open takes the viewport back from any open room. A room
         // surface is presentation-only (never session state), so closing it
         // here cannot disturb the conversation being opened; the room stays
@@ -20158,20 +20181,20 @@ final class AppState: ObservableObject {
                $0.id == sessionId || $0.alternateIds.contains(sessionId)
            }), !sessionBelongsToProfile(session, profile: activeProfile) {
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
-            return .failed
+            return (.failed, true)
         }
         let transitionGeneration: UInt64
         if let viewportTransitionGeneration {
             guard chatViewportTransitionIsCurrent(
                 generation: viewportTransitionGeneration
-            ) else { return .superseded }
+            ) else { return (.superseded, false) }
             transitionGeneration = viewportTransitionGeneration
         } else {
             transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         }
-        guard widgetLease?.isCurrent != false else { return .superseded }
+        guard widgetLease?.isCurrent != false else { return (.superseded, false) }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return .superseded
+            return (.superseded, false)
         }
         markChatViewportReplacement()
         // Atomically switch session identity BEFORE clearing the transcript.
@@ -20246,10 +20269,10 @@ final class AppState: ObservableObject {
                 finishChatViewportTransition(generation: transitionGeneration)
                 if turnState == .synchronizing { turnState = .idle }
             }
-            return .superseded
+            return (.superseded, false)
         }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            return .superseded
+            return (.superseded, false)
         }
         if !reconciled {
             finishChatViewportTransition(generation: transitionGeneration)
@@ -20258,23 +20281,32 @@ final class AppState: ObservableObject {
             }
             // This open still owns the viewport, so the reconcile failure is
             // genuine (identity rejection and friends set their own message).
-            return .failed
+            // Read before any await: the flags describe the reconcile above.
+            return (.failed, reconciliationWasIdentityRejected || reconciliationSessionWasNotFound)
         }
-        return .opened
+        return (.opened, false)
     }
 
     /// How a notification open ended, for the route that retries it (#789):
     /// `.retry` is a read or switch that can succeed once the connection or
     /// the session catalog is ready; `.failed` already told the user why it
-    /// can't open, and retrying would only repeat that.
+    /// can't open, and retrying would only repeat that. `.unverified` is a
+    /// `.retry` whose failure has something to tell the user (the dashboard
+    /// didn't connect, the workspace couldn't be checked): the route says it
+    /// only once its window runs out, so a retry that passes shows no error.
     enum NotificationOpenOutcome: Equatable {
         case opened
         case retry
+        case unverified(String)
         case failed
     }
 
+    /// One open with no retry after it, so an `.unverified` failure says why
+    /// at once.
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
-        await openNotificationTargetOutcome(target) == .opened
+        let outcome = await openNotificationTargetOutcome(target)
+        if case .unverified(let message) = outcome { errorMessage = message }
+        return outcome == .opened
     }
 
     /// Routes a notification to its originating profile/session without
@@ -20305,8 +20337,17 @@ final class AppState: ObservableObject {
                 // The switch failed: the target stays selected with its
                 // sign-in/repair surface, and the notification routes
                 // nowhere. No other dashboard is auto-connected.
-                errorMessage = AppLocalization.string("Could not connect to that dashboard to open this notification.")
-                return .failed
+                let message = AppLocalization.string("Could not connect to that dashboard to open this notification.")
+                // A restore that failed on the network reconnects by itself,
+                // and the reconnect retries the tap (the dashboard is active
+                // now, so without switching again). Signing in is the user's
+                // step, and another dashboard picked meanwhile owns the
+                // screen: neither passes on a retry.
+                guard activeDashboardID == dashboardID, !showLogin else {
+                    errorMessage = message
+                    return .failed
+                }
+                return .unverified(message)
             }
         case .failClosed(let failure):
             switch failure {
@@ -20390,11 +20431,11 @@ final class AppState: ObservableObject {
                 // No usable Bot Mode evidence (the roster could not be
                 // loaded): the conversation may be a bot's chat, and adopting
                 // its profile would hand it the workspace's context. Fail
-                // closed rather than guess.
-                errorMessage = AppLocalization.string(
+                // closed rather than guess. The roster can load on a retry
+                // (it's read again above), so nothing is adopted until then.
+                return .unverified(AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
-                )
-                return .failed
+                ))
             }
             // Ask the TARGET profile for its canonical Bot Chat before
             // adopting it: the exact-title lookup reads the lineage tip
@@ -20413,10 +20454,11 @@ final class AppState: ObservableObject {
                     id: notificationAttemptID,
                     transitionGeneration: transitionGeneration
                 ) else { return .retry }
-                errorMessage = AppLocalization.string(
+                // A lookup that failed proves nothing either way: it is
+                // asked again on a retry, and nothing is adopted until then.
+                return .unverified(AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
-                )
-                return .failed
+                ))
             }
             guard notificationOpenAttemptIsCurrent(
                 id: notificationAttemptID,
@@ -20573,7 +20615,7 @@ final class AppState: ObservableObject {
             )
         }
         traceStage = "session open"
-        let outcome = await performSessionOpen(
+        let (outcome, refused) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
             // The push-named runtime id is a PRESENTATION MIGRATION SOURCE,
@@ -20619,7 +20661,10 @@ final class AppState: ObservableObject {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return .retry }
-        return opened ? .opened : .retry
+        if opened { return .opened }
+        // Hermes answered that the conversation is gone, or is another one:
+        // the same open would get the same answer.
+        return refused ? .failed : .retry
     }
 
     /// The stable decision key a push-delivered card was recorded under
