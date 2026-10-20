@@ -669,11 +669,15 @@ final class PushNotificationService: ObservableObject {
     /// while it is still pending.
     private var pendingRetryCount = 0
     private var pendingRouteDeadline: ContinuousClock.Instant?
-    /// Whether an open of the pending tap has started, and whether the run
-    /// starting now is its own scheduled retry: the two that decide whether
-    /// a run past the window may still open it (`beginNotificationRoute`).
+    /// Whether an open of the pending tap has started, and when its
+    /// scheduled retry last came due: the two that decide whether a run
+    /// past the window may still open it (`beginNotificationRoute`).
     private var pendingRouteOpenStarted = false
-    private var pendingRouteRetryFired = false
+    private var pendingRouteRetryFiredAt: ContinuousClock.Instant?
+    /// How late after coming due a scheduled retry may still start past the
+    /// window. Its run normally follows at once; one held back longer (the
+    /// app was suspended meanwhile) is a late open like any other.
+    private let scheduledRetryStartAllowance: Duration = .seconds(2)
     private let retryDelay: Duration
     private let maxRetryDelay: Duration = .seconds(8)
     private let routeRetryWindow: Duration
@@ -1799,7 +1803,7 @@ final class PushNotificationService: ObservableObject {
         pendingRetryCount = 0
         pendingRouteDeadline = now().advanced(by: routeRetryWindow)
         pendingRouteOpenStarted = false
-        pendingRouteRetryFired = false
+        pendingRouteRetryFiredAt = nil
         navigationAttempt += 1
     }
 
@@ -1830,7 +1834,7 @@ final class PushNotificationService: ObservableObject {
         pendingRetryCount = 0
         pendingRouteDeadline = nil
         pendingRouteOpenStarted = false
-        pendingRouteRetryFired = false
+        pendingRouteRetryFiredAt = nil
     }
 
     /// An open of `target` is starting: a retry still waiting would only
@@ -1839,16 +1843,19 @@ final class PushNotificationService: ObservableObject {
     /// out: the app went offline mid-open or while a retry was due, and the
     /// reconnect came too late for that tap to open now (#789). A tap's
     /// first open always runs, however slowly the launch connected, and so
-    /// does the retry the window's end scheduled.
+    /// does the retry the window's end scheduled, when it starts on time.
     @discardableResult
     func beginNotificationRoute(_ target: ConduitNotificationTarget) -> Bool {
         guard pendingTarget == target else { return true }
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
-        let scheduledRetry = pendingRouteRetryFired
-        pendingRouteRetryFired = false
+        let startedAt = now()
+        let scheduledRetry = pendingRouteRetryFiredAt.map {
+            $0.duration(to: startedAt) <= scheduledRetryStartAllowance
+        } ?? false
+        pendingRouteRetryFiredAt = nil
         if pendingRouteOpenStarted, !scheduledRetry,
-           let deadline = pendingRouteDeadline, now() >= deadline {
+           let deadline = pendingRouteDeadline, startedAt >= deadline {
             clearPendingTarget(target)
             return false
         }
@@ -1860,7 +1867,7 @@ final class PushNotificationService: ObservableObject {
     /// has nothing to open, and the reconnect that opens the tap is not it.
     func notificationRouteAwaitsConnection(_ target: ConduitNotificationTarget) {
         guard pendingTarget == target else { return }
-        pendingRouteRetryFired = false
+        pendingRouteRetryFiredAt = nil
     }
 
     /// Schedules another open of `target` after one that can still succeed
@@ -1887,7 +1894,7 @@ final class PushNotificationService: ObservableObject {
             guard !Task.isCancelled else { return }
             guard let self else { return }
             self.navigationRetryTask = nil
-            self.pendingRouteRetryFired = true
+            self.pendingRouteRetryFiredAt = self.now()
             self.navigationAttempt += 1
         }
         return true

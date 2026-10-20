@@ -1012,6 +1012,23 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(service.pendingTarget, target)
     }
 
+    /// A scheduled retry whose run was held back (the app was suspended
+    /// when it came due) doesn't open the tap long after the window.
+    func testScheduledRetryStartedLateAfterTheWindowDoesNotOpen() async {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        now = now.advanced(by: .seconds(29))
+        let attempt = service.navigationAttempt
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        await waitForNotificationRetry(service, after: attempt)
+        XCTAssertEqual(service.navigationAttempt, attempt + 1)
+        now = now.advanced(by: .seconds(60))
+        XCTAssertFalse(service.beginNotificationRoute(target))
+        XCTAssertNil(service.pendingTarget)
+    }
+
     /// A retry that came due while the app was offline is not what the late
     /// reconnect runs: past the window, that reconnect drops the tap.
     func testRetryDueWhileOfflineDoesNotOpenAfterTheWindow() async {
