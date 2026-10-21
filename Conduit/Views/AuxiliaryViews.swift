@@ -2569,7 +2569,7 @@ struct ProfileConfigSettingsPage: View {
     var loadSchema: (() async -> ProfileConfigSchema)? = nil
     /// Choices a field gains beyond its schema's, loaded with the page.
     var loadExtraOptions: (() async -> [String: [String]])? = nil
-    /// Changing it reloads the extra choices (the first load rides `reload`).
+    /// Changing it reloads the extra choices.
     var extraOptionsRefresh = 0
 
     @State private var extraOptions: [String: [String]] = [:]
@@ -2605,8 +2605,12 @@ struct ProfileConfigSettingsPage: View {
         }
         .navigationTitle(showsNavigationTitle ? title : "")
         .task { await reload() }
-        .onChange(of: extraOptionsRefresh) { _, _ in
-            Task { extraOptions = await loadExtras() }
+        // Also the first load. A newer refresh cancels an older one, so a
+        // slow read for the previous model can't land last.
+        .task(id: extraOptionsRefresh) {
+            let options = await loadExtras()
+            guard !Task.isCancelled else { return }
+            extraOptions = options
         }
     }
 
@@ -2856,14 +2860,10 @@ struct ProfileConfigSettingsPage: View {
         loading = true
         let fields = allFields
         async let valuesRequest = load(fields.map(\.key))
-        async let extrasRequest = loadExtras()
         schema = await loadSchema?() ?? ProfileConfigSchema()
         values = await valuesRequest
         for field in fields { drafts[field.key] = values[field.key]?.textValue }
         loading = false
-        // Extra choices can take longer (a model catalog read), so the page
-        // shows first and the menu gains them when they land.
-        extraOptions = await extrasRequest
     }
 
     private func loadExtras() async -> [String: [String]] {

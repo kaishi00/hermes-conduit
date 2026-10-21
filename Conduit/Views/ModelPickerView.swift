@@ -279,6 +279,7 @@ struct ModelPickerView: View {
     /// The session's model as the catalog load seeded it, so only a model
     /// picked here can drop Ultrafast.
     @State private var seededModel = ""
+    @State private var seededProvider = ""
     @State private var yoloEnabled = false
     @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
@@ -849,8 +850,10 @@ struct ModelPickerView: View {
     /// Picking a model that says it lacks Ultrafast falls back to Fast. The
     /// session's own model keeps what Hermes reports.
     private func dropUnofferedUltrafast() {
-        guard ultrafastOffered == false, speed == .ultrafast,
-              ProviderInfo.normalized(selectedModel) != ProviderInfo.normalized(seededModel) else { return }
+        // A row that says nothing about Ultrafast counts as lacking it.
+        guard ultrafastOffered != true, speed == .ultrafast,
+              ProviderInfo.normalized(selectedModel) != ProviderInfo.normalized(seededModel)
+                || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(seededProvider) else { return }
         speed = .fast
     }
 
@@ -880,6 +883,7 @@ struct ModelPickerView: View {
             selectedModel = appState.runtime.model
             seededModel = selectedModel
             selectedProvider = appState.runtime.provider
+            seededProvider = selectedProvider
             // Speed is seeded on appear: re-seeding here would undo a toggle
             // made while the catalog loaded, and Apply would write that back.
             refreshYoloToggle(force: false)
@@ -1004,6 +1008,7 @@ struct ModelPickerView: View {
             appState.runtime.provider = selection.provider
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
             seededModel = selection.model
+            seededProvider = selection.provider
         }
         if progress.yoloApplied {
             initialYoloEnabled = draft.yolo
