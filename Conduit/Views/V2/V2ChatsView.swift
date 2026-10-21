@@ -697,7 +697,7 @@ struct V2ChatsView: View, Equatable {
     /// The row's filter source, worked out once per render: it looks up
     /// the voice tags and voice jobs by every id the row answers to.
     private func category(_ session: SessionSummary) -> SessionSource {
-        renderMemo.category(session.id) { appState.sessionCategory(for: session) }
+        renderMemo.category(session.nestingIDs.joined(separator: "\u{1F}")) { appState.sessionCategory(for: session) }
     }
 
     private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
@@ -1919,10 +1919,10 @@ final class V2ChatsRenderMemo {
         return rows
     }
 
-    func category(_ sessionID: String, _ make: () -> SessionSource) -> SessionSource {
-        if let category = categories[sessionID] { return category }
+    func category(_ key: String, _ make: () -> SessionSource) -> SessionSource {
+        if let category = categories[key] { return category }
         let category = make()
-        categories[sessionID] = category
+        categories[key] = category
         return category
     }
 
