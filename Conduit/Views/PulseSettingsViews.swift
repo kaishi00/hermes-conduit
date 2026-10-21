@@ -16,7 +16,10 @@ struct PulseSettingsPage: View {
 
     @State private var state: PulseState?
     @State private var loadError: String?
-    @State private var working = false
+    /// The step holding the page's one request slot; a switch of dashboard
+    /// cancels it and frees the slot at once.
+    @State private var workingID: UUID?
+    @State private var actionTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var notice: String?
     @State private var dayCount = 30
@@ -28,6 +31,7 @@ struct PulseSettingsPage: View {
     @State private var timesSave: Task<Void, Never>?
 
     private var client: PulseClient { appState.pulseClient }
+    private var working: Bool { workingID != nil }
 
     var body: some View {
         SettingsDetailContainer {
@@ -68,17 +72,18 @@ struct PulseSettingsPage: View {
             }
         }
         .navigationTitle(Text(AppLocalization.string("Pulse (beta)")))
-        .onDisappear {
-            timesSave?.cancel()
-            timesSave = nil
-        }
         // Read on every visit, also back from What Pulse remembers, whose
         // counts may have changed.
         .task(id: appState.activeDashboardID) { await load() }
         .onChange(of: appState.activeDashboardID) { _, _ in
             // Another dashboard's host: nothing of this one's carries over.
+            // A save of report times still waiting is the old host's too;
+            // leaving the page only (What Pulse remembers) lets it finish.
             timesSave?.cancel()
             timesSave = nil
+            actionTask?.cancel()
+            actionTask = nil
+            workingID = nil
             state = nil
             loadError = nil
             errorMessage = nil
@@ -478,13 +483,14 @@ struct PulseSettingsPage: View {
     /// (`isShown`).
     private func run(_ step: @escaping @MainActor (PulseClient) async throws -> PulseState?) {
         guard !working else { return }
-        working = true
+        let id = UUID()
+        workingID = id
         errorMessage = nil
         notice = nil
         let dashboard = appState.activeDashboardID
         let client = self.client
-        Task {
-            defer { working = false }
+        actionTask = Task {
+            defer { if workingID == id { workingID = nil } }
             guard appState.activeDashboardID == dashboard else { return }
             do {
                 let next = try await step(client)
@@ -542,8 +548,9 @@ struct PulseSettingsPage: View {
                 try? await Task.sleep(for: .milliseconds(200))
             }
             guard !Task.isCancelled, appState.activeDashboardID == dashboard else { return }
-            working = true
-            defer { working = false }
+            let id = UUID()
+            workingID = id
+            defer { if workingID == id { workingID = nil } }
             errorMessage = nil
             do {
                 let next = try await client.update(["report_times": PulseReportTime.normalized(times)])
@@ -564,9 +571,15 @@ struct PulseSettingsPage: View {
 /// one to forget it.
 struct PulseMemoryList: View {
     let client: PulseClient
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var items: [PulseMemoryItem] = []
     @State private var loaded = false
+    @State private var forgetting = false
+
+    /// Whether the client's dashboard is still the one shown: after a
+    /// switch this list's answers are the old host's.
+    private var isShown: Bool { client.dashboardID == appState.activeDashboardID }
     @State private var errorMessage: String?
 
     var body: some View {
@@ -637,22 +650,30 @@ struct PulseMemoryList: View {
 
     private func load() async {
         do {
-            items = try await client.memory()
+            let next = try await client.memory()
+            guard isShown else { return }
+            items = next
             errorMessage = nil
         } catch {
+            guard isShown else { return }
             errorMessage = PulseRefusal.message(for: error)
         }
         loaded = true
     }
 
     private func forget(_ item: PulseMemoryItem) {
+        guard !forgetting else { return }
+        forgetting = true
         Task {
+            defer { forgetting = false }
             do {
                 _ = try await client.forget(id: item.id)
+                guard isShown else { return }
                 items.removeAll { $0.id == item.id }
                 errorMessage = nil
                 Haptics.success()
             } catch {
+                guard isShown else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 Haptics.error()
             }
