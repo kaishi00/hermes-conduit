@@ -20728,7 +20728,7 @@ final class AppState: ObservableObject {
             // it did: switching dashboards would tear that call down.
             if target.isChatLink, isVoiceCallInProgress {
                 errorMessage = AppLocalization.string("End the call to open a chat in another workspace.")
-                return false
+                return .failed
             }
             await switchDashboard(to: dashboardID)
             guard isConnected, activeDashboardID == dashboardID, client != nil else {
