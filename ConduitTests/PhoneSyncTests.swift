@@ -373,6 +373,73 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(deletions.contains("item_ch_add2"))
     }
 
+    func testReadOnlyCalendarAndRemindersNeverTakeHermesChanges() async throws {
+        let source = FakePhoneCalendarSource()
+        source.events = [phoneEvent("e_1", "Team sync")]
+        let host = FakePhoneHost()
+        host.changes = [
+            ["id": "ch_add", "kind": "add_event", "auto": true,
+             "fields": ["title": "Lunch", "start": "2026-10-15T12:00:00Z", "end": "2026-10-15T13:00:00Z"]],
+            ["id": "ch_del", "kind": "delete_event", "auto": false, "target": ["event_id": "e_1"], "fields": [String: Any]()],
+            ["id": "ch_done", "kind": "complete_reminder", "auto": false, "target": ["reminder_id": "r_1"], "fields": [String: Any]()],
+        ]
+        let engine = makePhoneEngine(source: source)
+        var preferences = phonePreferences()
+        preferences.calendar = .readOnly
+        preferences.remindersReadOnly = true
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        // Read: events still go to the host, marked read-only in a way a
+        // host from before read-only still takes.
+        let sharing = try XCTUnwrap(host.batches.first?["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["calendar"] as? String, "full")
+        XCTAssertEqual(sharing["calendar_read_only"] as? Bool, true)
+        XCTAssertEqual(sharing["reminders_read_only"] as? Bool, true)
+        XCTAssertNotNil(host.batches.first?["events"])
+        // Never changed: no card, nothing applied, each refused back to Hermes.
+        XCTAssertTrue(engine.prompts.isEmpty)
+        XCTAssertTrue(source.applied.isEmpty)
+        XCTAssertEqual(engine.state.unreported.map(\.id), ["ch_add", "ch_del", "ch_done"])
+        XCTAssertTrue(engine.state.unreported.allSatisfy { $0.outcome == .failed })
+        XCTAssertNil(engine.state.answered["ch_add"], "A refusal is the setting now, not the user's answer")
+        // Nor in a voice call.
+        let voiceAdd = try XCTUnwrap(PhoneChange(json: ["id": "v_1", "kind": "add_reminder", "fields": ["title": "Milk"]]))
+        do {
+            _ = try await engine.applyFromVoice(voiceAdd)
+            XCTFail("A read-only list takes no additions")
+        } catch {}
+        XCTAssertTrue(source.applied.isEmpty)
+        XCTAssertEqual(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true).map(\.name),
+                       [PhoneVoiceTools.changesTool])
+
+        // A card shown before the user made the calendar read-only isn't applied after.
+        var writable = phonePreferences()
+        writable.remindersReadOnly = false
+        engine.savePreferences(writable)
+        host.changes = [["id": "ch_later", "kind": "delete_event", "auto": false, "target": ["event_id": "e_1"],
+                         "fields": [String: Any]()]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let card = try XCTUnwrap(engine.prompts.first)
+        engine.savePreferences(preferences)
+        await engine.answer(card, approve: true)
+        XCTAssertTrue(source.applied.isEmpty)
+        XCTAssertEqual(engine.state.answered["ch_later"]?.outcome, .failed)
+
+        // Each level allows only its own changes.
+        XCTAssertTrue(PhoneSyncPreferences(calendar: .writeOnly).allows(.addEvent))
+        XCTAssertFalse(PhoneSyncPreferences(calendar: .writeOnly).allows(.updateEvent))
+        XCTAssertFalse(PhoneSyncPreferences(calendar: .readOnly).allows(.addEvent))
+        XCTAssertTrue(PhoneSyncPreferences(calendar: .full, reminders: true).allows(.deleteReminder))
+        // Read-only without read access in the Settings app leaves nothing.
+        XCTAssertEqual(PhoneSyncEngine.effectiveSharing(preferences, access: .writeOnly, remindersAuthorized: true)["calendar"] as? String, "off")
+        // Saved before read-only (no key): still writable.
+        let saved = try JSONEncoder().encode(phonePreferences())
+        XCTAssertFalse(String(decoding: saved, as: UTF8.self).contains("remindersReadOnly"))
+        XCTAssertTrue(try JSONDecoder().decode(PhoneSyncPreferences.self, from: saved).allows(.completeReminder))
+    }
+
     func testPhoneChangeNeedsWhatItActsOn() throws {
         XCTAssertNil(PhoneChange(json: ["id": "ch_1", "kind": "delete_event", "fields": [String: Any]()]), "A deletion names its event")
         XCTAssertNil(PhoneChange(json: ["id": "ch_1r", "kind": "delete_reminder", "fields": [String: Any]()]), "A deletion names its reminder")

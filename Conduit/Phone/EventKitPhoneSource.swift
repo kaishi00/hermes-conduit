@@ -89,7 +89,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
 
     func requestAccess(calendar: PhoneCalendarAccess, reminders: Bool) async throws {
         switch calendar {
-        case .full:
+        case .full, .readOnly:
             if eventAccess != .full {
                 guard try await store.requestFullAccessToEvents() else { throw PhoneCalendarSourceError.denied }
             }

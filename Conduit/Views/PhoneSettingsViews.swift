@@ -58,7 +58,7 @@ struct PhoneSettingsPage: View {
             }
             if preferences.isOn || pluginServes {
                 calendarSection
-                changesSection
+                if choices.takesChanges { changesSection }
                 phoneSection
                 if showsAlarms { alarmsSection }
                 if showsPeople { peopleSection }
@@ -145,12 +145,10 @@ struct PhoneSettingsPage: View {
                 Text("Calendar").foregroundStyle(.secondary)
             }
             .accessibilityIdentifier("settings.phone.calendar")
-            Text(choices.calendar == .writeOnly
-                 ? AppLocalization.string("Hermes can ask to add events but can't read your calendar.")
-                 : AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, and can ask to add or change them."))
+            Text(calendarCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if choices.calendar == .full {
+            if choices.calendar.reads {
                 ConduitMenuPicker(
                     value: choices.window,
                     choices: PhoneCalendarWindow.allCases.map { (id: $0, title: $0.title) },
@@ -163,9 +161,23 @@ struct PhoneSettingsPage: View {
                 Label("Reminders", systemImage: "checklist")
             }
             .accessibilityIdentifier("settings.phone.reminders")
-            if choices.calendar == .full || choices.reminders {
+            if choices.reminders {
+                Toggle("Read only", isOn: binding(\.remindersReadOnly))
+                    .font(.subheadline)
+                    .padding(.leading, 28)
+                    .accessibilityLabel(Text("Reminders read only"))
+                    .accessibilityHint(Text(AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")))
+                    .accessibilityIdentifier("settings.phone.reminders-read-only")
+                Text(choices.remindersReadOnly
+                     ? AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")
+                     : AppLocalization.string("Hermes reads your reminders and can ask to add, change or complete them."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 28)
+            }
+            if choices.calendar.reads || choices.reminders {
                 Toggle("Include notes and attendees", isOn: binding(\.details))
-                if choices.details, choices.calendar == .full {
+                if choices.details, choices.calendar.reads {
                     Toggle("Include attendees' email addresses", isOn: binding(\.attendeeEmails))
                         .font(.subheadline)
                         .padding(.leading, 28)
@@ -204,6 +216,19 @@ struct PhoneSettingsPage: View {
                     }
                 }
             }
+        }
+    }
+
+    private var calendarCaption: String {
+        switch choices.calendar {
+        case .full:
+            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, and can ask to add or change them.")
+        case .readOnly:
+            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, but can't add, change or delete any. Good for calendars you share with other people.")
+        case .writeOnly:
+            return AppLocalization.string("Hermes can ask to add events but can't read your calendar.")
+        case .off:
+            return AppLocalization.string("Hermes doesn't see your calendar.")
         }
     }
 

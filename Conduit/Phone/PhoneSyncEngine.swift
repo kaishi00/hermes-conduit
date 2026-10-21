@@ -462,7 +462,7 @@ final class PhoneSyncEngine: ObservableObject {
         var newContactsHash = state.contactsHash
         var statusSent = false
 
-        let readsEvents = preferences.calendar == .full && calendarSource.eventAccess == .full
+        let readsEvents = preferences.calendar.reads && calendarSource.eventAccess == .full
         let readsReminders = preferences.reminders && calendarSource.remindersAuthorized
         let calendars = calendarSource.calendars(eventsReadable: readsEvents, reminders: readsReminders)
             .filter { entry in
@@ -632,14 +632,18 @@ final class PhoneSyncEngine: ObservableObject {
         let calendar: PhoneCalendarAccess
         switch (preferences.calendar, access) {
         case (.full, .full): calendar = .full
-        case (.off, _), (_, .off): calendar = .off
+        case (.readOnly, .full), (.readOnly, .readOnly), (.full, .readOnly): calendar = .readOnly
+        // Read-only without read access leaves nothing Hermes may have.
+        case (.off, _), (_, .off), (.readOnly, .writeOnly), (.writeOnly, .readOnly): calendar = .off
         case (.full, .writeOnly), (.writeOnly, .full), (.writeOnly, .writeOnly): calendar = .writeOnly
         }
-        sharing["calendar"] = calendar.rawValue
-        if calendar != .full { sharing["attendee_emails"] = false }
+        sharing["calendar"] = calendar == .readOnly ? PhoneCalendarAccess.full.rawValue : calendar.rawValue
+        sharing["calendar_read_only"] = calendar == .readOnly
+        if !calendar.reads { sharing["attendee_emails"] = false }
         let reminders = preferences.reminders && remindersAuthorized
         sharing["reminders"] = reminders
-        if calendar != .full, !reminders { sharing["details"] = false }
+        sharing["reminders_read_only"] = reminders && preferences.remindersReadOnly
+        if !calendar.reads, !reminders { sharing["details"] = false }
         sharing["alarms"] = preferences.alarms && alarmsAuthorized
         return sharing
     }
@@ -794,6 +798,16 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(known) { state.unreported.append(known) }
                 continue
             }
+            if !preferences.allows(change.kind) {
+                // Read-only (or no longer shared): never a card, whatever
+                // the host asked. A host from before read-only can ask.
+                // Reported, not remembered as answered: it's the setting
+                // now, so the same change asked again after the user allows
+                // changes gets its card.
+                let refusal = PhoneChangeResult(id: change.id, outcome: .failed, note: Self.refusalNote(change.kind))
+                if !state.unreported.contains(refusal) { state.unreported.append(refusal) }
+                continue
+            }
             if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
             } else {
@@ -829,9 +843,23 @@ final class PhoneSyncEngine: ObservableObject {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Why a change the user doesn't allow was refused, for Hermes (not UI
+    /// copy, so not localized).
+    nonisolated static func refusalNote(_ kind: PhoneChange.Kind) -> String {
+        if kind.isAlarm { return "The user doesn't let Hermes set alarms on this iPhone" }
+        return kind.isEvent
+            ? "The user doesn't let Hermes make this change to their calendar (read-only or not shared)"
+            : "The user doesn't let Hermes change their reminders (read-only or not shared)"
+    }
+
     private func applyNow(_ change: PhoneChange, auto: Bool) async {
         guard state.answered[change.id] == nil, applying.insert(change.id).inserted else { return }
         defer { applying.remove(change.id) }
+        // The user can make it read-only while a card waits.
+        guard preferences.allows(change.kind) else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.refusalNote(change.kind)))
+            return
+        }
         if change.kind.isAlarm {
             await applyAlarm(change, auto: auto)
             return
@@ -915,15 +943,13 @@ final class PhoneSyncEngine: ObservableObject {
     /// they said so out loud). The next upload sends it. Like `voiceRead`,
     /// the caller checks the voice mode may use it.
     func applyFromVoice(_ change: PhoneChange) async throws -> String? {
-        guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
+        // Still shared, and not read-only, after the wait for the user's yes.
+        guard preferences.isOn, preferences.allows(change.kind), readStateIfNeeded() else { throw VoiceNotReady() }
         if change.kind.isAlarm {
-            guard preferences.alarms else { throw VoiceNotReady() }
             return try await alarmSource.apply(change, now: now())
         }
         if !change.kind.isAddition {
             let isEvent = change.kind.isEvent
-            // Still shared after the wait for the user's yes.
-            guard isEvent ? preferences.calendar == .full : preferences.reminders else { throw VoiceNotReady() }
             // Only what's still shared: an id read before its calendar was
             // left out isn't.
             if let calendar = await calendarSource.itemCalendar(itemID: (isEvent ? change.eventID : change.reminderID) ?? "",

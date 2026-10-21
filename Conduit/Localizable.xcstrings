@@ -307794,6 +307794,498 @@
         }
       }
     },
+    "Read only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo lectura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecture seule"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya baca"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sola lettura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りのみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽기 전용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tylko odczyt"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Somente leitura"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только чтение"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca okuma"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唯讀"
+          }
+        }
+      }
+    },
+    "Reminders read only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erinnerungen nur lesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recordatorios solo lectura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rappels en lecture seule"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengingat hanya baca"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Promemoria in sola lettura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リマインダーを読み取りのみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "미리 알림 읽기 전용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przypomnienia tylko do odczytu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lembretes somente leitura"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Напоминания только для чтения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anımsatıcılar yalnızca okuma"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提醒事项只读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提醒事項唯讀"
+          }
+        }
+      }
+    },
+    "Hermes reads your reminders but can't add, change, complete or delete any." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes liest deine Erinnerungen, kann aber keine hinzufügen, ändern, abhaken oder löschen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lee tus recordatorios, pero no puede añadir, cambiar, completar ni eliminar ninguno."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lit vos rappels, mais ne peut pas en ajouter, modifier, terminer ni supprimer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes membaca pengingat Anda, tetapi tidak dapat menambah, mengubah, menyelesaikan, atau menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes legge i tuoi promemoria, ma non può aggiungerne, modificarne, completarne o eliminarne."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはリマインダーを読み取りますが、追加、変更、完了、削除はできません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 미리 알림을 읽지만 추가, 변경, 완료, 삭제는 할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes odczytuje Twoje przypomnienia, ale nie może ich dodawać, zmieniać, oznaczać jako wykonane ani usuwać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes lê seus lembretes, mas não pode adicionar, alterar, concluir nem apagar nenhum."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes читает ваши напоминания, но не может добавлять, изменять, выполнять или удалять их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes anımsatıcılarınızı okur ancak ekleyemez, değiştiremez, tamamlayamaz veya silemez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会读取你的提醒事项，但无法添加、更改、完成或删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 會讀取你的提醒事項，但無法加入、更改、完成或刪除。"
+          }
+        }
+      }
+    },
+    "Hermes reads your reminders and can ask to add, change or complete them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes liest deine Erinnerungen und kann anfragen, sie hinzuzufügen, zu ändern oder abzuhaken."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lee tus recordatorios y puede pedir añadirlos, cambiarlos o completarlos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lit vos rappels et peut demander à en ajouter, modifier ou terminer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes membaca pengingat Anda dan dapat meminta untuk menambah, mengubah, atau menyelesaikannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes legge i tuoi promemoria e può chiedere di aggiungerli, modificarli o completarli."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはリマインダーを読み取り、追加、変更、完了を依頼できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 미리 알림을 읽고 추가, 변경, 완료를 요청할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes odczytuje Twoje przypomnienia i może prosić o ich dodanie, zmianę lub oznaczenie jako wykonane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes lê seus lembretes e pode pedir para adicioná-los, alterá-los ou concluí-los."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes читает ваши напоминания и может запрашивать их добавление, изменение или выполнение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes anımsatıcılarınızı okur ve eklemeyi, değiştirmeyi veya tamamlamayı isteyebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会读取你的提醒事项，并可请求添加、更改或完成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 會讀取你的提醒事項，並可要求加入、更改或完成。"
+          }
+        }
+      }
+    },
+    "Hermes reads events from the last week and the time ahead you choose, but can't add, change or delete any. Good for calendars you share with other people." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes liest Ereignisse der letzten Woche und des gewählten Zeitraums, kann aber keine hinzufügen, ändern oder löschen. Gut für Kalender, die du mit anderen teilst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lee los eventos de la última semana y del periodo que elijas, pero no puede añadir, cambiar ni eliminar ninguno. Ideal para calendarios que compartes con otras personas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lit les événements de la semaine passée et de la période choisie, mais ne peut pas en ajouter, modifier ni supprimer. Idéal pour les calendriers partagés avec d'autres personnes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes membaca acara dari minggu lalu dan rentang waktu yang Anda pilih, tetapi tidak dapat menambah, mengubah, atau menghapusnya. Cocok untuk kalender yang Anda bagikan dengan orang lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes legge gli eventi dell'ultima settimana e del periodo che scegli, ma non può aggiungerne, modificarne o eliminarne. Ideale per i calendari che condividi con altre persone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesは過去1週間と選んだ期間のイベントを読み取りますが、追加、変更、削除はできません。ほかの人と共有しているカレンダーに最適です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 지난주와 선택한 기간의 이벤트를 읽지만 추가, 변경, 삭제는 할 수 없어요. 다른 사람과 공유하는 캘린더에 적합해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes odczytuje wydarzenia z ostatniego tygodnia i wybranego okresu, ale nie może ich dodawać, zmieniać ani usuwać. Dobre dla kalendarzy udostępnianych innym osobom."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes lê eventos da última semana e do período que você escolher, mas não pode adicionar, alterar nem apagar nenhum. Ideal para calendários que você compartilha com outras pessoas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes читает события за последнюю неделю и выбранный период, но не может добавлять, изменять или удалять их. Подходит для календарей, которыми вы делитесь с другими."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes geçen haftanın ve seçtiğiniz dönemin etkinliklerini okur ancak ekleyemez, değiştiremez veya silemez. Başkalarıyla paylaştığınız takvimler için uygundur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会读取过去一周及你所选时间段内的日程，但无法添加、更改或删除。适合与他人共享的日历。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 會讀取過去一週及你所選時段內的行程，但無法加入、更改或刪除。適合與他人共享的行事曆。"
+          }
+        }
+      }
+    },
+    "Hermes doesn't see your calendar." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sieht deinen Kalender nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no ve tu calendario."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne voit pas votre calendrier."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak melihat kalender Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non vede il tuo calendario."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはカレンダーを見ません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 캘린더를 보지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie widzi Twojego kalendarza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não vê seu calendário."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не видит ваш календарь."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes takviminizi görmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 看不到你的日历。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 看不到你的行事曆。"
+          }
+        }
+      }
+    },
     "Fast" : {
       "localizations" : {
         "de" : {

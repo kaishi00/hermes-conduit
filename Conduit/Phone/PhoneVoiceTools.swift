@@ -92,14 +92,14 @@ enum PhoneVoiceTools {
 
     private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                 remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
-        (preferences.calendar != .off && access != .off, preferences.reminders && remindersAuthorized)
+        (preferences.allows(.addEvent) && access != .off, preferences.allows(.addReminder) && remindersAuthorized)
     }
 
     /// Changing or deleting finds the item by the id a read gave, so
-    /// add-only events (never read) can't be.
+    /// add-only events (never read) can't be, nor anything read-only.
     private static func removable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                   remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
-        (preferences.calendar == .full && access == .full, preferences.reminders && remindersAuthorized)
+        (preferences.allows(.deleteEvent) && access == .full, preferences.allows(.deleteReminder) && remindersAuthorized)
     }
 
     private static let changes = VoiceHostTool(
