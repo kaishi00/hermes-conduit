@@ -1724,6 +1724,34 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(sent, ["check the logs"])
     }
 
+    func testRefusedSteerKeepsTheDraft() async throws {
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(false, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sends = 0
+        var operations = ChatResumeLifecycleOperations()
+        operations.refreshContext = { _, _ in }
+        operations.sendPrompt = { _, _, _ in
+            sends += 1
+            throw RpcError(
+                code: 4090,
+                message: "This chat is open in another Hermes window/terminal.",
+                reason: "SESSION_NOT_OWNED"
+            )
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let submitted = await harness.appState.submitComposer(text: "/steer check the logs")
+
+        XCTAssertEqual(sends, 1)
+        XCTAssertFalse(submitted, "A refused /steer send goes back to the composer like any other send")
+    }
+
     func testSteerSendsASlashMessageAsTyped() async throws {
         let recorder = SlashCallRecorder()
         var sent: [String] = []

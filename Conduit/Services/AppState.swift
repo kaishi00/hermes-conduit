@@ -22159,7 +22159,12 @@ final class AppState: ObservableObject {
         guard composerIsEnabled else { return false }
 
         // Slash command intercept — handle before normal message/steer logic
-        if runsSlashCommands, attachments.isEmpty, Self.parseSlashCommand(text) != nil {
+        if runsSlashCommands, attachments.isEmpty, let command = Self.parseSlashCommand(text) {
+            // /steer and /queue are sends: a failed one keeps the draft.
+            if Self.composerRoutedSlashNames.contains(command.name) {
+                guard isCurrentComposerSubmission(submissionContext) else { return false }
+                return await submitSteerOrQueueSlash(name: command.name, argument: command.argument, context: submissionContext)
+            }
             await executeSlashCommand(text, context: submissionContext)
             return true
         }
@@ -24532,51 +24537,7 @@ final class AppState: ObservableObject {
                 return
             }
         case "steer", "s", "queue", "q":
-            // Hermes' slash.exec refuses both for a chat like this one; they
-            // are the composer's own Steer and Queue, for this message.
-            cancelChatResumeRestoration()
-            let isSteer = command.name == "steer" || command.name == "s"
-            let argument = command.argument.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !argument.isEmpty else {
-                appendSlashOutput(
-                    isSteer
-                        ? AppLocalization.string("Usage: /steer <message>. Sends the message into the running reply without stopping it.")
-                        : AppLocalization.string("Usage: /queue <message>. Sends the message as the next turn once the running reply finishes."),
-                    context: submissionContext
-                )
-                return
-            }
-            var message = argument
-            if !isSteer, let word = argument.split(separator: " ").first.map({ $0.lowercased() }) {
-                if word == "add" {
-                    message = argument.dropFirst(word.count).trimmingCharacters(in: .whitespacesAndNewlines)
-                } else if word == argument.lowercased(), Self.hermesQueueManagementWords.contains(word) {
-                    // `/queue list` alone is Hermes' queue management;
-                    // `/queue list the files` is a message to queue.
-                    appendSlashOutput(
-                        AppLocalization.string("Conduit can only add to the queue. Use /queue <message> to queue one."),
-                        context: submissionContext
-                    )
-                    return
-                }
-            }
-            guard !message.isEmpty else {
-                appendSlashOutput(
-                    AppLocalization.string("Usage: /queue <message>. Sends the message as the next turn once the running reply finishes."),
-                    context: submissionContext
-                )
-                return
-            }
-            // The message goes as typed: `/steer /compact` steers with
-            // that text rather than running it as a command.
-            _ = await performComposerSubmission(
-                text: message,
-                attachments: [],
-                submissionContext: submissionContext,
-                onBusy: nil,
-                busyMode: isSteer ? .steer : .queue,
-                runsSlashCommands: false
-            )
+            _ = await submitSteerOrQueueSlash(name: command.name, argument: command.argument, context: submissionContext)
             return
         case "stop":
             // Desktop's /stop: the running reply, then this chat's
@@ -24647,16 +24608,79 @@ final class AppState: ObservableObject {
         return AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))")
     }
 
+    private static let composerRoutedSlashNames: Set<String> = ["steer", "s", "queue", "q"]
+
+    /// Hermes' slash.exec refuses /steer and /queue for a chat like this one;
+    /// they are the composer's own Steer and Queue, for this message. Returns
+    /// whether the composer may clear its draft: a failed send keeps it.
+    private func submitSteerOrQueueSlash(
+        name: String,
+        argument rawArgument: String,
+        context submissionContext: ComposerSubmissionContext
+    ) async -> Bool {
+        cancelChatResumeRestoration()
+        let isSteer = name == "steer" || name == "s"
+        let argument = rawArgument.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queueUsage = AppLocalization.string("Usage: /queue <message>. Sends the message as the next turn once the running reply finishes.")
+        guard !argument.isEmpty else {
+            appendSlashOutput(
+                isSteer
+                    ? AppLocalization.string("Usage: /steer <message>. Sends the message into the running reply without stopping it.")
+                    : queueUsage,
+                context: submissionContext
+            )
+            return true
+        }
+        var message = argument
+        if !isSteer, let word = argument.split(separator: " ").first.map({ $0.lowercased() }) {
+            if word == "add" {
+                message = argument.dropFirst(word.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if word == argument.lowercased(), Self.hermesQueueManagementWords.contains(word) {
+                // `/queue list` alone is Hermes' queue management;
+                // `/queue list the files` is a message to queue.
+                appendSlashOutput(
+                    AppLocalization.string("Conduit can only add to the queue. Use /queue <message> to queue one."),
+                    context: submissionContext
+                )
+                return true
+            }
+        }
+        guard !message.isEmpty else {
+            appendSlashOutput(queueUsage, context: submissionContext)
+            return true
+        }
+        // The message goes as typed: `/steer /compact` steers with that text
+        // rather than running it as a command.
+        return await performComposerSubmission(
+            text: message,
+            attachments: [],
+            submissionContext: submissionContext,
+            onBusy: nil,
+            busyMode: isSteer ? .steer : .queue,
+            runsSlashCommands: false
+        )
+    }
+
     private func stopReplyAndBackgroundProcesses(
         client: HermesClient,
         sessionID: String,
         context: ComposerSubmissionContext
     ) async {
         var lines: [String] = []
+        // A failed interrupt has already said so; it isn't "nothing running".
+        var replyMayStillRun = false
+        var sessionID = sessionID
+        var context = context
         if isBusy {
             if await cancelCurrent() {
                 lines.append(AppLocalization.string("Stopped the reply."))
+            } else {
+                replyMayStillRun = true
             }
+            // Cancelling can re-key a reaped runtime; stop the current one.
+            guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(context) else { return }
+            context = currentContext
+            sessionID = currentContext.sessionID ?? sessionID
         }
         do {
             let stoppedCount: Int
@@ -24667,14 +24691,15 @@ final class AppState: ObservableObject {
             }
             if stoppedCount > 0 {
                 lines.append(AppLocalization.string("Background processes stopped: \(stoppedCount)"))
-            } else if lines.isEmpty {
+            } else if lines.isEmpty, !replyMayStillRun {
                 lines.append(AppLocalization.string("Nothing was running."))
             }
         } catch where HermesClient.isMissingRPCMethod(error) {
-            if lines.isEmpty { lines.append(AppLocalization.string("Nothing was running.")) }
+            if lines.isEmpty, !replyMayStillRun { lines.append(AppLocalization.string("Nothing was running.")) }
         } catch {
             lines.append(AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"))
         }
+        guard !lines.isEmpty else { return }
         appendSlashOutput(lines.joined(separator: "\n"), context: context)
     }
 
