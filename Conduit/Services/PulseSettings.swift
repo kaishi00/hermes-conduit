@@ -26,8 +26,9 @@ enum PulseJSON {
         return number.doubleValue
     }
 
+    /// nil for a value no Int holds (inf, NaN, out of range) rather than a trap.
     static func int(_ value: Any?) -> Int? {
-        double(value).map { Int($0) }
+        double(value).flatMap { Int(exactly: $0.rounded(.towardZero)) }
     }
 
     static func date(_ value: Any?) -> Date? {

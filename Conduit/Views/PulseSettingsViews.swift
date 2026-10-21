@@ -135,7 +135,7 @@ struct PulseSettingsPage: View {
                 SettingsMetricRow(label: AppLocalization.string("Chat"), value: chat.title, lineLimit: 1)
                 if !chat.pinned {
                     Button(AppLocalization.string("Pin it")) {
-                        run {
+                        run { _ in
                             try await appState.pinPulseHomeChat(id: chat.id)
                             return nil
                         }
@@ -150,7 +150,7 @@ struct PulseSettingsPage: View {
                     .foregroundStyle(.secondary)
                 Button(AppLocalization.string("Create Pulse chat")) {
                     let title = state.homeTitle
-                    run {
+                    run { _ in
                         try await appState.createPulseHomeChat(title: title)
                         return nil
                     }
@@ -211,7 +211,7 @@ struct PulseSettingsPage: View {
                 .accessibilityIdentifier("settings.pulse.profiles")
             }
             Button(AppLocalization.string("Send a report now")) {
-                run {
+                run { client in
                     try await client.sendReport()
                     notice = AppLocalization.string("Pulse will send a report to its chat shortly.")
                     return nil
@@ -365,7 +365,7 @@ struct PulseSettingsPage: View {
                 } else {
                     Button(AppLocalization.string("Estimate")) {
                         let days = dayCount
-                        run {
+                        run { client in
                             estimate = try await client.estimate(days: days)
                             return nil
                         }
@@ -467,16 +467,19 @@ struct PulseSettingsPage: View {
 
     /// One step at a time: shows its error, then the state Pulse answers
     /// with (or reads it again).
-    private func run(_ step: @escaping @MainActor () async throws -> PulseState?) {
+    /// The step gets the client of the dashboard shown when it was asked
+    /// for, so a switch meanwhile never sends it to another host.
+    private func run(_ step: @escaping @MainActor (PulseClient) async throws -> PulseState?) {
         guard !working else { return }
         working = true
         errorMessage = nil
         notice = nil
         let dashboard = appState.activeDashboardID
+        let client = self.client
         Task {
             defer { working = false }
             do {
-                let next = try await step()
+                let next = try await step(client)
                 // An answer from the dashboard this page showed before a switch isn't this one's.
                 guard appState.activeDashboardID == dashboard else { return }
                 if let next {
@@ -501,11 +504,11 @@ struct PulseSettingsPage: View {
             optimistic(&shown)
             state = shown
         }
-        run { try await client.update(changes) }
+        run { client in try await client.update(changes) }
     }
 
     private func backfillStep(_ action: PulseBackfillAction, days: Int? = nil) {
-        run {
+        run { client in
             let next = try await client.backfill(action, days: days)
             estimate = nil
             return next
@@ -518,6 +521,7 @@ struct PulseSettingsPage: View {
         draftTimes = times
         timesSave?.cancel()
         let dashboard = appState.activeDashboardID
+        let client = self.client
         timesSave = Task {
             try? await Task.sleep(for: .milliseconds(800))
             // One request at a time: wait for a step already on its way.

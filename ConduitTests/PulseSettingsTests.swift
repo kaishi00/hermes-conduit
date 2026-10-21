@@ -89,6 +89,10 @@ final class PulseSettingsTests: XCTestCase {
         // A JSON number is not a flag.
         XCTAssertNil(PulseState(json: try json(#"{"enabled": 1}"#)))
         XCTAssertThrowsError(try PulseClient.state(from: ["ok": true]))
+        // A number no Int holds is no number, not a crash.
+        XCTAssertNil(PulseJSON.int(NSNumber(value: Double.infinity)))
+        XCTAssertNil(PulseJSON.int(NSNumber(value: 1e300)))
+        XCTAssertEqual(PulseJSON.int(NSNumber(value: 42.9)), 42)
     }
 
     func testEstimateAndMemoryItemsDecode() throws {
