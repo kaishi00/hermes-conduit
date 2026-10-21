@@ -32,7 +32,7 @@ enum PulseJSON {
     }
 
     static func date(_ value: Any?) -> Date? {
-        double(value).map { Date(timeIntervalSince1970: $0) }
+        double(value).flatMap { $0.isFinite ? Date(timeIntervalSince1970: $0) : nil }
     }
 
     static func string(_ value: Any?) -> String? {

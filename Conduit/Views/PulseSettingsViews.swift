@@ -192,6 +192,7 @@ struct PulseSettingsPage: View {
                         change(["time_zone": phoneZone])
                     }
                     .buttonStyle(.settings)
+                    .accessibilityIdentifier("settings.pulse.time-zone")
                     .disabled(working)
                 }
                 if let next = state.nextReportAt {
@@ -299,7 +300,7 @@ struct PulseSettingsPage: View {
                 SettingsMetricRow(label: AppLocalization.string("Tokens today"), value: AppLocalization.string("\(used) of \(cap)"))
             }
             NavigationLink {
-                PulseMemoryList(client: client)
+                PulseMemoryList()
                     .v2TabBarClearance()
             } label: {
                 Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
@@ -335,16 +336,20 @@ struct PulseSettingsPage: View {
                 HStack(spacing: 10) {
                     Button(AppLocalization.string("Pause")) { backfillStep(.stop) }
                         .buttonStyle(.settings)
+                        .accessibilityIdentifier("settings.pulse.backfill-pause")
                     Button(AppLocalization.string("Cancel")) { backfillStep(.cancel) }
                         .buttonStyle(.settings)
+                        .accessibilityIdentifier("settings.pulse.backfill-cancel")
                 }
                 .disabled(working)
             case .paused:
                 HStack(spacing: 10) {
                     Button(AppLocalization.string("Carry on")) { backfillStep(.start) }
                         .buttonStyle(.settingsPrimary)
+                        .accessibilityIdentifier("settings.pulse.backfill-carry-on")
                     Button(AppLocalization.string("Cancel")) { backfillStep(.cancel) }
                         .buttonStyle(.settings)
+                        .accessibilityIdentifier("settings.pulse.backfill-cancel")
                 }
                 .disabled(working)
             case .none, .done, .cancelled:
@@ -562,7 +567,9 @@ struct PulseSettingsPage: View {
                 if draftTimes == times { draftTimes = nil }
                 apply(next)
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                // Cancelled by a newer edit, which saves again, or by a switch.
+                guard !(error is CancellationError), !Task.isCancelled,
+                      appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 if draftTimes == times { draftTimes = nil }
                 await reload()
@@ -574,7 +581,6 @@ struct PulseSettingsPage: View {
 /// Settings > Pulse > What Pulse remembers: the open items by kind; swipe
 /// one to forget it.
 struct PulseMemoryList: View {
-    let client: PulseClient
     @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var items: [PulseMemoryItem] = []
@@ -582,8 +588,8 @@ struct PulseMemoryList: View {
     @State private var forgetting = false
 
     /// Whether the client's dashboard is still the one shown: after a
-    /// switch this list's answers are the old host's.
-    private var isShown: Bool { client.dashboardID == appState.activeDashboardID }
+    /// switch its answers are the old host's.
+    private func isShown(_ client: PulseClient) -> Bool { client.dashboardID == appState.activeDashboardID }
     @State private var errorMessage: String?
 
     var body: some View {
@@ -623,7 +629,13 @@ struct PulseMemoryList: View {
         .navigationTitle(Text(AppLocalization.string("What Pulse remembers")))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
-        .task { await load() }
+        // Read again for another dashboard's host; nothing of the old one's stays.
+        .task(id: appState.activeDashboardID) { await load() }
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            items = []
+            loaded = false
+            errorMessage = nil
+        }
     }
 
     private func row(_ item: PulseMemoryItem) -> some View {
@@ -653,13 +665,14 @@ struct PulseMemoryList: View {
     }
 
     private func load() async {
+        let client = appState.pulseClient
         do {
             let next = try await client.memory()
-            guard isShown else { return }
+            guard isShown(client), !Task.isCancelled else { return }
             items = next
             errorMessage = nil
         } catch {
-            guard isShown else { return }
+            guard isShown(client), !Task.isCancelled else { return }
             errorMessage = PulseRefusal.message(for: error)
         }
         loaded = true
@@ -668,16 +681,17 @@ struct PulseMemoryList: View {
     private func forget(_ item: PulseMemoryItem) {
         guard !forgetting else { return }
         forgetting = true
+        let client = appState.pulseClient
         Task {
             defer { forgetting = false }
             do {
                 _ = try await client.forget(id: item.id)
-                guard isShown else { return }
+                guard isShown(client) else { return }
                 items.removeAll { $0.id == item.id }
                 errorMessage = nil
                 Haptics.success()
             } catch {
-                guard isShown else { return }
+                guard isShown(client) else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 Haptics.error()
             }

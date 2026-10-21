@@ -93,6 +93,7 @@ final class PulseSettingsTests: XCTestCase {
         // A number no Int holds is no number, not a crash.
         XCTAssertNil(PulseJSON.int(NSNumber(value: Double.infinity)))
         XCTAssertNil(PulseJSON.int(NSNumber(value: 1e300)))
+        XCTAssertNil(PulseJSON.date(NSNumber(value: Double.infinity)))
         XCTAssertEqual(PulseJSON.int(NSNumber(value: 42.9)), 42)
     }
 
