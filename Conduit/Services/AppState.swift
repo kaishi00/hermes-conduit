@@ -30803,12 +30803,13 @@ final class AppState: ObservableObject {
     /// the composer. Keeping this seam here prevents audio UI from inferring
     /// request state from transcript timing.
     func submitVoiceTranscript(_ transcript: String) async -> Bool {
+        // Said while the connection is coming back from a drop (a car
+        // losing signal): the turn, and a yes or no in it, wait for the
+        // connection rather than fail (#1060).
+        await waitForTransportIfDropped()
         // A yes or no to the one card waiting answers it first (Hermes can't
         // approve for the user); Hermes then hears the words and how it went.
         await answerWaitingBySpeech(transcript)
-        // Said while the connection is coming back from a drop (a car
-        // losing signal): the turn waits for it rather than fail (#1060).
-        await waitForTransportIfDropped()
         // Marks this exact text as a spoken turn for the prompt.submit it
         // reaches, so Hermes asks for a reply meant to be read aloud. A typed
         // send interleaving on another text never matches.
@@ -30824,9 +30825,9 @@ final class AppState: ObservableObject {
     func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
         // A yes or no to the approval the running turn waits on (or another
         // card waiting) answers it, and the turn goes on from there.
-        if await answerWaitingBySpeech(text) { return .steered }
         // Mid-reconnect, wait for the chat to be back first (#1060).
         await waitForTransportIfDropped()
+        if await answerWaitingBySpeech(text) { return .steered }
         switch turnState {
         case .running:
             return await steer(text, surfacesFailure: false) ? .steered : .failed
@@ -31636,6 +31637,9 @@ final class AppState: ObservableObject {
     func reconnectNowForWaitingVoice(_ reason: String) {
         guard connection != nil, !isConnected, !isConnecting,
               !signInRequiredForReconnect, canRunTransportRecovery else { return }
+        // Without a usable network path no attempt can work: the parked
+        // cycle reconnects the moment the path comes back.
+        guard deviceConditions().pathSatisfied else { return }
         let purpose = recoverySequence.takeQueuedReconnectPurpose() ?? chatResumePurposeForDisconnect()
         reconnectTask?()
         reconnectTask = nil
@@ -31662,8 +31666,7 @@ final class AppState: ObservableObject {
     /// nothing waits, and the result is what it was before: the current
     /// client, or `notConnected` without one.
     func clientForVoiceRequest() async throws -> HermesClient {
-        if await waitForTransportIfDropped(),
-           !isConnected || turnState == .reconnecting || turnState == .synchronizing {
+        if await waitForTransportIfDropped(), !isConnected || isResumingAfterDrop {
             throw HermesError.notConnected
         }
         guard let client else { throw HermesError.notConnected }
@@ -31686,7 +31689,14 @@ final class AppState: ObservableObject {
     private var voiceRequestWaitsForTransport: Bool {
         guard connection != nil, canRunTransportRecovery, !signInRequiredForReconnect else { return false }
         if !isConnected { return isConnecting || turnState == .reconnecting }
-        return turnState == .reconnecting || turnState == .synchronizing
+        return isResumingAfterDrop
+    }
+
+    /// The socket is back and the reconnect is still resuming the chat. An
+    /// ordinary chat open also syncs, but its turn state isn't stale: a
+    /// request then goes on as before rather than wait on it.
+    private var isResumingAfterDrop: Bool {
+        turnState == .reconnecting || (turnState == .synchronizing && turnStateIsStale)
     }
 
     private func awaitTransportForVoiceRequest(timeout: Duration) async {
