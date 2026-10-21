@@ -539,6 +539,7 @@ struct V2ChatsView: View, Equatable {
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+            .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
             NavigationLink(value: V2Route.artifacts) {
                 V2CapsuleIcon(systemImage: "square.grid.2x2")
@@ -546,6 +547,7 @@ struct V2ChatsView: View, Equatable {
             .buttonStyle(PressableButtonStyle())
             .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
             .accessibilityLabel(AppLocalization.string("Artifacts"))
+            .macTooltip(AppLocalization.string("Artifacts"))
 
             filterMenu
 
@@ -563,6 +565,7 @@ struct V2ChatsView: View, Equatable {
                 .buttonStyle(PressableButtonStyle())
                 .disabled(!appState.canTapNewChat)
                 .accessibilityLabel(AppLocalization.string("New Chat"))
+                .macTooltip(AppLocalization.string("New Chat"))
             }
         }
     }
@@ -629,6 +632,7 @@ struct V2ChatsView: View, Equatable {
         }
         .menuOrder(.fixed)
         .accessibilityLabel(AppLocalization.string("Filter"))
+        .macTooltip(AppLocalization.string("Filter"))
         .accessibilityValue(waitingApprovalCount > 0
             ? AppLocalization.string("\(waitingApprovalCount) waiting for approval")
             : spokenSelection)

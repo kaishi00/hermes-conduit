@@ -143,6 +143,7 @@ struct V2VoiceButton: View {
         .disabled(!canAct)
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
+        .macTooltip(label)
         .accessibilityShowsLargeContentViewer {
             Label(label, systemImage: "waveform")
         }
@@ -338,6 +339,7 @@ struct V2NewChatButton: View {
         .buttonStyle(PressableButtonStyle())
         .disabled(!canAct)
         .accessibilityLabel(label)
+        .macTooltip(label)
         .accessibilityShowsLargeContentViewer {
             Label(label, systemImage: "square.and.pencil")
         }

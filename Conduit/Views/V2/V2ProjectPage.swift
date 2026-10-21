@@ -102,6 +102,7 @@ struct V2ProjectPage: View {
                     }
                     .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
                     .accessibilityLabel(AppLocalization.string("New conversation in \(project.title)"))
+                    .macTooltip(AppLocalization.string("New conversation in \(project.title)"))
                 }
             }
         }
