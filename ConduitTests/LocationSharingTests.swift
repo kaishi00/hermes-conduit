@@ -478,7 +478,8 @@ extension NotificationE2ETests {
         // mapping.
         let unhandled = DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
         failure = unhandled
-        _ = await engine.send(batch, config: config, request: request)
+        let unhandledResult = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(unhandledResult, .failed)
         XCTAssertNotNil(unhandled.errorDescription)
         XCTAssertEqual(engine.lastError, unhandled.errorDescription)
     }
