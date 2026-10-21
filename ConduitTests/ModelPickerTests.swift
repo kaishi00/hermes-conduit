@@ -150,7 +150,7 @@ final class ModelPickerTests: XCTestCase {
     private let draft = ModelPickerApplyDraft(
         model: "big-model", provider: "openrouter",
         yoloChanged: true, yolo: true,
-        reasoningEffort: "high", fast: false
+        reasoningEffort: "high", speedChanged: true, speed: .ultrafast
     )
 
     /// Records the order of gateway writes and answers each model switch
@@ -176,7 +176,7 @@ final class ModelPickerTests: XCTestCase {
                     self.calls.append("reasoning")
                     if let error = self.reasoningError { throw error }
                 },
-                setFast: { _ in self.calls.append("fast") }
+                setSpeed: { speed in self.calls.append(speed.rawValue) }
             )
         }
     }
@@ -202,9 +202,9 @@ final class ModelPickerTests: XCTestCase {
 
         let result = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: true, actions: gateway.actions)
 
-        XCTAssertEqual(gateway.calls, ["model(confirmed)", "yolo", "reasoning", "fast"])
+        XCTAssertEqual(gateway.calls, ["model(confirmed)", "yolo", "reasoning", "ultrafast"])
         XCTAssertEqual(result, .completed(ModelPickerApplyProgress(
-            switchedModel: "big-model", yoloApplied: true, reasoningApplied: true, fastApplied: true)))
+            switchedModel: "big-model", yoloApplied: true, reasoningApplied: true, speedApplied: true)))
     }
 
     @MainActor
@@ -224,7 +224,7 @@ final class ModelPickerTests: XCTestCase {
 
         _ = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
 
-        XCTAssertEqual(gateway.calls, ["yolo", "reasoning", "fast"])
+        XCTAssertEqual(gateway.calls, ["yolo", "reasoning", "ultrafast"])
     }
 
     @MainActor
@@ -259,8 +259,8 @@ final class ModelPickerTests: XCTestCase {
 
         let result = await runModelPickerApply(unchangedYolo, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
 
-        XCTAssertEqual(gateway.calls, ["reasoning", "fast"])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, fastApplied: true)))
+        XCTAssertEqual(gateway.calls, ["reasoning", "ultrafast"])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, speedApplied: true)))
     }
 
     @MainActor
@@ -272,8 +272,56 @@ final class ModelPickerTests: XCTestCase {
 
         let result = await runModelPickerApply(sheetDraft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
 
-        XCTAssertEqual(gateway.calls, ["fast"])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(fastApplied: true)))
+        XCTAssertEqual(gateway.calls, ["ultrafast"])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(speedApplied: true)))
+    }
+
+    @MainActor
+    func testUnchangedSpeedSkipsTheWrite() async {
+        let gateway = GatewayRecorder()
+        var sheetDraft = draft
+        sheetDraft.yoloChanged = false
+        sheetDraft.reasoningEffort = nil
+        sheetDraft.speedChanged = false
+
+        let result = await runModelPickerApply(sheetDraft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(gateway.calls, [])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress()))
+    }
+
+    // MARK: - Speed
+
+    func testSpeedReadsTheRuntimeTier() {
+        XCTAssertEqual(ModelSpeed(fast: false, serviceTier: ""), .normal)
+        XCTAssertEqual(ModelSpeed(fast: true, serviceTier: "priority"), .fast)
+        XCTAssertEqual(ModelSpeed(fast: true, serviceTier: "Ultrafast"), .ultrafast)
+        // A gateway that only reports `fast`.
+        XCTAssertEqual(ModelSpeed(fast: true, serviceTier: ""), .fast)
+        // Ultrafast the route can't carry is not running fast.
+        XCTAssertEqual(ModelSpeed(fast: false, serviceTier: "ultrafast"), .normal)
+        // `/fast auto` and `/fast cold` report fast: false until they kick in.
+        XCTAssertEqual(ModelSpeed(fast: false, serviceTier: "auto"), .normal)
+    }
+
+    func testSpeedSendsHermesFastWords() {
+        XCTAssertEqual(ModelSpeed.allCases.map(\.rawValue), ["normal", "fast", "ultrafast"])
+        XCTAssertEqual(ModelSpeed.allCases.map(\.serviceTier), ["", "priority", "ultrafast"])
+    }
+
+    func testProviderRowReadsUltrafastCapability() {
+        let row = ProviderInfo(from: .object([
+            "slug": .string("openai-codex"),
+            "models": .array([.string("gpt-6.1-sol"), .string("gpt-6-mini")]),
+            "capabilities": .object([
+                "gpt-6.1-sol": .object(["fast": .bool(true), "reasoning": .bool(true), "ultrafast": .bool(true)]),
+                "gpt-6-mini": .object(["fast": .bool(true), "reasoning": .bool(true)]),
+            ]),
+        ]))
+
+        XCTAssertEqual(row?.offersUltrafast("gpt-6.1-sol"), true)
+        XCTAssertEqual(row?.offersUltrafast("gpt-6-mini"), false)
+        XCTAssertNil(row?.offersUltrafast("unknown-model"))
     }
 
     // MARK: - Reasoning levels

@@ -678,7 +678,11 @@ struct SettingsView: View {
                     load: { await appState.loadProfileFallbackModels() },
                     save: { await appState.setProfileFallbackModels($0) }
                 )),
-                loadSchema: { await appState.loadProfileConfigSchema() }
+                loadSchema: { await appState.loadProfileConfigSchema() },
+                loadExtraOptions: {
+                    await loadProfileModelDefaults()?.mainModelOffersUltrafast == true
+                        ? ["agent.service_tier": ["ultrafast"]] : [:]
+                }
             )
         case .chat:
             ChatSettingsDetail(
@@ -2519,7 +2523,7 @@ enum ProfileConfigValueDisplay {
         "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
         "code_execution.mode": ["project": "Project", "strict": "Strict"],
         "agent.image_input_mode": ["auto": "Automatic", "native": "Native images", "text": "Text only"],
-        "agent.service_tier": ["normal": "Off", "fast": "Always", "auto": "Start of each turn", "cold": "First turn only"],
+        "agent.service_tier": ["normal": "Off", "fast": "Always", "auto": "Start of each turn", "cold": "First turn only", "ultrafast": "Ultrafast"],
         "updates.non_interactive_local_changes": ["stash": "Keep them", "discard": "Throw them away"],
         "display.personality": [
             "": "Default", "helpful": "Helpful", "concise": "Concise", "technical": "Technical",
@@ -2555,7 +2559,10 @@ struct ProfileConfigSettingsPage: View {
     /// The gateway's config schema, which hides settings this Hermes lacks
     /// and fills in runtime choices.
     var loadSchema: (() async -> ProfileConfigSchema)? = nil
+    /// Choices a field gains beyond its schema's, loaded with the page.
+    var loadExtraOptions: (() async -> [String: [String]])? = nil
 
+    @State private var extraOptions: [String: [String]] = [:]
     @State private var values: [String: ProfileSettingValue] = [:]
     @State private var drafts: [String: String] = [:]
     @State private var schema = ProfileConfigSchema()
@@ -2651,7 +2658,8 @@ struct ProfileConfigSettingsPage: View {
             case .options(let options, let defaultValue):
                 fieldLabel(field)
                 // A runtime list that came back empty falls back to the schema's.
-                let choices = optionOverrides[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? options
+                let baseChoices = optionOverrides[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? options
+                let choices = baseChoices + (extraOptions[field.key] ?? []).filter { !baseChoices.contains($0) }
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
                 let displayedValue = selectedValue
                 Menu {
@@ -2835,10 +2843,18 @@ struct ProfileConfigSettingsPage: View {
         loading = true
         let fields = allFields
         async let valuesRequest = load(fields.map(\.key))
+        async let extrasRequest = loadExtras()
         schema = await loadSchema?() ?? ProfileConfigSchema()
         values = await valuesRequest
         for field in fields { drafts[field.key] = values[field.key]?.textValue }
         loading = false
+        // Extra choices can take longer (a model catalog read), so the page
+        // shows first and the menu gains them when they land.
+        extraOptions = await extrasRequest
+    }
+
+    private func loadExtras() async -> [String: [String]] {
+        await loadExtraOptions?() ?? [:]
     }
 
     private func save(_ field: ProfileSettingField, value: ProfileSettingValue) {

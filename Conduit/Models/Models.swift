@@ -1357,6 +1357,14 @@ struct ProfileModelDefaults: Equatable {
         return (row?.name ?? savedProvider, savedModel)
     }
 
+    /// Whether the saved main model offers Ultrafast, which Hermes' config
+    /// schema leaves out of the Fast mode choices (Desktop adds it the same
+    /// way, from the catalog row's capabilities).
+    var mainModelOffersUltrafast: Bool {
+        let (rowName, model) = selection
+        return providers.first { $0.name == rowName }?.offersUltrafast(model) ?? false
+    }
+
     private func uniqueRow(listing model: String) -> ProviderInfo? {
         guard !model.isEmpty else { return nil }
         let rows = providers.filter { $0.models.contains(where: { $0.id == model }) }
@@ -1400,6 +1408,9 @@ struct RuntimeState: Equatable {
     var contextMax: Int = 0
     var cwd: String = ""
     var fast: Bool = false
+    /// The tier behind `fast`: "priority", "ultrafast", "auto", "cold", or
+    /// empty for normal. Empty on gateways that only report `fast`.
+    var serviceTier: String = ""
     var model: String = ""
     var provider: String = ""
     var reasoningEffort: String = ""

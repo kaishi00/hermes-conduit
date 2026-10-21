@@ -74,6 +74,38 @@ enum ReasoningEffortLevel: String, CaseIterable, Identifiable {
     }
 }
 
+/// The session's speed as Hermes' `/fast` words: normal, Fast (OpenAI
+/// Priority / Anthropic Fast Mode) or OpenAI Ultrafast.
+enum ModelSpeed: String, CaseIterable, Identifiable {
+    case normal, fast, ultrafast
+
+    var id: String { rawValue }
+
+    /// The speed the runtime reports. Ultrafast needs `service_tier`; a
+    /// gateway that only sends `fast` reads as Fast or normal.
+    init(fast: Bool, serviceTier: String) {
+        guard fast else { self = .normal; return }
+        self = serviceTier.lowercased() == "ultrafast" ? .ultrafast : .fast
+    }
+
+    /// The tier word session info reports for this speed.
+    var serviceTier: String {
+        switch self {
+        case .normal: return ""
+        case .fast: return "priority"
+        case .ultrafast: return "ultrafast"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .normal: return AppLocalization.string("Off")
+        case .fast: return AppLocalization.string("Fast")
+        case .ultrafast: return AppLocalization.string("Ultrafast")
+        }
+    }
+}
+
 /// The settings an Apply sends, captured from the sheet's draft.
 struct ModelPickerApplyDraft: Equatable {
     var model: String
@@ -83,7 +115,10 @@ struct ModelPickerApplyDraft: Equatable {
     /// The effort word sent to Hermes ("none" turns reasoning off), or nil
     /// to leave reasoning alone. The sheet sets reasoning on tap instead.
     var reasoningEffort: String?
-    var fast: Bool
+    /// Sent only when changed, so Apply never rewrites a speed set
+    /// elsewhere (a typed `/fast cold`, or Ultrafast on an older sheet).
+    var speedChanged: Bool
+    var speed: ModelSpeed
 }
 
 /// The gateway writes one Apply makes, in order. Injected so the apply flow
@@ -92,7 +127,7 @@ struct ModelPickerApplyActions {
     var setModel: @MainActor (_ model: String, _ provider: String, _ confirmed: Bool) async throws -> ModelSwitchOutcome
     var setYolo: @MainActor (_ enabled: Bool) async -> AppState.YoloWriteFailure?
     var setReasoning: @MainActor (_ effort: String) async throws -> Void
-    var setFast: @MainActor (_ enabled: Bool) async throws -> Void
+    var setSpeed: @MainActor (_ speed: ModelSpeed) async throws -> Void
 }
 
 /// How far an Apply got. Steps already applied stay applied when a later one
@@ -102,7 +137,7 @@ struct ModelPickerApplyProgress: Equatable {
     var switchedModel: String?
     var yoloApplied = false
     var reasoningApplied = false
-    var fastApplied = false
+    var speedApplied = false
 }
 
 enum ModelPickerApplyResult: Equatable {
@@ -113,7 +148,7 @@ enum ModelPickerApplyResult: Equatable {
 }
 
 /// Runs one Apply: the model switch first, as the confirmation gate, then
-/// YOLO, reasoning and fast. A guarded switch stops before anything else is
+/// YOLO, reasoning and speed. A guarded switch stops before anything else is
 /// written, so cancelling its confirmation leaves the session untouched.
 @MainActor
 func runModelPickerApply(
@@ -159,8 +194,10 @@ func runModelPickerApply(
             try await actions.setReasoning(effort)
             progress.reasoningApplied = true
         }
-        try await actions.setFast(draft.fast)
-        progress.fastApplied = true
+        if draft.speedChanged {
+            try await actions.setSpeed(draft.speed)
+            progress.speedApplied = true
+        }
         return .completed(progress)
     } catch {
         return .failed(UserFacingError.message(for: error), progress)
@@ -221,7 +258,7 @@ struct ModelPickerSelection: Equatable {
 private struct ModelPickerDraftKey: Equatable {
     var model: String
     var provider: String
-    var fast: Bool
+    var speed: ModelSpeed
     var yolo: Bool
 }
 
@@ -235,7 +272,10 @@ struct ModelPickerView: View {
     @State private var reasoningEffort = "none"
     @State private var isApplyingReasoning = false
     @State private var reasoningError: String?
-    @State private var fastEnabled = false
+    @State private var speed = ModelSpeed.normal
+    /// The speed the session had when the sheet seeded it; Apply writes
+    /// only a change from it.
+    @State private var initialSpeed = ModelSpeed.normal
     @State private var yoloEnabled = false
     @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
@@ -310,10 +350,10 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
-            // Seed fast here too: a failed catalog fetch must not leave the
-            // draft at its initial `false` for Apply to write over the
-            // session's real Fast mode.
-            fastEnabled = appState.runtime.fast
+            // Seed the speed here too: a failed catalog fetch must not
+            // leave the draft at its initial value.
+            speed = runtimeSpeed
+            initialSpeed = runtimeSpeed
             refreshYoloToggle(force: false)
         }
         .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
@@ -334,12 +374,20 @@ struct ModelPickerView: View {
             guard !isApplyingReasoning else { return }
             reasoningEffort = effort.isEmpty ? "none" : effort
         }
-        .onChange(of: appState.runtime.fast) { old, new in
-            // Follow Fast changed elsewhere while the sheet is open, so Apply
-            // doesn't write the stale draft back; a draft the user already
-            // changed here stays theirs.
-            guard !isApplying, fastEnabled == old else { return }
-            fastEnabled = new
+        .onChange(of: runtimeSpeed) { old, new in
+            // Follow a speed changed elsewhere while the sheet is open, so
+            // Apply doesn't write the stale draft back; a draft the user
+            // already changed here stays theirs.
+            guard !isApplying, speed == old else { return }
+            speed = new
+            initialSpeed = new
+        }
+        .onChange(of: ultrafastOffered) { _, offered in
+            // Picking a model that says it lacks Ultrafast falls back to
+            // Fast. The session's own model keeps what Hermes reports.
+            guard offered == false, speed == .ultrafast,
+                  selectedModel != appState.runtime.model else { return }
+            speed = .fast
         }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
@@ -551,8 +599,26 @@ struct ModelPickerView: View {
 
     private var runSettingsSection: some View {
         ModelPickerSection(title: AppLocalization.string("Run settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-            Toggle("Fast mode", isOn: $fastEnabled)
+            if ultrafastOffered == true || speed == .ultrafast {
+                // Hermes offers Ultrafast for this model and account, so
+                // the three speeds Desktop's picker has.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Fast mode")
+                    Picker("Fast mode", selection: $speed) {
+                        ForEach(ModelSpeed.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            } else {
+                Toggle("Fast mode", isOn: Binding(
+                    get: { speed != .normal },
+                    set: { speed = $0 ? .fast : .normal }
+                ))
                 .tint(.conduitAccent)
+            }
             if globalYoloFloor {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("YOLO mode", isOn: $yoloEnabled)
@@ -774,9 +840,19 @@ struct ModelPickerView: View {
         ModelPickerDraftKey(
             model: selectedModel,
             provider: selectedProvider,
-            fast: fastEnabled,
+            speed: speed,
             yolo: yoloEnabled
         )
+    }
+
+    private var runtimeSpeed: ModelSpeed {
+        ModelSpeed(fast: appState.runtime.fast, serviceTier: appState.runtime.serviceTier)
+    }
+
+    /// Whether the selected model offers Ultrafast, from the catalog row's
+    /// capabilities. Nil until the catalog says.
+    private var ultrafastOffered: Bool? {
+        providers.first { $0.matches(selectedProvider) }?.offersUltrafast(selectedModel)
     }
 
     private var rowFoundation: Color {
@@ -794,7 +870,7 @@ struct ModelPickerView: View {
             providers = provs ?? []
             selectedModel = appState.runtime.model
             selectedProvider = appState.runtime.provider
-            // Fast is seeded on appear: re-seeding here would undo a toggle
+            // Speed is seeded on appear: re-seeding here would undo a toggle
             // made while the catalog loaded, and Apply would write that back.
             refreshYoloToggle(force: false)
         } catch {
@@ -868,7 +944,8 @@ struct ModelPickerView: View {
             yoloChanged: sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled),
             yolo: yoloEnabled,
             reasoningEffort: nil,
-            fast: fastEnabled
+            speedChanged: speed != initialSpeed,
+            speed: speed
         )
         let sendModelSwitch = modelPickerShouldSwitch(
             selection,
@@ -884,7 +961,7 @@ struct ModelPickerView: View {
             // reported here instead.
             setYolo: { enabled in await appState.setYoloModeReportingFailure(enabled, context: context) },
             setReasoning: { effort in try await client.setReasoning(sessionId, effort: effort) },
-            setFast: { enabled in try await client.setFast(sessionId, enabled: enabled) }
+            setSpeed: { speed in try await client.setSpeed(sessionId, speed: speed) }
         )
 
         let result = await runModelPickerApply(
@@ -923,8 +1000,10 @@ struct ModelPickerView: View {
         if progress.reasoningApplied, let effort = draft.reasoningEffort {
             appState.runtime.reasoningEffort = effort == "none" ? "" : effort
         }
-        if progress.fastApplied {
-            appState.runtime.fast = draft.fast
+        if progress.speedApplied {
+            appState.runtime.fast = draft.speed != .normal
+            appState.runtime.serviceTier = draft.speed.serviceTier
+            initialSpeed = draft.speed
         }
     }
 }

@@ -475,6 +475,9 @@ struct SessionRuntimeSnapshot {
     let activeAgents: Int?
     let reasoningEffort: String?
     let fast: Bool?
+    /// The session's next-turn tier (`service_tier`), so Ultrafast reads
+    /// apart from Fast.
+    let serviceTier: String?
     /// Per-session approval bypass. This overrides the profile default while
     /// the conversation is active without changing `approvals.mode` itself.
     let yolo: Bool?
@@ -549,6 +552,7 @@ struct SessionRuntimeSnapshot {
             ?? object["reasoning"]?.stringValue
         fast = object["fast"]?.boolValue
             ?? object["fast_mode"]?.boolValue
+        serviceTier = object["service_tier"]?.stringValue
         yolo = object["yolo"]?.boolValue
         approvalsMode = object["approvals_mode"]?.stringValue
             ?? object["approval_mode"]?.stringValue
@@ -2755,11 +2759,13 @@ final class HermesClient: ObservableObject {
         ])
     }
 
-    func setFast(_ sessionId: String, enabled: Bool) async throws {
+    /// Session-scoped `/fast`. A gateway older than Ultrafast refuses
+    /// "ultrafast" as an unknown word.
+    func setSpeed(_ sessionId: String, speed: ModelSpeed) async throws {
         _ = try await rpc("config.set", params: [
             "key": "fast",
             "session_id": sessionId,
-            "value": enabled ? "fast" : "normal"
+            "value": speed.rawValue
         ])
     }
 
@@ -3134,6 +3140,15 @@ struct ProviderInfo: Equatable {
     var aliases: [String] = []
     /// Hermes marks the row backing the configured main model.
     var isCurrent = false
+    /// Per-model speed support from the row's `capabilities`, keyed by
+    /// model id. Empty on gateways that don't send it.
+    var speedCapabilities: [String: ModelSpeedCapability] = [:]
+
+    /// Whether `model` offers Ultrafast on this route and account. Nil when
+    /// the row says nothing about the model.
+    func offersUltrafast(_ model: String) -> Bool? {
+        speedCapabilities[model].map(\.ultrafast)
+    }
 
     /// True when `provider` names this row by slug, display name or alias,
     /// mirroring Hermes Desktop's `catalogProviderMatches`.
@@ -3192,6 +3207,13 @@ struct ModelSwitchOutcome: Equatable {
     }
 }
 
+struct ModelSpeedCapability: Equatable {
+    var fast: Bool
+    /// Hermes sets it only when `ultrafast_offered` passes, which on the
+    /// ChatGPT route reads the account's own Codex catalog.
+    var ultrafast: Bool
+}
+
 struct ModelInfo: Equatable {
     let id: String
     let label: String?
@@ -3207,6 +3229,13 @@ extension ProviderInfo {
         self.displayName = object["name"]?.stringValue
         self.aliases = (object["aliases"]?.arrayValue ?? []).compactMap(\.stringValue)
         self.isCurrent = object["is_current"]?.boolValue ?? false
+        self.speedCapabilities = (object["capabilities"]?.objectValue ?? [:]).reduce(into: [:]) { result, entry in
+            guard let caps = entry.value.objectValue else { return }
+            result[entry.key] = ModelSpeedCapability(
+                fast: caps["fast"]?.boolValue ?? false,
+                ultrafast: caps["ultrafast"]?.boolValue ?? false
+            )
+        }
         self.models = (object["models"]?.arrayValue ?? []).compactMap { model in
             if let id = model.stringValue, !id.isEmpty {
                 return ModelInfo(id: id, label: nil, reasoningCapable: false)
