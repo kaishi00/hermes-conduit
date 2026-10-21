@@ -214,7 +214,7 @@ struct ComposerBar: View, Equatable {
         let body = trimmed.drop(while: { $0 == "/" })
         guard let space = body.firstIndex(of: " ") else { return nil }
         let command = body[..<space]
-        let partial = body[body.index(after: space)...]
+        let partial = body[space...].drop(while: { $0 == " " })
         guard !command.isEmpty, !partial.contains(" ") else { return nil }
         return (command.lowercased(), partial.lowercased())
     }
@@ -566,7 +566,7 @@ struct ComposerBar: View, Equatable {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if !isShowingSlashSuggestions && !mentionCandidates.isEmpty {
+            if (!isShowingSlashSuggestions || filteredSlashCommands.isEmpty) && !mentionCandidates.isEmpty {
                 MentionSuggestionList(candidates: mentionCandidates) { candidate in
                     replaceComposerText(MentionAutocomplete.completing(text, with: candidate))
                 }

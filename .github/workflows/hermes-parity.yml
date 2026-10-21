@@ -43,8 +43,8 @@ jobs:
         id: compare
         run: |
           set -uo pipefail
-          python3 scripts/check-hermes-slash-parity.py --hermes-root hermes-agent --report parity-report.md
-          status=$?
+          status=0
+          python3 scripts/check-hermes-slash-parity.py --hermes-root hermes-agent --report parity-report.md || status=$?
           if [ "$status" -eq 1 ]; then
             echo "drift=true" >> "$GITHUB_OUTPUT"
           elif [ "$status" -ne 0 ]; then

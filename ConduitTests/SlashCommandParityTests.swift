@@ -84,6 +84,11 @@ extension ComposerDraftStoreTests {
             ComposerBar.slashArgumentSuggestions(for: "/fast fast now", commands: commands, subcommands: subs).isEmpty,
             "Only the first argument word completes"
         )
+        XCTAssertEqual(
+            ComposerBar.slashArgumentSuggestions(for: "/fast  ul", commands: commands, subcommands: subs).map(\.name),
+            ["fast ultrafast"],
+            "Extra spaces before the word still complete it"
+        )
         XCTAssertTrue(ComposerBar.shouldShowSlashSuggestions(for: "/fast u", isProgrammaticDraftRestore: false))
         XCTAssertNil(ComposerBar.slashArgumentQuery(in: "/fast\nu"))
     }
