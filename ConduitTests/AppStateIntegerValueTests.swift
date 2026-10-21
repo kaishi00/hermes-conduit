@@ -40,6 +40,16 @@ final class AppStateIntegerValueTests: XCTestCase {
         XCTAssertNil(AppState.integerValue(object["b"]))
     }
 
+    func testJSONBooleansReadAsMissingRatherThanOneOrZero() throws {
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(#"{"yes": true, "no": false, "one": 1}"#.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(AppState.integerValue(object["yes"]))
+        XCTAssertNil(AppState.integerValue(object["no"]))
+        XCTAssertNil(AppState.integerValue(true))
+        XCTAssertEqual(AppState.integerValue(object["one"]), 1, "a JSON 1 is still an integer")
+    }
+
     func testNonNumbersReadAsMissing() {
         XCTAssertNil(AppState.integerValue(nil))
         XCTAssertNil(AppState.integerValue("soon"))

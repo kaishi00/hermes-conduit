@@ -27791,8 +27791,11 @@ final class AppState: ObservableObject {
 
     /// A loosely typed JSON integer. Floats truncate toward zero (an epoch
     /// with a fraction), and a number no Int can hold is nil, the same as
-    /// for strings, rather than NSNumber.intValue's wrapped garbage.
+    /// for strings, rather than NSNumber.intValue's wrapped garbage. A JSON
+    /// boolean is no integer: JSONSerialization hands it back as an NSNumber
+    /// that `as? Int` would read as 0 or 1.
     nonisolated static func integerValue(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber, AnyCodable.isBoolean(number) { return nil }
         if let integer = value as? Int { return integer }
         if let number = value as? NSNumber { return Int(exactly: number.doubleValue.rounded(.towardZero)) }
         if let string = value as? String {
