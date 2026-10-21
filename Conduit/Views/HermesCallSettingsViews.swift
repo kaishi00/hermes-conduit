@@ -305,12 +305,7 @@ struct HermesCallSettingsSection: View {
             if !focused { commitRules() }
         }
         .onDisappear { commitRules() }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { rulesFocused = false }
-            }
-        }
+        .keyboardDoneButton { rulesFocused = false }
     }
 
     /// "Don't call me while I'm at": the saved places where a call becomes
