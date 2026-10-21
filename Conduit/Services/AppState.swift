@@ -31639,7 +31639,9 @@ final class AppState: ObservableObject {
         let purpose = recoverySequence.takeQueuedReconnectPurpose() ?? chatResumePurposeForDisconnect()
         reconnectTask?()
         reconnectTask = nil
-        reconnectAttempts = 0
+        // The backoff count stays: one spoken request after another against
+        // a gateway that is down must not keep resetting it. A connect
+        // resets it.
         noteConnectionStep(reason)
         scheduleReconnect(immediately: true, purpose: purpose)
     }
@@ -31655,11 +31657,15 @@ final class AppState: ObservableObject {
     /// resumed the chat as well: until then Hermes may no longer hold the
     /// chat's runtime and refuses what is sent to it. That replaces failing
     /// on the spot and leaving the call to say it didn't go through (#1060).
-    /// A wait that runs out throws `notConnected`. Without a drop under way
+    /// A wait that runs out throws `notConnected`. A connect already under
+    /// way (a cold launch's too) is waited for the same way. Without one
     /// nothing waits, and the result is what it was before: the current
     /// client, or `notConnected` without one.
     func clientForVoiceRequest() async throws -> HermesClient {
-        if await waitForTransportIfDropped(), !isConnected { throw HermesError.notConnected }
+        if await waitForTransportIfDropped(),
+           !isConnected || turnState == .reconnecting || turnState == .synchronizing {
+            throw HermesError.notConnected
+        }
         guard let client else { throw HermesError.notConnected }
         return client
     }
