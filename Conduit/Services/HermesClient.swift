@@ -3147,7 +3147,10 @@ struct ProviderInfo: Equatable {
     /// Whether `model` offers Ultrafast on this route and account. Nil when
     /// the row says nothing about the model.
     func offersUltrafast(_ model: String) -> Bool? {
-        speedCapabilities[model].map(\.ultrafast)
+        let wanted = Self.normalized(model)
+        let caps = speedCapabilities[model]
+            ?? speedCapabilities.first { Self.normalized($0.key) == wanted }?.value
+        return caps.map(\.ultrafast)
     }
 
     /// True when `provider` names this row by slug, display name or alias,

@@ -322,6 +322,7 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(row?.offersUltrafast("gpt-6.1-sol"), true)
         XCTAssertEqual(row?.offersUltrafast("gpt-6-mini"), false)
         XCTAssertNil(row?.offersUltrafast("unknown-model"))
+        XCTAssertEqual(row?.offersUltrafast(" GPT-6.1-Sol "), true)
     }
 
     // MARK: - Reasoning levels

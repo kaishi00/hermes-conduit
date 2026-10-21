@@ -276,6 +276,9 @@ struct ModelPickerView: View {
     /// The speed the session had when the sheet seeded it; Apply writes
     /// only a change from it.
     @State private var initialSpeed = ModelSpeed.normal
+    /// The session's model as the catalog load seeded it, so only a model
+    /// picked here can drop Ultrafast.
+    @State private var seededModel = ""
     @State private var yoloEnabled = false
     @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
@@ -386,7 +389,7 @@ struct ModelPickerView: View {
             // Picking a model that says it lacks Ultrafast falls back to
             // Fast. The session's own model keeps what Hermes reports.
             guard offered == false, speed == .ultrafast,
-                  selectedModel != appState.runtime.model else { return }
+                  selectedModel != seededModel else { return }
             speed = .fast
         }
         .onChange(of: applyError) { _, message in
@@ -611,6 +614,7 @@ struct ModelPickerView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    .accessibilityLabel(Text("Fast mode"))
                 }
             } else {
                 Toggle("Fast mode", isOn: Binding(
@@ -869,6 +873,7 @@ struct ModelPickerView: View {
             let (_, _, provs) = try await client.modelOptions(sessionId: appState.activeSessionId)
             providers = provs ?? []
             selectedModel = appState.runtime.model
+            seededModel = selectedModel
             selectedProvider = appState.runtime.provider
             // Speed is seeded on appear: re-seeding here would undo a toggle
             // made while the catalog loaded, and Apply would write that back.
