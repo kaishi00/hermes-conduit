@@ -62,13 +62,13 @@ struct PulseHomeChat: Equatable {
 
 /// One of Pulse's latest checks of the chats or reports.
 struct PulseRecentAttempt: Equatable, Identifiable {
+    /// The row's place in the host's list: two attempts can share a time.
+    let id: Int
     let at: Date
     /// "probe" (a check of the chats) or "report".
     let kind: String
     let state: String
     let detail: String
-
-    var id: String { "\(at.timeIntervalSince1970)|\(kind)|\(state)" }
 }
 
 /// Reading older chats into memory.
@@ -156,9 +156,10 @@ struct PulseState: Equatable {
         homeProblem = json["home_problem"] as? String ?? ""
         if let title = json["home_title"] as? String, !title.isEmpty { homeTitle = title }
         checks = PulseJSON.counts(json["checks"])
-        recent = (json["recent"] as? [Any] ?? []).compactMap { raw in
+        recent = (json["recent"] as? [Any] ?? []).enumerated().compactMap { index, raw in
             guard let row = raw as? [String: Any], let at = PulseJSON.date(row["at"]) else { return nil }
             return PulseRecentAttempt(
+                id: index,
                 at: at,
                 kind: row["kind"] as? String ?? "",
                 state: row["state"] as? String ?? "",
@@ -384,7 +385,14 @@ struct PulseClient {
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
+    /// The dashboard the requests go to (nil in tests).
+    var dashboardID: UUID?
     let request: Request
+
+    init(dashboardID: UUID? = nil, request: @escaping Request) {
+        self.dashboardID = dashboardID
+        self.request = request
+    }
 
     func state() async throws -> PulseState {
         let response = try await request(Self.path, "GET", nil)

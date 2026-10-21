@@ -42,6 +42,7 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(state.checks, ["sent": 4, "failed": 1])
         XCTAssertEqual(state.recent.map(\.kind), ["report", "probe"])
         XCTAssertEqual(state.recent.first?.at, Date(timeIntervalSince1970: 1_761_033_600.25))
+        XCTAssertEqual(Set(state.recent.map(\.id)).count, state.recent.count)
         XCTAssertTrue(state.dailyReport)
         // A time that isn't "HH:MM" is left out.
         XCTAssertEqual(state.reportTimes, ["08:00", "18:30"])

@@ -81,6 +81,8 @@ struct PulseSettingsPage: View {
             timesSave = nil
             state = nil
             loadError = nil
+            errorMessage = nil
+            notice = nil
             seededDays = false
             estimate = nil
             draftTimes = nil
@@ -213,7 +215,9 @@ struct PulseSettingsPage: View {
             Button(AppLocalization.string("Send a report now")) {
                 run { client in
                     try await client.sendReport()
-                    notice = AppLocalization.string("Pulse will send a report to its chat shortly.")
+                    if isShown(client) {
+                        notice = AppLocalization.string("Pulse will send a report to its chat shortly.")
+                    }
                     return nil
                 }
             }
@@ -366,7 +370,8 @@ struct PulseSettingsPage: View {
                     Button(AppLocalization.string("Estimate")) {
                         let days = dayCount
                         run { client in
-                            estimate = try await client.estimate(days: days)
+                            let next = try await client.estimate(days: days)
+                            if isShown(client) { estimate = next }
                             return nil
                         }
                     }
@@ -468,7 +473,9 @@ struct PulseSettingsPage: View {
     /// One step at a time: shows its error, then the state Pulse answers
     /// with (or reads it again).
     /// The step gets the client of the dashboard shown when it was asked
-    /// for, so a switch meanwhile never sends it to another host.
+    /// for: its requests fail rather than go out after a switch, and the
+    /// step writes the page only while that dashboard is still shown
+    /// (`isShown`).
     private func run(_ step: @escaping @MainActor (PulseClient) async throws -> PulseState?) {
         guard !working else { return }
         working = true
@@ -478,6 +485,7 @@ struct PulseSettingsPage: View {
         let client = self.client
         Task {
             defer { working = false }
+            guard appState.activeDashboardID == dashboard else { return }
             do {
                 let next = try await step(client)
                 // An answer from the dashboard this page showed before a switch isn't this one's.
@@ -497,6 +505,11 @@ struct PulseSettingsPage: View {
         }
     }
 
+    /// Whether the client's dashboard is the one this page shows now.
+    private func isShown(_ client: PulseClient) -> Bool {
+        client.dashboardID == appState.activeDashboardID
+    }
+
     /// A settings change, shown at once and then as Pulse has it.
     private func change(_ changes: [String: Any], optimistic: ((inout PulseState) -> Void)? = nil) {
         guard !working else { return }
@@ -510,7 +523,7 @@ struct PulseSettingsPage: View {
     private func backfillStep(_ action: PulseBackfillAction, days: Int? = nil) {
         run { client in
             let next = try await client.backfill(action, days: days)
-            estimate = nil
+            if isShown(client) { estimate = nil }
             return next
         }
     }

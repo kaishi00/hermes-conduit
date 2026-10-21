@@ -19,10 +19,14 @@ extension AppState {
         appInstallSource != .appStore && notifierPlugin.reports(PulseClient.capability)
     }
 
-    /// Pulse's routes over the dashboard bridge in use.
+    /// Pulse's routes on the dashboard in use now. Each request checks it is
+    /// still that dashboard before it goes out, so one made after a switch
+    /// fails instead of reaching another host.
     var pulseClient: PulseClient {
-        PulseClient { [weak self] path, method, body in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let dashboard = activeDashboardID
+        return PulseClient(dashboardID: dashboard) { [weak self] path, method, body in
+            guard let self, self.activeDashboardID == dashboard,
+                  let bridge = self.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body)
         }
     }
