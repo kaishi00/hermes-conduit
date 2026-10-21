@@ -329,6 +329,11 @@ struct ConduitApp: App {
                     return
                 }
                 let outcome = await appState.openNotificationTargetOutcome(target)
+                // Cancelled: a newer tap, a reconnect or a retry started
+                // this route over, and that run decides what happens. An
+                // identical newer tap shares this target, so clearing it
+                // here would drop that run's route.
+                guard !Task.isCancelled else { return }
                 switch outcome {
                 case .opened:
                     // A call from Hermes (#449) opens voice in its chat,
@@ -340,9 +345,6 @@ struct ConduitApp: App {
                     }
                     notifications.clearPendingTarget(target)
                 case .retry, .unverified:
-                    // Cancelled: a newer tap, a reconnect or a retry started
-                    // this route over, and that run decides what happens.
-                    guard !Task.isCancelled else { return }
                     if !notifications.handleFailedNotificationRoute(target) {
                         // The window ran out: the last failure says why, if
                         // it has something to say.
