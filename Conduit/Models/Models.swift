@@ -1362,7 +1362,7 @@ struct ProfileModelDefaults: Equatable {
     /// way, from the catalog row's capabilities).
     var mainModelOffersUltrafast: Bool {
         let (rowName, model) = selection
-        return providers.first { $0.name == rowName }?.offersUltrafast(model) ?? false
+        return providers.first { $0.matches(rowName) }?.offersUltrafast(model) ?? false
     }
 
     private func uniqueRow(listing model: String) -> ProviderInfo? {

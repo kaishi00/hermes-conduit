@@ -603,6 +603,7 @@ struct ModelPickerView: View {
                 // the three speeds Desktop's picker has.
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Fast mode")
+                        .accessibilityHidden(true)
                     Picker("Fast mode", selection: $speed) {
                         ForEach(ModelSpeed.allCases) { option in
                             Text(option.title).tag(option)
@@ -849,7 +850,7 @@ struct ModelPickerView: View {
     /// session's own model keeps what Hermes reports.
     private func dropUnofferedUltrafast() {
         guard ultrafastOffered == false, speed == .ultrafast,
-              selectedModel != seededModel else { return }
+              ProviderInfo.normalized(selectedModel) != ProviderInfo.normalized(seededModel) else { return }
         speed = .fast
     }
 
@@ -1002,6 +1003,7 @@ struct ModelPickerView: View {
             appState.runtime.model = model
             appState.runtime.provider = selection.provider
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
+            seededModel = selection.model
         }
         if progress.yoloApplied {
             initialYoloEnabled = draft.yolo
