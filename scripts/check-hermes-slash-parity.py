@@ -91,15 +91,19 @@ def parse_native_routes(text: str) -> set[str]:
     return names
 
 
-def parse_swift_enum_raw_values(text: str, enum: str) -> set[str]:
-    match = re.search(rf"enum {re.escape(enum)}: String[^{{]*\{{(.*?)\n\n", text, re.DOTALL)
+def parse_swift_enum_raw_values(text: str, enum_name: str) -> set[str]:
+    """The raw values of a `String` enum's leading `case` lines (blank and
+    comment lines between them allowed)."""
+    match = re.search(rf"enum {re.escape(enum_name)}: String[^{{]*\{{\n", text)
     if not match:
-        raise ParseError(f"enum {enum} not found")
+        raise ParseError(f"enum {enum_name} not found")
     values: set[str] = set()
-    for line in match.group(1).splitlines():
+    for line in text[match.end():].splitlines():
         line = line.strip()
-        if not line.startswith("case "):
+        if not line or line.startswith("//"):
             continue
+        if not line.startswith("case "):
+            break
         for item in line[len("case "):].split(","):
             item = item.strip()
             raw = re.search(r'=\s*"([^"]*)"', item)
@@ -125,9 +129,9 @@ def find_drift(
     verdict_of = {name: verdict for names, verdict in parity.values() for name in names}
 
     for canonical, (names, verdict) in sorted(parity.items()):
-        if verdict != "refused" or names & native:
+        if verdict != "refused":
             continue
-        missing = sorted(names - hidden)
+        missing = sorted(names - hidden - native)
         if missing:
             problems.append(
                 f"Hermes refuses `/{canonical}` for Conduit chats, and Conduit neither runs nor hides "

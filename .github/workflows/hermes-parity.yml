@@ -46,6 +46,8 @@ jobs:
           status=0
           python3 scripts/check-hermes-slash-parity.py --hermes-root hermes-agent --report parity-report.md || status=$?
           if [ "$status" -eq 1 ]; then
+            printf '\nChecked against Hermes main %s on %s.\n' \
+              "$(git -C hermes-agent rev-parse --short HEAD)" "$(date -u +%Y-%m-%d)" >> parity-report.md
             echo "drift=true" >> "$GITHUB_OUTPUT"
           elif [ "$status" -ne 0 ]; then
             exit "$status"

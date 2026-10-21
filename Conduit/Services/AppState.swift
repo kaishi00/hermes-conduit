@@ -24416,62 +24416,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    private static func normalizeSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
-        let obj = payload.objectValue ?? [:]
-        var commands: [SlashCommand] = []
-
-        // Categories path: [{ name, pairs: [[name, desc], ...] }]
-        if let categories = obj["categories"]?.arrayValue, !categories.isEmpty {
-            for cat in categories {
-                guard let catObj = cat.objectValue else { continue }
-                let catName = catObj["name"]?.stringValue
-                if let pairs = catObj["pairs"]?.arrayValue {
-                    for pair in pairs {
-                        if let cmd = pairFromTuple(pair, category: catName) {
-                            commands.append(cmd)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Top-level pairs fallback
-        if commands.isEmpty, let pairs = obj["pairs"]?.arrayValue {
-            for pair in pairs {
-                if let cmd = pairFromTuple(pair, category: nil) {
-                    commands.append(cmd)
-                }
-            }
-        }
-
-        // Deduplicate by name, keeping first occurrence
-        var seen = Set<String>()
-        return commands.filter { cmd in
-            if seen.contains(cmd.name) { return false }
-            seen.insert(cmd.name)
-            return true
-        }
-    }
-
-    /// Parses a [name, description] tuple from the catalog.
-    private static func pairFromTuple(_ pair: AnyCodable, category: String?) -> SlashCommand? {
-        if let arr = pair.arrayValue, arr.count >= 1 {
-            let name = arr[0].stringValue ?? ""
-            let desc = arr.count > 1 ? (arr[1].stringValue ?? "") : ""
-            guard !name.isEmpty else { return nil }
-            return SlashCommand(name: name, description: desc, category: category)
-        }
-        // Some gateways return objects instead of tuples
-        if let pairObj = pair.objectValue {
-            let name = pairObj["name"]?.stringValue ?? pairObj["command"]?.stringValue ?? ""
-            let desc = pairObj["description"]?.stringValue ?? pairObj["desc"]?.stringValue ?? ""
-            let aliases = pairObj["aliases"]?.arrayValue?.compactMap { $0.stringValue } ?? []
-            guard !name.isEmpty else { return nil }
-            return SlashCommand(name: name, aliases: aliases, description: desc, category: category)
-        }
-        return nil
-    }
-
     func executeSlashCommand(
         _ text: String,
         context: ComposerSubmissionContext? = nil
@@ -24761,6 +24705,9 @@ final class AppState: ObservableObject {
             // falling back — skill commands answer slash.exec with "skill
             // command: use command.dispatch for /<name>" (#244).
             guard let parsed = Self.parseSlashCommand("/" + command) else { throw error }
+            // A command Hermes refuses for Conduit chats is no skill or
+            // plugin either: its refusal is the answer.
+            if Self.slashCommandsWithoutConduitRoute.contains(parsed.name) { throw error }
             do {
                 if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
                     return try await dispatchCommand(
