@@ -1888,6 +1888,10 @@ final class PushNotificationService: ObservableObject {
         }
         let backoff = min(self.retryDelay * (1 << min(pendingRetryCount, 3)), maxRetryDelay)
         let retryDelay = min(backoff, failedAt.duration(to: deadline))
+        // When the retry is due, not when its task wakes: a sleep that ran
+        // out while the app was suspended wakes late, and that is a late
+        // open like any other.
+        let dueAt = failedAt.advanced(by: retryDelay)
         pendingRetryCount += 1
         navigationRetryTask?.cancel()
         navigationRetryTask = Task { [weak self] in
@@ -1895,7 +1899,7 @@ final class PushNotificationService: ObservableObject {
             guard !Task.isCancelled else { return }
             guard let self else { return }
             self.navigationRetryTask = nil
-            self.pendingRouteRetryFiredAt = self.now()
+            self.pendingRouteRetryFiredAt = dueAt
             self.navigationAttempt += 1
         }
         return true
