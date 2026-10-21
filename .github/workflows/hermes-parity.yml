@@ -1,0 +1,86 @@
+name: Hermes slash-command parity
+
+# Weekly: compares Conduit's slash-command lists and argument words with
+# Hermes main (scripts/check-hermes-slash-parity.py) and files what drifted
+# as one issue. Never part of the merge gate.
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+# The check job reads a Hermes checkout, so it only reads; the issue job,
+# which checks out and runs nothing, writes the issue.
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-parity
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      drift: ${{ steps.compare.outputs.drift }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: NousResearch/hermes-agent
+          path: hermes-agent
+          persist-credentials: false
+          sparse-checkout: |
+            website/docs/developer-guide/gateway-command-parity.md
+            hermes_cli/commands.py
+          sparse-checkout-cone-mode: false
+
+      - name: Compare
+        id: compare
+        run: |
+          set -uo pipefail
+          python3 scripts/check-hermes-slash-parity.py --hermes-root hermes-agent --report parity-report.md
+          status=$?
+          if [ "$status" -eq 1 ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+
+      - name: Keep the report
+        if: steps.compare.outputs.drift == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-report
+          path: parity-report.md
+
+  issue:
+    needs: check
+    if: needs.check.outputs.drift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: parity-report
+
+      - name: File or update the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="Hermes slash-command drift"
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file parity-report.md
+          else
+            gh issue create --title "$title" --body-file parity-report.md
+          fi
