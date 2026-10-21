@@ -122,6 +122,9 @@ final class PulseSettingsTests: XCTestCase {
         let refusal = try XCTUnwrap(PulseRefusal(error: DashboardTicketBridgeError.http(status: 409, detail: detail)))
         XCTAssertEqual(refusal.code, "reading")
         XCTAssertEqual(refusal.message, PulseRefusal(code: "reading").message)
+        // Elsewhere a coded refusal reads as the plain failure, never as JSON.
+        XCTAssertEqual(DashboardTicketBridgeError.describe(status: 409, detail: detail),
+                       AppLocalization.string("Dashboard request failed (409)."))
 
         XCTAssertEqual(PulseRefusal(error: DashboardTicketBridgeError.http(
             status: 400, detail: #"{"code":"invalid","field":"report_times"}"#))?.code, "invalid")
@@ -141,7 +144,7 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(Set(codes.map { PulseRefusal(code: $0).message }).count, codes.count)
     }
 
-    func testReportTimes() {
+    func testReportTimes() throws {
         XCTAssertEqual(PulseReportTime.minutes("08:30"), 510)
         XCTAssertNil(PulseReportTime.minutes("8:30"))
         XCTAssertNil(PulseReportTime.minutes("24:00"))
@@ -151,7 +154,7 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(PulseReportTime.next(after: ["23:30"]), "00:30")
 
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
         let date = PulseReportTime.date("07:45", calendar: calendar)
         XCTAssertEqual(PulseReportTime.text(from: date, calendar: calendar), "07:45")
     }

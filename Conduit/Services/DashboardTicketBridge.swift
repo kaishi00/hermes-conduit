@@ -415,6 +415,13 @@ enum DashboardTicketBridgeError: LocalizedError {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Whether a detail is one structuredDetail kept: a JSON object with a "code".
+    static func isStructuredDetail(_ text: String) -> Bool {
+        guard text.hasPrefix("{"), let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return object["code"] is String
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -432,6 +439,11 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// browser fetch errors become what happened and what to do.
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A coded refusal (structuredDetail) is for the screen that sent the
+        // request to word; anywhere else it reads as the plain failure.
+        if isStructuredDetail(trimmed) {
+            return AppLocalization.string("Dashboard request failed (\(String(status))).")
+        }
         let isMeaningful = !trimmed.isEmpty
             && !genericDetails.contains(trimmed.lowercased())
             && trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).")

@@ -68,11 +68,17 @@ struct PulseSettingsPage: View {
             }
         }
         .navigationTitle(Text(AppLocalization.string("Pulse (beta)")))
+        .onDisappear {
+            timesSave?.cancel()
+            timesSave = nil
+        }
         // Read on every visit, also back from What Pulse remembers, whose
         // counts may have changed.
         .task(id: appState.activeDashboardID) { await load() }
         .onChange(of: appState.activeDashboardID) { _, _ in
             // Another dashboard's host: nothing of this one's carries over.
+            timesSave?.cancel()
+            timesSave = nil
             state = nil
             loadError = nil
             seededDays = false
@@ -238,6 +244,7 @@ struct PulseSettingsPage: View {
                     displayedComponents: .hourAndMinute
                 )
                 .labelsHidden()
+                .accessibilityLabel(Text(AppLocalization.string("Report time")))
                 Spacer(minLength: 8)
                 Button {
                     var next = times
@@ -465,20 +472,25 @@ struct PulseSettingsPage: View {
         working = true
         errorMessage = nil
         notice = nil
+        let dashboard = appState.activeDashboardID
         Task {
+            defer { working = false }
             do {
-                if let next = try await step() {
+                let next = try await step()
+                // An answer from the dashboard this page showed before a switch isn't this one's.
+                guard appState.activeDashboardID == dashboard else { return }
+                if let next {
                     apply(next)
                 } else {
                     await reload()
                 }
                 Haptics.success()
             } catch {
+                guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 Haptics.error()
                 await reload()
             }
-            working = false
         }
     }
 
@@ -505,15 +517,24 @@ struct PulseSettingsPage: View {
     private func editTimes(_ times: [String]) {
         draftTimes = times
         timesSave?.cancel()
+        let dashboard = appState.activeDashboardID
         timesSave = Task {
             try? await Task.sleep(for: .milliseconds(800))
-            guard !Task.isCancelled else { return }
+            // One request at a time: wait for a step already on its way.
+            while working, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            guard !Task.isCancelled, appState.activeDashboardID == dashboard else { return }
+            working = true
+            defer { working = false }
             errorMessage = nil
             do {
                 let next = try await client.update(["report_times": PulseReportTime.normalized(times)])
+                guard appState.activeDashboardID == dashboard else { return }
                 if draftTimes == times { draftTimes = nil }
                 apply(next)
             } catch {
+                guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 if draftTimes == times { draftTimes = nil }
                 await reload()
