@@ -300,6 +300,106 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(sync.observe(idle, snapshotAt: at(23), local: other, now: at(23), chatVisible: true), .none)
     }
 
+    // MARK: A turn the registry never saw (#1026)
+
+    /// A message sent from the TUI on the gateway's computer runs in
+    /// another process: this gateway's registry row stays idle with its old
+    /// count, and only the stored count says the chat moved.
+    func testAStoredCountThatMovedWhileIdleReadsTheNewRows() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        XCTAssertEqual(sync.observeCatalog(messageCount: 211, local: local, now: at(10), chatVisible: true), .none,
+                       "The first read sets the baseline")
+        XCTAssertEqual(sync.observeCatalog(messageCount: 211, local: local, now: at(20), chatVisible: true), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 213, local: local, now: at(30), chatVisible: true), .readNewRows)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 213, local: local, now: at(45), chatVisible: true), .none)
+    }
+
+    func testAStoredCountWithoutAValueReadsNothing() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        XCTAssertEqual(sync.observeCatalog(messageCount: nil, local: local, now: at(10), chatVisible: true), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: nil, local: local, now: at(30), chatVisible: true), .none)
+    }
+
+    func testThisDevicesOwnTurnMovesTheStoredCountWithoutARead() {
+        var sync = OpenChatSync()
+        _ = sync.checkDue(turn(running: false), now: at(0))
+        XCTAssertEqual(sync.observeCatalog(messageCount: 4, local: turn(running: false), now: at(10), chatVisible: true), .none)
+        sync.noteSentHere()
+        XCTAssertEqual(sync.observeCatalog(messageCount: 5, local: turn(running: true), now: at(12), chatVisible: true), .none)
+        // The turn ended here; its last rows land just after.
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: turn(running: false), now: at(20), chatVisible: true), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: turn(running: false), now: at(30), chatVisible: true), .none)
+        // A command sent here that ran no turn.
+        sync.noteSentHere()
+        XCTAssertEqual(sync.observeCatalog(messageCount: 7, local: turn(running: false), now: at(40), chatVisible: true), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 9, local: turn(running: false), now: at(60), chatVisible: true), .readNewRows,
+                       "Then another device's turn reads")
+    }
+
+    func testAStoredCountThatMovedBehindTheListWaitsForTheChat() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        _ = sync.observeCatalog(messageCount: 4, local: local, now: at(10), chatVisible: true)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(20), chatVisible: false), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(30), chatVisible: true), .readNewRows)
+    }
+
+    func testStoredCountReadsKeepTheirTenSecondSpacing() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        _ = sync.observeCatalog(messageCount: 4, local: local, now: at(10), chatVisible: true)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(20), chatVisible: true), .readNewRows)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 8, local: local, now: at(25), chatVisible: true), .none)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 8, local: local, now: at(30), chatVisible: true), .readNewRows)
+    }
+
+    /// A gateway that announces another client's message (`user.message`):
+    /// the turn it starts is read once it is over, as one the registry saw.
+    func testAUserMessageFromElsewhereReadsItsTurnOnceOver() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        _ = sync.observe(idle, snapshotAt: at(0), local: local, now: at(0), chatVisible: true)
+        sync.noteUserMessageElsewhere()
+        let working = OpenChatRegistryRow(isRunning: true, messageCount: 5, preview: "From the TUI")
+        XCTAssertEqual(sync.observe(working, snapshotAt: at(3), local: local, now: at(3), chatVisible: true), .none)
+        XCTAssertEqual(sync.observe(idle, snapshotAt: at(15), local: local, now: at(15), chatVisible: true), .readNewRows,
+                       "Read even with the count unchanged")
+    }
+
+    func testACalledOffStoredCountReadAsksAgain() {
+        var sync = OpenChatSync()
+        let local = turn(running: false)
+        _ = sync.checkDue(local, now: at(0))
+        _ = sync.observeCatalog(messageCount: 4, local: local, now: at(10), chatVisible: true)
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(20), chatVisible: true), .readNewRows)
+        sync.readCalledOff()
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(25), chatVisible: true), .readNewRows,
+                       "Same count, still unread")
+        XCTAssertEqual(sync.observeCatalog(messageCount: 6, local: local, now: at(40), chatVisible: true), .none)
+    }
+
+    func testCatalogChangesAreReadFiveSecondsApartAndNotDuringATurnHere() {
+        var signal = CatalogChangeSignal()
+        XCTAssertNil(signal.delayUntilDue(now: at(0)))
+        XCTAssertFalse(signal.takeRead(now: at(0), turnRunningHere: false), "Nothing changed")
+        signal.noteChanged()
+        XCTAssertTrue(signal.takeRead(now: at(0), turnRunningHere: false))
+        XCTAssertFalse(signal.isPending)
+        signal.noteChanged()
+        XCTAssertEqual(signal.delayUntilDue(now: at(2)), 3)
+        XCTAssertFalse(signal.takeRead(now: at(2), turnRunningHere: false))
+        XCTAssertFalse(signal.takeRead(now: at(6), turnRunningHere: true), "A turn here moves it the whole time")
+        XCTAssertTrue(signal.isPending, "Held for when the turn ends")
+        XCTAssertTrue(signal.takeRead(now: at(40), turnRunningHere: false))
+    }
+
     // MARK: - The Chats list reading the catalog
 
     private func row(_ id: String, profile: String, minutesAgo: Double = 60) -> SessionSummary {
@@ -352,6 +452,30 @@ final class ChatSyncTests: XCTestCase {
     private func poll(_ appState: AppState) async {
         await appState.chatListPollTick()
         await appState.leaveCatalogRefreshTask?.value
+    }
+
+    /// Hermes says a stored session moved (`sessions.changed`): the list
+    /// reads the catalog without a pull, at most every 5 s; one that came
+    /// sooner is read at the next poll.
+    func testSessionsChangedReadsTheCatalog() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        let profile = appState.activeProfile
+        box.catalog = [row("a", profile: profile)]
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 1)
+        XCTAssertEqual(appState.sessions.map(\.id), ["a"])
+
+        box.catalog = [row("b", profile: profile, minutesAgo: 1), row("a", profile: profile)]
+        box.now += 2
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 1, "Within 5 s of the last")
+        box.now += 4
+        await poll(appState)
+        XCTAssertEqual(box.loads, 2)
+        XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
     }
 
     func testAChatStartedOnAnotherDeviceIsListedWithoutAPull() async {

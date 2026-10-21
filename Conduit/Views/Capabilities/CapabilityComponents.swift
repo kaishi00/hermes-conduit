@@ -114,7 +114,7 @@ struct CapabilityRowLabel: View {
             if chevron {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
         }

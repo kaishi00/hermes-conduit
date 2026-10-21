@@ -324,6 +324,8 @@ enum VoiceCallDecisionOutcome: Equatable {
     case notAYes
     /// Hermes didn't take it (no connection, or it refused).
     case failed
+    /// More than one job of the call waits on an approval.
+    case severalWaiting
 
     var status: String {
         switch self {
@@ -335,6 +337,7 @@ enum VoiceCallDecisionOutcome: Equatable {
         case .userHasNotSpoken: return "not_answered"
         case .notAYes: return "not_approved"
         case .failed: return "failed"
+        case .severalWaiting: return "several_waiting"
         }
     }
 
@@ -350,6 +353,7 @@ enum VoiceCallDecisionOutcome: Equatable {
         case .userHasNotSpoken: return "Not answered: the user hasn't said anything yet. Ask them, and answer only with their own words."
         case .notAYes: return "Not approved: the user's last words weren't a clear yes. Ask them again for a plain yes or no, or tell them they can approve it in the chat."
         case .failed: return "Hermes didn't take the answer. They can answer in the chat." + tell
+        case .severalWaiting: return "Not answered: more than one job is waiting on the user's OK, so a yes can't say which. They can answer each in its chat in Conduit." + tell
         }
     }
 }
@@ -513,7 +517,10 @@ enum VoiceCallbackPhrases {
             || folded.range(of: #"\bgive me a (call|ring) (when|once|after|as soon as)\b"#, options: .regularExpression) != nil else {
             return false
         }
-        return folded.range(of: #"\b(don't|do not|never|no need to|stop)( \w+)? (call|ring|phone|give)\b"#, options: .regularExpression) == nil
+        // Only hedges may sit between the negator and the verb ("don't
+        // need to call me", "don't even call me"): any word at all would
+        // read "don't forget to call me" as a refusal.
+        return folded.range(of: #"\b(don't|do not|never|no need to|needn't|haven't|hasn't|shouldn't|mustn't|stop)( (need|needs|want|have|has|got|to|even|bother|bothering|really|ever|you|dare))* (call|ring|phone|give)\b"#, options: .regularExpression) == nil
     }
 }
 

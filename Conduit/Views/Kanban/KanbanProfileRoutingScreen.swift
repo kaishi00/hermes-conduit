@@ -59,7 +59,7 @@ struct KanbanProfileRoutingScreen: View {
                 if profile.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("undescribed")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 }
             }
             let trimmed = profile.description.trimmingCharacters(in: .whitespacesAndNewlines)

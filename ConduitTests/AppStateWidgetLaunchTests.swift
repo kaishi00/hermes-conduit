@@ -266,6 +266,31 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertEqual(appState.turnState, .idle, "the chat still open must not stay synchronizing")
     }
 
+    /// #916: a new chat runs on the profile's default model, so it must not
+    /// show the model the chat open before it was switched to.
+    func testANewChatDoesNotShowThePreviousChatsModel() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-model.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000b6")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.activeSessionId = "existing-session"
+        appState.runtime.model = "minimax-m3"
+        appState.runtime.provider = "minimax"
+        appState.widgetSessionCreatorOverride = { _, _ in ("new-runtime", "new-stored", "default") }
+
+        await appState.createNewSession()
+
+        XCTAssertEqual(appState.activeSessionId, "new-runtime")
+        XCTAssertEqual(appState.runtime.model, "", "the old chat's model is not this chat's")
+        XCTAssertEqual(appState.runtime.provider, "")
+        XCTAssertNotEqual(appState.sessions.first?.model, "minimax-m3")
+    }
+
     func testWidgetResumeDoesNotAdoptResponseAfterLeaseRevocation() async throws {
         let suite = "AppStateWidgetLaunchTests.resume-suspension.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

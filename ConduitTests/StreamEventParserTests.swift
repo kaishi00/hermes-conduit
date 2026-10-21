@@ -969,6 +969,42 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(event)
     }
 
+    // MARK: - another client's changes (#1026)
+
+    func testUserMessageFromAnotherClient() {
+        guard case .userMessage(let sessionId, let rowId, let text, let origin) = parse(#"""
+        {"type": "user.message", "session_id": "s1", "payload": {"text": "Sent from the TUI", "row_id": 9010, "origin": "Windows", "busy": false}}
+        """#) else {
+            return XCTFail("Expected userMessage")
+        }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(rowId, 9010)
+        XCTAssertEqual(text, "Sent from the TUI")
+        XCTAssertEqual(origin, "Windows")
+
+        guard case .userMessage(_, let noRow, _, let noOrigin) = parse(#"""
+        {"type": "user.message", "session_id": "s1", "payload": {"text": "Hi", "row_id": null}}
+        """#) else {
+            return XCTFail("A row id isn't required")
+        }
+        XCTAssertNil(noRow)
+        XCTAssertNil(noOrigin)
+    }
+
+    func testUserMessageWithoutTextOrSessionIsDropped() {
+        XCTAssertNil(parse(#"{"type": "user.message", "session_id": "s1", "payload": {"text": "  "}}"#))
+        XCTAssertNil(parse(#"{"type": "user.message", "payload": {"text": "Hi"}}"#))
+    }
+
+    func testSessionsChanged() {
+        guard case .sessionsChanged = parse(#"{"type": "sessions.changed", "session_id": "", "payload": {}}"#) else {
+            return XCTFail("Expected sessionsChanged")
+        }
+        guard case .sessionsChanged = parse(#"{"type": "sessions.changed"}"#) else {
+            return XCTFail("Session-less and payload-less")
+        }
+    }
+
     // MARK: - unknown events
 
     func testUnknownEventBecomesUnparsed() {

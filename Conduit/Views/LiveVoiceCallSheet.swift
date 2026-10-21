@@ -55,6 +55,14 @@ struct LiveVoiceCallSheet: View {
     var onInterrupt: (() -> Void)?
     let onEnd: () -> Void
     let onRetry: () -> Void
+    /// The voice mode menu under the title, and Switch voice on a failed
+    /// call; nil shows neither.
+    var modeSwitch: VoiceModeSwitch? = nil
+    /// The mode whose provider the user hasn't allowed yet (#827): the
+    /// screen asks in place of the call until they answer.
+    var consent: LiveVoiceModeName? = nil
+    /// Allow on that question; Not Now hangs up, as End does.
+    var onAllowConsent: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -75,14 +83,14 @@ struct LiveVoiceCallSheet: View {
     /// What the sheet over the call shows.
     private enum Selection: Identifiable {
         case job(UUID)
-        case screen(VoiceScreenCard)
+        case screen(VoiceScreenCard, identity: UUID)
 
         /// A live card keeps its sheet open as it's brought up to date.
         var id: String {
             switch self {
             case .job(let id): return "job-\(id)"
-            case .screen(let card):
-                return card.liveNames.min().map { "live-\($0)" } ?? "screen-\(card.id)"
+            case .screen(_, let identity):
+                return "screen-\(identity)"
             }
         }
     }
@@ -96,7 +104,10 @@ struct LiveVoiceCallSheet: View {
             ConduitBackdrop()
             VStack(spacing: 0) {
                 header
-                if showsTranscript {
+                if let consent {
+                    LiveVoiceConsentPanel(mode: consent, onAllow: onAllowConsent, onNotNow: onEnd)
+                        .frame(maxHeight: .infinity)
+                } else if showsTranscript {
                     transcriptList
                 } else if usesV2 {
                     if dynamicTypeSize >= .xxLarge {
@@ -113,7 +124,9 @@ struct LiveVoiceCallSheet: View {
                 } else {
                     stage
                 }
-                controls
+                if consent == nil {
+                    controls
+                }
             }
             // A wide window keeps the call to a readable column.
             .readableContentWidth(ReadableWidth.call)
@@ -134,7 +147,7 @@ struct LiveVoiceCallSheet: View {
                         pendingJobChat = chatID
                         selection = nil
                     }
-                case .screen(let card):
+                case .screen(let card, _):
                     LiveVoiceScreenCardSheet(card: card)
                 }
             }
@@ -143,11 +156,6 @@ struct LiveVoiceCallSheet: View {
         }
         .onReceive(jobs.$screenCards) { cards in
             showNewScreenCard(cards)
-        }
-        // VoiceOver hears the call change state (listening, speaking,
-        // muted), not every status word in between.
-        .onChange(of: phase) { _, _ in
-            AccessibilityNotification.Announcement(statusText).post()
         }
     }
 
@@ -164,7 +172,7 @@ struct LiveVoiceCallSheet: View {
 
     private func selectScreen(_ card: VoiceScreenCard) {
         selectionIsAutomatic = false
-        selection = .screen(card)
+        selection = .screen(card, identity: card.id)
     }
 
     /// Opens what the voice model just put on screen; the model tells the
@@ -172,10 +180,10 @@ struct LiveVoiceCallSheet: View {
     /// isn't replaced: the card waits in the strip and the transcript.
     private func showNewScreenCard(_ cards: [VoiceScreenCard]) {
         // An open live card follows its updates, whoever opened it.
-        if case .screen(let open) = selection, let card = cards.last, card.id != open.id,
+        if case .screen(let open, let identity) = selection, let card = cards.last, card.id != open.id,
            card.callAnchor.callID == jobs.liveCallID, open.isUpdated(by: card) {
             autoOpenedCardIDs.insert(card.id)
-            selection = .screen(card)
+            selection = .screen(card, identity: identity)
             return
         }
         guard let card = cards.last,
@@ -186,7 +194,7 @@ struct LiveVoiceCallSheet: View {
               Date().timeIntervalSince(card.shownAt) < Self.screenCardFreshness else { return }
         autoOpenedCardIDs.insert(card.id)
         selectionIsAutomatic = true
-        selection = .screen(card)
+        selection = .screen(card, identity: card.id)
     }
 
     /// Only a running call minimises; dismissing any other closes it.
@@ -220,31 +228,38 @@ struct LiveVoiceCallSheet: View {
             // A call that isn't running closes instead of minimising.
             .accessibilityLabel(isMinimisable ? Text("Minimise call") : Text("Close"))
 
-            VStack(spacing: 2) {
-                if usesV2 {
-                    V2CallHeaderTitle(
-                        jobs: jobs,
-                        engine: title,
-                        profile: appState.profileDisplayName(appState.activeProfile),
-                        onOpenChat: openAttachedChat
-                    )
-                } else {
-                    Text(verbatim: title)
-                        .font(.headline)
-                        .lineLimit(1)
+            VStack(spacing: 6) {
+                VStack(spacing: 2) {
+                    if usesV2 {
+                        V2CallHeaderTitle(
+                            jobs: jobs,
+                            // The mode menu under the title names the engine.
+                            engine: modeSwitch == nil ? title : "",
+                            profile: appState.profileDisplayName(appState.activeProfile),
+                            onOpenChat: openAttachedChat
+                        )
+                    } else {
+                        Text(verbatim: title)
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
+                    if let billingBadge {
+                        LiveVoiceBillingBadge(billing: billingBadge)
+                            // The chat link's tap area reaches under the badge.
+                            .allowsHitTesting(false)
+                    }
+                    if !usesV2 {
+                        LiveVoiceCallThreadLabel(jobs: jobs, onOpenChat: openAttachedChat)
+                    }
                 }
-                if let billingBadge {
-                    LiveVoiceBillingBadge(billing: billingBadge)
-                        // The chat link's tap area reaches under the badge.
-                        .allowsHitTesting(false)
-                }
-                if !usesV2 {
-                    LiveVoiceCallThreadLabel(jobs: jobs, onOpenChat: openAttachedChat)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+                // Its own element: a header read as one would swallow it.
+                if let modeSwitch {
+                    VoiceModeCapsule(modeSwitch: modeSwitch)
                 }
             }
             .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
 
             if isMinimisable {
                 LiveVoiceAskFirstButton(jobs: jobs)
@@ -439,6 +454,14 @@ struct LiveVoiceCallSheet: View {
         HStack(alignment: .top, spacing: 0) {
             if phase == .failed {
                 LiveVoiceCallButton(symbol: "arrow.clockwise", title: AppLocalization.string("Try again"), action: onRetry)
+                // A mode that keeps refusing (a plan's limit, a provider's
+                // outage) needn't end the conversation (#964).
+                if let modeSwitch {
+                    VoiceModeMenu(modeSwitch: modeSwitch) {
+                        LiveVoiceCallButtonFace(symbol: "arrow.triangle.swap", title: AppLocalization.string("Switch voice"))
+                    }
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Switch voice")))
+                }
             } else {
                 LiveVoiceCallButton(
                     symbol: isMicrophoneMuted ? "mic.slash.fill" : "mic.fill",
@@ -670,35 +693,47 @@ struct LiveVoiceCallButton: View {
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            LiveVoiceCallButtonFace(symbol: symbol, title: title, style: style)
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityLabel(Text(verbatim: voiceOverLabel ?? title))
+        .accessibilityHint(Text(verbatim: voiceOverHint ?? ""))
+    }
+}
+
+/// A call button's round glyph and caption, for a button or a menu.
+struct LiveVoiceCallButtonFace: View {
+    let symbol: String
+    let title: String
+    var style: LiveVoiceCallButton.Style = .normal
+
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
     /// Capped so five buttons still fit across a phone at the largest
     /// text sizes; the glyph inside keeps scaling.
     private var diameter: CGFloat { min(scaledDiameter, 66) }
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                icon
-                Text(verbatim: title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.7)
-                    // A fifth of the width can't hold larger titles;
-                    // touch and hold shows the name large.
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+        VStack(spacing: 6) {
+            icon
+            Text(verbatim: title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.7)
+                // A fifth of the width can't hold larger titles;
+                // touch and hold shows the name large.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
         .accessibilityShowsLargeContentViewer {
             Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
         }
-        .opacity(isEnabled ? 1 : 0.4)
-        .accessibilityLabel(Text(verbatim: voiceOverLabel ?? title))
-        .accessibilityHint(Text(verbatim: voiceOverHint ?? ""))
     }
 
     @ViewBuilder

@@ -123,7 +123,7 @@ enum CronScheduleText {
 
     /// The days a day-of-week field names, Sunday as 0 (cron's 7 too), or
     /// nil when it uses something other than numbers, lists and ranges.
-    private static func weekdays(_ field: String) -> Set<Int>? {
+    static func weekdays(_ field: String) -> Set<Int>? {
         var days = Set<Int>()
         for item in field.split(separator: ",") {
             let bounds = item.split(separator: "-", omittingEmptySubsequences: false)

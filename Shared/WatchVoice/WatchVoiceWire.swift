@@ -175,6 +175,12 @@ enum WatchVoiceWire {
         var id: String
         var name: String
         var arguments: [String: String]
+        /// What the user last said in the call, and which of their turns
+        /// it was: a change to what they keep on the iPhone takes their
+        /// own yes, which the iPhone can't hear on a Watch call. Nil from
+        /// an older Watch app.
+        var userWords: String? = nil
+        var userTurn: Int? = nil
     }
 
     /// What the tool bridge asks the call to send Gemini, as on the iPhone.

@@ -1073,8 +1073,9 @@ struct KanbanView: View {
                     .foregroundStyle(.secondary)
                 if summary.isLocked {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
+                        .font(.caption2)
+                        .imageScale(.small)
+                        .foregroundStyle(.conduitTertiary)
                 }
             }
             .padding(.horizontal, 11)
@@ -1101,8 +1102,9 @@ struct KanbanView: View {
                     .foregroundStyle(.secondary)
                 if presentation.isBackendControlled {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
+                        .font(.caption2)
+                        .imageScale(.small)
+                        .foregroundStyle(.conduitTertiary)
                 }
                 Spacer(minLength: 0)
             }
@@ -1736,8 +1738,9 @@ struct KanbanView: View {
                     .foregroundStyle(.secondary)
                 if presentation.isBackendControlled {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
+                        .font(.caption2)
+                        .imageScale(.small)
+                        .foregroundStyle(.conduitTertiary)
                 }
             }
             .padding(.horizontal, 11)
@@ -1972,7 +1975,7 @@ struct KanbanView: View {
             if !searchText.isEmpty {
                 Button { searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(AppLocalization.string("Clear search"))
@@ -2015,7 +2018,7 @@ struct KanbanView: View {
                 .foregroundStyle(.secondary)
             Text(String(group.tasks.count))
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
             Spacer()
         }
         .padding(.horizontal, 4)
@@ -2270,7 +2273,7 @@ private struct KanbanCardView: View {
                 .font(.caption2.monospaced())
         }
         .font(.caption2)
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.conduitTertiary)
     }
 
     private func copy(text: String, notice: String) {

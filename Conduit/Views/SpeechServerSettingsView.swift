@@ -22,6 +22,8 @@ struct SpeechServerSettingsView: View {
     /// Why the last save failed, shown here rather than only at the top of
     /// the Voice screen.
     @State private var saveError: String?
+    /// The profile whose saved values the drafts were loaded from.
+    @State private var draftsProfile: String?
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
@@ -74,7 +76,7 @@ struct SpeechServerSettingsView: View {
                     Button("Save") { Task { await saveAll() } }
                         .disabled(isSaving || !hasChanges)
                     Button {
-                        Task { await runTest() }
+                        Task { await runTest(profile: draftsProfile) }
                     } label: {
                         if isTesting {
                             ProgressView()
@@ -125,6 +127,7 @@ struct SpeechServerSettingsView: View {
 
     /// A profile switch starts from that profile's saved values.
     private func load() async {
+        draftsProfile = service.profile
         status = nil
         urlDraft = ""
         keyDraft = ""
@@ -144,8 +147,9 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
-        let saved = await save(url, for: Self.urlKey)
-        await refreshStatus(submittedURL: saved ? url : nil)
+        let profile = draftsProfile
+        let saved = await save(url, for: Self.urlKey, profile: profile)
+        await refreshStatus(submittedURL: saved ? url : nil, profile: profile)
     }
 
     private func saveAll() async {
@@ -153,23 +157,34 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
+        // The drafts belong to this profile. A switch during a save loads the
+        // new profile's values; nothing after the switch may touch them, or
+        // clearing a key that happens to match would empty the new profile's
+        // draft. `draftsProfile` is view state, so it reads the profile now
+        // on screen, not the one this call's copy of the view captured.
+        let profile = draftsProfile
         let url = urlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         var submitted: String?
         if url != savedURL {
-            guard await save(url, for: Self.urlKey) else { return }
+            guard await save(url, for: Self.urlKey, profile: profile), draftsProfile == profile else { return }
             submitted = url
         }
         let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
-            guard await save(key, for: Self.apiKeyKey) else {
+            let saved = await save(key, for: Self.apiKeyKey, profile: profile)
+            guard draftsProfile == profile else { return }
+            guard saved else {
                 // The address may have landed; show what the host has now.
-                await refreshStatus(submittedURL: submitted)
+                await refreshStatus(submittedURL: submitted, profile: profile)
                 return
             }
-            keyDraft = ""
+            if keyDraft.trimmingCharacters(in: .whitespacesAndNewlines) == key {
+                keyDraft = ""
+            }
         }
-        await refreshStatus(submittedURL: submitted)
-        if status?.available == true { await runTest() }
+        await refreshStatus(submittedURL: submitted, profile: profile)
+        guard draftsProfile == profile else { return }
+        if status?.available == true { await runTest(profile: profile) }
     }
 
     private func removeKey() async {
@@ -177,21 +192,28 @@ struct SpeechServerSettingsView: View {
         defer { isSaving = false }
         testResult = nil
         saveError = nil
-        _ = await save("", for: Self.apiKeyKey)
-        await refreshStatus(submittedURL: nil)
+        let profile = draftsProfile
+        _ = await save("", for: Self.apiKeyKey, profile: profile)
+        await refreshStatus(submittedURL: nil, profile: profile)
     }
 
+    // Each helper below writes view state only while the drafts still
+    // belong to `profile`: after a switch, the old profile's error, status
+    // or test result must not show under the new one (where a stale "Remove
+    // key" would act on the new profile).
+
     /// Saves one value; on failure the service's reason is kept for this view.
-    private func save(_ value: String, for key: String) async -> Bool {
+    private func save(_ value: String, for key: String, profile: String?) async -> Bool {
         let saved = await service.save(value: value, for: key)
-        if !saved {
+        if !saved, draftsProfile == profile {
             saveError = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
         }
         return saved
     }
 
-    private func refreshStatus(submittedURL: String?) async {
+    private func refreshStatus(submittedURL: String?, profile: String?) async {
         let loaded = await service.speechServerStatus()
+        guard draftsProfile == profile else { return }
         status = loaded
         // Show what the host will dial (http becomes ws, a bare host gets
         // the realtime path) once it accepted the address, unless the user
@@ -202,9 +224,11 @@ struct SpeechServerSettingsView: View {
         }
     }
 
-    private func runTest() async {
+    private func runTest(profile: String?) async {
         isTesting = true
         defer { isTesting = false }
-        testResult = await service.testSpeechServer()
+        let result = await service.testSpeechServer()
+        guard draftsProfile == profile else { return }
+        testResult = result
     }
 }

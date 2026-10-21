@@ -87,6 +87,55 @@ extension MessageNormalizerTests {
         XCTAssertEqual(messages[0].attachments?.last?.inlineImage?.rowId, 14)
     }
 
+    /// #887: Hermes before d0f5ef7041 saved the description its vision
+    /// wrote for a picture as the user's own words. The bubble shows the
+    /// typed text and the picture, which carries the description.
+    func testOldVisionDescriptionBecomesThePicturesDescription() throws {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(21),
+                "role": .string("user"),
+                "content": .string("[The user attached an image:\nA receipt from a café, total 12.40 [EUR].]\n[You can examine it with vision_analyze using image_url: /opt/data/images/upload_7c.jpg]\n\nHow much did I pay?")
+            ])
+        ], imageScope: imageScope)
+
+        XCTAssertEqual(messages[0].content, "How much did I pay?")
+        let attachment = try XCTUnwrap(messages[0].attachments?.first)
+        XCTAssertEqual(messages[0].attachments?.count, 1)
+        XCTAssertEqual(attachment.uri, "/opt/data/images/upload_7c.jpg")
+        XCTAssertEqual(attachment.kind, .image)
+        XCTAssertEqual(attachment.imageDescription, "A receipt from a café, total 12.40 [EUR].")
+    }
+
+    func testOldVisionDescriptionsOfEveryWordingLeaveTheBubble() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(22),
+                "role": .string("user"),
+                "content": .string([
+                    "[The user attached an image but analysis failed.]\n[You can examine it with vision_analyze using image_url: /opt/data/images/a.png]",
+                    "[The user sent an image~ Here's what I can see:\nA cat on a sofa.]\n[If you need a closer look, use vision_analyze with image_url: /root/.hermes/cache/images/b.jpg ~]",
+                    "[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: /root/.hermes/cache/images/c.jpg]",
+                    "Which is best?",
+                ].joined(separator: "\n\n"))
+            ])
+        ], imageScope: imageScope)
+
+        XCTAssertEqual(messages[0].content, "Which is best?")
+        XCTAssertEqual(messages[0].attachments?.map(\.uri), [
+            "/opt/data/images/a.png",
+            "/root/.hermes/cache/images/b.jpg",
+            "/root/.hermes/cache/images/c.jpg",
+        ])
+        XCTAssertEqual(messages[0].attachments?.map(\.imageDescription), [nil, "A cat on a sofa.", nil])
+    }
+
+    /// Text that only mentions the wording is the user's own.
+    func testTypedTextAboutVisionStays() {
+        let text = "Why did you write [The user attached an image: a cat] earlier?"
+        XCTAssertEqual(MessageNormalizer.visibleUserText(text), text)
+    }
+
     func testCaptionedPlatformPictureKeepsItsCaption() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

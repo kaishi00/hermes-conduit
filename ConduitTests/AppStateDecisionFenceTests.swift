@@ -2405,6 +2405,50 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
     }
 
+    /// The card's runtime is gone (a reaped runtime, or a chat another
+    /// device re-opened): Hermes answers "session not found", so nothing is
+    /// waiting on this card any more. That is "no longer active", not a
+    /// decision Hermes refused.
+    func testLegacyApprovalWhoseSessionIsGoneIsNoLongerActive() async {
+        let answers = RecordedApprovalAnswers()
+        let appState = makePushRestoredApprovalAppState(
+            description: "Delete the build folder?",
+            queue: { throw RpcError(code: 4001, message: "session not found") },
+            recording: answers
+        )
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        let card = appState.messages.first { $0.id == "approval-runtime-1" }?.approval
+        XCTAssertEqual(answers.requestIds, [], "nothing is sent to a session that is gone")
+        XCTAssertEqual(card?.status, .expired)
+        XCTAssertEqual(card?.error, AppLocalization.string("This approval is no longer active."))
+    }
+
+    func testIdentifiedApprovalWhoseSessionIsGoneIsNoLongerActive() async {
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            respondToApproval: { _, _, _, _, _ in
+                throw RpcError(code: 4001, message: "session not found")
+            }
+        ))
+        appState.activeSessionId = "runtime-1"
+        appState.client = makeReplacementClient(baseURL: "https://one.example")
+        appState.messages = [ChatMessage(
+            id: "approval-runtime-1",
+            role: .approval,
+            content: "Delete the build folder?",
+            timestamp: "1",
+            approval: queuedApproval("req-1", command: "rm -rf build", description: "Delete the build folder?")
+        )]
+
+        await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+
+        let card = appState.messages.first { $0.id == "approval-runtime-1" }?.approval
+        XCTAssertEqual(card?.status, .expired)
+        XCTAssertEqual(card?.error, AppLocalization.string("This approval is no longer active."))
+        XCTAssertNil(appState.errorMessage, "an approval that ended is not an error banner")
+    }
+
     // MARK: - Answering what the card showed
 
     /// A legacy (request-less) card is updated in place when Hermes

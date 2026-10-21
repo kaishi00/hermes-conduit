@@ -203,7 +203,7 @@ struct ConnectionSetupChoiceRow: View {
         case .chevron:
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
                 .accessibilityHidden(true)
         case .checkmark(let selected):
             Image(systemName: selected ? "checkmark.circle.fill" : "circle")
@@ -214,7 +214,7 @@ struct ConnectionSetupChoiceRow: View {
         case .disclosure(let expanded):
             Image(systemName: "chevron.down")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
                 .rotationEffect(.degrees(expanded ? 180 : 0))
                 .accessibilityHidden(true)
         }

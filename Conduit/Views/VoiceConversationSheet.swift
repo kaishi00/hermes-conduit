@@ -24,6 +24,8 @@ struct VoiceConversationSheet: View {
     /// view's identity while the presentation binding survives.
     let shouldAutoListen: () -> Bool
     var startsListening: Bool = true
+    /// V2's voice mode menu under the title; nil shows none.
+    var modeSwitch: VoiceModeSwitch? = nil
 
     @State private var didRequestStart = false
     /// V2 draws the conversation as a call screen, like the live modes.
@@ -436,7 +438,10 @@ extension VoiceConversationSheet {
     }
 
     private func v2Subtitle(at now: Date) -> String {
-        [profileDisplayName, AppLocalization.string("Classic voice"), V2CallHeaderTitle.clock(max(0, now.timeIntervalSince(openedAt)))]
+        // The mode menu under the title names the mode.
+        let mode = modeSwitch == nil ? AppLocalization.string("Classic voice") : nil
+        return [profileDisplayName, mode, V2CallHeaderTitle.clock(max(0, now.timeIntervalSince(openedAt)))]
+            .compactMap { $0 }
             .joined(separator: " · ")
     }
 
@@ -455,23 +460,29 @@ extension VoiceConversationSheet {
             // Unlike a live call's chevron, this ends the conversation.
             .accessibilityHint(Text("Your conversation also continues in chat. Close ends this voice session."))
 
-            VStack(spacing: 2) {
-                Text(verbatim: v2Title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    // VoiceOver hears the profile and mode, not the clock.
-                    .accessibilityValue(Text(verbatim: "\(profileDisplayName), \(AppLocalization.string("Classic voice"))"))
-                TimelineView(.animation(minimumInterval: 1)) { context in
-                    Text(verbatim: v2Subtitle(at: context.date))
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 6) {
+                VStack(spacing: 2) {
+                    Text(verbatim: v2Title)
+                        .font(.headline)
                         .lineLimit(1)
+                        // VoiceOver hears the profile and mode, not the clock.
+                        .accessibilityValue(Text(verbatim: "\(profileDisplayName), \(modeSwitch?.current.title ?? AppLocalization.string("Classic voice"))"))
+                    TimelineView(.animation(minimumInterval: 1)) { context in
+                        Text(verbatim: v2Subtitle(at: context.date))
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .accessibilityHidden(true)
                 }
-                .accessibilityHidden(true)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+                // Its own element: a header read as one would swallow it.
+                if let modeSwitch {
+                    VoiceModeCapsule(modeSwitch: modeSwitch)
+                }
             }
             .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
 
             // Balances the close button so the title stays centred.
             Color.clear

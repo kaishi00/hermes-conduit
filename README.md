@@ -68,14 +68,75 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 
 ## Connecting
 
-1. Make sure your Hermes dashboard is running. If you are not sure, ask your agent: `is the dashboard running?`
-2. Find your dashboard address. It is usually `http://your-server-ip:9119`.
-3. Open Conduit and enter that address on the login screen.
-4. Log in with your dashboard credentials.
+**If Hermes is already running, that's all you need.** Conduit talks to the web dashboard that comes with Hermes (`hermes dashboard`, port 9119 by default). There is no Conduit server or container to install. The [companion plugin](#notifications-voice-and-phone-features) is optional but unlocks notifications, live voice and the phone features, and it installs with one command.
 
-**Note:** Conduit connects to the native Hermes dashboard, not the WebUI. The default port is 9119.
+You need three things from your Hermes host: the dashboard running with a username and password, a way for your phone to reach it, and the address to type into Conduit. Your Hermes agent can set all of that up for you.
 
-If your server is not on your local network, use Tailscale or a reverse proxy to reach it from your phone. Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported — the traffic is already WireGuard-encrypted.
+### The easy way: ask Hermes
+
+1. Install [Tailscale](https://tailscale.com/download) on your iPhone or iPad and sign in. It's free, and it lets your phone reach Hermes securely from anywhere without opening anything to the internet.
+2. Copy the prompt below and send it to your Hermes agent wherever you normally talk to it: Telegram, Discord, the terminal, or the Chat page of the Hermes dashboard.
+3. Hermes replies with an address, a username and a password, plus a sign-in link. Tap the link on your phone, or open Conduit and type the details in. If Hermes shows a QR code, tap **Scan Code** on Conduit's sign-in screen.
+
+```text
+I want to use the Hermes Conduit app on my iPhone to talk to you. Conduit signs in to the Hermes web dashboard (the one started by `hermes dashboard`, default port 9119). Please set everything up and then tell me what to enter in the app.
+
+1. Check whether the Hermes dashboard is running and which port it uses. If it isn't, start it, and make sure it starts again after a reboot.
+2. Make sure the dashboard requires a sign-in. Never turn authentication off. If no username and password are set up yet, create them (HERMES_DASHBOARD_BASIC_AUTH_USERNAME and HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in the Hermes .env file), and set HERMES_DASHBOARD_BASIC_AUTH_SECRET to a long random value so I stay signed in when the dashboard restarts.
+3. Set up remote access with Tailscale Serve: check that Tailscale is installed and signed in on this machine, then run `tailscale serve --bg 9119` (with the dashboard's real port) and set dashboard.public_url in config.yaml to the https://<machine>.<tailnet>.ts.net address that Serve gives you. If the dashboard only listens on 127.0.0.1, leave it that way. Never open the dashboard port to the internet.
+4. Install the Conduit companion plugin: `hermes plugins install kaishi00/hermes-conduit-notifier --enable`
+5. If something needs me (installing or signing in to Tailscale, turning on HTTPS certificates for my tailnet, or a step on the host because you run inside a Docker container or on a NAS and can't make the change yourself), stop and tell me exactly what to do or which commands to run, then continue once I've done it.
+6. When it's ready, tell me the address to enter in Conduit, the username and the password. Also make me a sign-in link: conduit://connect?url=ADDRESS&username=USERNAME&password=PASSWORD with each value percent-encoded and the full https:// address, never localhost. If we're talking in a terminal, show the link as a QR code there so the password stays out of chat history.
+7. Last, restart the gateway and the dashboard so the plugin and the new settings load. Do this only after you've sent me everything from step 6, because the restart may end this conversation.
+```
+
+Only using Conduit at home on the same Wi-Fi? You can skip Tailscale: replace step 3 with "Make the dashboard reachable from other devices on my local network and tell me this machine's local IP address and the dashboard port." That address only works at home.
+
+Conduit also has this built in: on the sign-in screen, **Need help connecting?** walks through the same questions and gives you a ready-to-copy prompt for each step.
+
+### Hermes in Docker or on a NAS
+
+Conduit works the same when Hermes runs in a container: all it needs is the dashboard. The differences:
+
+- **Turn the dashboard on.** The official image runs the dashboard only when `HERMES_DASHBOARD=1` is set, and the port must be published (`-p 9119:9119`). If you can open the dashboard in a browser already, this part is done.
+- **Sign-in comes from the container's environment.** Inside a container the dashboard listens on all interfaces, so Hermes refuses to start it without a sign-in. Set `HERMES_DASHBOARD_BASIC_AUTH_USERNAME`, `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` and `HERMES_DASHBOARD_BASIC_AUTH_SECRET` on the container (or in the `.env` file in its data folder).
+- **Tailscale goes on the NAS, not in the container.** Synology, QNAP, Unraid and TrueNAS all have a Tailscale app. Install it, sign in, then run `tailscale serve --bg 9119` on the NAS and set `dashboard.public_url` in the mounted `config.yaml` to the `https://….ts.net` address it prints. The agent inside the container can't do this part, so the prompt above asks it to tell you the steps.
+- **Install the plugin from the host.** `docker exec -it hermes hermes plugins install kaishi00/hermes-conduit-notifier --enable`, then `docker restart hermes`. Plugins live in the data volume (`/opt/data`), so they survive image updates.
+
+A minimal example (pick your own username and password; the secret can be any long random string, such as the output of `openssl rand -base64 32`):
+
+```sh
+docker run -d --name hermes --restart unless-stopped \
+  -v ~/.hermes:/opt/data \
+  -p 9119:9119 \
+  -e HERMES_DASHBOARD=1 \
+  -e HERMES_DASHBOARD_BASIC_AUTH_USERNAME=me \
+  -e HERMES_DASHBOARD_BASIC_AUTH_PASSWORD='a-strong-password' \
+  -e HERMES_DASHBOARD_BASIC_AUTH_SECRET='a-long-random-string' \
+  nousresearch/hermes-agent gateway run
+```
+
+On your home network the address is then `http://<nas-ip>:9119`; through Tailscale Serve it is the `https://….ts.net` address. See Hermes' [Docker guide](https://hermes-agent.nousresearch.com/docs/user-guide/docker) for the full set of options.
+
+### Setting it up by hand
+
+1. **Give the dashboard a sign-in.** Add these to `~/.hermes/.env` (the secret keeps you signed in across restarts):
+   ```sh
+   HERMES_DASHBOARD_BASIC_AUTH_USERNAME=me
+   HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=a-strong-password
+   HERMES_DASHBOARD_BASIC_AUTH_SECRET=a-long-random-string
+   ```
+2. **Choose how your phone reaches it.**
+   - **Tailscale Serve (recommended).** Run the dashboard on the default `127.0.0.1:9119`, run `tailscale serve --bg 9119`, and set `dashboard.public_url` in `~/.hermes/config.yaml` to the `https://<machine>.<tailnet>.ts.net` address Serve prints (Hermes needs this to keep the sign-in on for Tailscale visitors). Install Tailscale on the phone with the same account. The address for Conduit is that `https://….ts.net` URL.
+   - **Same network only.** Run `hermes dashboard --host 0.0.0.0 --port 9119 --no-open`. The address is `http://<server-ip>:9119` and works only on that network.
+   - **Your own domain or reverse proxy.** Point the proxy at `http://127.0.0.1:9119` and set `dashboard.public_url` to your HTTPS address.
+3. **Keep the dashboard running** with systemd, launchd, tmux or similar, so it survives reboots.
+4. **Sign in.** Open Conduit, enter the address and sign in with the username and password from step 1.
+5. **Add the plugin** as described in [Notifications, voice and phone features](#notifications-voice-and-phone-features), or from **Settings > Conduit plugin** once you're signed in.
+
+**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119.
+
+Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
 If the dashboard is behind Cloudflare Access, enable the optional service token on the login screen or in Settings > Connection > Gateway. Conduit stores the client secret in Keychain (scoped to the gateway origin), and injects both Access headers into native authentication requests, WebSocket handshakes, and all in-page WebKit fetches via a document-start user script. Credentials are bound to the gateway URL and cleared when switching to a different host.
 

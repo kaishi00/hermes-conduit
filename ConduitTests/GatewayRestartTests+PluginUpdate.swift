@@ -199,6 +199,57 @@ extension GatewayRestartTests {
         XCTAssertEqual(status.offeredVersion, floor)
     }
 
+    func testTheStableChannelOnlyAsksUpToTheStableVersion() {
+        let floor = NotifierPluginStatus.recommendedVersion
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "1.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "1.0.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "1.2.0"
+        status.stableVersion = "1.0.0"
+        XCTAssertTrue(status.updateRecommended, "every version on main by default")
+
+        status.followsMain = false
+        XCTAssertEqual(status.noticeVersion, "1.0.0")
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertFalse(status.needsAttention)
+        // Settings still offers it, and it brings main.
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(status.offeredVersion, "1.2.0")
+
+        status.stableVersion = "1.1.0"
+        XCTAssertTrue(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
+
+        // Never below the build's floor, never above what an update brings.
+        status.stableVersion = "0.1.0"
+        XCTAssertEqual(status.noticeVersion, floor)
+        status.stableVersion = nil
+        XCTAssertEqual(status.noticeVersion, floor)
+        status.stableVersion = "9.0.0"
+        XCTAssertEqual(status.noticeVersion, "1.2.0")
+
+        // A missing feature still asks.
+        status.stableVersion = "1.0.0"
+        status.state = .reported(version: "1.0.0", capabilities: [])
+        XCTAssertTrue(status.updateRecommended)
+    }
+
+    func testTheNoticeChannelFollowsWhereConduitCameFrom() {
+        XCTAssertFalse(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .appStore))
+        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .testFlight))
+        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .xcode))
+        XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain(installedFrom: .appStore))
+        XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain(installedFrom: .testFlight))
+    }
+
+    func testTheStableVersionIsReadFromChannelsYAML() {
+        let read = NotifierPluginLatestVersion.stableVersion(fromChannelsYAML:)
+        XCTAssertEqual(read("# comment\nstable: 0.50.1  # raised for 2.1\n"), "0.50.1")
+        XCTAssertNil(read("version: 0.50.1\n"))
+        XCTAssertNil(read("stable: main\n"))
+    }
+
     func testTheLatestPluginVersionIsReadFromPluginYAML() {
         let read = NotifierPluginLatestVersion.version(fromPluginYAML:)
         XCTAssertEqual(read("name: conduit_push\nmanifest_version: 1\nversion: 0.44.0\n"), "0.44.0")
@@ -214,28 +265,31 @@ extension GatewayRestartTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         var asked = 0
         let fetch: (URL) async throws -> (Data, URLResponse) = { url in
-            asked += 1
+            if url == NotifierPluginLatestVersion.url { asked += 1 }
             let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
-            return (Data("version: 0.50.0\n".utf8), response)
+            let text = url == NotifierPluginLatestVersion.channelsURL ? "stable: 0.48.0\n" : "version: 0.50.0\n"
+            return (Data(text.utf8), response)
         }
         let start = Date()
         let first = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start, fetch: fetch)
-        XCTAssertEqual(first, "0.50.0")
+        XCTAssertEqual(first, NotifierPluginLatestVersion.Answer(latest: "0.50.0", stable: "0.48.0"))
         XCTAssertEqual(NotifierPluginLatestVersion.cached(in: defaults), "0.50.0")
+        XCTAssertEqual(NotifierPluginLatestVersion.cachedStable(in: defaults), "0.48.0")
         let soon = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(60), fetch: fetch)
         XCTAssertNil(soon)
         XCTAssertEqual(asked, 1)
         let later = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(3_700), fetch: fetch)
-        XCTAssertEqual(later, "0.50.0")
+        XCTAssertEqual(later?.latest, "0.50.0")
         XCTAssertEqual(asked, 2)
 
         let missing: (URL) async throws -> (Data, URLResponse) = { url in
-            asked += 1
+            if url == NotifierPluginLatestVersion.url { asked += 1 }
             return (Data(), try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)))
         }
         let failed = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(9_000), fetch: missing)
-        XCTAssertNil(failed)
+        XCTAssertEqual(failed, NotifierPluginLatestVersion.Answer(latest: nil, stable: nil))
         XCTAssertEqual(NotifierPluginLatestVersion.cached(in: defaults), "0.50.0")
+        XCTAssertEqual(NotifierPluginLatestVersion.cachedStable(in: defaults), "0.48.0")
         // A failed ask waits the interval too.
         _ = await NotifierPluginLatestVersion.refresh(defaults: defaults, now: start.addingTimeInterval(9_060), fetch: missing)
         XCTAssertEqual(asked, 3)

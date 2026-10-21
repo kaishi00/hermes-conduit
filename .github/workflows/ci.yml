@@ -100,6 +100,11 @@ jobs:
         # translated string can never silently render English again.
         run: python3 scripts/check-l10n-coverage.py --repo-root .
 
+      - name: Text follows Text Size
+        # Text set in a fixed point size stays small at accessibility text
+        # sizes while the text around it grows (#830).
+        run: python3 scripts/check-fixed-text-sizes.py --repo-root .
+
       - name: Recommended plugin version matches the plugin
         # Conduit only offers the plugin update to hosts below
         # NotifierPluginStatus.recommendedVersion, so it must follow every

@@ -127,6 +127,103 @@ final class ChatScrollEngineTests: XCTestCase {
         return (engine, surface)
     }
 
+    // MARK: - Blank viewport (#887)
+
+    /// A turn settled into an eleventh message while following; the
+    /// viewport (stack 3182...3982) is at the bottom.
+    private func settleTurn(
+        frames: [String: ChatScrollRowFrame],
+        liveTail: Bool = false
+    ) -> (ChatScrollEngine, FakeChatScrollSurface) {
+        // The engine holds its surface weakly, so the caller keeps it.
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { liveTail }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            isInitialSync: false
+        )
+        engine.rowFramesChanged(frames)
+        events = []
+        scheduled.forEach { $0() }
+        return (engine, surface)
+    }
+
+    func testABlankViewportWithTheLatestRowUnlaidRebuildsTheScrollView() {
+        let (_, surface) = settleTurn(frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)])
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// Eric's #887: the reply was laid out just above the screen and nothing
+    /// was drawn below it.
+    func testABlankViewportUnderTheLatestRowRebuildsTheScrollView() {
+        let (_, surface) = settleTurn(frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)])
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testLiveRowsUnderTheLatestRowAreNotABlankViewport() {
+        let (_, surface) = settleTurn(
+            frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)],
+            liveTail: true
+        )
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        withExtendedLifetime(surface) {}
+    }
+
+    func testLiveRowsUnderAnUnlaidLatestRowAreNotABlankViewport() {
+        let (_, surface) = settleTurn(
+            frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)],
+            liveTail: true
+        )
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        withExtendedLifetime(surface) {}
+    }
+
+    func testARowOnScreenIsNotABlankViewport() {
+        let (_, surface) = settleTurn(frames: ["m10": ChatScrollRowFrame(minY: 3000, maxY: 3700, order: 10)])
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        withExtendedLifetime(surface) {}
+    }
+
+    func testASessionSwitchCancelsAPendingBlankCheck() {
+        let (engine, surface) = makeEngine()
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            isInitialSync: false
+        )
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        withExtendedLifetime(surface) {}
+    }
+
+    func testABrowsingReaderIsNotRebuiltUnder() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1,
+            isInitialSync: false
+        )
+        engine.rowFramesChanged([:])
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+    }
+
     // MARK: - Following
 
     func testFollowingPinsToBottomInTheSameLayoutPass() {

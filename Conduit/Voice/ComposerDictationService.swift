@@ -277,14 +277,31 @@ final class ComposerDictationService: ObservableObject {
 
     /// Opens the microphone and returns the format its buffers come in.
     private func startAudio() throws -> AVAudioFormat {
+        var format: AVAudioFormat?
+        try VoiceAudioEngineRecovery.startFresh(
+            rebuild: { stopAudio() },
+            reassert: { try audioCoordinator.reassert() },
+            start: { format = try startAudioAttempt() }
+        )
+        guard let format else { throw VoiceAudioInputFormatUnavailable() }
+        return format
+    }
+
+    private func startAudioAttempt() throws -> AVAudioFormat {
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
+        let hardwareFormat = input.inputFormat(forBus: 0)
+        let nodeOutputFormat = input.outputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0,
+              nodeOutputFormat.sampleRate > 0, nodeOutputFormat.channelCount > 0 else {
+            throw VoiceAudioInputFormatUnavailable()
         }
+        let tapFormat = VoiceAudioEngineRecovery.tapFormat(
+            nodeOutput: nodeOutputFormat,
+            hardware: hardwareFormat
+        )
         let sink = audioSink
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { buffer, _ in
             sink.append(buffer)
         }
         engine.prepare()
@@ -296,7 +313,7 @@ final class ComposerDictationService: ObservableObject {
             throw error
         }
         self.engine = engine
-        return format
+        return tapFormat ?? nodeOutputFormat
     }
 
     private func stopAudio() {

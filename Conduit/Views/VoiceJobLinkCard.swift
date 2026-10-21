@@ -67,7 +67,7 @@ struct VoiceJobLinkCard: View {
                         if let time {
                             Text(verbatim: time)
                                 .font(.caption2.weight(.medium))
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.conduitTertiary)
                                 .monospacedDigit()
                         }
                     }

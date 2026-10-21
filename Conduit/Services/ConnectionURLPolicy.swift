@@ -207,7 +207,14 @@ enum ConnectionURLPolicy {
 
     private static func ipv4Octets(_ value: String) -> [Int]? {
         let components = value.split(separator: ".", omittingEmptySubsequences: false)
-        guard components.count == 4 else { return nil }
+        guard components.count == 4,
+              components.allSatisfy({ component in
+                  !component.isEmpty && component.utf8.allSatisfy({ (48...57).contains($0) })
+                      // inet_aton and WebKit's URL parser read a leading
+                      // zero as octal: 010.0.0.1 dials 8.0.0.1, a public
+                      // host, while Int() reads it as private 10.0.0.1.
+                      && (component.count == 1 || component.first != "0")
+              }) else { return nil }
         let octets = components.compactMap { Int($0) }
         guard octets.count == 4,
               octets.allSatisfy({ (0...255).contains($0) }) else { return nil }

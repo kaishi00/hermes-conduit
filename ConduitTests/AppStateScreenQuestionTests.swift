@@ -324,7 +324,91 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let sent = await harness.appState.submitComposer(text: "What is this?")
 
         XCTAssertFalse(sent)
-        XCTAssertEqual(harness.appState.pendingScreenshots, [PendingScreenshot(sessionID: "stored-a", attachment: shot)])
+        XCTAssertEqual(
+            harness.appState.pendingScreenshots,
+            [PendingScreenshot(sessionID: "stored-a", attachment: shot, dashboardID: harness.appState.activeDashboardID)]
+        )
+    }
+
+    // MARK: - Dashboards
+
+    func testScreenshotWaitsOnTheDashboardItWasTakenFor() throws {
+        let (a, b) = twoDashboards()
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder(), dashboards: [a, b])
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "chat-a")
+
+        harness.appState.selectDashboardTarget(b.id)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "chat-a"), "Another dashboard's chat-a is another chat")
+        XCTAssertNil(harness.appState.takePendingScreenshot(forSession: "chat-a"))
+
+        harness.appState.selectDashboardTarget(a.id)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "chat-a"), shot)
+    }
+
+    func testParkedScreenshotResumesOnlyOnItsOwnDashboard() async throws {
+        let (a, b) = twoDashboards()
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder(), dashboards: [a, b])
+        openChat("composer-origin", in: harness, withMessages: true)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(
+            for: shot,
+            question: "Why is this greyed out?",
+            enqueuedAt: Date(timeIntervalSinceNow: -3_600)
+        ), profile: nil)
+        harness.appState.isConnected = true
+
+        harness.appState.selectDashboardTarget(b.id)
+        await harness.appState.resumeParkedScreenQuestion()
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Waits for its own dashboard")
+        XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
+
+        harness.appState.selectDashboardTarget(a.id)
+        await harness.appState.resumeParkedScreenQuestion()
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
+    /// The send's await lets a dashboard switch land before the failure:
+    /// the screenshot still goes back under the dashboard it was taken on.
+    func testFailedSendPutsTheScreenshotBackOnItsOwnDashboardAfterASwitch() async throws {
+        let (a, b) = twoDashboards()
+        var duringUpload: (@MainActor () -> Void)?
+        let origin = session("composer-origin")
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [origin] },
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, _ in .accepted }
+        )
+        operations.uploadAttachment = { _, _, _ in
+            duringUpload?()
+            throw URLError(.networkConnectionLost)
+        }
+        let harness = makeHarness(lifecycleOperations: operations, dashboards: [a, b])
+        duringUpload = { [weak appState = harness.appState] in appState?.selectDashboardTarget(b.id) }
+        openChat("composer-origin", in: harness)
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+
+        let sent = await harness.appState.submitComposer(text: "What is this?")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(harness.appState.activeDashboardID, b.id)
+        XCTAssertEqual(
+            harness.appState.pendingScreenshots,
+            [PendingScreenshot(sessionID: "composer-origin", attachment: shot, dashboardID: a.id)]
+        )
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+        harness.appState.selectDashboardTarget(a.id)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
     // MARK: - The pending screenshot store
@@ -348,11 +432,12 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let sending = try stagedScreenshot()
         let newer = try stagedScreenshot()
         harness.appState.setPendingScreenshot(sending, forSession: "chat-a")
-        XCTAssertEqual(harness.appState.takePendingScreenshot(forSession: "chat-a"), sending)
+        let entry = try XCTUnwrap(harness.appState.takePendingScreenshotEntry(forSession: "chat-a"))
+        XCTAssertEqual(entry.attachment, sending)
         XCTAssertNil(harness.appState.pendingScreenshot(forSession: "chat-a"))
 
         harness.appState.setPendingScreenshot(newer, forSession: "chat-a")
-        harness.appState.restorePendingScreenshot(sending, forSession: "chat-a")
+        harness.appState.restorePendingScreenshot(entry)
 
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "chat-a"), newer)
         XCTAssertEqual(harness.appState.pendingScreenshots.count, 1)
@@ -364,7 +449,8 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         let sending = try stagedScreenshot()
         harness.appState.setPendingScreenshot(sending, forSession: "sending-chat")
-        XCTAssertEqual(harness.appState.takePendingScreenshot(forSession: "sending-chat"), sending)
+        let entry = try XCTUnwrap(harness.appState.takePendingScreenshotEntry(forSession: "sending-chat"))
+        XCTAssertEqual(entry.attachment, sending)
         var others: [Attachment] = []
         for index in 0..<ScreenQuestionPolicy.maximumPendingScreenshots {
             let shot = try stagedScreenshot()
@@ -372,7 +458,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
             harness.appState.setPendingScreenshot(shot, forSession: "chat-\(index)")
         }
 
-        harness.appState.restorePendingScreenshot(sending, forSession: "sending-chat")
+        harness.appState.restorePendingScreenshot(entry)
 
         XCTAssertEqual(harness.appState.pendingScreenshots.count, ScreenQuestionPolicy.maximumPendingScreenshots)
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "sending-chat"), sending)
@@ -1376,7 +1462,15 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
     private typealias Harness = (appState: AppState, defaults: UserDefaults)
 
-    private func makeHarness(recorder: ScreenQuestionCallRecorder) -> Harness {
+    private func twoDashboards() -> (SavedDashboard, SavedDashboard) {
+        (
+            SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://one.example"),
+            SavedDashboard(id: UUID(), label: "Studio", normalizedURL: "https://two.example")
+        )
+    }
+
+    /// `dashboards` saves them with the first one active.
+    private func makeHarness(recorder: ScreenQuestionCallRecorder, dashboards: [SavedDashboard] = []) -> Harness {
         var operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder.prompts.append((sessionID, text))
@@ -1391,7 +1485,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
             recorder.uploads.append((sessionID, attachment))
             return nil
         }
-        return makeHarness(lifecycleOperations: operations)
+        return makeHarness(lifecycleOperations: operations, dashboards: dashboards)
     }
 
     /// Files come back with the `@file:` reference Hermes staged them
@@ -1443,7 +1537,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         return makeHarness(lifecycleOperations: operations)
     }
 
-    private func makeHarness(lifecycleOperations: ChatResumeLifecycleOperations) -> Harness {
+    private func makeHarness(lifecycleOperations: ChatResumeLifecycleOperations, dashboards: [SavedDashboard] = []) -> Harness {
         let suite = "AppStateScreenQuestionTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
             fatalError("Failed to create test UserDefaults suite")
@@ -1457,6 +1551,9 @@ final class AppStateScreenQuestionTests: XCTestCase {
             chatResumeCoordinator: ChatResumeCoordinator(store: store),
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            dashboardRegistry: dashboards.isEmpty ? nil : SavedDashboardRegistry(
+                activeDashboardID: dashboards[0].id, dashboards: dashboards
+            ),
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)

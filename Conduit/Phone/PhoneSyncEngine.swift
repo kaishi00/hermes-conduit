@@ -374,13 +374,13 @@ final class PhoneSyncEngine: ObservableObject {
             case .http(let status, _) where status == 404:
                 state.pause = .pluginMissing
                 return .paused(.pluginMissing)
-            case .http(let status, let detail) where status == 409:
+            case .http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail):
                 // The host lost or replaced this phone's key: set it up again.
                 keys.clear()
                 state.forgetSent()
                 lastError = detail
                 return .unfinished
-            case .http(let status, let detail) where status == 400 || status == 413:
+            case .http(let status, let detail) where status == 400 || status == 409 || status == 413:
                 state.pause = .refused(detail)
                 return .paused(.refused(detail))
             default:
@@ -885,8 +885,6 @@ final class PhoneSyncEngine: ObservableObject {
     // MARK: Live voice calls
 
     struct VoiceNotReady: Error {}
-    /// Voice adds and deletions only: updates stay with Hermes' cards.
-    struct NotForVoice: Error {}
 
     /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
     /// host's result, for this iPhone's data only. Checks only that sharing
@@ -912,20 +910,18 @@ final class PhoneSyncEngine: ObservableObject {
         return json["result"] ?? NSNull()
     }
 
-    /// Adds or deletes an event or reminder the user asked for in a voice
-    /// call, straight away (no card: they said so out loud). The next upload
-    /// sends it. Like `voiceRead`, the caller checks the voice mode may use it.
+    /// Adds, changes or deletes an event or reminder, or sets or cancels an
+    /// alarm, the user asked for in a voice call, straight away (no card:
+    /// they said so out loud). The next upload sends it. Like `voiceRead`,
+    /// the caller checks the voice mode may use it.
     func applyFromVoice(_ change: PhoneChange) async throws -> String? {
-        guard change.kind.addsWithoutAsking || change.kind == .deleteEvent || change.kind == .deleteReminder else {
-            throw NotForVoice()
-        }
         guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
         if change.kind.isAlarm {
             guard preferences.alarms else { throw VoiceNotReady() }
             return try await alarmSource.apply(change, now: now())
         }
-        if change.kind == .deleteEvent || change.kind == .deleteReminder {
-            let isEvent = change.kind == .deleteEvent
+        if !change.kind.isAddition {
+            let isEvent = change.kind.isEvent
             // Still shared after the wait for the user's yes.
             guard isEvent ? preferences.calendar == .full : preferences.reminders else { throw VoiceNotReady() }
             // Only what's still shared: an id read before its calendar was
@@ -937,7 +933,7 @@ final class PhoneSyncEngine: ObservableObject {
             }
         }
         let itemID = try await calendarSource.apply(change, window: window)
-        // A deletion needs nothing here: the next upload sees it gone.
+        // A change or deletion needs nothing here: the next upload sees it.
         if change.kind.isAddition, let itemID {
             if change.kind.isEvent {
                 if state.eventHashes[itemID] == nil { state.eventHashes[itemID] = "" }

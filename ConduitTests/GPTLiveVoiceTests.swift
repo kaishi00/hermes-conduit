@@ -1097,6 +1097,151 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// #945: GPT-Live said it was sending the request to Hermes but made no
+    /// delegation. Once the call is quiet, Conduit sends the words itself.
+    func testGPTLiveSaidItWasSendingWithNoDelegationSendsTheWordsAnyway() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, fake) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Can you check whether the build passed?"))
+        session.onEvent?(.outputTranscript("On it. I'll send that to Hermes now."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it. I'll send that to Hermes now."))
+        await settle(40)
+        XCTAssertEqual(fake.created, 0)
+
+        // The model still has time to make its delegation.
+        current += GPTLiveConversationController.sendClaimGrace - 1
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 0)
+
+        current += 2
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 1, "the words go even though the model never delegated them")
+        XCTAssertTrue(fake.submissions.first?.1.contains("whether the build passed") == true)
+        // GPT-Live made no delegation to answer: the reply goes to the session.
+        XCTAssertFalse(session.appended.contains { $0.delegationID != nil }, "\(session.appended)")
+        XCTAssertTrue(session.appended.contains { $0.delegationID == nil && $0.text.contains("background job") }, "\(session.appended)")
+
+        // Sent once: checking again sends nothing more.
+        current += GPTLiveConversationController.sendClaimGrace + 1
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 1)
+
+        // The model's own delegation, late, is that same send.
+        session.onEvent?(.delegation(id: "del_late", text: ""))
+        await settle(40)
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertEqual(session.appended.last { $0.delegationID == "del_late" }?.text, GPTLiveConversationController.alreadySentForModel)
+        controller.stop()
+    }
+
+    /// #945: the model's late delegation that writes out the words itself
+    /// is still the send Conduit already made, not a second job.
+    func testGPTLiveLateDelegationWithItsOwnTextIsTheSendConduitMade() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, fake) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Can you check whether the build passed?"))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it. I'll send that to Hermes now."))
+        current += GPTLiveConversationController.sendClaimGrace + 1
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 1)
+
+        session.onEvent?(.delegation(id: "del_late", text: "check whether the build passed"))
+        await settle(40)
+        XCTAssertEqual(fake.created, 1, "no second job for the same words")
+        XCTAssertEqual(session.appended.last { $0.delegationID == "del_late" }?.text, GPTLiveConversationController.alreadySentForModel)
+        controller.stop()
+    }
+
+    func testGPTLiveConduitCommandsAreNotMistakenForALateSend() {
+        typealias C = GPTLiveConversationController
+        XCTAssertTrue(C.isConduitMarkerDelegation("Look up: weather in Boston"))
+        XCTAssertTrue(C.isConduitMarkerDelegation("Job 2: what's the status"))
+        XCTAssertTrue(C.isConduitMarkerDelegation("Send: the draft"))
+        XCTAssertTrue(C.isConduitMarkerDelegation("Mode: ask first"))
+        XCTAssertFalse(C.isConduitMarkerDelegation("check whether the build passed"))
+        XCTAssertFalse(C.isConduitMarkerDelegation(""))
+    }
+
+    /// #945: a user turn whose turn.done never came holds the send only
+    /// until it goes stale, as it holds job updates.
+    func testGPTLiveClaimedSendGoesPastAUserTurnThatNeverFinished() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, fake) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Can you check whether the build passed?"))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it. I'll send that to Hermes now."))
+        current += 1
+        session.onEvent?(.inputTranscript("and um"))
+        current += GPTLiveConversationController.sendClaimGrace + 1
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 0, "the user is still talking")
+
+        current += GPTLiveConversationController.userTurnStaleInterval
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 1)
+        controller.stop()
+    }
+
+    /// #945: a delegation that comes late, within the grace, is the send.
+    func testGPTLiveSaidItWasSendingAndThenDelegatesSendsOnce() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, fake) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Done."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Okay, I'll tell Hermes you're set."))
+        current += 1
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        XCTAssertEqual(fake.created, 1)
+
+        current += GPTLiveConversationController.sendClaimGrace + 1
+        controller.checkSendClaim()
+        await settle(40)
+        XCTAssertEqual(fake.created, 1, "the model's own delegation took the words")
+        controller.stop()
+    }
+
+    /// #945: only a turn that says it is passing the words on now counts.
+    func testGPTLiveSendClaimsAreStatementsThatHermesGetsItNow() {
+        let claims = [
+            "On it. I'll send that to Hermes now.",
+            "Okay, I\u{2019}ll tell Hermes you're set.",
+            "Sending it over to Hermes.",
+            "Got it, passing that on to Hermes.",
+            "Sure, I'll ask Hermes.",
+            "Let me check with Hermes. Hang on.",
+        ]
+        for claim in claims {
+            XCTAssertTrue(GPTLiveConversationController.claimsToSendToHermes(claim), claim)
+        }
+        let notClaims = [
+            "Shall I send that to Hermes?",
+            "I'll send that to Hermes. Send it?",
+            "I can ask Hermes if you like.",
+            "I won't send that to Hermes.",
+            "I'll send that to Hermes once you say yes.",
+            "I'll let you know when Hermes replies.",
+            "Hermes is working on it.",
+            "Got it, I'll pass that on.",
+            "Hi! Here and listening.",
+        ]
+        for text in notClaims {
+            XCTAssertFalse(GPTLiveConversationController.claimsToSendToHermes(text), text)
+        }
+    }
+
     func testGPTLiveDelegationResultWaitsForTheUserToFinishAndTheirWordsComeFirst() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })

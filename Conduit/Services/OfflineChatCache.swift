@@ -516,6 +516,54 @@ final class OfflineChatCacheStore {
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
     }
 
+    /// A deleted conversation leaves the scope: its saved rows under any of
+    /// `sessionIDs` (or a saved row's aliases), its row in the saved session
+    /// list and the saved Chats list, and its place as the chat a launch
+    /// opens to. The index is rewritten before the files go, as `record`
+    /// does, so it never lists a copy that isn't there.
+    func removeTranscripts(sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        let ids = sessionIDs.filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        if var snapshot = load(dashboardID: dashboardID, profile: profile) {
+            var allIdentities = ids
+            for row in snapshot.sessions where row.matches(ids) {
+                allIdentities.insert(row.id)
+                allIdentities.formUnion(row.aliases)
+            }
+            snapshot.transcripts.removeAll { allIdentities.contains($0.sessionID) }
+            snapshot.sessions.removeAll { $0.matches(allIdentities) }
+            if let last = snapshot.lastSessionID, allIdentities.contains(last) {
+                snapshot.lastSessionID = snapshot.transcripts.first?.sessionID
+            }
+            if write(snapshot, dashboardID: dashboardID, profile: profile) {
+                removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
+            }
+            // Its rows go even if the index couldn't be rewritten: a listed
+            // copy with no file just doesn't show.
+            removeTranscriptFiles(allIdentities, dashboardID: dashboardID, profile: profile)
+        } else {
+            removeTranscriptFiles(ids, dashboardID: dashboardID, profile: profile)
+        }
+        if var list = loadChatList(dashboardID: dashboardID, profile: profile) {
+            let isDeleted: (SessionSummary) -> Bool = { !ids.isDisjoint(with: $0.nestingIDs) }
+            guard list.sessions.contains(where: isDeleted) || list.cronSessions.contains(where: isDeleted) else { return }
+            let removedRows = (list.sessions + list.cronSessions).filter(isDeleted)
+            let removedRowIDs = Set(removedRows.map(\.id))
+            let removedNestingIDs = Set(removedRows.flatMap(\.nestingIDs))
+            list.sessions.removeAll(where: isDeleted)
+            list.cronSessions.removeAll(where: isDeleted)
+            list.pinnedRowIDs.removeAll { removedRowIDs.contains($0) }
+            list.voiceTags = list.voiceTags.filter { !removedNestingIDs.contains($0.key) }
+            recordChatList(list, dashboardID: dashboardID, profile: profile)
+        }
+    }
+
+    private func removeTranscriptFiles(_ sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        for id in sessionIDs {
+            try? fileManager.removeItem(at: transcriptFileURL(id, dashboardID: dashboardID, profile: profile))
+        }
+    }
+
     /// Removes the scope's chat files its index doesn't list: the copies it
     /// let go, and any an earlier save left behind (a chat whose index write
     /// failed, or an index that could no longer be read).

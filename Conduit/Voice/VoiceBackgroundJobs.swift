@@ -123,6 +123,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     var outcomeDelivered = false
     /// Whether the current needs-input episode was announced.
     var inputRequestDelivered = false
+    /// The command approval the job's turn waits on, which the call can
+    /// answer out loud; nil while it waits on a question, or not at all.
+    var waitingApproval: ApprovalActivity?
     /// Consecutive liveness polls that found no registry row for the job.
     /// One miss can be transient; two settle it.
     var consecutiveMissedPolls = 0
@@ -317,6 +320,11 @@ struct VoiceBackgroundJobBackend {
     var readChat: @MainActor (_ sessionID: String) async throws -> VoiceResumeContext = { _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Reading chats isn't available on this call.")
+    }
+    /// Answers the approval a job's turn waits on (`once` or `deny`), as its
+    /// card in the chat would. False when Hermes no longer waits on it.
+    var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async throws -> Bool = { _, _, _ in
+        throw HermesError.notConnected
     }
 }
 
@@ -584,10 +592,39 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callDecisions?.waitsOn()
     }
 
-    /// The live model answered the approval the call is about with the
-    /// user's words.
+    /// The live model answered, with the user's words, the approval the
+    /// call from Hermes is about, or else the one a job of the call waits on.
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome {
-        await callDecisions?.approve(choice) ?? .nothingPending
+        if callWaitsOn == .approval { return await callDecisions?.approve(choice) ?? .nothingPending }
+        let waiting = jobsWaitingOnApproval
+        // Which one a bare yes meant would be a guess.
+        guard waiting.count <= 1 else { return .severalWaiting }
+        guard let jobID = waiting.first else { return await callDecisions?.approve(choice) ?? .nothingPending }
+        return await answerJobApproval(jobID, choice: choice)
+    }
+
+    /// The call's jobs waiting on the user's OK for a command.
+    var jobsWaitingOnApproval: [UUID] {
+        jobs.filter { $0.status == .needsInput && $0.waitingApproval != nil }.map(\.id)
+    }
+
+    /// Answers the approval `jobID` waits on, `once` or `deny`, as its card
+    /// would; the job goes on (or stops) from there.
+    func answerJobApproval(_ jobID: UUID, choice: String) async -> VoiceCallDecisionOutcome {
+        guard choice == "once" || choice == "deny",
+              let job = job(jobID), let approval = job.waitingApproval else { return .nothingPending }
+        let resolved: Bool
+        do {
+            resolved = try await backend.respondToApproval(approval, choice, job.profile)
+        } catch {
+            return .failed
+        }
+        if let index = jobs.firstIndex(where: { $0.id == jobID }), jobs[index].waitingApproval == approval {
+            jobs[index].waitingApproval = nil
+            if resolved, jobs[index].status == .needsInput { jobs[index].status = .running }
+        }
+        guard resolved else { return .expired }
+        return choice == "deny" ? .denied : .approved
     }
 
     /// The live model answered the question the call is about.
@@ -1555,7 +1592,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             heard = Self.cancelledNotice(job.title)
         case .needsInput:
             guard job.inputRequestDelivered else { return }
-            heard = Self.waitingNotice(job.title)
+            heard = Self.waitingNotice(for: job)
         case .starting, .running:
             return
         }
@@ -1963,10 +2000,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if before.status == .needsInput || before.status == .starting {
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
+                jobs[index].waitingApproval = nil
             }
-        case .approval, .clarify, .inputPrompt:
+        case .approval(_, let activity):
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
+            jobs[index].waitingApproval = activity
+        case .clarify, .inputPrompt:
+            jobs[index].status = .needsInput
+            jobs[index].inputRequestDelivered = false
+            jobs[index].waitingApproval = nil
         case .messageComplete(_, let messageID, let content, _, _):
             // A replay of a voice turn's own completion, once it no longer
             // owns the chat, is not a typed turn.
@@ -1990,6 +2033,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if !jobs[index].status.isActive {
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
+            jobs[index].waitingApproval = nil
         }
         if jobs[index] != before {
             // Read before notifying: the host delivers the notice right away,
@@ -2228,7 +2272,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn || liveThread == nil { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return (.speak(Self.waitingNotice(job.title)), job.id)
+                return (.speak(Self.waitingNotice(for: job)), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
@@ -2261,6 +2305,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     static func waitingNotice(_ title: String) -> String {
         AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
+    }
+
+    /// What a job waiting on the user says: the command it asks to run,
+    /// which a yes or no answers in the call, or else to open it.
+    static func waitingNotice(for job: VoiceBackgroundJob) -> String {
+        guard let approval = job.waitingApproval else { return waitingNotice(job.title) }
+        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? approval.command : asked
+        let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
+        return AppLocalization.string("\(job.title) needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }
 
     /// With Hermes' reason, when there is one, as the call is told it: its
@@ -2393,6 +2447,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if jobs[index].result == nil { jobs[index].result = job.heldCompletion }
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
+            jobs[index].waitingApproval = nil
             changed = true
         }
         for id in settledJobs {
@@ -2415,6 +2470,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if $0.result == nil { $0.result = $0.heldCompletion }
                 $0.followUp = nil
                 $0.heldCompletion = nil
+                $0.waitingApproval = nil
             }
             changed = true
         }
@@ -2438,6 +2494,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if $0.result == nil { $0.result = $0.heldCompletion }
                 $0.followUp = nil
                 $0.heldCompletion = nil
+                $0.waitingApproval = nil
             }
             changed = true
         }
@@ -2916,6 +2973,83 @@ enum VoiceThreadRouting {
         words.contains { answerNegations.contains($0) || $0.hasSuffix("n't") }
     }
 
+    /// A bare no said anywhere ("hell no", "that's a no"), not just as the
+    /// lead.
+    private static let answerBareNos: Set<String> = ["no", "nope", "nah", "nop", "nein", "nee", "nö"]
+
+    /// Whether the words say no or negate anywhere in them ("absolutely
+    /// not", "I don't want it", "hell no"), not only at the start. Read as
+    /// `heldRequestAnswer` reads them, apostrophes kept. A yes that starts
+    /// with a no ("no problem") is the caller's to accept first.
+    static func containsNegation(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+            .filter { !fillers.contains($0) }
+        return negates(words) || words.contains { answerBareNos.contains($0) }
+    }
+
+    /// Whether a no or a not yet is said anywhere in the words, not only
+    /// at the start: "send it, no wait", "raczej nie", "şimdi gönderme",
+    /// "지금 보내지 마", "我不想发", "送らないで". Stricter than
+    /// `heldRequestAnswer`, so a phrase the agent supplied as a yes can't
+    /// carry one. A yes that starts with a no ("no problem") is the
+    /// caller's to accept first.
+    static func containsRefusal(_ answer: String) -> Bool {
+        if containsNegation(answer) { return true }
+        // A no or a wait as the lead ("不", "Momento", "Sebentar"), as
+        // `heldRequestAnswer` reads it.
+        switch heldRequestAnswer(answer) {
+        case .no, .notYet: return true
+        default: break
+        }
+        let folded = fold(answer)
+        let words = folded
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+            .filter { !fillers.contains($0) }
+        if answerRefusalPhraseWords.contains(where: { phrase in
+            words.indices.contains { words[$0...].starts(with: phrase) }
+        }) { return true }
+        if words.contains(where: koreanNegates) { return true }
+        // "别" / "別" says don't when it opens a clause or comes with the
+        // verb; inside "别人" or "特別" it doesn't.
+        let clauses = folded.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
+        if clauses.contains(where: { $0.hasPrefix("别") || $0.hasPrefix("別") }) { return true }
+        return cjkRefusals.contains { folded.contains($0) }
+    }
+
+    private static let answerRefusalPhraseWords = (answerNoLeads + answerNotYetLeads)
+        .filter { !answerTimeWords.contains($0) }
+        .map { $0.split(separator: " ").map(String.init) }
+
+    /// Not-yet leads that are only a length of time: on their own they ask
+    /// to wait, but in the middle of words ("the second one", "in a
+    /// moment") they aren't a no.
+    private static let answerTimeWords: Set<String> = [
+        "moment", "augenblick", "sekunde", "momento", "segundo", "minuto", "minutinho", "pera",
+        "секунду", "секундочку", "минуту", "минутку",
+        "chwileczkę", "chwilkę", "chwilę", "chwila", "sekundę", "minutę", "momencik",
+        "sebentar", "semenit", "sedetik",
+    ]
+
+    /// Korean says no in the verb: "보내지 마(세요)", "보내지마", "하지 말아요",
+    /// "보내지 않을래요".
+    private static func koreanNegates(_ word: String) -> Bool {
+        word.contains("않") || ["마", "마요", "마세요", "말아", "말아요", "말고", "말라"].contains(word)
+            || ["지마", "지마요", "지마세요", "지말아", "지말아요"].contains { word.hasSuffix($0) }
+    }
+
+    /// Chinese and Japanese have no word breaks: a no or negation anywhere
+    /// in them ("我不想发", "先别发", "送らないで", "やめて"). The negating
+    /// verb forms, not the bare characters, so "不错", "不好意思",
+    /// "問題ありません" and "すみません" stay a yes.
+    private static let cjkRefusals = cjkAnswerNoLeads + cjkAnswerNotYetLeads.filter { $0 != "ちょっと" } + [
+        "不想", "不要", "不用", "不必", "不发", "不發", "不送", "别发", "別發", "别送", "別送", "没有", "沒有", "不需", "先不",
+        "ないで", "なくて", "しない", "らない", "しません", "送りません", "いりません", "要りません",
+        "できません", "やめ", "だめ", "ダメ", "嫌",
+    ]
+
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
         let spoken = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         if let cjk = cjkHeldRequestAnswer(spoken) { return cjk }
@@ -3011,7 +3145,7 @@ enum VoiceThreadRouting {
     ]
     static let cjkAnswerYesLeads = [
         "はい", "うん", "ええ", "お願いします", "オッケー", "オーケー", "どうぞ", "送って", "送信して", "そうして",
-        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "是的", "对的", "当然", "没问题", "发吧", "发送吧",
+        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "是的", "对的", "当然", "没有问题", "沒有問題", "没问题", "沒問題", "发吧", "发送吧",
     ]
     /// Answers that count only as a clause of their own, since requests
     /// start with them too: "好，改成四个人" and "可以，发吧" are a yes,
@@ -3021,7 +3155,7 @@ enum VoiceThreadRouting {
     /// Words that add nothing to an answer ("好的，谢谢", "はい、お願いします").
     static let cjkAnswerFillers = [
         "ありがとうございます", "ありがとう", "お願いします", "お願い", "ください", "どうも", "です", "ます", "ね", "よ",
-        "送って", "没问题", "谢谢", "谢了", "发吧", "发送", "请", "吧", "了", "啊", "呀", "呢", "的",
+        "送って", "没有问题", "沒有問題", "没问题", "沒問題", "谢谢", "谢了", "发吧", "发送", "请", "吧", "了", "啊", "呀", "呢", "的",
     ].sorted { $0.count > $1.count }
     /// After a yes, these turn it around or question it ("好，但是…",
     /// "嗯，让我想想", "はい、でも…"): asked again.

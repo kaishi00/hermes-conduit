@@ -18,6 +18,10 @@
 //  switches to it first, as a notification for that chat does. Without it
 //  the chat is on the profile in use.
 //
+//  `?dashboard=<uuid>` names the saved dashboard the chat ran on (a Live
+//  Activity's card stays up after a dashboard switch): the chat opens
+//  there, switching to that dashboard first, as a notification for it does.
+//
 //  `conduit://settings/calls` opens Settings at Calls from Hermes: Hermes
 //  links it when the user asks for a call while calls are off.
 //  `conduit://settings/voice` opens Voice, where the user lets Hermes
@@ -33,8 +37,10 @@ import Foundation
 
 enum ConduitAppLink: Equatable {
     /// A chat (Hermes session) on `profile`, or on the profile the link
-    /// was read in when it names none.
-    case session(id: String, profile: String? = nil)
+    /// was read in when it names none. `dashboard` names the saved
+    /// dashboard the chat ran on, so a link written on one opens it there
+    /// instead of against the dashboard in use when it is tapped.
+    case session(id: String, profile: String? = nil, dashboard: String? = nil)
     /// A bot's Bot Chat, by the bot's profile name: a bot has one chat, and
     /// it opens through the bot's profile.
     case bot(profile: String)
@@ -65,7 +71,7 @@ enum ConduitAppLink: Equatable {
         let id = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty, !id.contains("/") else { return nil }
         switch components.host?.lowercased() {
-        case "session": self = .session(id: id, profile: Self.profile(in: components))
+        case "session": self = .session(id: id, profile: Self.profile(in: components), dashboard: Self.dashboard(in: components))
         case "bot": self = .bot(profile: id)
         case "settings":
             guard let page = SettingsLink(rawValue: id.lowercased()) else { return nil }
@@ -75,10 +81,11 @@ enum ConduitAppLink: Equatable {
     }
 
     /// A link another app opened Conduit with: only a chat link, and only
-    /// one whose id and profile are plain tokens.
+    /// one whose id, profile and dashboard are plain tokens.
     init?(externalURL url: URL) {
-        guard let link = ConduitAppLink(url: url), case .session(let id, let profile) = link,
-              Self.isPlainToken(id), profile.map(Self.isPlainToken) ?? true else { return nil }
+        guard let link = ConduitAppLink(url: url), case .session(let id, let profile, let dashboard) = link,
+              Self.isPlainToken(id), profile.map(Self.isPlainToken) ?? true,
+              dashboard.map(Self.isPlainToken) ?? true else { return nil }
         self = link
     }
 
@@ -90,7 +97,15 @@ enum ConduitAppLink: Equatable {
         return value?.isEmpty == false ? value : nil
     }
 
-    private static func isPlainToken(_ value: String) -> Bool {
+    /// The link's first `dashboard` query item; nil when it has none or a
+    /// blank one.
+    private static func dashboard(in components: URLComponents) -> String? {
+        let value = components.queryItems?.first { $0.name == "dashboard" }?.value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+
+    static func isPlainToken(_ value: String) -> Bool {
         let scalars = value.unicodeScalars
         return scalars.count <= maxExternalTokenLength && scalars.allSatisfy(externalTokenCharacters.contains)
     }
@@ -102,12 +117,14 @@ enum ConduitAppLink: Equatable {
         var components = URLComponents()
         components.scheme = Self.scheme
         switch self {
-        case .session(let id, let profile):
+        case .session(let id, let profile, let dashboard):
             components.host = "session"
             components.path = "/" + id
-            if let profile {
-                components.queryItems = [URLQueryItem(name: "profile", value: profile)]
-            }
+            let items = [
+                profile.map { URLQueryItem(name: "profile", value: $0) },
+                dashboard.map { URLQueryItem(name: "dashboard", value: $0) },
+            ].compactMap { $0 }
+            if !items.isEmpty { components.queryItems = items }
         case .bot(let profile):
             components.host = "bot"
             components.path = "/" + profile

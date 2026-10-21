@@ -1638,7 +1638,12 @@ final class WatchDirectCallModel: ObservableObject {
         // Sampled as the call arrives: the link can drop later for other
         // reasons, with the wrist still up.
         let wristDown = scenePhase != .active
-        let wire = WatchVoiceWire.DirectToolCall(id: call.id, name: call.name, arguments: call.arguments)
+        var wire = WatchVoiceWire.DirectToolCall(id: call.id, name: call.name, arguments: call.arguments)
+        // The words a change on the iPhone checks for the user's own yes.
+        if let line = exchangeUserLine, transcript.indices.contains(line), transcript[line].role == .user {
+            wire.userWords = transcript[line].text
+            wire.userTurn = line
+        }
         if call.name == WatchJobAnswer.jobNews {
             // The Watch app's own call, never the model's.
             answer(.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue, fallback: nil), generation: generation)

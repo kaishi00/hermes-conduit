@@ -131,6 +131,32 @@ final class ChatMessageScrollTargetCacheIncrementalTests: XCTestCase {
         XCTAssertGreaterThan(TranscriptPerf.lastFingerprintedMessageCount, 0)
     }
 
+    func testRenderingOnlyUpdateReclassifiesAStepThatBecomesACard() throws {
+        // A conduit_show call is a step while it runs and part of the reply
+        // once its answer carries a card. The tool's status and output are
+        // not fingerprinted, so that change takes the rendering-only path,
+        // which must re-derive isStep rather than copy the cached value.
+        let user = message("u", "show me dinner", role: .user)
+        func show(_ status: ToolActivity.Status, output: String?) -> ChatMessage {
+            ChatMessage(
+                id: "t", role: .tool, content: "", timestamp: "2026-01-01T00:00:00Z",
+                tool: ToolActivity(id: "t1", name: "conduit_show", input: nil, output: output, status: status)
+            )
+        }
+        var cache = prime([user, show(.running, output: nil)])
+        let running = try XCTUnwrap(cache.targets.last)
+        XCTAssertTrue(running.isStep)
+        XCTAssertNotNil(running.step, "a running step is placed in its run")
+
+        let answer = #"{"ok": true, "cards": [{"type": "place", "places": [{"name": "Tartine"}]}]}"#
+        let result = cache.update(for: [user, show(.complete, output: answer)])
+
+        XCTAssertEqual(result, .renderingChanged)
+        let card = try XCTUnwrap(cache.targets.last)
+        XCTAssertFalse(card.isStep, "a shown card reads as part of the reply")
+        XCTAssertNil(card.step)
+    }
+
     func testDuplicateContentsFallBackToFullRebuildAndMatchReference() {
         // Appending a duplicate of an existing fingerprint must not take an
         // incremental path that would mis-number occurrences.

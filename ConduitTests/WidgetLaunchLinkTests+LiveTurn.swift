@@ -222,4 +222,78 @@ extension WidgetLaunchLinkTests {
         XCTAssertNil(PushNotificationService.liveActivityRouteExists(registrationStatus: 500))
         XCTAssertNil(PushNotificationService.liveActivityRouteExists(registrationStatus: 401))
     }
+    /// A card's tap opens the chat by its stored id: the runtime id the
+    /// turn was sent on stops resolving once Hermes reaps that runtime, and
+    /// the chat then read "That chat is no longer available".
+    @MainActor
+    func testLiveTurnCardLinksTheChatByItsStoredID() {
+        let suite = "WidgetLaunchLinkTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.sessions = [SessionSummary(
+            id: "rt", storedSessionId: "stored", alternateIds: ["stored"], title: "Chat", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: true, isArchived: false,
+            lineageRootId: nil
+        )]
+        XCTAssertEqual(appState.liveActivityLinkSessionID(for: "rt"), "stored")
+        XCTAssertEqual(appState.liveActivityLinkSessionID(for: "unknown"), "unknown", "Nothing known: the id it was sent on")
+    }
+
+    /// A card an older build left up names the runtime id; the other ids it
+    /// carries find the chat once the list no longer knows that runtime.
+    @MainActor
+    func testLiveTurnCardOffersItsOtherIDsForAReapedRuntime() throws {
+        let link = try XCTUnwrap(URL(string: "conduit://session/rt?profile=default"))
+        let card = HermesTurnAttributes(chatTitle: "Chat", startedAt: now, language: "system", link: link, sessionIDs: ["rt", "stored"], dashboardID: "D1")
+        let other = HermesTurnAttributes(chatTitle: "Other", startedAt: now, language: "system", link: try XCTUnwrap(URL(string: "conduit://session/x")), sessionIDs: ["x", "y"])
+        func ids(_ id: String, profile: String = "default", dashboard: String? = "D1", in cards: [HermesTurnAttributes]) -> [String] {
+            LiveTurnActivities.sessionIDs(linkedTo: id, profile: profile, dashboardID: dashboard, in: cards)
+        }
+        XCTAssertEqual(ids("rt", in: [other, card]), ["stored"])
+        XCTAssertEqual(ids("nope", in: [other, card]), [])
+        XCTAssertEqual(ids("", in: [card]), [])
+        XCTAssertEqual(ids("rt", dashboard: "D2", in: [card]), [], "Another dashboard's card says nothing here")
+        XCTAssertEqual(ids("rt", profile: "work", in: [card]), [], "Nor another profile's")
+        XCTAssertEqual(ids("rt", profile: "Default ", in: [card]), ["stored"], "Profiles match as they do elsewhere")
+        XCTAssertEqual(ids("x", profile: "work", dashboard: nil, in: [other]), ["y"], "An older card naming neither counts")
+        // The reaped runtime is in no row; its stored id is.
+        let row = SessionSummary(
+            id: "stored", alternateIds: [], title: "Chat", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        XCTAssertNil(AppState.linkedSessionTarget("rt", rows: [row], aliases: VoiceSessionAliases()))
+        XCTAssertEqual(AppState.linkedSessionTarget("stored", rows: [row], aliases: VoiceSessionAliases()), "stored")
+        // A list read before the reaping still names the dead runtime: the
+        // open resumes the row's stored id, which Hermes always knows.
+        let stale = SessionSummary(
+            id: "rt", storedSessionId: "stored", alternateIds: ["stored"], title: "Chat", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: true, isArchived: false,
+            lineageRootId: nil
+        )
+        let target = try XCTUnwrap(AppState.linkedSessionTarget("stored", rows: [stale], aliases: VoiceSessionAliases()))
+        XCTAssertEqual(target, "rt")
+        XCTAssertEqual(AppState.linkedResumeID(target, matching: "stored", rows: [stale]), "stored")
+        XCTAssertEqual(AppState.linkedResumeID("stored", matching: "stored", rows: [row]), "stored", "A row without a stored id resumes by its own")
+        // Another profile's row with the same runtime id doesn't lend its stored id.
+        let foreignRow = SessionSummary(
+            id: "rt", storedSessionId: "elsewhere", alternateIds: [], title: "Other", model: "Hermes",
+            updatedLabel: "now", profile: "work", source: .chat, isActive: true, isArchived: false,
+            lineageRootId: nil
+        )
+        XCTAssertEqual(AppState.linkedResumeID("rt", matching: "stored", rows: [foreignRow, stale]), "stored")
+        // A card's runtime id Hermes has since given another chat loses to
+        // the link's stored id.
+        XCTAssertEqual(AppState.linkedSessionCandidates(["rt", "stored", "rt", ""], rows: [foreignRow, stale]), ["stored", "rt"])
+        XCTAssertEqual(AppState.linkedSessionCandidates(["rt", "stored"], rows: []), ["rt", "stored"], "No row to tell them apart keeps the order")
+        XCTAssertEqual(AppState.linkedSessionCandidates(["rt", "stored"], rows: [row]), ["stored", "rt"], "A row without a stored id is durable by its own")
+        // A voice alias found the row: its stored id still resumes it.
+        let aliasedRow = SessionSummary(
+            id: "rt2", storedSessionId: "stored", alternateIds: [], title: "Chat", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: true, isArchived: false,
+            lineageRootId: nil
+        )
+        XCTAssertEqual(AppState.linkedResumeID("rt2", matching: "rt", "stored", rows: [aliasedRow]), "stored")
+        XCTAssertEqual(AppState.linkedResumeID("rt2", matching: "rt", rows: [aliasedRow]), "rt2", "Nothing ties the row to the id")
+    }
 }

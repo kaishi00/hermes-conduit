@@ -203,17 +203,27 @@ extension AppState {
     /// in Conduit) and hands its text and files to the composer on screen.
     /// The draft leaves the inbox once the composer has it
     /// (`sharedDraftReachedComposer`). Nothing is sent. False when the
-    /// dashboard changed meanwhile: the draft waits.
+    /// dashboard or the chat on screen changed meanwhile: the draft waits.
     @discardableResult
     func deliverSharedDraft(_ id: UUID, openedItsChat: Bool, dashboardID: UUID) async -> Bool {
         guard let inbox = shareDraftInbox, let draft = inbox.pending(id: id) else { return false }
         let stored = UserDefaults.standard.integer(forKey: AttachmentSizeLimit.preferenceKey)
         let limit = AttachmentSizeLimit.clampedMegabytes(stored)
+        // The chat the draft lands in, as it is on screen now: the user
+        // can move to another one while the files are copied.
+        let destinationKey = composerDraftKeyOnScreen
         let staged = await Task.detached(priority: .userInitiated) {
             Self.stageSharedFiles(draft, from: inbox, limitMegabytes: limit)
         }.value
         // Signed out, or on another dashboard, while the files were copied.
         guard activeDashboardID == dashboardID, inbox.pending(id: id) != nil else {
+            staged.attachments.forEach(Self.deleteStagedScreenshot)
+            return false
+        }
+        // Moved to another chat (or profile) while the files were copied:
+        // the draft waits in the inbox rather than land in a chat it
+        // wasn't for.
+        guard composerDraftKeysAreSameChat(destinationKey, composerDraftKeyOnScreen) else {
             staged.attachments.forEach(Self.deleteStagedScreenshot)
             return false
         }

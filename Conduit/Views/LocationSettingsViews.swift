@@ -702,11 +702,18 @@ struct LocationSettingsPage: View {
                 Haptics.success()
                 await loadFromHost()
             } catch {
-                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                errorMessage = Self.bannerMessage(for: error)
                 Haptics.error()
             }
             isWorking = false
         }
+    }
+
+    /// The banner under the settings when turning sharing on, deleting a
+    /// rule or deleting location data fails: what happened and what to do,
+    /// never NSURLErrorDomain text.
+    static func bannerMessage(for error: Error) -> String {
+        UserFacingError.message(for: error)
     }
 
     private func deleteRule(_ rule: LocationRule) {
@@ -719,7 +726,7 @@ struct LocationSettingsPage: View {
                 try await controller.engine.deleteRule(rule.id, request: request)
                 rules.removeAll { $0.id == rule.id }
             } catch {
-                errorMessage = LocationSyncEngine.describe(error)
+                errorMessage = Self.bannerMessage(for: error)
             }
         }
     }
@@ -735,7 +742,7 @@ struct LocationSettingsPage: View {
                 Haptics.success()
                 await loadFromHost()
             } catch {
-                errorMessage = LocationSyncEngine.describe(error)
+                errorMessage = Self.bannerMessage(for: error)
             }
             isWorking = false
         }
@@ -988,7 +995,7 @@ struct LocationPlaceEditor: View {
                 if results.isEmpty { message = AppLocalization.string("No matches.") }
             } catch {
                 results = []
-                message = AppLocalization.string("No matches.")
+                message = AppLocalization.string("Couldn't search Apple Maps. Try again.")
             }
             isSearching = false
         }

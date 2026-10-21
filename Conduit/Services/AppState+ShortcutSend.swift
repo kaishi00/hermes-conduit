@@ -29,16 +29,9 @@ extension AppState {
             createChat: { [weak self] profile, title in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 let inUse = self.profilesMatch(profile, self.activeProfile)
-                let created: (sessionId: String, storedSessionId: String?, profile: String?)
-                if inUse {
-                    // The same model as a chat started from the composer.
-                    created = try await client.createSession(
-                        model: self.runtime.model.isEmpty ? nil : self.runtime.model,
-                        provider: self.runtime.provider.isEmpty ? nil : self.runtime.provider
-                    )
-                } else {
-                    created = try await client.createSession(inProfile: profile)
-                }
+                // As a chat started from the composer: the profile's default
+                // model, not the open chat's (#916).
+                let created = try await client.createSession(inProfile: inUse ? nil : profile)
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
@@ -56,11 +49,14 @@ extension AppState {
                 if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy, Self.parseSlashCommand(text) == nil {
                     // A turn the composer finds running is never steered or
                     // interrupted from here: it declines and the gateway queues.
+                    self.submissionTurnSurface = (text, .shortcut)
+                    defer { self.submissionTurnSurface = nil }
                     if await self.submitComposer(text: text, onBusy: {}) { return .accepted }
                 }
                 // Off screen, a turn running there, or a composer that couldn't
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
+                await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 return try await client.sendPrompt(runtimeID, text: text)
             },
             liveSessions: { [weak self] profile in

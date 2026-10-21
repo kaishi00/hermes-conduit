@@ -555,7 +555,7 @@ struct KanbanTaskDetailView: View {
                         .multilineTextAlignment(.trailing)
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 }
             }
             .accessibilityHint("Edits the per-task model, provider, and reasoning override")
@@ -824,7 +824,7 @@ struct KanbanTaskDetailView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "link")
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(linkedTaskTitle(for: linkedID))
                                 .foregroundStyle(.primary)
@@ -832,7 +832,7 @@ struct KanbanTaskDetailView: View {
                             HStack(spacing: 5) {
                                 Text(KanbanShortID.of(linkedID))
                                     .font(.caption2.monospaced())
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.conduitTertiary)
                                 if let linkedStatus = linkedTaskStatus(for: linkedID) {
                                     Text(KanbanStatusPresentation.forStatus(linkedStatus).displayName)
                                         .font(.caption2)
@@ -843,7 +843,7 @@ struct KanbanTaskDetailView: View {
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                     }
                 }
                 .accessibilityLabel("Open linked task \(linkedTaskTitle(for: linkedID))")
@@ -872,7 +872,7 @@ struct KanbanTaskDetailView: View {
                             Spacer()
                             Text(relativeDate(value.createdAt))
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.conduitTertiary)
                         }
                         Text(value.body).font(.footnote)
                     }
@@ -969,13 +969,13 @@ struct KanbanTaskDetailView: View {
                         Spacer(minLength: 0)
                         Text(relativeDate(event.createdAt))
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                     }
                 }
                 if events.count > 60 {
                     Text("\(events.count - 60) earlier events hidden")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 }
             }
         }
@@ -1027,7 +1027,7 @@ struct KanbanTaskDetailView: View {
                 }
                 Spacer(minLength: 0)
                 Text(relativeDate(run.endedAt ?? run.startedAt))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
@@ -1058,7 +1058,7 @@ struct KanbanTaskDetailView: View {
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
         }
         .buttonStyle(.plain)

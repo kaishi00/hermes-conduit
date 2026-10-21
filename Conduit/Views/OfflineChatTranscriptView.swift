@@ -62,10 +62,14 @@ struct OfflineChatTranscriptView: View {
                     if let pending = appState.pendingComposerSendOnScreen {
                         PendingComposerSendBubble(pending: pending)
                     }
+                    // Ends as the live transcript does (ChatView's bottom
+                    // anchor): a 1 pt row one row spacing below the last, so
+                    // the copy lines up with it when it hands over.
+                    Color.clear
+                        .frame(height: 1)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
-                .padding(.bottom, 126)
             }
             .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
             .defaultScrollAnchor(.bottom)

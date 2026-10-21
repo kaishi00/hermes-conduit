@@ -7,11 +7,14 @@ import XCTest
 /// view tree. A control is icon-only when an `Image(systemName:` sits within 4
 /// lines after a `Button(`, `Button {` or `} label: {` line (the owner). From
 /// the image it scans forward until a line indented less than the owner, the
-/// next `Button`/`Menu` at the owner's depth, another `Image(systemName:` once
-/// the label closure has closed, or 25 lines. A `.accessibilityLabel(` or
-/// `.accessibilityHidden(true)` anywhere in that span names it; `Text(` or
-/// `Label(` name it only inside the label closure itself. `.help(` doesn't
-/// count: on iOS it is a hint, not a name.
+/// next `Button`/`Menu` at the owner's depth, another control's
+/// `Image(systemName:` (one with its own owner within 4 lines above) once the
+/// label closure has closed, or 25 lines. An image without an owner, like a
+/// large content viewer's icon, belongs to the same control; so does a
+/// separate control's image nested 5 or more lines below its owner. A
+/// `.accessibilityLabel(` or `.accessibilityHidden(true)` anywhere in that
+/// span names it; `Text(` or `Label(` name it only inside the label closure
+/// itself. `.help(` doesn't count: on iOS it is a hint, not a name.
 ///
 /// A control the heuristic can't see is named elsewhere (a helper whose call
 /// sites add the label) goes in `allowed`, keyed by file and trimmed line text
@@ -100,6 +103,49 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
     }
 
+    func testALabelAfterALargeContentViewerNamesTheButton() {
+        // The viewer's icon belongs to the same control; it must not end the
+        // scan before the label below it.
+        let source = """
+            Button { dictate() } label: {
+                Image(systemName: "mic")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityShowsLargeContentViewer {
+                Label {
+                    Text("Dictate")
+                } icon: {
+                    Image(systemName: "mic")
+                }
+            }
+            .accessibilityLabel(Text("Dictate"))
+        """
+        XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
+    }
+
+    func testANestedNextControlsImageEndsTheSpan() {
+        // The next control sits deeper than the owner, so only its image can
+        // end the earlier control's span before its label.
+        let source = """
+            VStack {
+                Button { back() } label: {
+                    Image(systemName: "chevron.left")
+                }
+                if showsForward {
+                    Button { forward() } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .accessibilityLabel("Forward")
+                }
+            }
+        """
+        XCTAssertEqual(
+            Self.unnamedIconButtons(in: source, path: "A.swift").map(\.line),
+            [3]
+        )
+    }
+
     func testTheNextControlsLabelDoesNotNameAnEarlierOne() {
         let source = """
             HStack {
@@ -128,13 +174,18 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         line.prefix(while: { $0 == " " }).count
     }
 
+    /// The nearest owner line within 4 lines above `index`.
+    private static func ownerLine(above index: Int, in lines: [String]) -> Int? {
+        (max(0, index - 4)..<index).reversed().first { j in
+            owners.contains { lines[j].contains($0) }
+        }
+    }
+
     static func unnamedIconButtons(in source: String, path: String) -> [Site] {
         let lines = source.components(separatedBy: "\n")
         var flagged: [Site] = []
         for (i, line) in lines.enumerated() where line.contains("Image(systemName:") {
-            guard let owner = (max(0, i - 4)..<i).reversed().first(where: { j in
-                owners.contains { lines[j].contains($0) }
-            }) else { continue }
+            guard let owner = ownerLine(above: i, in: lines) else { continue }
             let ownerIndent = indent(lines[owner])
 
             // A name on the image's own line, or label content before it.
@@ -149,13 +200,18 @@ final class AccessibilityLabelAuditTests: XCTestCase {
             var inLabelClosure = true
             var k = i + 1
             while !named, k < lines.count, k <= i + 25 {
+                let current = k
                 let l = lines[k]
                 let trimmed = l.trimmingCharacters(in: .whitespaces)
                 k += 1
                 guard !trimmed.isEmpty else { continue }
                 let lineIndent = indent(l)
                 if lineIndent < ownerIndent { break }
-                if !inLabelClosure, l.contains("Image(systemName:") { break }
+                // Another control's image ends the span; an image with no
+                // owner of its own (a large content viewer's icon) doesn't.
+                if !inLabelClosure, l.contains("Image(systemName:"), ownerLine(above: current, in: lines) != nil {
+                    break
+                }
                 if lineIndent <= ownerIndent, trimmed.hasPrefix("Button") || trimmed.hasPrefix("Menu") { break }
                 if naming.contains(where: { l.contains($0) }) { named = true; break }
                 if inLabelClosure {

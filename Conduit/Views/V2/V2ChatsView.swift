@@ -6,17 +6,19 @@
 //  days and Older, each collapsible; child sessions under their parent)
 //  and, behind the folder toggle, Projects. The filters are a native
 //  pull-down menu and combine (Unread and Chat lists unread
-//  chats); the active ones show as a gold chip in the search field. Rows
-//  keep the old drawer's swipes and context menu.
+//  chats, Starred narrows either to starred ones); the active ones show as
+//  a gold chip in the search field. Rows keep the old drawer's swipes and
+//  context menu, plus Star.
 //
 
 import SwiftUI
 
-/// One filter in the Chats menu. Status filters flatten the list to matching
-/// rows; Voice, Scheduled and the other sources keep it nested, like the old
-/// source filters.
+/// One filter in the Chats menu. Starred and the status filters flatten the
+/// list to matching rows; Voice, Scheduled and the other sources keep it
+/// nested, like the old source filters.
 enum V2SessionFilter: Equatable, Hashable {
     case all
+    case starred
     case unread
     case needsApproval
     case running
@@ -24,10 +26,11 @@ enum V2SessionFilter: Equatable, Hashable {
     case scheduled
     case source(SessionSource)
 
-    static let menuCases: [V2SessionFilter] = [.all, .unread, .needsApproval, .running, .voice, .scheduled]
+    static let menuCases: [V2SessionFilter] = [.all, .starred, .unread, .needsApproval, .running, .voice, .scheduled]
 
     init(rawValue: String) {
         switch rawValue {
+        case "starred": self = .starred
         case "unread": self = .unread
         case "needsApproval": self = .needsApproval
         case "running": self = .running
@@ -46,6 +49,7 @@ enum V2SessionFilter: Equatable, Hashable {
     var rawValue: String {
         switch self {
         case .all: return "all"
+        case .starred: return "starred"
         case .unread: return "unread"
         case .needsApproval: return "needsApproval"
         case .running: return "running"
@@ -58,6 +62,7 @@ enum V2SessionFilter: Equatable, Hashable {
     var title: String {
         switch self {
         case .all: return AppLocalization.string("All")
+        case .starred: return AppLocalization.string("Starred")
         case .unread: return AppLocalization.string("Unread")
         case .needsApproval: return AppLocalization.string("Needs approval")
         case .running: return AppLocalization.string("Running")
@@ -70,6 +75,7 @@ enum V2SessionFilter: Equatable, Hashable {
     var symbol: String {
         switch self {
         case .all: return "tray.full"
+        case .starred: return "star"
         case .unread: return "circle.fill"
         case .needsApproval: return "checkmark.shield"
         case .running: return "arrow.triangle.2.circlepath"
@@ -86,13 +92,17 @@ enum V2SessionFilter: Equatable, Hashable {
     /// than where it came from.
     var isStatus: Bool { self == .unread || isLive }
 
+    /// Starred narrows whatever else is chosen (Starred and Unread lists
+    /// starred chats that are unread), where statuses list any of theirs.
+    var isScope: Bool { self == .starred }
+
     /// The source a source filter lists (Scheduled lists cron runs).
     var sessionSource: SessionSource? {
         switch self {
         case .voice: return .voice
         case .scheduled: return .cron
         case .source(let source): return source
-        case .all, .unread, .needsApproval, .running: return nil
+        case .all, .starred, .unread, .needsApproval, .running: return nil
         }
     }
 
@@ -105,6 +115,7 @@ enum V2SessionFilter: Equatable, Hashable {
 
     var emptyTitle: String {
         switch self {
+        case .starred: return AppLocalization.string("No starred chats")
         case .unread: return SessionStatusFilter.unread.emptyTitle
         case .needsApproval: return SessionStatusFilter.needsInput.emptyTitle
         case .running: return SessionStatusFilter.working.emptyTitle
@@ -114,6 +125,7 @@ enum V2SessionFilter: Equatable, Hashable {
 
     var emptyDescription: String {
         switch self {
+        case .starred: return AppLocalization.string("Swipe a chat or touch and hold it to star it.")
         case .unread: return SessionStatusFilter.unread.emptyDescription
         case .needsApproval: return SessionStatusFilter.needsInput.emptyDescription
         case .running: return SessionStatusFilter.working.emptyDescription
@@ -123,10 +135,10 @@ enum V2SessionFilter: Equatable, Hashable {
 }
 
 /// The Chats filters, any number at once. A row is listed when it has one of
-/// the chosen statuses and comes from one of the chosen sources; a group with
-/// nothing chosen doesn't narrow. Saved comma-separated under the single
-/// filter's old key, so a filter saved by an earlier build reads as itself
-/// and "all" as none.
+/// the chosen statuses, comes from one of the chosen sources and, with
+/// Starred on, is starred; a group with nothing chosen doesn't narrow. Saved
+/// comma-separated under the single filter's old key, so a filter saved by
+/// an earlier build reads as itself and "all" as none.
 struct V2FilterSelection: Equatable {
     private(set) var filters: Set<V2SessionFilter>
 
@@ -154,11 +166,12 @@ struct V2FilterSelection: Equatable {
     }
 
     var statuses: [V2SessionFilter] { ordered.filter(\.isStatus) }
-    var sources: [V2SessionFilter] { ordered.filter { !$0.isStatus } }
+    var sources: [V2SessionFilter] { ordered.filter { !$0.isStatus && !$0.isScope } }
+    var scopes: [V2SessionFilter] { ordered.filter(\.isScope) }
 
-    /// A status is a lookup, not a browse: the list flattens to the matching
-    /// rows.
-    var flattens: Bool { !statuses.isEmpty }
+    /// A status or Starred is a lookup, not a browse: the list flattens to
+    /// the matching rows, project chats included and no section closed.
+    var flattens: Bool { !statuses.isEmpty || !scopes.isEmpty }
 
     /// All counts as chosen when nothing else is.
     func contains(_ filter: V2SessionFilter) -> Bool {
@@ -181,20 +194,23 @@ struct V2FilterSelection: Equatable {
 
     /// What the menu counts beside `filter`: the other group's choices with
     /// `filter` alone in its own group, so with Unread on, Chat counts the
-    /// unread chats.
+    /// unread chats. Starred narrows every count while it's on, and its own
+    /// count is the starred rows among what's chosen.
     func facet(_ filter: V2SessionFilter) -> V2FilterSelection {
         guard filter != .all else { return .empty }
+        if filter.isScope { return V2FilterSelection(filters: filters.union([filter])) }
         let otherGroup = filter.isStatus ? sources : statuses
-        return V2FilterSelection(filters: Set(otherGroup + [filter]))
+        return V2FilterSelection(filters: Set(otherGroup + scopes + [filter]))
     }
 
     /// The filter whose empty-list wording fits the selection.
     var emptyStateFilter: V2SessionFilter {
-        statuses.first ?? sources.first ?? .all
+        scopes.first ?? statuses.first ?? sources.first ?? .all
     }
 
-    /// The rows the selection lists. `everything` is what a status looks
-    /// through when no source is chosen. Chosen sources keep the listing's
+    /// The rows the selection lists. `everything` is what a status or
+    /// Starred looks through when no source is chosen; `hasStatus` answers
+    /// for Starred too. Chosen sources keep the listing's
     /// order, with cron runs (Scheduled) woven in by recency.
     func rows(
         everything: @autoclosure () -> [SessionSummary],
@@ -204,8 +220,15 @@ struct V2FilterSelection: Equatable {
         hasStatus: (V2SessionFilter, SessionSummary) -> Bool
     ) -> [SessionSummary] {
         let kinds = Set(sources.compactMap(\.sessionSource))
+        let scopes = self.scopes
         let listed: [SessionSummary]
-        if kinds.isEmpty {
+        if kinds.isEmpty, !scopes.isEmpty {
+            // A run starred under Scheduled is listed under Starred alone
+            // too, not only once it is pinned.
+            let rows = everything()
+            let ids = Set(rows.map(\.id))
+            listed = Self.mergedByRecency(rows, cronSessions.filter { !$0.isArchived && !ids.contains($0.id) })
+        } else if kinds.isEmpty {
             listed = everything()
         } else {
             // Cron runs come only from their own list, as under Scheduled.
@@ -219,8 +242,11 @@ struct V2FilterSelection: Equatable {
                 : chats
         }
         let wanted = statuses
-        guard !wanted.isEmpty else { return listed }
-        return listed.filter { session in wanted.contains { hasStatus($0, session) } }
+        guard !wanted.isEmpty || !scopes.isEmpty else { return listed }
+        return listed.filter { session in
+            (wanted.isEmpty || wanted.contains { hasStatus($0, session) })
+                && scopes.allSatisfy { hasStatus($0, session) }
+        }
     }
 
     /// Two lists, each newest first, merged so each keeps its own order. A
@@ -555,6 +581,7 @@ struct V2ChatsView: View, Equatable {
                 .disabled(!appState.supportsProjects || appState.projectsSeededFromSavedList)
             } else {
                 filterToggle(.all)
+                filterToggle(.starred)
 
                 Section(AppLocalization.string("Status")) {
                     ForEach(statusFilters, id: \.self) { option in
@@ -679,6 +706,7 @@ struct V2ChatsView: View, Equatable {
 
     private func hasStatus(_ filter: V2SessionFilter, _ session: SessionSummary) -> Bool {
         switch filter {
+        case .starred: return appState.isSessionStarred(session)
         case .unread: return appState.isSessionUnread(session)
         case .needsApproval: return appState.sessionLiveStatus(session) == .needsInput
         case .running: return appState.sessionLiveStatus(session) == .working
@@ -1078,6 +1106,7 @@ struct V2ChatsView: View, Equatable {
                 time: row.session?.updatedLabel ?? "",
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
+                isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
                 isSelected: row.openID == appState.activeSessionId
             )
         }
@@ -1523,6 +1552,7 @@ private struct V2ChatsRow: View {
                 preview: V2ChatsView.searchPreview(preview, projectTitle: projectTitle),
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
+                isStarred: appState.isSessionStarred(session),
                 isSelected: session.id == appState.activeSessionId,
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren
@@ -1581,6 +1611,7 @@ private struct V2ChatsRow: View {
     private func childRow(_ session: SessionSummary, depth: Int, parentTitle: String) -> some View {
         let status = appState.v2RowStatus(for: session)
         let isUnread = appState.isSessionUnread(session)
+        let isStarred = appState.isSessionStarred(session)
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -1598,6 +1629,12 @@ private struct V2ChatsRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
+                if isStarred {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(Color.conduitAccent)
+                        .accessibilityHidden(true)
+                }
                 Text(status.actionWord ?? session.updatedLabel)
                     .font(.footnote)
                     .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
@@ -1614,6 +1651,7 @@ private struct V2ChatsRow: View {
         .accessibilityValue(Text([
             AppLocalization.string("From \(parentTitle)"),
             isUnread ? AppLocalization.string("Unread") : nil,
+            isStarred ? AppLocalization.string("Starred") : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))
@@ -1626,7 +1664,7 @@ private struct V2ChatsRow: View {
 
 extension View {
     /// The conversation actions every V2 session row carries: the context
-    /// menu (Rename, Pin, Read, Move to Project, Archive, Delete) and the
+    /// menu (Rename, Pin, Star, Read, Move to Project, Archive, Delete) and the
     /// drawer's swipes. A saved row (the list as it showed last time, up
     /// while Conduit connects) takes none: they would act on a list Hermes
     /// hasn't sent yet.
@@ -1691,6 +1729,17 @@ private struct V2SessionActions: ViewModifier {
                         )
                     }
                     .tint(.conduitAccent)
+
+                    Button {
+                        Haptics.light()
+                        appState.toggleSessionStarred(session)
+                    } label: {
+                        Label(
+                            appState.isSessionStarred(session) ? AppLocalization.string("Unstar") : AppLocalization.string("Star"),
+                            systemImage: appState.isSessionStarred(session) ? "star.slash" : "star"
+                        )
+                    }
+                    .tint(.yellow)
 
                     ReadStateToggleButton(session: session, nest: nest)
                         .tint(.blue)

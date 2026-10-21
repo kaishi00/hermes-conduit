@@ -46,9 +46,9 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// The call a "Hermes wants to talk" notification carries (#449); nil
     /// for every other notification.
     let call: HermesCallRequest?
-    /// Opened from a chat link (`conduit://session/<id>?profile=…`), not a
-    /// notification: it never switches profile while a call runs, because
-    /// the switch would end the call.
+    /// Opened from a chat link (`conduit://session/<id>?profile=…&dashboard=…`),
+    /// not a notification: it never switches profile or dashboard while a
+    /// call runs, because the switch would end the call.
     let isChatLink: Bool
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
@@ -1790,8 +1790,9 @@ final class PushNotificationService: ObservableObject {
         route(target)
     }
 
-    /// A chat link for another profile (`conduit://session/<id>?profile=…`)
-    /// opens as a notification for that chat would.
+    /// A chat link for another profile or dashboard
+    /// (`conduit://session/<id>?profile=…&dashboard=…`) opens as a
+    /// notification for that chat would.
     func routeChatLink(_ target: ConduitNotificationTarget) {
         route(target)
     }

@@ -253,6 +253,53 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(try JSONDecoder().decode(WatchDirectCallLedger.GrantScope.self, from: stored).audio)
     }
 
+    /// A call whose Watch died ends on the phone after the silence limit
+    /// (#1008), but not while a grant its Watch may use wrist down is open.
+    @MainActor
+    func testWatchCallSilenceDeadlineWaitsOutTheGrant() {
+        let heard = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let limit = WatchDirectBroker.silenceLimit
+        XCTAssertEqual(WatchDirectBroker.silenceDeadline(lastHeardAt: heard, grantExpiresAt: nil), heard.addingTimeInterval(limit))
+        // A grant that ends before the limit changes nothing.
+        XCTAssertEqual(
+            WatchDirectBroker.silenceDeadline(lastHeardAt: heard, grantExpiresAt: heard.addingTimeInterval(10 * 60)),
+            heard.addingTimeInterval(limit)
+        )
+        // One that runs past it keeps the call until it ends, plus a minute.
+        let grantEnds = heard.addingTimeInterval(limit + 5 * 60)
+        XCTAssertEqual(
+            WatchDirectBroker.silenceDeadline(lastHeardAt: heard, grantExpiresAt: grantEnds),
+            grantEnds.addingTimeInterval(WatchDirectBroker.grantGrace)
+        )
+    }
+
+    /// The grant's end comes back with a call adopted after a restart, so
+    /// its watchdogs wait it out; calls stored before it read as unknown.
+    @MainActor
+    func testWatchCallLedgerKeepsTheGrantsEndAcrossARestart() throws {
+        let suite = "WatchDirectCallLedger.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var ledger = WatchDirectCallLedger(defaults: defaults)
+        ledger.begin(9, connection: WatchDirectConnection(profile: "default", dashboard: "A"), saveCalls: true)
+        let ends = Date(timeIntervalSinceReferenceDate: 800_001_800)
+        let scope = WatchDirectCallLedger.GrantScope(
+            tools: ["web_search"],
+            jobTools: [],
+            liveToken: true,
+            maxJobs: 0,
+            jobOptions: [:],
+            voiceApprovals: false,
+            grantIDs: ["grant-1"],
+            expiresAt: ends
+        )
+        ledger.setGrant(scope, for: 9)
+        XCTAssertEqual(WatchDirectCallLedger(defaults: defaults).call(9)?.grant?.expiresAt, ends)
+
+        let stored = Data(#"{"tools":[],"jobTools":[],"liveToken":false,"maxJobs":0,"jobOptions":{},"voiceApprovals":false,"grantIDs":[]}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(WatchDirectCallLedger.GrantScope.self, from: stored).expiresAt)
+    }
+
     /// Corrections on a Watch call (#455): the marker, the words and what
     /// the model hears match the phone's, for GPT-Live and Gemini/Grok.
     @MainActor

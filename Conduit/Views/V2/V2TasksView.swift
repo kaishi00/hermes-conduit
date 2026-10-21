@@ -116,6 +116,10 @@ struct V2ScheduledList: View {
     @Environment(\.v2Shell) private var shell
     @State private var selectedJob: CronJob?
     @State private var jobPendingDeletion: CronJob?
+    @State private var editorTarget: CronJobEditorSheet.Target?
+    @State private var showingBlueprints = false
+    /// A job a blueprint just made, opened once the gallery has closed.
+    @State private var createdJob: CronJob?
     /// Pinned jobs, per profile: "profile\tjobID" lines. Kept on the phone;
     /// Hermes has no pin for a job.
     @AppStorage("conduit.v2.pinnedCronJobs") private var pinnedRaw = ""
@@ -159,8 +163,14 @@ struct V2ScheduledList: View {
             if all.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
                 ScrollView {
-                    ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
-                        .padding(.top, 60)
+                    ContentUnavailableView {
+                        Label(empty.title, systemImage: "clock")
+                    } description: {
+                        Text(empty.description)
+                    } actions: {
+                        createButtons
+                    }
+                    .padding(.top, 60)
                 }
             } else if all.isEmpty {
                 // In a scroll view so pull to refresh still works while loading.
@@ -170,6 +180,12 @@ struct V2ScheduledList: View {
                 }
             } else {
                 List {
+                    Section {
+                        createButtons
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                     if !pinned.isEmpty {
                         Section {
                             ForEach(pinned) { row($0, pinned: true) }
@@ -206,13 +222,26 @@ struct V2ScheduledList: View {
             }
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
-        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)") {
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
             await appState.refreshCronContent()
         }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
+                .environmentObject(appState)
+        }
+        .sheet(item: $editorTarget) {
+            CronJobEditorSheet(target: $0)
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingBlueprints, onDismiss: {
+            if let createdJob {
+                self.createdJob = nil
+                selectedJob = createdJob
+            }
+        }) {
+            CronBlueprintGallerySheet { createdJob = $0 }
                 .environmentObject(appState)
         }
         .alert("Delete scheduled job?", isPresented: Binding(
@@ -235,6 +264,27 @@ struct V2ScheduledList: View {
         } message: {
             Text(AppLocalization.string("This removes \(jobPendingDeletion?.displayName ?? "") from Hermes, so it won't run again. Chats from its past runs are kept."))
         }
+    }
+
+    /// New job and From a blueprint, over the list (or in its empty state).
+    private var createButtons: some View {
+        HStack(spacing: 10) {
+            Button {
+                Haptics.light()
+                editorTarget = .create
+            } label: {
+                Label(AppLocalization.string("New job"), systemImage: "plus")
+            }
+            .buttonStyle(.settingsPrimary)
+            Button {
+                Haptics.light()
+                showingBlueprints = true
+            } label: {
+                Label(AppLocalization.string("From a blueprint"), systemImage: "square.grid.2x2")
+            }
+            .buttonStyle(.settings)
+        }
+        .disabled(appState.dashboardTicketBridge == nil)
     }
 
     /// Runs are kept out of the All list in Chats, so a job running every
@@ -300,6 +350,12 @@ struct V2ScheduledList: View {
         } label: {
             Label(AppLocalization.string("Details"), systemImage: "info.circle")
         }
+        Button {
+            editorTarget = .edit(job)
+        } label: {
+            Label(AppLocalization.string("Edit"), systemImage: "pencil")
+        }
+        .disabled(appState.dashboardTicketBridge == nil)
         Button(role: .destructive) {
             jobPendingDeletion = job
         } label: {

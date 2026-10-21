@@ -1654,6 +1654,39 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.controls.chatTitle, "trip", "back on the voice screen, Ready names it")
     }
 
+    /// New controls while a list is up would install a new root template,
+    /// which pops the list from under the driver; the voice screen gets
+    /// them once it is back on top, exactly once.
+    func testNewControlsWhileAListIsUpWaitForTheVoiceScreen() async throws {
+        let harness = makeHarness()
+        harness.coordinator.chatCatalogLoader = { _ in }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let lists: [@MainActor () -> Void] = [{ harness.coordinator.showJobs() }, { harness.coordinator.showChats() }]
+        for browse in lists {
+            browse()
+            let installs = harness.spy.setRootTemplateCount
+            let pops = harness.spy.popToRootCount
+            var changed = harness.coordinator.controls
+            changed.isMicrophoneMuted.toggle()
+
+            harness.coordinator.updateControls(changed)
+            for _ in 0..<20 { await Task.yield() }
+
+            XCTAssertEqual(harness.spy.setRootTemplateCount, installs, "a new root template would pop the list")
+            XCTAssertEqual(harness.spy.popToRootCount, pops, "the list stays up")
+
+            let root = try XCTUnwrap(harness.coordinator.template)
+            harness.coordinator.handleTemplateDidAppear(root)
+            await harness.coordinator.waitForPresentation()
+            for _ in 0..<20 { await Task.yield() }
+
+            XCTAssertEqual(harness.spy.setRootTemplateCount, installs + 1, "back on the voice screen, the new controls install once")
+            XCTAssertFalse(harness.coordinator.template === root)
+            XCTAssertEqual(harness.spy.popToRootCount, pops)
+        }
+    }
+
     // MARK: Chat list follows the chats (#514)
 
     private func chatSession(_ id: String, activity: TimeInterval) -> SessionSummary {
@@ -1968,6 +2001,75 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
         XCTAssertLessThan(ContinuousClock.now - start, .seconds(10), "the stale wait resolved at once")
         XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+    }
+
+    /// End tapped while a start waits for the connection: the cancelled
+    /// wait is not a connection that never arrived, so the car stays on the
+    /// Ready End brought it to instead of showing Error.
+    func testEndTappedDuringTheConnectionWaitNeverShowsError() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        harness.appState.isConnected = false
+        harness.appState.isConnecting = true
+        harness.coordinator.connectionWaiter = { _ in
+            harness.coordinator.endTapped()
+            return false
+        }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        await harness.coordinator.waitForPresentation()
+
+        XCTAssertFalse(harness.activations.contains(.error), "End is not a failed connection: \(harness.activations)")
+        XCTAssertEqual(harness.activations.last, .ready, "the car is left on the Ready End showed")
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(harness.capture.startCount, 0, "the microphone is never acquired")
+    }
+
+    /// A second start while the first still waits takes the wait over; the
+    /// first's cancelled wait shows no Error over the second's listening.
+    func testAStartSupersedingAWaitingStartShowsNoErrorFromTheFirst() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        harness.appState.isConnected = false
+        harness.appState.isConnecting = true
+        var waits = 0
+        harness.coordinator.connectionWaiter = { appState in
+            waits += 1
+            if waits == 1 {
+                // The first start's wait ends only when the second cancels it.
+                try? await Task.sleep(for: .seconds(30))
+                return false
+            }
+            appState.isConnecting = false
+            appState.isConnected = true
+            return true
+        }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let generation = harness.coordinator.connectionGeneration
+
+        let first = Task { @MainActor in
+            await harness.coordinator.establishVoice(generation: generation)
+        }
+        for _ in 0..<500 where waits < 1 { await Task.yield() }
+        XCTAssertEqual(waits, 1, "the first start is waiting for the connection")
+        let start = ContinuousClock.now
+        await harness.coordinator.performStartListeningTurn(generation: generation)
+        await first.value
+
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(10), "the first wait was cancelled, not timed out")
+        XCTAssertEqual(waits, 2)
+        XCTAssertFalse(harness.activations.contains(.error), "the superseded start showed Error: \(harness.activations)")
+        XCTAssertEqual(harness.controller.state, .listening, "the second start listens")
+        XCTAssertEqual(harness.activations.last, .listening)
     }
 
     func testWaitingForTheConnectionShowsProcessingInsteadOfReady() async {

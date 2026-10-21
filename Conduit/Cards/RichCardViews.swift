@@ -170,7 +170,7 @@ struct RichMapPicture: View {
                 } else if (looked && coordinates.isEmpty) || failed {
                     Image(systemName: "map")
                         .font(.title)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 } else {
                     ProgressView()
                 }
@@ -374,7 +374,7 @@ private struct RichPhotoHeader: View {
     private var sourceURL: URL { photo.pageURL ?? photo.url }
 
     var body: some View {
-        AsyncImage(url: photo.url) { phase in
+        RichCardImage(url: photo.url) { phase in
             switch phase {
             case .success(let image):
                 image.resizable().scaledToFill()
@@ -656,7 +656,7 @@ private struct RichAppleMapsMark: View {
                 Image(systemName: "map.fill")
             }
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.conduitTertiary)
             .labelStyle(RichCompactLabelStyle())
         }
     }

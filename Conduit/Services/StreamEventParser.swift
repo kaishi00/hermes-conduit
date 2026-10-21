@@ -78,6 +78,26 @@ enum StreamEventParser {
                 role: payload?["role"]?.stringValue ?? ""
             )
 
+        case "user.message":
+            // A user message another client of this session sent (only
+            // some gateways announce it; the row is already stored). Text
+            // only says it is someone else's: the transcript reads it.
+            let text = payload?["text"]?.stringValue ?? ""
+            guard !sessionId.isEmpty,
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return .userMessage(
+                sessionId: sessionId,
+                rowId: HermesClient.exactIntValue(payload?["row_id"]),
+                text: text,
+                origin: payload?["origin"]?.stringValue
+            )
+
+        case "sessions.changed":
+            // Hermes' change watcher: a stored session row moved (a new
+            // message, a rename, a deletion), whichever process wrote it.
+            // Session-less, sent to every client of the gateway.
+            return .sessionsChanged
+
         case "error":
             return .messageError(sessionId: sessionId, message: payload?["message"]?.stringValue ?? AppLocalization.string("Hermes reported an error."))
 

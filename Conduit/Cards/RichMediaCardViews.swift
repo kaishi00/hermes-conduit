@@ -16,6 +16,34 @@ import Contacts
 import ContactsUI
 import SwiftUI
 
+/// Card pictures share the bounded download and decode used by Markdown.
+struct RichCardImage<Content: View>: View {
+    let url: URL
+    var maxPixelSize: CGFloat = 2048
+    @ViewBuilder let content: (AsyncImagePhase) -> Content
+
+    @State private var phase: AsyncImagePhase = .empty
+
+    var body: some View {
+        content(phase)
+            .task(id: url) {
+                if let cached = BoundedRemoteImage.cachedImage(url, maxPixelSize: maxPixelSize) {
+                    phase = .success(Image(uiImage: cached))
+                    return
+                }
+                phase = .empty
+                let outcome = await BoundedRemoteImage.load(url, maxPixelSize: maxPixelSize)
+                guard !Task.isCancelled else { return }
+                switch outcome {
+                case .image(let image):
+                    phase = .success(Image(uiImage: image))
+                case .tooLarge, .unavailable:
+                    phase = .failure(URLError(.cannotDecodeContentData))
+                }
+            }
+    }
+}
+
 // MARK: - Media
 
 struct RichMediaCard: View {
@@ -72,7 +100,7 @@ private struct RichMediaTile: View {
                 ZStack {
                     Rectangle().fill(Color.secondary.opacity(0.12))
                     if let picture {
-                        AsyncImage(url: picture) { phase in
+                        RichCardImage(url: picture) { phase in
                             if case .success(let image) = phase {
                                 image.resizable().scaledToFill()
                             } else {
@@ -173,7 +201,7 @@ private struct RichMediaViewer: View {
                         .accessibilityLabel(Text(verbatim: RichMediaText.spoken(item)))
                         .accessibilityAddTraits(.startsMediaSession)
                 } else {
-                    AsyncImage(url: item.url) { phase in
+                    RichCardImage(url: item.url, maxPixelSize: 4096) { phase in
                         if case .success(let image) = phase {
                             image.resizable().scaledToFit()
                         } else {
@@ -323,7 +351,7 @@ private struct RichAudioRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.conduitAccent.opacity(0.14))
                 if let artwork = item.artwork {
-                    AsyncImage(url: artwork) { phase in
+                    RichCardImage(url: artwork, maxPixelSize: 512) { phase in
                         if case .success(let image) = phase {
                             image.resizable().scaledToFill()
                         } else {
@@ -468,7 +496,7 @@ private struct RichPersonRow: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
             if let photo = person.photo {
-                AsyncImage(url: photo.url) { phase in
+                RichCardImage(url: photo.url, maxPixelSize: 512) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
                     } else {

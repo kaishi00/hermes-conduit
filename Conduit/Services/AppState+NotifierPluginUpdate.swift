@@ -148,9 +148,9 @@ extension AppState {
         return notifierPlugin.noticeOffer(finishSetupOffersInstall: finishingSetup && V2ShellPreference.isOn)
     }
 
-    /// "Not now" belongs to one dashboard and one offered version.
+    /// "Not now" belongs to one dashboard and one asked-for version.
     private var pluginUpdateDismissalToken: String {
-        "\(activeDashboardID?.uuidString ?? "")|\(notifierPlugin.offeredVersion)"
+        "\(activeDashboardID?.uuidString ?? "")|\(notifierPlugin.noticeVersion)"
     }
 
     func dismissNotifierPluginUpdateNotice() {
@@ -161,7 +161,7 @@ extension AppState {
             dismissNotifierPluginUpdateOutcome()
         }
         // Only this version's dismissals matter from now on.
-        let version = "|\(notifierPlugin.offeredVersion)"
+        let version = "|\(notifierPlugin.noticeVersion)"
         dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
             .union([pluginUpdateDismissalToken])
     }

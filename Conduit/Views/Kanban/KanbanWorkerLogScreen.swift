@@ -115,10 +115,10 @@ struct KanbanWorkerLogScreen: View {
         if rendered.isEmpty {
             Text("(log is empty)")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
         } else {
             Text(rendered)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
                 .lineLimit(nil)
                 .frame(maxWidth: .infinity, alignment: .leading)

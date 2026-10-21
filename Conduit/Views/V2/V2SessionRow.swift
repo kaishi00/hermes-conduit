@@ -6,8 +6,9 @@
 //  between rows than between a row's own lines so each conversation reads
 //  as one block. A Chats row leads with a round icon for where the
 //  conversation came from, the gold unread dot on its corner. Line one is
-//  the title and time; line two a dimmer one-line preview, and a status
-//  glyph and action word only when the row needs one (Running, Approve).
+//  the title and time, with a star before the time on a starred chat; line
+//  two a dimmer one-line preview, and a status glyph and action word only
+//  when the row needs one (Running, Approve).
 //
 
 import SwiftUI
@@ -156,6 +157,7 @@ struct V2SessionRow: View {
     let status: V2SessionStatus
     var isUnread = false
     var isPinned = false
+    var isStarred = false
     var isSelected = false
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
@@ -187,6 +189,12 @@ struct V2SessionRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
+                    if isStarred {
+                        Image(systemName: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color.conduitAccent)
+                            .accessibilityHidden(true)
+                    }
                     Text(time)
                         .font(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
@@ -268,6 +276,7 @@ struct V2SessionRow: View {
         [
             isUnread ? AppLocalization.string("Unread") : nil,
             isPinned ? AppLocalization.string("Pinned") : nil,
+            isStarred ? AppLocalization.string("Starred") : nil,
             status.accessibilityWord,
             preview.isEmpty ? nil : preview,
             time.isEmpty ? nil : time
@@ -284,6 +293,7 @@ struct V2ContentMatchRow: View {
     let time: String
     let snippet: SessionSearchSnippet
     var isUnread = false
+    var isStarred = false
     var isSelected = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -308,6 +318,12 @@ struct V2ContentMatchRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
+                    if isStarred {
+                        Image(systemName: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color.conduitAccent)
+                            .accessibilityHidden(true)
+                    }
                     Text(time)
                         .font(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
@@ -340,6 +356,7 @@ struct V2ContentMatchRow: View {
     private var accessibilityValue: String {
         [
             isUnread ? AppLocalization.string("Unread") : nil,
+            isStarred ? AppLocalization.string("Starred") : nil,
             snippet.plainText.isEmpty ? nil : snippet.plainText,
             time.isEmpty ? nil : time
         ]

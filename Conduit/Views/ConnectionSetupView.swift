@@ -70,7 +70,10 @@ struct ConnectionSetupView: View {
     /// What Sign In to Reconnect opens; set together with the
     /// configuration right before the sheet is presented.
     @State private var repairSignIn: DashboardInteractiveSignIn?
-    @State private var repairNativeOAuthDashboardID = UUID()
+    /// The registered dashboard the repair sign-in signs in to, resolved
+    /// (and registered) before the sheet opens: its WebKit store or native
+    /// session belongs to that dashboard alone.
+    @State private var repairDashboardID = UUID()
     private let onComplete: (ConnectionSetupResult) -> Void
     /// Round 6 (Repair): the explicit activation boundary. Nil outside
     /// Repair mode, in which case the Review shows its normal context action.
@@ -224,7 +227,7 @@ struct ConnectionSetupView: View {
                     baseURL: configuration.serverURL,
                     cloudflareAccess: flow.cloudflareAccessForDraft(),
                     provider: provider,
-                    dashboardID: repairNativeOAuthDashboardID,
+                    dashboardID: repairDashboardID,
                     onSuccess: { result in
                         Task { @MainActor in
                             showRepairSignIn = false
@@ -247,13 +250,10 @@ struct ConnectionSetupView: View {
                     dashboardIDProvider: { [appState, url = configuration.serverURL] in
                         appState.resolveDashboardID(forURL: url, registerIfMissing: true)
                     },
-                    // Repair targets are always registered dashboards: reuse
-                    // their own identified WebKit store (read-only resolution —
-                    // no render-time registration).
-                    websiteDataStoreIdentifier: appState.resolveDashboardID(
-                        forURL: configuration.serverURL,
-                        registerIfMissing: false
-                    ),
+                    // The dashboard registered before the sheet opened:
+                    // its own identified WebKit store, never the shared
+                    // default one, whatever the registry says at render time.
+                    websiteDataStoreIdentifier: repairDashboardID,
                     onTicket: { ticket, baseURL in
                         Task { @MainActor in
                             showRepairSignIn = false
@@ -343,16 +343,14 @@ struct ConnectionSetupView: View {
                 return
             }
             guard !Task.isCancelled, request.isCurrent(in: flow), let interactive = resolved else { return }
-            if case .nativeOAuth = interactive {
-                guard let dashboardID = appState.resolveDashboardID(
-                    forURL: request.configuration.serverURL,
-                    registerIfMissing: true
-                ) else {
-                    activationFailure = .unexpectedServerResponse
-                    return
-                }
-                repairNativeOAuthDashboardID = dashboardID
+            guard let dashboardID = appState.resolveDashboardID(
+                forURL: request.configuration.serverURL,
+                registerIfMissing: true
+            ) else {
+                activationFailure = .unexpectedServerResponse
+                return
             }
+            repairDashboardID = dashboardID
             repairSignIn = interactive
             repairSignInConfiguration = request.configuration
             showRepairSignIn = true

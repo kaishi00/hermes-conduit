@@ -54,7 +54,7 @@ final class ChatScrollHostedTests: XCTestCase {
         }
     }
 
-    private func mount(_ messages: [ChatMessage]) throws -> Mounted {
+    private func mount(_ messages: [ChatMessage], composerRests: Bool = false) throws -> Mounted {
         let suiteName = "chat-scroll-hosted"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
@@ -64,6 +64,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let host = UIHostingController(
             rootView: DormancyHarnessEnvironment.applying(
                 ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
+                    .environment(\.v2ComposerRests, composerRests)
                     .environmentObject(appState)
             )
         )
@@ -570,6 +571,49 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertEqual(after, before, accuracy: 1, "the tapped row stays put\n\(recorder.dump(since: mark))")
         XCTAssertEqual(mounted.engine.mode, .browsing)
         XCTAssertTrue(mounted.engine.showsJumpToLatest)
+    }
+
+    /// A tester's report: at the bottom of a chat, a band of empty space
+    /// (~126 pt) sat between the last reply and the composer. The composer
+    /// is a bar the scroll view already insets for, so the latest row ends
+    /// one row spacing above it, with the resting V2 composer and the
+    /// stacked one alike.
+    func testTheLatestReplyEndsJustAboveTheRestingComposer() throws {
+        try assertLatestReplyEndsJustAboveTheComposer(composerRests: true)
+    }
+
+    func testTheLatestReplyEndsJustAboveTheStackedComposer() throws {
+        try assertLatestReplyEndsJustAboveTheComposer(composerRests: false)
+    }
+
+    private func assertLatestReplyEndsJustAboveTheComposer(composerRests: Bool) throws {
+        let count = 40
+        let mounted = try mount(Self.transcript(0..<count), composerRests: composerRests)
+        // Scrolled to the very bottom, whoever placed the offset: this
+        // measures the layout under the latest row, not the follow logic.
+        let view = mounted.scrollView
+        for _ in 0..<3 {
+            view.contentOffset.y = maxOffset(view)
+            settle(mounted.host.view, seconds: 0.3)
+        }
+        XCTAssertEqual(view.contentOffset.y, maxOffset(view), accuracy: 1, "still at the very bottom when measured")
+
+        let last = try XCTUnwrap(mounted.engine.rowFrame(for: "hosted-\(count - 1)"), "the latest row is laid out")
+        let surface = try XCTUnwrap(mounted.engine.surface)
+        let rowBottom = surface.transcriptOriginY + last.maxY - view.contentOffset.y
+        let composerTop = view.bounds.height - view.adjustedContentInset.bottom
+        if composerRests {
+            XCTAssertGreaterThan(view.adjustedContentInset.bottom, 40, "the scroll view insets for the resting composer")
+        } else {
+            XCTAssertLessThanOrEqual(view.adjustedContentInset.bottom, 1, "the stacked composer sits below the scroll view")
+        }
+        XCTAssertLessThan(composerTop - rowBottom, 30, "no band of empty space above the composer")
+        XCTAssertEqual(
+            composerTop - rowBottom,
+            ChatStepStyle.transcriptRowSpacing,
+            accuracy: 2,
+            "one row spacing between the latest reply and the composer"
+        )
     }
 
     /// Issue #302: the transcript bounced on its own until touched. With no

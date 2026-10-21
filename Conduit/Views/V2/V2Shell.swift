@@ -776,7 +776,7 @@ private struct V2SplitPlaceholder: View {
             VStack(spacing: 18) {
                 Image(systemName: offersNewChat ? V2Tab.chats.symbol : V2Tab.bots.symbol)
                     .font(.system(size: 44, weight: .regular))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
                 if offersNewChat {
                     Button {

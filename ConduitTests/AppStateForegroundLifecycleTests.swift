@@ -373,6 +373,8 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         var sends = 0
         /// The dashboard has no bounded history read (a v0.19 gateway).
         var transcriptUnavailable = false
+        /// The chat's stored message count in the catalog.
+        var catalogCount: Int?
         var now = Date(timeIntervalSince1970: 3_000_000)
 
         var payload: [String: Any] {
@@ -392,7 +394,11 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let active = session("stored-a")
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
-                loadCatalog: { _, _ in [active] },
+                loadCatalog: { _, _ in
+                    var listed = active
+                    listed.messageCount = server.catalogCount
+                    return [listed]
+                },
                 openSession: { _, sessionID, _ in
                     server.resumes += 1
                     return SessionResumeResult(
@@ -653,6 +659,86 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
         await tick(appState, after: 15, server)
         XCTAssertEqual(server.transcriptReads, readsAtOpen + 1, "Nothing new: nothing read")
+        box.client.disconnect()
+    }
+
+    /// #1026: a message sent from the TUI on the gateway's computer runs in
+    /// another process. This gateway's registry row for the chat stays idle
+    /// with its old count, so its checks never see the turn; Hermes'
+    /// `sessions.changed` and the stored count do, and the rows show without
+    /// a pull to refresh.
+    func testATurnTheRegistryNeverSawShowsWhenHermesSaysTheChatMoved() async {
+        let server = TwoDeviceServer()
+        server.catalogCount = 1
+        let harness = twoDeviceHarness(server)
+        let box = await openTwoDeviceChat(harness)
+        let appState = harness.appState
+        let resumesAtOpen = server.resumes
+        let readsAtOpen = server.transcriptReads
+        server.live = [LiveSessionStatus(
+            runtimeSessionId: "runtime-a", storedSessionId: "stored-a", status: "idle", messageCount: 1
+        )]
+        await tick(appState, after: 0, server)
+        server.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(server.transcriptReads, readsAtOpen, "Nothing moved yet")
+
+        // The TUI's turn: stored, and never in this gateway's registry.
+        server.rows += [
+            ["id": "2", "role": "user", "content": "Sent from the TUI", "timestamp": "2"],
+            ["id": "3", "role": "assistant", "content": "PAPAYA", "timestamp": "3"],
+        ]
+        server.catalogCount = 3
+        for _ in 0..<4 {
+            await tick(appState, after: 15, server)
+        }
+        XCTAssertEqual(server.transcriptReads, readsAtOpen, "The registry alone never sees it")
+
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        await appState.openChatCatalogCheck?.value
+        await appState.openChatSyncRead?.value
+
+        XCTAssertEqual(server.transcriptReads, readsAtOpen + 1)
+        XCTAssertEqual(server.resumes, resumesAtOpen, "A read, not a resume")
+        XCTAssertEqual(appState.messages.map(\.content), ["Question", "Sent from the TUI", "PAPAYA"])
+        XCTAssertEqual(appState.turnState, .idle)
+        box.client.disconnect()
+    }
+
+    /// The same with no live runtime of the chat on this gateway: the TUI's
+    /// turn may still be running in its own process, out of this registry's
+    /// sight, so the rows are read and the chat is never resumed (a resume
+    /// could take it from that process).
+    func testATurnTheRegistryNeverSawIsReadWithoutResumingAChatWithNoLiveRuntime() async {
+        let server = TwoDeviceServer()
+        server.catalogCount = 1
+        let harness = twoDeviceHarness(server)
+        let box = await openTwoDeviceChat(harness)
+        let appState = harness.appState
+        let resumesAtOpen = server.resumes
+        let readsAtOpen = server.transcriptReads
+        await tick(appState, after: 0, server)
+        server.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+
+        server.rows += [
+            ["id": "2", "role": "user", "content": "Sent from the TUI", "timestamp": "2"],
+            ["id": "3", "role": "assistant", "content": "PAPAYA", "timestamp": "3"],
+        ]
+        server.catalogCount = 3
+        server.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        await appState.openChatCatalogCheck?.value
+        await appState.openChatSyncRead?.value
+
+        XCTAssertEqual(server.transcriptReads, readsAtOpen + 1)
+        XCTAssertEqual(server.resumes, resumesAtOpen, "Never resumed")
+        XCTAssertEqual(appState.messages.map(\.content), ["Question", "Sent from the TUI", "PAPAYA"])
+        XCTAssertEqual(appState.turnState, .idle)
         box.client.disconnect()
     }
 

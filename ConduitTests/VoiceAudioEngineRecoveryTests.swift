@@ -151,6 +151,101 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(starts, 1)
     }
 
+    // MARK: - Built-in microphone fallback (#177)
+
+    func testAHeadsetMicrophoneThatStillFailsStartsOnTheBuiltInOne() throws {
+        var steps: [String] = []
+        var failuresRemaining = 2
+
+        try VoiceAudioEngineRecovery.startFresh(
+            rebuild: { steps.append("rebuild") },
+            reassert: { steps.append("reassert") },
+            start: {
+                steps.append("start")
+                if failuresRemaining > 0 {
+                    failuresRemaining -= 1
+                    throw self.formatNotSupported
+                }
+            },
+            switchMicrophone: {
+                steps.append("switch")
+                return true
+            }
+        )
+
+        XCTAssertEqual(steps, ["rebuild", "start", "reassert", "rebuild", "start", "switch", "rebuild", "start"])
+    }
+
+    func testNoOtherMicrophoneRethrowsTheSecondFailure() {
+        var starts = 0
+
+        XCTAssertThrowsError(
+            try VoiceAudioEngineRecovery.startFresh(
+                rebuild: {},
+                reassert: {},
+                start: {
+                    starts += 1
+                    throw self.formatNotSupported
+                },
+                switchMicrophone: { false }
+            )
+        ) { error in
+            XCTAssertEqual((error as NSError).code, VoiceAudioEngineRecovery.formatNotSupported)
+        }
+        XCTAssertEqual(starts, 2)
+    }
+
+    func testTheFallbackOnlyMovesOffABluetoothMicrophoneAndClearsOnce() throws {
+        var bluetooth = false
+        var preferred = 0
+        var cleared = 0
+        let fallback = VoiceBuiltInMicrophoneFallback(
+            routeRecordsFromBluetooth: { bluetooth },
+            preferBuiltInMicrophone: {
+                preferred += 1
+                return true
+            },
+            clearPreferredInput: { cleared += 1 }
+        )
+
+        XCTAssertFalse(try fallback.engage(), "the built-in microphone failing is no headset's fault")
+        XCTAssertEqual(preferred, 0)
+        fallback.clear()
+        XCTAssertEqual(cleared, 0, "nothing to clear")
+
+        bluetooth = true
+        XCTAssertTrue(try fallback.engage())
+        XCTAssertFalse(try fallback.engage(), "moved once per capture")
+        XCTAssertEqual(preferred, 1)
+        fallback.clear()
+        fallback.clear()
+        XCTAssertEqual(cleared, 1)
+    }
+
+    func testCaptureOnAFailingHeadsetMicrophoneRecordsFromTheBuiltInOne() throws {
+        let factory = FakeCaptureEngineFactory()
+        factory.startFailures = [formatNotSupported, formatNotSupported]
+        var cleared = 0
+        let fallback = VoiceBuiltInMicrophoneFallback(
+            routeRecordsFromBluetooth: { true },
+            preferBuiltInMicrophone: { true },
+            clearPreferredInput: { cleared += 1 }
+        )
+        let service = AVAudioCaptureService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { factory.make() },
+            microphoneFallback: fallback
+        )
+
+        try service.startListening()
+        XCTAssertTrue(factory.engines.last?.isRunning == true, "started on the built-in microphone")
+        XCTAssertTrue(fallback.isEngaged)
+
+        service.stop()
+        XCTAssertFalse(fallback.isEngaged, "the next capture tries the headset again")
+        XCTAssertEqual(cleared, 1)
+    }
+
     func testCoreAudioCodeInAnotherDomainIsNotRetried() {
         XCTAssertFalse(VoiceAudioEngineRecovery.isRecoverable(
             NSError(domain: "com.example.unrelated", code: VoiceAudioEngineRecovery.formatNotSupported)

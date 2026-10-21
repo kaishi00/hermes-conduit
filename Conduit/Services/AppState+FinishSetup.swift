@@ -49,7 +49,7 @@ struct FinishSetupStatus: Equatable {
             if status.isNotServed { return .notRunning }
             return status.offersInstall ? .install : .update
         case .reported:
-            if status.updateAvailable { return .update }
+            if status.updateRecommended { return .update }
             if status.restartPending { return .restart }
             return .done
         }

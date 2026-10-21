@@ -208,7 +208,7 @@ private struct ProfilePickerRow: View {
             } else if isCurrent {
                 Label("Current", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
             } else {
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
             }
             if !isReordering, appState.profileAvatarURL(for: profile) != nil {
                 Button(role: .destructive) {

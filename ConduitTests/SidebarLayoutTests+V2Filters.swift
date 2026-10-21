@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  The V2 Chats filters combine: Unread with Chat lists unread chats, two
-//  sources list either. Covers what a selection lists, how it is saved, and
-//  what the menu counts beside each filter.
+//  sources list either, Starred narrows the rest to starred chats (#757).
+//  Covers what a selection lists, how it is saved, what the menu counts
+//  beside each filter, and how stars are kept.
 //
 
 import XCTest
@@ -55,7 +56,8 @@ extension SidebarLayoutTests {
     private func filterIDs(
         _ selection: V2FilterSelection,
         unread: Set<String> = [],
-        working: Set<String> = []
+        working: Set<String> = [],
+        starred: Set<String> = []
     ) -> [String] {
         selection.rows(
             everything: filterChats.filter { !$0.isArchived },
@@ -66,6 +68,7 @@ extension SidebarLayoutTests {
                 switch filter {
                 case .unread: return unread.contains(session.id)
                 case .running: return working.contains(session.id)
+                case .starred: return starred.contains(session.id)
                 default: return false
                 }
             }
@@ -104,6 +107,80 @@ extension SidebarLayoutTests {
     func testV2FiltersVoiceIsASourceLikeTheOthers() {
         XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.voice])), ["voice"])
         XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.voice, .unread]), unread: ["chat-new"]), [])
+    }
+
+    func testV2StarredNarrowsWhateverElseIsChosen() {
+        let starred: Set<String> = ["chat-old", "telegram", "chat-archived"]
+        // Alone it looks through everything, archived chats left out.
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.starred]), starred: starred), ["telegram", "chat-old"])
+        // Starred and Unread: starred chats that are unread, not either.
+        XCTAssertEqual(
+            filterIDs(V2FilterSelection(filters: [.starred, .unread]), unread: ["chat-new", "chat-old"], starred: starred),
+            ["chat-old"]
+        )
+        // Statuses still list any of theirs within the starred ones.
+        XCTAssertEqual(
+            filterIDs(
+                V2FilterSelection(filters: [.starred, .unread, .running]),
+                unread: ["chat-old"],
+                working: ["telegram", "chat-new"],
+                starred: starred
+            ),
+            ["telegram", "chat-old"]
+        )
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.starred, .source(.chat)]), starred: starred), ["chat-old"])
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.starred])), [])
+        // A starred run shows under Starred alone, not only under Scheduled.
+        XCTAssertEqual(
+            filterIDs(V2FilterSelection(filters: [.starred]), starred: ["run-old", "chat-new", "run-archived"]),
+            ["chat-new", "run-old"]
+        )
+    }
+
+    func testV2StarredFlattensSavesAndCountsWithinTheRest() {
+        let selection = V2FilterSelection(filters: [.unread, .starred, .source(.chat)])
+        XCTAssertTrue(V2FilterSelection(filters: [.starred]).flattens, "Starred lists every starred chat, sections open")
+        XCTAssertEqual(selection.rawValue, "starred,unread,source.chat")
+        XCTAssertEqual(V2FilterSelection(rawValue: selection.rawValue), selection)
+        XCTAssertEqual(selection.statuses, [.unread])
+        XCTAssertEqual(selection.sources, [.source(.chat)])
+        XCTAssertEqual(selection.emptyStateFilter, .starred)
+        // Starred counts the starred rows among what's chosen; every other
+        // count stays within the starred ones.
+        XCTAssertEqual(V2FilterSelection(filters: [.unread]).facet(.starred), V2FilterSelection(filters: [.unread, .starred]))
+        XCTAssertEqual(selection.facet(.running), V2FilterSelection(filters: [.running, .starred, .source(.chat)]))
+        XCTAssertEqual(selection.facet(.voice), V2FilterSelection(filters: [.unread, .starred, .voice]))
+    }
+
+    func testSessionStarsFollowTheConversationPerProfile() throws {
+        let compacted = SessionSummary(
+            id: "chat-2", alternateIds: ["chat-1"], title: "chat", model: "Hermes", updatedLabel: "now",
+            lastActivityAt: nil, profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: "chat-1"
+        )
+        let original = filterRow("chat-1", source: .chat)
+        var stars = SessionStars()
+        stars.set(original, starred: true, profile: "default")
+        XCTAssertTrue(stars.isStarred(original, profile: "default"))
+        XCTAssertTrue(stars.isStarred(compacted, profile: "default"), "A compacted chat keeps its star")
+        XCTAssertFalse(stars.isStarred(original, profile: "work"), "Stars are per profile")
+
+        // Starring twice keeps one entry; unstarring by either id clears it.
+        stars.set(compacted, starred: true, profile: "default")
+        XCTAssertEqual(stars.idsByProfile["default"], ["chat-1"])
+        stars.set(compacted, starred: false, profile: "default")
+        XCTAssertFalse(stars.isStarred(original, profile: "default"))
+        XCTAssertTrue(stars.idsByProfile.isEmpty)
+
+        let suite = "SessionStarsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        stars.set(original, starred: true, profile: "work")
+        stars.save(to: defaults)
+        XCTAssertEqual(SessionStars(defaults: defaults), stars)
+        stars.forget(profile: "work")
+        stars.save(to: defaults)
+        XCTAssertNil(defaults.data(forKey: SessionStars.storageKey))
     }
 
     func testV2AllHidesProjectChatsExceptWhileSearching() {

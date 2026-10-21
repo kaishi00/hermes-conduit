@@ -38,6 +38,44 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isConfirmed(by: ""))
     }
 
+    func testPresentedConfirmRefusalsNeverConfirmWhateverHermesListedAsAYes() {
+        let refusals = ["no", "cancel", "wait", "never", "not", "absolutely not", "definitely not", "of course not",
+                        "i don't want it", "hell no", "that's a no"]
+        let prompt = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                      spokenYes: ["send it", "no problem"] + refusals)
+        for refusal in refusals {
+            let listed = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                          spokenYes: [refusal])
+            XCTAssertFalse(listed.isConfirmed(by: refusal), refusal)
+            XCTAssertFalse(listed.isConfirmed(by: refusal.capitalized + "."), refusal)
+        }
+        // A genuine yes still confirms, a no-led one included.
+        XCTAssertTrue(prompt.isConfirmed(by: "send it"))
+        XCTAssertTrue(prompt.isConfirmed(by: "No problem"))
+        XCTAssertTrue(prompt.isConfirmed(by: "yes"))
+    }
+
+    func testPresentedConfirmARefusalAnywhereInTheWordsNeverConfirms() {
+        // Not at the start, or said only through the verb: still a no.
+        let refusals = ["不", "不不不", "Momento", "Sekunde", "Sebentar", "send it, no wait", "yes, send it, no wait", "send it. wait", "send it later, not now", "please cancel",
+                        "raczej nie", "chyba nie", "şimdi gönderme", "нет, не отправляй",
+                        "지금 보내지 마", "보내지마세요", "보내지 않을래요", "그건 하지 말아요",
+                        "我不想发", "先别发", "現在別發", "送らないで", "送信しないでください", "やっぱりやめて"]
+        for refusal in refusals {
+            let listed = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                          spokenYes: [refusal])
+            XCTAssertFalse(listed.isConfirmed(by: refusal), refusal)
+        }
+        // A phrase in any shipped language that says yes still confirms.
+        // A negating character or a length of time inside a yes isn't a no.
+        for yes in ["send it", "envíalo", "wyślij", "gönder", "보내 줘", "发吧", "送って", "the second one",
+                    "沒問題", "没有问题", "特别好，发吧", "发给别人", "不错，发吧", "問題ありません", "すみません、送って"] {
+            let listed = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                          spokenYes: [yes])
+            XCTAssertTrue(listed.isConfirmed(by: yes), yes)
+        }
+    }
+
     func testAVoiceConfirmNeedsWordsFromAfterThePanelAndYieldsToATap() async throws {
         let suite = "present-tests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

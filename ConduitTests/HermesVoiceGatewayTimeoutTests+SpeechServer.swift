@@ -138,6 +138,31 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(failure, "Lost the connection to your speech server.")
     }
 
+    /// The server finished every segment it started, with no words, and
+    /// closed during the quiet grace: nothing was heard, which is no
+    /// failure.
+    func testSpeechServerClosingAfterAnEmptyFinishedSegmentIsNotAFailure() async {
+        let socket = SpeechServerSocket()
+        var failure: String?
+        let live = SpeechServerTranscription(
+            socket: socket,
+            sampleRate: 16_000,
+            finishTimeout: .seconds(10),
+            quietGrace: .seconds(5),
+            onPartial: { _ in },
+            onFailure: { failure = $0 }
+        )
+        socket.deliver(#"{"type":"input_audio_buffer.speech_started","item_id":"a"}"#)
+        socket.deliver(#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"a","transcript":""}"#)
+        let finishing = Task { await live.finish() }
+        let committed = await Self.speechServerEventually { socket.sentTypes.last == "input_audio_buffer.commit" }
+        XCTAssertTrue(committed)
+        socket.cancel(with: .abnormalClosure, reason: nil)
+        let transcript = await finishing.value
+        XCTAssertNil(transcript)
+        XCTAssertNil(failure)
+    }
+
     func testSpeechServerFailedSegmentClearsItsWordsFromTheScreen() async {
         let socket = SpeechServerSocket()
         var partials: [String] = []
@@ -441,6 +466,10 @@ private final class SpeechServerSocket: HermesSpeechSocket, @unchecked Sendable 
                 continuation.resume(throwing: URLError(.cancelled))
             }
         }
+    }
+
+    func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void) {
+        pongReceiveHandler(nil)
     }
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {

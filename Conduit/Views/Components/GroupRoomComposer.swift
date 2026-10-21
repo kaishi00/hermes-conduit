@@ -351,6 +351,10 @@ struct GroupRoomComposer: View {
         .accessibilityLabel(Text(AppLocalization.string("Attach")))
         .disabled(isUploading)
         .conduitGlassControl(cornerRadius: controlSize / 2, tint: .conduitAccent.opacity(0.08))
+        // The controls row is capped; touch and hold shows each control large.
+        .accessibilityShowsLargeContentViewer {
+            Label(AppLocalization.string("Attach"), systemImage: "plus")
+        }
     }
 
     /// Tap to dictate into the draft, tap again to stop; the words are
@@ -386,10 +390,21 @@ struct GroupRoomComposer: View {
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isDictationActive
         )
-        .accessibilityLabel(isCapturing
-            ? Text(AppLocalization.string("Stop dictation"))
-            : (dictation.isStarting ? Text(AppLocalization.string("Cancel dictation"))
-                : (dictation.isTranscribing ? Text(AppLocalization.string("Transcribing")) : Text(AppLocalization.string("Dictate")))))
+        .accessibilityShowsLargeContentViewer {
+            Label {
+                dictateTitle(isCapturing: isCapturing)
+            } icon: {
+                Image(systemName: isCapturing ? "mic.fill" : "mic")
+            }
+        }
+        .accessibilityLabel(dictateTitle(isCapturing: isCapturing))
+    }
+
+    private func dictateTitle(isCapturing: Bool) -> Text {
+        if isCapturing { return Text(AppLocalization.string("Stop dictation")) }
+        if dictation.isStarting { return Text(AppLocalization.string("Cancel dictation")) }
+        if dictation.isTranscribing { return Text(AppLocalization.string("Transcribing")) }
+        return Text(AppLocalization.string("Dictate"))
     }
 
     private var sendButton: some View {
@@ -417,6 +432,9 @@ struct GroupRoomComposer: View {
             prominent: canSend,
             interactive: canSend
         )
+        .accessibilityShowsLargeContentViewer {
+            Label(AppLocalization.string("Send"), systemImage: "arrow.up")
+        }
         .accessibilityLabel(Text(AppLocalization.string("Send")))
         .accessibilityIdentifier("room.composer.send")
     }

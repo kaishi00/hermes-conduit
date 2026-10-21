@@ -212,7 +212,7 @@ struct KanbanTaskComposerView: View {
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
         }
         .accessibilityHint("Opens the per-task model, provider, and reasoning override picker")
@@ -231,7 +231,7 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
         }
         .accessibilityHint("Opens the task skill picker")
@@ -275,7 +275,7 @@ struct KanbanTaskComposerView: View {
                             .foregroundStyle(.secondary)
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                     }
                 }
             } else {

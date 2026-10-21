@@ -142,6 +142,7 @@ struct GPTLiveSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .gpt)
+            LiveVoiceConsentRow(mode: .gptLive)
             if enabled {
                 HStack(spacing: 10) {
                     Circle()
@@ -348,11 +349,21 @@ struct GPTLiveVoiceSheet: View {
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
             onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onEnd: onClose,
-            onRetry: onRetry
+            onRetry: onRetry,
+            // A call still waiting on Hermes has no mode to move yet.
+            modeSwitch: isWaiting ? nil : appState.voiceModeSwitch(for: .gptLive),
+            consent: isWaiting ? nil : controller.awaitingConsent,
+            onAllowConsent: {
+                guard let mode = controller.awaitingConsent else { return }
+                appState.setLiveVoiceConsent(true, for: mode)
+                onRetry()
+            }
         )
         // The status and new turns change without focus moving.
         .onChange(of: controller.phase) { _, _ in
-            AccessibilityNotification.Announcement(statusText).post()
+            // A consent stop shows the question, not the Watch's wording.
+            let consentQuestion = controller.awaitingConsent.map { AppLocalization.string("Send your voice to \($0.company)?") }
+            AccessibilityNotification.Announcement(consentQuestion ?? statusText).post()
         }
         // Said outright: the status only mentions the mute while listening.
         .onChange(of: controller.isMicrophoneMuted) { _, muted in

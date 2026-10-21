@@ -28,35 +28,54 @@ import SwiftUI
 final class GatewayMediaDataURLResolver {
     private weak var appState: AppState?
     let profile: String
+    /// Dashboard this resolver was built for: a retained resolver must never
+    /// start a request against a different server after a switch.
+    let dashboardID: UUID?
 
     init(appState: AppState, profile: String) {
         self.appState = appState
         self.profile = profile
+        self.dashboardID = appState.activeDashboardID
+    }
+
+    private var currentAppState: AppState? {
+        guard let appState, appState.activeDashboardID == dashboardID else { return nil }
+        return appState
     }
 
     func dataURL(for path: String) async -> String? {
-        guard let appState else { return nil }
-        return await appState.gatewayMediaDataURL(for: path, profile: profile)
+        guard let appState = currentAppState else { return nil }
+        let result = await appState.gatewayMediaDataURL(for: path, profile: profile)
+        return appState.activeDashboardID == dashboardID ? result : nil
     }
 
     /// The file itself on disk, for media too large for a data URL (#569).
     func file(for path: String, maxBytes: Int = DashboardFileDownloadLimits.maxBytes) async -> GatewayMediaFileResult {
-        guard let appState else { return .unavailable }
-        return await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
+        guard let appState = currentAppState else { return .unavailable }
+        let result = await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
+        guard appState.activeDashboardID == dashboardID else {
+            if case .downloaded(let download) = result {
+                MediaPreviewPresenter.removeDirectory(download.directory)
+            }
+            return .unavailable
+        }
+        return result
     }
 
     /// A picture stored inside a persisted message, for when its file is
     /// gone from the server (#652).
     func inlineImageDataURL(_ ref: InlineImageRef) async -> String? {
-        guard let appState else { return nil }
-        return await appState.transcriptInlineImageDataURL(ref)
+        guard let appState = currentAppState else { return nil }
+        let result = await appState.transcriptInlineImageDataURL(ref)
+        return appState.activeDashboardID == dashboardID ? result : nil
     }
 
     /// Where a chat picture is kept on the phone: by the server file it
     /// names, else by its place inside its message. Scoped to the connected
     /// Hermes so two servers' same-named files never mix.
     func imageCacheKey(for attachment: Attachment) -> String? {
-        let dashboard = appState?.activeDashboardID?.uuidString ?? ""
+        guard currentAppState != nil else { return nil }
+        let dashboard = dashboardID?.uuidString ?? ""
         if attachment.uri.hasPrefix("/") {
             return TranscriptImageCache.key(dashboard: dashboard, profile: profile, path: attachment.uri)
         }

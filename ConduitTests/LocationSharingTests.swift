@@ -452,6 +452,28 @@ extension NotificationE2ETests {
         XCTAssertEqual(calls.filter { $0.hasSuffix("/key") }.count, 1)
     }
 
+    // #973: a send that fails on the network shows plain words on the
+    // settings page, never NSURLErrorDomain text.
+    func testAFailedSendShowsPlainLanguageOnTheSettingsPage() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var failure: Error = URLError(.notConnectedToInternet)
+        let request: LocationSyncEngine.Request = { _, _, _ in throw failure }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        let config = LocationFixtures.config()
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
+
+        let offline = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(offline, .failed)
+        XCTAssertEqual(engine.lastError, ConnectionFailure.offline.userMessage)
+
+        // Conduit's own errors keep their text.
+        failure = DashboardTicketBridgeError.notReady
+        _ = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(engine.lastError, DashboardTicketBridgeError.notReady.errorDescription)
+    }
+
     func testAnUnsentSettingsChangeIsRememberedInTheSharedConfig() throws {
         var config = LocationFixtures.config()
         XCTAssertFalse(config.settingsPending)

@@ -77,7 +77,7 @@ enum PersistedTranscriptPagination {
         switch value {
         case let number as Int: return number
         case let number as Int64: return Int(number)
-        case let number as Double: return Int(number)
+        case let number as Double: return Int(exactly: number.rounded(.towardZero))
         case let string as String: return Int(string)
         default: return nil
         }

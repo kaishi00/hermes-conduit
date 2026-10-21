@@ -43,7 +43,7 @@ struct HermesTurnAttributes: ActivityAttributes {
     /// Conduit's UI language (`AppLanguageStore`), so the activity speaks
     /// the same language as the app.
     var language: String
-    /// Opens the chat (`conduit://session/<id>?profile=<name>`).
+    /// Opens the chat (`conduit://session/<id>?profile=<name>&dashboard=<uuid>`).
     var link: URL
     /// Every id the chat is known under (runtime, stored, lineage), so the
     /// app can tell which chat's events update it after a relaunch.

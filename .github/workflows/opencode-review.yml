@@ -37,8 +37,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - reviewer: Step 3.7 Flash
-            model: stepfun/step-3.7-flash
+          - reviewer: MiniMax M3.1 Flash
+            model: commandcode/minimax/minimax-m3.1-flash:free
           - reviewer: GLM-5.3-Flash
             model: zai-custom/glm-5.3-flash
     # No id-token: opencode uses the run's token (USE_GITHUB_TOKEN), not OIDC.
@@ -136,7 +136,7 @@ jobs:
         run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
           DISPATCH_EVENT_PATH: ${{ steps.dispatch_event.outputs.path }}
-          STEPFUN_API_KEY: ${{ secrets.STEPFUN_API_KEY }}
+          COMMANDCODE_API_KEY: ${{ secrets.COMMANDCODE_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # The run's own token: this repo only, the job's permissions above,
           # and it expires when the run ends.

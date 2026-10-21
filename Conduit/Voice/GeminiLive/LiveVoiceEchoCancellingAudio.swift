@@ -33,6 +33,8 @@ private let echoCancellingAudioLogger = Logger(subsystem: "com.milim.relay", cat
 @MainActor
 final class EchoCancellingLiveVoiceAudio: NSObject {
     private let coordinator: VoiceAudioSessionCoordinator
+    /// The iPhone's microphone when a Bluetooth headset's won't start (#177).
+    private let microphoneFallback: VoiceBuiltInMicrophoneFallback
     private let session = AVAudioSession.sharedInstance()
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
@@ -97,6 +99,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// cannot read the MainActor-isolated singleton.
     init(coordinator: VoiceAudioSessionCoordinator? = nil, outputSampleRate: Double) {
         self.coordinator = coordinator ?? .shared
+        microphoneFallback = VoiceBuiltInMicrophoneFallback()
         defaultOutputSampleRate = outputSampleRate
         super.init()
         NotificationCenter.default.addObserver(
@@ -298,7 +301,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         try VoiceAudioEngineRecovery.startFresh(
             rebuild: { tearDownEngine() },
             reassert: { try coordinator.reassert() },
-            start: { try startEngine() }
+            start: { try startEngine() },
+            switchMicrophone: { try self.microphoneFallback.engage() }
         )
     }
 
@@ -403,6 +407,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         observedLifetime.withLock { $0 = current }
         tearDownEngine()
         playerFormat = nil
+        microphoneFallback.clear()
         if let lease {
             self.lease = nil
             coordinator.release(lease)

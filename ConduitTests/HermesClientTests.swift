@@ -224,7 +224,8 @@ final class HermesClientTests: XCTestCase {
         // socket with close code 1009 as soon as a single message exceeds it,
         // which is how resuming large sessions used to disconnect Conduit in
         // a loop. The production transport must install the explicit bounded
-        // 4 MiB limit on the real socket.
+        // 64 MiB limit on the real socket (4 MiB still closed it on a tool
+        // result carrying a video).
         let transport = URLSessionWebSocketTransport()
         defer { transport.invalidate() }
         let request = URLRequest(url: URL(string: "wss://gateway.example/api/ws")!)
@@ -237,7 +238,7 @@ final class HermesClientTests: XCTestCase {
         let task = socket as? URLSessionWebSocketTask
         XCTAssertNotNil(task, "The production transport must produce a URLSessionWebSocketTask")
         XCTAssertEqual(task?.maximumMessageSize, URLSessionWebSocketTransport.maximumMessageSize)
-        XCTAssertEqual(URLSessionWebSocketTransport.maximumMessageSize, 4 * 1024 * 1024)
+        XCTAssertEqual(URLSessionWebSocketTransport.maximumMessageSize, 64 * 1024 * 1024)
         XCTAssertNotEqual(
             URLSessionWebSocketTransport.maximumMessageSize,
             1_048_576,
@@ -822,6 +823,119 @@ final class HermesClientTests: XCTestCase {
             ["Ship the release.", "Resumed interrupted turn", "2 background agents finished"]
         )
         client.disconnect()
+    }
+
+    // MARK: - Delegate agent controls (#820)
+
+    /// Runs one client call against a fake gateway that answers `result`,
+    /// returning the request it sent and what the call returned.
+    private func capturedCall<T: Sendable>(
+        result: [String: Any],
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ call: @escaping @Sendable (HermesClient) async throws -> T
+    ) async throws -> (request: [String: Any], value: T) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let callTask = Task<T, Error> { try await call(client) }
+        try await sent.wait("the request to be sent", file: file, line: line)
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last, file: file, line: line).utf8)) as? [String: Any],
+            file: file,
+            line: line
+        )
+        let id = try XCTUnwrap(request["id"] as? Int, file: file, line: line)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+
+        let value = try await awaitResult(of: callTask, "the response", file: file, line: line)
+        client.disconnect()
+        return (request, value)
+    }
+
+    func testSteerSubagentAddressesTheAgentAndReadsQueued() async throws {
+        let (request, queued) = try await capturedCall(result: ["status": "queued", "subagent_id": "sa-1", "text": "use the cache"]) {
+            try await $0.steerSubagent(sessionId: "s1", subagentId: "sa-1", text: "use the cache")
+        }
+        XCTAssertEqual(request["method"] as? String, "subagent.steer")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "s1")
+        XCTAssertEqual(params["subagent_id"] as? String, "sa-1")
+        XCTAssertEqual(params["text"] as? String, "use the cache")
+        XCTAssertTrue(queued)
+
+        let (_, rejected) = try await capturedCall(result: ["status": "rejected", "subagent_id": "sa-1"]) {
+            try await $0.steerSubagent(sessionId: "s1", subagentId: "sa-1", text: "x")
+        }
+        XCTAssertFalse(rejected, "A rejected steer means the agent isn't running")
+
+        do {
+            _ = try await capturedCall(result: ["status": "delivered"]) {
+                try await $0.steerSubagent(sessionId: "s1", subagentId: "sa-1", text: "x")
+            }
+            XCTFail("An unknown status must not read as a rejection")
+        } catch HermesError.invalidResponse {}
+    }
+
+    func testInterruptSubagentReportsWhetherHermesFoundIt() async throws {
+        let (request, found) = try await capturedCall(result: ["found": true, "subagent_id": "sa-1"]) {
+            try await $0.interruptSubagent(sessionId: "s1", subagentId: "sa-1")
+        }
+        XCTAssertEqual(request["method"] as? String, "subagent.interrupt")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_id"] as? String, "s1")
+        XCTAssertEqual(params["subagent_id"] as? String, "sa-1")
+        XCTAssertTrue(found)
+
+        let (_, missing) = try await capturedCall(result: ["found": false, "subagent_id": "sa-1"]) {
+            try await $0.interruptSubagent(sessionId: "s1", subagentId: "sa-1")
+        }
+        XCTAssertFalse(missing)
+
+        do {
+            _ = try await capturedCall(result: ["subagent_id": "sa-1"]) {
+                try await $0.interruptSubagent(sessionId: "s1", subagentId: "sa-1")
+            }
+            XCTFail("A reply without found must not read as not found")
+        } catch HermesError.invalidResponse {}
+    }
+
+    func testTailSubagentDecodesTheTranscriptEnd() async throws {
+        let (request, tail) = try await capturedCall(result: ["subagent_id": "sa-1", "available": true, "text": "reading files\n", "truncated": true]) {
+            try await $0.tailSubagent(sessionId: "s1", subagentId: "sa-1")
+        }
+        XCTAssertEqual(request["method"] as? String, "subagent.tail")
+        XCTAssertEqual(tail, SubagentTail(available: true, text: "reading files\n", truncated: true))
+
+        let (_, empty) = try await capturedCall(result: ["subagent_id": "sa-1", "available": false, "text": "", "truncated": false]) {
+            try await $0.tailSubagent(sessionId: "s1", subagentId: "sa-1")
+        }
+        XCTAssertFalse(empty.available)
+    }
+
+    func testDelegationPauseReadsAndSetsTheSpawnPause() async throws {
+        let (statusRequest, paused) = try await capturedCall(result: ["active": [], "paused": true, "max_spawn_depth": 2, "max_concurrent_children": 3]) {
+            try await $0.delegationPaused()
+        }
+        XCTAssertEqual(statusRequest["method"] as? String, "delegation.status")
+        XCTAssertTrue(paused)
+
+        let (pauseRequest, state) = try await capturedCall(result: ["paused": false]) {
+            try await $0.setDelegationPaused(false)
+        }
+        XCTAssertEqual(pauseRequest["method"] as? String, "delegation.pause")
+        let params = try XCTUnwrap(pauseRequest["params"] as? [String: Any])
+        XCTAssertEqual(params["paused"] as? Bool, false, "Unpausing must send paused: false, since Hermes defaults to pausing")
+        XCTAssertFalse(state)
     }
 
     // MARK: - prompt.submit outcome + session.active_list probe

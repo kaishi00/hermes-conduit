@@ -35,7 +35,7 @@ struct LiveVoiceJobCard: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -147,7 +147,7 @@ struct LiveVoiceScreenCardRow: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

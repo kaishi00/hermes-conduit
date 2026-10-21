@@ -728,34 +728,7 @@ struct VoiceSettingsView: View {
 
     // MARK: Voice mode
 
-    private enum VoiceMode: String, CaseIterable {
-        case classic, gemini, gpt, grok, local
-
-        var title: String {
-            switch self {
-            case .classic: return AppLocalization.string("Classic")
-            case .gemini: return AppLocalization.string("Gemini Live")
-            case .gpt: return AppLocalization.string("GPT-Live")
-            case .grok: return AppLocalization.string("Grok Live")
-            case .local: return AppLocalization.string("Local")
-            }
-        }
-
-        var summary: String {
-            switch self {
-            case .classic:
-                return AppLocalization.string("Hermes listens and replies with the speech to text and assistant voice set up above. Works with any Hermes server.")
-            case .gemini:
-                return AppLocalization.string("A real-time conversation with Gemini that hands the work to Hermes. Needs the Hermes notifier plugin and a Gemini key on your Hermes server.")
-            case .gpt:
-                return AppLocalization.string("A real-time conversation on your Hermes server's ChatGPT sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
-            case .grok:
-                return AppLocalization.string("A real-time conversation with Grok through your Hermes server's SuperGrok sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
-            case .local:
-                return AppLocalization.string("A real-time conversation through a speech server you run, with a fast model of your choosing that hands the work to Hermes. Needs the Hermes notifier plugin.")
-            }
-        }
-    }
+    private typealias VoiceMode = VoiceModeChoice
 
     /// The mode the profile's saved preferences say is on.
     private var modelVoiceMode: VoiceMode {
@@ -2133,6 +2106,24 @@ struct VoiceCallSaveStatusSection: View {
                     .font(.caption)
                     .foregroundStyle(.primary)
             }
+        }
+    }
+}
+
+/// What each mode is, under the Voice mode picker.
+private extension VoiceModeChoice {
+    var summary: String {
+        switch self {
+        case .classic:
+            return AppLocalization.string("Hermes listens and replies with the speech to text and assistant voice set up above. Works with any Hermes server.")
+        case .gemini:
+            return AppLocalization.string("A real-time conversation with Gemini that hands the work to Hermes. Needs the Hermes notifier plugin and a Gemini key on your Hermes server.")
+        case .gpt:
+            return AppLocalization.string("A real-time conversation on your Hermes server's ChatGPT sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
+        case .grok:
+            return AppLocalization.string("A real-time conversation with Grok through your Hermes server's SuperGrok sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
+        case .local:
+            return AppLocalization.string("A real-time conversation through a speech server you run, with a fast model of your choosing that hands the work to Hermes. Needs the Hermes notifier plugin.")
         }
     }
 }

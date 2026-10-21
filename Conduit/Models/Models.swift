@@ -92,6 +92,10 @@ struct Attachment: Codable, Identifiable, Equatable {
     /// without those copies (#652); this says where to fetch one when its
     /// file is gone from the server.
     var inlineImage: InlineImageRef? = nil
+    /// What Hermes' vision saw in a picture, from history saved before
+    /// Hermes kept the picture's reference instead (#887). Shown on a long
+    /// press and read by VoiceOver.
+    var imageDescription: String? = nil
 
     enum Kind: String, Codable {
         case image
@@ -390,6 +394,7 @@ struct ClarifyActivity: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case requestId = "request_id"
+        case legacyRequestId = "requestId"
         case questions
         case isExpired
         case error
@@ -399,7 +404,11 @@ struct ClarifyActivity: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        requestId = try container.decode(String.self, forKey: .requestId)
+        if let currentID = try container.decodeIfPresent(String.self, forKey: .requestId) {
+            requestId = currentID
+        } else {
+            requestId = try container.decode(String.self, forKey: .legacyRequestId)
+        }
         isExpired = try container.decodeIfPresent(Bool.self, forKey: .isExpired) ?? false
         error = try container.decodeIfPresent(String.self, forKey: .error)
         if let questions = try? container.decode([ClarifyQuestion].self, forKey: .questions), !questions.isEmpty {
@@ -1147,11 +1156,12 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Unset or unknown is interrupt, as Hermes reads it.
     static func fromGatewayValue(_ value: String?) -> BusyInputMode {
-        switch value?.lowercased() {
-        case BusyInputMode.interrupt.rawValue: return .interrupt
+        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case BusyInputMode.steer.rawValue: return .steer
         case BusyInputMode.queue.rawValue: return .queue
-        default: return .steer
+        default: return .interrupt
         }
     }
 }

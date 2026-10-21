@@ -176,7 +176,7 @@ final class GeminiLiveConversationController: ObservableObject {
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
-    \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? watchFindChatParagraph + "\n" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
+    \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? watchFindChatParagraph + "\n" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf yourself. When a job update says it needs the user's OK, ask them, and answer it with answer_approval only on their own yes or no; if a job needs any other input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
     \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye to you, or asks to end, hang up or close the call, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
@@ -250,13 +250,23 @@ final class GeminiLiveConversationController: ObservableObject {
         didSet {
             syncHeadsetMute()
             // A host issue labels only the failure it caused.
-            if case .failed = phase {} else { hostIssue = nil }
+            if case .failed = phase {} else {
+                hostIssue = nil
+                awaitingConsent = nil
+            }
         }
     }
     /// What the host's check found wrong on the last start, set before
     /// the phase fails with the host's reason; nil once a start gets past
     /// the check, or when the failure was something else.
     private(set) var hostIssue: LiveVoiceHostIssue?
+    /// The mode whose provider the user hasn't yet allowed to hear them
+    /// (#827), set before the phase fails on it: the call screen then asks
+    /// instead of showing the failure. Nil otherwise.
+    @Published private(set) var awaitingConsent: LiveVoiceModeName?
+    /// The mode still needing the user's OK before this call may reach its
+    /// provider, or nil (`LiveVoiceProviderConsent.missing`).
+    private let missingConsent: @MainActor () -> LiveVoiceModeName?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// The model's voice is silenced (#487). Its words still show in the
@@ -386,6 +396,7 @@ final class GeminiLiveConversationController: ObservableObject {
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GeminiLiveAvailability,
+        missingConsent: @escaping @MainActor () -> LiveVoiceModeName? = { nil },
         tools: GeminiLiveToolBridge,
         input: GeminiLiveAudioInput,
         output: GeminiLiveAudioOutput,
@@ -399,6 +410,7 @@ final class GeminiLiveConversationController: ObservableObject {
         self.notificationCenter = notificationCenter
         self.makeSession = makeSession
         self.availability = availability
+        self.missingConsent = missingConsent
         self.openingPrompt = openingPrompt
         self.tools = tools
         self.input = input
@@ -480,6 +492,14 @@ final class GeminiLiveConversationController: ObservableObject {
         activeEndPhrases = endConversationPhrases()
         if let traceName { LiveCallTrace.shared.begin(traceName) }
         hostIssue = nil
+        // Nothing reaches the provider, its credential included, until the
+        // user has allowed it to hear them (#827).
+        if let mode = missingConsent() {
+            initialWidgetCaptureAuthorization = nil
+            awaitingConsent = mode
+            phase = .failed(VoiceSetupIssue.providerConsentNeeded(mode).message)
+            return
+        }
         do {
             let status = try await availability()
             guard phase == .connecting else { return }

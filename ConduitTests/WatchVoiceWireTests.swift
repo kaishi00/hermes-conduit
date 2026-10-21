@@ -73,6 +73,7 @@ extension HermesVoiceGatewayTimeoutTests {
             .directStart(callID: 7, version: WatchVoiceWire.version),
             .directToken(callID: 7),
             .directTool(callID: 7, call: .init(id: "c1", name: "start_job", arguments: ["instructions": "Check the build"])),
+            .directTool(callID: 7, call: .init(id: "c2", name: "phone_update", arguments: ["id": "e_1"], userWords: "Yes, move it.", userTurn: 4)),
             .directToolCancel(callID: 7, ids: ["c1", "c2"]),
             .directPoll(callID: 7),
             .directEnd(callID: 7, transcript: .init(
@@ -1003,6 +1004,20 @@ private final class WatchToolRelayStubProtocol: URLProtocol {
 }
 
 extension HermesVoiceGatewayTimeoutTests {
+    /// A change on the iPhone waits for the user's own yes, which a Watch
+    /// call sends with its tool call: one id per turn of one call.
+    func testWatchToolCallsCarryTheUsersWordsForAChangesYes() throws {
+        let older = try JSONSerialization.data(withJSONObject: ["id": "c1", "name": "phone_update", "arguments": ["id": "e_1"]])
+        let decoded = try JSONDecoder().decode(WatchVoiceWire.DirectToolCall.self, from: older)
+        XCTAssertNil(decoded.userWords, "an older Watch app sends none")
+        XCTAssertNil(decoded.userTurn)
+        XCTAssertEqual(WatchDirectBroker.userTurnID(call: 7, turn: 4), WatchDirectBroker.userTurnID(call: 7, turn: 4))
+        XCTAssertNotEqual(WatchDirectBroker.userTurnID(call: 7, turn: 4), WatchDirectBroker.userTurnID(call: 7, turn: 6))
+        XCTAssertNotEqual(WatchDirectBroker.userTurnID(call: 7, turn: 4), WatchDirectBroker.userTurnID(call: 8, turn: 4))
+        XCTAssertEqual(WatchDirectBroker.userTurnID(call: .max, turn: -1), WatchDirectBroker.userTurnID(call: .max, turn: 0))
+        _ = WatchDirectBroker.userTurnID(call: 7, turn: .max)  // a turn too big for the id still makes one
+    }
+
     func testWatchTranscriptCapKeepsTheNewestTurns() {
         let at = Date(timeIntervalSince1970: 0)
         let turns = (0..<5).map {

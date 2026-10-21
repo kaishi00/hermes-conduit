@@ -258,11 +258,13 @@ extension HermesVoiceGateway: VoiceLiveTranscriptionGateway {
 }
 
 /// The slice of `URLSessionWebSocketTask` the speech stream uses, so tests
-/// can inject a socket whose handshake is refused.
+/// can inject a socket whose handshake is refused (or whose path died
+/// without a close, answering no ping).
 protocol HermesSpeechSocket: AnyObject {
     func send(_ message: URLSessionWebSocketTask.Message) async throws
     func receive() async throws -> URLSessionWebSocketTask.Message
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
+    func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void)
 }
 
 extension URLSessionWebSocketTask: HermesSpeechSocket {}
@@ -292,6 +294,11 @@ final class HermesSpeechStream: VoiceSpeechStream {
     /// replacing the timer.
     private var lastActivity = ContinuousClock.now
     private var finishSendTask: Task<Void, Never>?
+    private var keepalive: VoiceSocketKeepalive?
+    /// The keepalive found the socket dead after audio arrived, before
+    /// finish(): the audio already received keeps playing, and finish()
+    /// fails at once instead of waiting out the idle window.
+    private var pathLost = false
     /// How long the stream may stay silent after `finish()` before it is
     /// judged dead. An idle window, not a total deadline: a long reply is
     /// still being synthesized well past any fixed budget (Read Aloud sends
@@ -302,6 +309,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
     init(
         task: any HermesSpeechSocket,
         finishIdleTimeout: Duration = .seconds(20),
+        keepaliveInterval: Duration = VoiceSocketKeepalive.interval,
         fallback: @escaping @MainActor (String) async throws -> Data,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
@@ -314,6 +322,9 @@ final class HermesSpeechStream: VoiceSpeechStream {
         self.onPCM16 = onPCM16
         self.onEncodedAudio = onEncodedAudio
         receiveTask = Task { [weak self] in await self?.receiveLoop() }
+        keepalive = VoiceSocketKeepalive(socket: task, interval: keepaliveInterval) { [weak self] in
+            self?.socketWentSilent()
+        }
     }
 
     deinit {
@@ -340,6 +351,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
             // turn. The receive loop races this same failure, so whichever
             // side sees it first, the result is fallback mode.
             fallbackMode = true
+            keepalive?.stop()
             task.cancel(with: .goingAway, reason: nil)
         }
     }
@@ -352,6 +364,11 @@ final class HermesSpeechStream: VoiceSpeechStream {
         finishRequested = true
         return try await withCheckedThrowingContinuation { continuation in
             completed = continuation
+            if pathLost {
+                complete(.failure(Self.pathLostError))
+                task.cancel(with: .goingAway, reason: nil)
+                return
+            }
             armFinishIdleTimeout()
             finishSendTask = Task { [weak self] in
                 guard let self else { return }
@@ -414,6 +431,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
     func cancel() {
         guard !cancelledByClient else { return }
         cancelledByClient = true
+        keepalive?.stop()
         finishTimeoutTask?.cancel()
         finishTimeoutTask = nil
         finishSendTask?.cancel()
@@ -422,6 +440,35 @@ final class HermesSpeechStream: VoiceSpeechStream {
         receiveTask = nil
         task.cancel(with: .goingAway, reason: nil)
         complete(.failure(CancellationError()))
+    }
+
+    /// The keepalive found the socket dead: its path dropped without a
+    /// close, so neither a send nor the receive would have failed (#787).
+    /// Before any audio the reply goes to the one-shot fallback, as for any
+    /// early drop. After audio the rest of it is lost; the stream fails
+    /// when finish() is asked for, not mid-playback.
+    private func socketWentSilent() {
+        guard !terminal, !cancelledByClient, !fallbackMode else { return }
+        if receivedPCM {
+            guard finishRequested else {
+                pathLost = true
+                return
+            }
+            complete(.failure(Self.pathLostError))
+            task.cancel(with: .goingAway, reason: nil)
+            return
+        }
+        fallbackMode = true
+        // A {done:true} send on the dead socket may never return; retire
+        // it so the fallback can take its slot (as the idle timeout does).
+        finishSendTask?.cancel()
+        finishSendTask = nil
+        task.cancel(with: .goingAway, reason: nil)
+        startFallbackIfNeeded()
+    }
+
+    private static var pathLostError: Error {
+        VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))
     }
 
     private func sendJSON(_ object: [String: Any]) async throws {
@@ -436,6 +483,8 @@ final class HermesSpeechStream: VoiceSpeechStream {
             while !Task.isCancelled {
                 let message = try await task.receive()
                 lastActivity = .now
+                keepalive?.heard()
+                pathLost = false
                 switch message {
                 case .data(let data):
                     if let control = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -452,9 +501,11 @@ final class HermesSpeechStream: VoiceSpeechStream {
                 }
             }
         } catch is CancellationError {
+            keepalive?.stop()
             guard !terminal, !cancelledByClient else { return }
             if !receivedPCM { fallbackMode = true; startFallbackIfNeeded() }
         } catch {
+            keepalive?.stop()
             guard !terminal, !cancelledByClient else { return }
             if !receivedPCM { fallbackMode = true; startFallbackIfNeeded() }
             else { complete(.failure(error)) }
@@ -471,6 +522,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
             complete(.success(receivedPCM))
         case "fallback":
             fallbackMode = true
+            keepalive?.stop()
             task.cancel(with: .goingAway, reason: nil)
             startFallbackIfNeeded()
         case "error":
@@ -515,10 +567,14 @@ final class HermesSpeechStream: VoiceSpeechStream {
     private func complete(_ result: Result<Bool, Error>) {
         guard !terminal else { return }
         terminal = true
+        keepalive?.stop()
         finishTimeoutTask?.cancel()
         finishTimeoutTask = nil
         finishSendTask?.cancel()
         finishSendTask = nil
+        receiveTask?.cancel()
+        receiveTask = nil
+        task.cancel(with: .goingAway, reason: nil)
         if case .failure(let error) = result { terminalError = error }
         let continuation = completed
         completed = nil

@@ -3,6 +3,24 @@ import Foundation
 // MARK: - Defensive JSON helpers
 
 private extension KeyedDecodingContainer {
+    /// Preserve valid siblings while consuming each malformed JSON element.
+    func decodeLossyArray<T: Decodable>(_ type: T.Type, forKey key: Key) -> [T] {
+        guard var walker = try? nestedUnkeyedContainer(forKey: key) else { return [] }
+        var values: [T] = []
+        while !walker.isAtEnd {
+            let index = walker.currentIndex
+            if let value = try? walker.decode(type) {
+                values.append(value)
+            } else if walker.currentIndex == index {
+                // JSONDecoder leaves the cursor on a failed element; consume
+                // it here, and never a valid sibling if a decoder did move.
+                _ = try? walker.decode(AnyCodable.self)
+            }
+            guard walker.currentIndex > index else { break }
+        }
+        return values
+    }
+
     func decodeLossyString(forKey key: Key) -> String? {
         if let value = try? decode(String.self, forKey: key) { return value }
         if let value = try? decode(Int.self, forKey: key) { return String(value) }
@@ -299,7 +317,11 @@ struct KanbanTask: Codable, Identifiable, Equatable {
         workspacePath = try? container.decodeIfPresent(String.self, forKey: .workspacePath)
         branchName = try? container.decodeIfPresent(String.self, forKey: .branchName)
         consecutiveFailures = container.decodeLossyInt(forKey: .consecutiveFailures)
-        diagnostics = try? container.decodeIfPresent([KanbanDiagnostic].self, forKey: .diagnostics)
+        // Element-wise like the other collections: one non-object entry
+        // must not drop every diagnostic. Absent stays nil.
+        diagnostics = container.contains(.diagnostics)
+            ? container.decodeLossyArray(KanbanDiagnostic.self, forKey: .diagnostics)
+            : nil
     }
 }
 
@@ -319,7 +341,7 @@ struct KanbanColumn: Codable, Equatable, Identifiable {
         // Lossily decode every row, but DROP rows without an identity: two
         // id-less tasks would collide on "" inside SwiftUI ForEach and the
         // service rejects empty IDs anyway, so they can never be actionable.
-        let rawTasks = (try? container.decodeIfPresent([KanbanTask].self, forKey: .tasks)) ?? []
+        let rawTasks = container.decodeLossyArray(KanbanTask.self, forKey: .tasks)
         tasks = rawTasks.filter { !$0.id.isEmpty }
     }
 }
@@ -347,9 +369,9 @@ struct KanbanBoard: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        columns = (try? container.decode([KanbanColumn].self, forKey: .columns)) ?? []
-        tenants = (try? container.decode([String].self, forKey: .tenants)) ?? []
-        assignees = (try? container.decode([String].self, forKey: .assignees)) ?? []
+        columns = container.decodeLossyArray(KanbanColumn.self, forKey: .columns)
+        tenants = container.decodeLossyArray(String.self, forKey: .tenants)
+        assignees = container.decodeLossyArray(String.self, forKey: .assignees)
         latestEventID = container.decodeLossyInt(forKey: .latestEventID)
         now = container.decodeLossyInt(forKey: .now)
     }
@@ -386,7 +408,15 @@ struct KanbanBoardMetadata: Codable, Identifiable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        slug = container.decodeLossyString(forKey: .slug) ?? "default"
+        guard let slug = container.decodeLossyString(forKey: .slug),
+              !slug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            // A missing/blank slug must not be manufactured into the real
+            // default board's identity: the lossy collection walkers skip
+            // the element instead.
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath, debugDescription: "board slug missing or blank"))
+        }
+        self.slug = slug
         name = try? container.decodeIfPresent(String.self, forKey: .name)
         description = try? container.decodeIfPresent(String.self, forKey: .description)
         isCurrent = try? container.decodeIfPresent(Bool.self, forKey: .isCurrent)
@@ -423,6 +453,20 @@ struct KanbanBoardsResponse: Codable, Equatable {
     init(boards: [KanbanBoardMetadata] = [], current: String = "default") {
         self.boards = boards
         self.current = current
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        boards = container.decodeLossyArray(KanbanBoardMetadata.self, forKey: .boards)
+        // A missing or blank current pointer doesn't cost the boards list.
+        // It falls back to the board the server marks current, then to ""
+        // (no board= on the request, so the server resolves its own), never
+        // to a made-up "default" identity.
+        let sent = container.decodeLossyString(forKey: .current)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        current = sent.flatMap { $0.isEmpty ? nil : $0 }
+            ?? boards.first(where: { $0.isCurrent == true })?.slug
+            ?? ""
     }
 }
 
@@ -589,12 +633,12 @@ struct KanbanTaskDetail: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         task = (try? container.decode(KanbanTask.self, forKey: .task)) ?? KanbanTask(id: "", title: "Untitled task", status: "todo")
-        comments = (try? container.decode([KanbanComment].self, forKey: .comments)) ?? []
-        events = (try? container.decode([KanbanEvent].self, forKey: .events)) ?? []
-        attachments = (try? container.decode([KanbanAttachment].self, forKey: .attachments)) ?? []
+        comments = container.decodeLossyArray(KanbanComment.self, forKey: .comments)
+        events = container.decodeLossyArray(KanbanEvent.self, forKey: .events)
+        attachments = container.decodeLossyArray(KanbanAttachment.self, forKey: .attachments)
         links = (try? container.decode(KanbanTaskLinks.self, forKey: .links)) ?? KanbanTaskLinks()
-        childResults = (try? container.decode([KanbanChildResult].self, forKey: .childResults)) ?? []
-        runs = (try? container.decode([KanbanRun].self, forKey: .runs)) ?? []
+        childResults = container.decodeLossyArray(KanbanChildResult.self, forKey: .childResults)
+        runs = container.decodeLossyArray(KanbanRun.self, forKey: .runs)
     }
 }
 

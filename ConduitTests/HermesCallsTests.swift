@@ -461,6 +461,20 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("Give me a call when you have it"))
         XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Don't call me when it's done"))
         XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Call me Alex"))
+        // Hedged refusals still refuse.
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Don't need to call me when it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("you don't even have to ring me once it finishes"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Do not bother to call me after it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("no need to even give me a call when it's ready"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("Stop even bothering to call me when it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("You needn't call me when it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("you haven't got to ring me once it finishes"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("You shouldn't call me when it's done"))
+        XCTAssertFalse(VoiceCallbackPhrases.asksForCallback("don't you dare call me when it's done"))
+        // Other words between the negator and the verb are no refusal.
+        XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("Don't forget to call me when it's done"))
+        XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("Never hesitate to call me once it's ready"))
+        XCTAssertTrue(VoiceCallbackPhrases.asksForCallback("don't hesitate to give me a call when you have it"))
     }
 
     func testCallsClientSendsHoldsAndMapsRefusals() async throws {
@@ -837,6 +851,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .approval).contains { $0.name == "answer_approval" })
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .approval).contains { $0.name == "answer_question" })
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false, waitsOn: .done).contains { $0.name.hasPrefix("answer_") })
+        // A phone call can answer its jobs' approvals too.
+        XCTAssertTrue(GeminiLiveToolBridge.declarations(webSearch: false, jobApprovals: true).contains { $0.name == "answer_approval" })
 
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
         var spoke: Date?

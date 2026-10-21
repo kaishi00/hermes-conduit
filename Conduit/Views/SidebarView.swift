@@ -1336,6 +1336,16 @@ struct SessionActionMenuItems: View {
             Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
         }
 
+        // Only V2's Chats list has the Starred filter that lists them (#757).
+        if V2ShellPreference.isOn {
+            Button {
+                Haptics.light()
+                appState.toggleSessionStarred(session)
+            } label: {
+                Label(appState.isSessionStarred(session) ? AppLocalization.string("Unstar") : AppLocalization.string("Star"), systemImage: appState.isSessionStarred(session) ? "star.slash" : "star")
+            }
+        }
+
         ReadStateToggleButton(session: session, nest: nest)
 
         // A cron run keeps the job's workspace (#485).
@@ -2169,7 +2179,7 @@ private struct CronJobRow: View {
                     .accessibilityLabel(AppLocalization.string("Notifications off"))
             }
             Text(job.statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
-            Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.conduitTertiary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2185,6 +2195,7 @@ struct CronJobDetailSheet: View {
     /// Resume flip the sheet as soon as Hermes answers.
     let selectedJob: CronJob
     @State private var confirmingDelete = false
+    @State private var editing = false
 
     init(job: CronJob) {
         selectedJob = job
@@ -2251,6 +2262,13 @@ struct CronJobDetailSheet: View {
                             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent, prominent: true)
                         }
                         .font(.subheadline.weight(.semibold))
+                        Button { editing = true } label: {
+                            Label(AppLocalization.string("Edit job"), systemImage: "pencil").frame(maxWidth: .infinity)
+                        }
+                        .disabled(appState.cronJobActionID != nil || appState.dashboardTicketBridge == nil)
+                        .frame(minHeight: 48)
+                        .conduitGlassControl(cornerRadius: 16)
+                        .font(.subheadline.weight(.semibold))
                         Button(role: .destructive) { confirmingDelete = true } label: {
                             Label(AppLocalization.string("Delete job"), systemImage: "trash").frame(maxWidth: .infinity)
                         }
@@ -2266,7 +2284,7 @@ struct CronJobDetailSheet: View {
                             if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
                                 Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
-                                    HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.tertiary) }
+                                    HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.conduitTertiary) }
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -2279,6 +2297,10 @@ struct CronJobDetailSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Scheduled job"), close: { dismiss() })
             }
+        }
+        .sheet(isPresented: $editing) {
+            CronJobEditorSheet(target: .edit(job))
+                .environmentObject(appState)
         }
         .alert("Delete scheduled job?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) {

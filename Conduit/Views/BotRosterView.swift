@@ -645,7 +645,7 @@ struct RosterIconRow<Icon: View>: View {
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
         }

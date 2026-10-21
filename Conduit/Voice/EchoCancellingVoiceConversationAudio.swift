@@ -161,6 +161,8 @@ final class EchoCancellingVoiceCapture: AudioCaptureService {
     func stop() {
         resetInput()
         paused = false
+        capturedPCM = Data()
+        preRollPCM = Data()
     }
 
     private func startInputIfNeeded() throws {

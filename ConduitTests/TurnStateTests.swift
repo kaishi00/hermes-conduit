@@ -28,13 +28,17 @@ final class TurnStateTests: XCTestCase {
         XCTAssertEqual(TurnState.unsupportedGateway.composerAction(hasText: true, hasAttachments: false, busyInputMode: .steer), .unavailable)
     }
 
-    func testBusyInputModeDefaultsToSteerForUnknownGatewayValues() {
+    /// Hermes treats an unset or unknown `display.busy_input_mode` as
+    /// interrupt, so the app does too.
+    func testBusyInputModeDefaultsToInterruptLikeHermes() {
         XCTAssertEqual(BusyInputMode.fromGatewayValue("interrupt"), .interrupt)
         XCTAssertEqual(BusyInputMode.fromGatewayValue("steer"), .steer)
+        XCTAssertEqual(BusyInputMode.fromGatewayValue(" Steer "), .steer)
         XCTAssertEqual(BusyInputMode.fromGatewayValue("queue"), .queue)
         XCTAssertEqual(BusyInputMode.fromGatewayValue("QUEUE"), .queue)
-        XCTAssertEqual(BusyInputMode.fromGatewayValue("something-new"), .steer)
-        XCTAssertEqual(BusyInputMode.fromGatewayValue(nil), .steer)
+        XCTAssertEqual(BusyInputMode.fromGatewayValue("something-new"), .interrupt)
+        XCTAssertEqual(BusyInputMode.fromGatewayValue(""), .interrupt)
+        XCTAssertEqual(BusyInputMode.fromGatewayValue(nil), .interrupt)
     }
 
     /// Touch and hold on the action button (#816, #817, #842, #962): the

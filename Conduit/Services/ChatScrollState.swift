@@ -9,6 +9,8 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     let message: ChatMessage
     let semanticID: String
     let restorationMetadata: ChatScrollAnchorMetadata
+    /// Derived once per rebuild, not re-parsed on every step-run scan.
+    let isStep: Bool
     /// Transcript-order position, maintained by the cache so views can
     /// iterate the targets collection directly (no Array(enumerated()) copy
     /// per body evaluation) and still report stable row order to the
@@ -86,6 +88,7 @@ struct ChatMessageScrollTargetCache: Equatable {
                     message: message,
                     semanticID: target.semanticID,
                     restorationMetadata: target.restorationMetadata,
+                    isStep: ChatStepGroup.isStep(message),
                     order: target.order
                 )
             }
@@ -144,18 +147,18 @@ struct ChatMessageScrollTargetCache: Equatable {
     /// steps, or end it.
     private mutating func placeSteps(from index: Int) {
         var start = min(index, targets.count)
-        while start > 0, ChatStepGroup.isStep(targets[start - 1].message) {
+        while start > 0, targets[start - 1].isStep {
             start -= 1
         }
         var i = start
         while i < targets.count {
-            guard ChatStepGroup.isStep(targets[i].message) else {
+            guard targets[i].isStep else {
                 if targets[i].step != nil { targets[i].step = nil }
                 i += 1
                 continue
             }
             var end = i
-            while end < targets.count, ChatStepGroup.isStep(targets[end].message) {
+            while end < targets.count, targets[end].isStep {
                 end += 1
             }
             let group = ChatStepGroup(
@@ -216,6 +219,7 @@ enum ChatMessageScrollTargets {
                     fingerprint: fingerprint,
                     duplicateCount: duplicateCounts[fingerprint, default: 0]
                 ),
+                isStep: ChatStepGroup.isStep(message),
                 order: baseOrder + offset
             )
         }

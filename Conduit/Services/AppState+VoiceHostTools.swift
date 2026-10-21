@@ -120,21 +120,27 @@ extension AppState {
             return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
         }
         if tool.key == PhoneVoiceTools.key {
-            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: {
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm, excluding in
                 // Their words reach Conduit a moment after the model heard
-                // them. Each yes answers one deletion.
+                // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
+                // A Watch call's words come with its tool call: read once,
+                // so a later turn's yes can't answer this change.
+                let onWatch = !(self.isGeminiLiveActive || self.isGrokLiveActive || self.isGPTLiveActive || self.isLocalLiveActive)
+                    && self.watchCallUserTurn != nil
                 while true {
                     let turn = self.liveCallLastUserTurn()
-                    if let id = turn.id, !PhoneVoiceTools.usedConfirmations.contains(id),
-                       PhoneVoiceTools.confirmsRemoval(turn.text) {
-                        PhoneVoiceTools.usedConfirmations.insert(id)
+                    // The turn current when the change arrived answers
+                    // something else: wait for a later one.
+                    if let id = turn.id, id != excluding, PhoneVoiceTools.usedConfirmation != id,
+                       PhoneVoiceTools.confirmsChange(turn.text, cancelsAlarm: cancelsAlarm) {
+                        PhoneVoiceTools.usedConfirmation = id
                         return true
                     }
-                    guard ContinuousClock.now < deadline else { return false }
+                    guard !onWatch, ContinuousClock.now < deadline else { return false }
                     do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
                 }
-            }) { prompt, approve in
+            }, lastUserTurn: { [weak self] in self?.liveCallLastUserTurn() ?? (nil, "") }) { prompt, approve in
                 await engine.answer(prompt, approve: approve)
                 // Reported in the background: the call hears the outcome now.
                 Task { await self.runPhoneSync(reason: .answered) }
@@ -143,7 +149,8 @@ extension AppState {
                 Self.recordPhoneVoiceUse(tool, arguments: arguments, mode: mode)
                 // Hermes' alarm list and calendar catch up with what was
                 // just set, added or deleted.
-                if [PhoneVoiceTools.alarmTool, PhoneVoiceTools.addTool, PhoneVoiceTools.removeTool].contains(tool.name) {
+                if [PhoneVoiceTools.alarmTool, PhoneVoiceTools.addTool, PhoneVoiceTools.updateTool,
+                    PhoneVoiceTools.removeTool].contains(tool.name) {
                     Task { await self.runPhoneSync(reason: .answered) }
                 }
             }
@@ -179,10 +186,17 @@ extension AppState {
         let action: String
         if tool.name == PhoneVoiceTools.addTool {
             action = (arguments["kind"] as? String).map { "add \($0)" } ?? tool.name
+        } else if tool.name == PhoneVoiceTools.updateTool {
+            action = (arguments["kind"] as? String).map { "change \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.removeTool {
             action = (arguments["kind"] as? String).map { "delete \($0)" } ?? tool.name
         } else if tool.name == PhoneVoiceTools.alarmTool {
-            action = (arguments["kind"] as? String).map { "set \($0)" } ?? tool.name
+            switch arguments["kind"] as? String {
+            case "list": action = "alarms"
+            case "cancel": action = "cancel alarm"
+            case let kind?: action = "set \(kind)"
+            case nil: action = tool.name
+            }
         } else if tool.name == PhoneVoiceTools.changesTool {
             action = "changes \(arguments["action"] as? String ?? "")"
         } else {
@@ -319,11 +333,13 @@ extension AppState {
     }
 
     /// Tells the running call about each change Hermes asks for while it
-    /// runs, so the user can answer it out loud.
+    /// runs, so the user can answer it out loud, and notes the turn current
+    /// when each was first seen, which approving it has to come after.
     private func watchPhoneChanges(for mode: LiveVoiceModeName) -> AnyCancellable {
         // What was waiting at the last update: a change Hermes withdraws and
         // asks for again is told again.
         var known = Set(phoneSync.prompts.map(\.id))
+        PhoneVoiceTools.beginWatch(waiting: known, turn: liveCallLastUserTurn().id)
         return phoneSync.$prompts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] prompts in
@@ -331,8 +347,10 @@ extension AppState {
                 let supervisor = self.voiceBackgroundJobSupervisor
                 let fresh = prompts.filter { !known.contains($0.id) }
                 known = Set(prompts.map(\.id))
+                let turn = self.liveCallLastUserTurn().id
+                for prompt in fresh { PhoneVoiceTools.noteArrival(prompt.id, userTurn: turn) }
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
-                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive,
+                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive,
                       self.phoneSync.preferences.letsVoiceUse(mode) else { return }
                 for prompt in fresh { supervisor.notePhoneChange(PhoneVoiceTools.note(for: prompt)) }
             }

@@ -388,6 +388,13 @@ enum StreamEvent {
     /// the reacted row's role so a live row with no `rowId` yet can match.
     case messageReaction(sessionId: String, rowId: Int, reactions: [MessageReaction], role: String)
     case messageError(sessionId: String, message: String)
+    /// `user.message`: a user message another client sent in the session,
+    /// already stored as `rowId`.
+    case userMessage(sessionId: String, rowId: Int?, text: String, origin: String?)
+    /// `sessions.changed`: the stored session list moved (state.db), from
+    /// any process: a turn run in the TUI or on another device, a rename,
+    /// a deletion. Carries nothing; the catalog says what moved.
+    case sessionsChanged
     case messageInterrupted(sessionId: String)
     case sessionBusy(sessionId: String, busy: Bool)
     case sessionInfo(sessionId: String, snapshot: SessionRuntimeSnapshot)
@@ -642,6 +649,15 @@ struct SessionBranchMessage {
     let content: String
 }
 
+/// The end of a delegate agent's live transcript, from `subagent.tail`.
+/// `available` is false before the agent has written anything and after it
+/// ends.
+struct SubagentTail: Equatable {
+    var available: Bool
+    var text: String
+    var truncated: Bool
+}
+
 /// Typed result of `prompt.submit`, derived from the gateway's actual
 /// response `status` field (verified against upstream `tui_gateway`):
 /// `streaming` for a new turn, `steered`/`redirected`/`queued` when the
@@ -818,10 +834,13 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
     /// own default (1 MiB) closes the connection with close code 1009 as soon
     /// as a single WebSocket message exceeds it, which is how resuming a large
     /// session — one huge `session.resume` frame — used to kill Conduit's
-    /// connection in a reconnect loop (issue #106). 4 MiB comfortably covers
-    /// legitimate control payloads while staying bounded; the compact resume
-    /// keeps transcript-sized payloads off the socket entirely.
-    static let maximumMessageSize = 4 * 1024 * 1024
+    /// connection in a reconnect loop (issue #106). The compact resume keeps
+    /// transcript-sized payloads off the socket, but other frames can still
+    /// be large (Hermes sends a tool's whole result in `tool.complete`): a
+    /// bot that sent videos made 4 MiB too small, and the socket closed with
+    /// 1009 after each of its replies. 64 MiB takes those while staying
+    /// bounded.
+    static let maximumMessageSize = 64 * 1024 * 1024
 
     private var session: URLSession?
     private var delegate: DashboardWebSocketDelegate?
@@ -2642,6 +2661,66 @@ final class HermesClient: ObservableObject {
         return Set(ids)
     }
 
+    /// Queues `text` into one running delegate agent (`subagent.steer`).
+    /// Hermes hands it over at the agent's next tool step; false when Hermes
+    /// rejected it because the agent isn't running for this session.
+    func steerSubagent(sessionId: String, subagentId: String, text: String) async throws -> Bool {
+        let result = try await rpc("subagent.steer", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId,
+            "text": text
+        ])
+        switch result.objectValue?["status"]?.stringValue {
+        case "queued": return true
+        case "rejected": return false
+        // Only an explicit rejection may end the card.
+        default: throw HermesError.invalidResponse
+        }
+    }
+
+    /// Stops one running delegate agent (`subagent.interrupt`). False when
+    /// Hermes no longer has that agent running for this session.
+    func interruptSubagent(sessionId: String, subagentId: String) async throws -> Bool {
+        let result = try await rpc("subagent.interrupt", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId
+        ])
+        // A reply without `found` must not end a card that may still run.
+        guard let found = result.objectValue?["found"]?.boolValue else { throw HermesError.invalidResponse }
+        return found
+    }
+
+    /// The end of one delegate agent's live transcript (`subagent.tail`,
+    /// at most 16 KB).
+    func tailSubagent(sessionId: String, subagentId: String) async throws -> SubagentTail {
+        let result = try await rpc("subagent.tail", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId
+        ])
+        guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        return SubagentTail(
+            available: object["available"]?.boolValue ?? false,
+            text: object["text"]?.stringValue ?? "",
+            truncated: object["truncated"]?.boolValue ?? false
+        )
+    }
+
+    /// Whether Hermes is holding new delegate agents (`delegation.status`).
+    /// The pause covers the whole Hermes, not one profile.
+    func delegationPaused() async throws -> Bool {
+        let result = try await rpc("delegation.status")
+        guard let paused = result.objectValue?["paused"]?.boolValue else { throw HermesError.invalidResponse }
+        return paused
+    }
+
+    /// Holds or releases new delegate agents (`delegation.pause`); agents
+    /// already running keep going. Returns the state Hermes reports.
+    func setDelegationPaused(_ paused: Bool) async throws -> Bool {
+        let result = try await rpc("delegation.pause", params: ["paused": paused])
+        guard let state = result.objectValue?["paused"]?.boolValue else { throw HermesError.invalidResponse }
+        return state
+    }
+
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }
@@ -4451,6 +4530,19 @@ enum MessageNormalizer {
     /// The caption the gateway writes when a picture arrives without one.
     private static let defaultImageCaption = "What do you see in this image?"
 
+    /// What Hermes saved in place of a picture before hermes-agent d0f5ef7041
+    /// (v0.21): the model-only description vision wrote for it, then where
+    /// the file is. tui_gateway (`_enrich_with_attached_images`) and the
+    /// chat platform gateway (`_enrich_message_with_vision`) word it
+    /// differently, and each has a wording for a failed analysis. Group 1 is
+    /// the description when there is one, the last group the path.
+    private static let visionEnrichmentPatterns: [NSRegularExpression] = [
+        #"\[The user attached an image:\r?\n(.*?)\]\r?\n\[You can examine it with vision_analyze using image_url: ([^\]\r\n]+)\]"#,
+        #"\[The user attached an image but analysis failed\.\]\r?\n\[You can examine it with vision_analyze using image_url: ([^\]\r\n]+)\]"#,
+        #"\[The user sent an image~ Here's what I can see:\r?\n(.*?)\]\r?\n\[If you need a closer look, use vision_analyze with image_url: (\S+) ~\]"#,
+        #"\[The user sent an image but [^\[\]]*? with vision_analyze using image_url: ([^\]\r\n]+)\]"#,
+    ].compactMap { try? NSRegularExpression(pattern: $0, options: [.dotMatchesLineSeparators]) }
+
     /// What Hermes puts in place of each picture it leaves out of a
     /// transcript read with `inline_images=false` (#652).
     static let inlineImageMarker = "[image]"
@@ -4545,8 +4637,21 @@ enum MessageNormalizer {
         let body = markers.text
         let fullRange = NSRange(body.startIndex..<body.endIndex, in: body)
 
-        var references: [(range: NSRange, path: String)] = []
+        var references: [(range: NSRange, path: String, description: String?)] = []
         var foundHint = false
+        for expression in visionEnrichmentPatterns {
+            for match in expression.matches(in: body, range: fullRange) {
+                guard let pathRange = Range(match.range(at: match.numberOfRanges - 1), in: body) else { continue }
+                let path = String(body[pathRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !path.isEmpty else { continue }
+                var description: String?
+                if match.numberOfRanges > 2, let range = Range(match.range(at: 1), in: body) {
+                    let text = String(body[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    description = text.isEmpty ? nil : text
+                }
+                references.append((match.range, path, description))
+            }
+        }
         for (expression, isHint) in [(imageReferencePattern, false), (imageHintPattern, true)] {
             guard let expression else { continue }
             for match in expression.matches(in: body, range: fullRange) {
@@ -4557,7 +4662,7 @@ enum MessageNormalizer {
                     let path = String(body[swiftRange])
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if !path.isEmpty {
-                        references.append((match.range, path))
+                        references.append((match.range, path, nil))
                         foundHint = foundHint || isHint
                     }
                     break
@@ -4588,7 +4693,17 @@ enum MessageNormalizer {
             visibleContent = ""
         }
 
-        let paths = references.map(\.path)
+        // One picture named twice (its description and an `@image:` token)
+        // is one attachment, carrying the description.
+        var pictures: [(path: String, description: String?)] = []
+        for reference in references {
+            if let index = pictures.firstIndex(where: { $0.path == reference.path }) {
+                pictures[index].description = pictures[index].description ?? reference.description
+            } else {
+                pictures.append((reference.path, reference.description))
+            }
+        }
+        let paths = pictures.map(\.path)
         let attachments = (0..<max(paths.count, markers.count)).map { index -> Attachment in
             let path = index < paths.count ? paths[index] : nil
             let name = path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
@@ -4607,7 +4722,8 @@ enum MessageNormalizer {
                 uri: path ?? "",
                 mimeType: path.flatMap { imageMimeType(for: $0) },
                 kind: .image,
-                inlineImage: inlineImage
+                inlineImage: inlineImage,
+                imageDescription: index < pictures.count ? pictures[index].description : nil
             )
         }
         return (visibleContent, body, attachments)

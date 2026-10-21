@@ -25,53 +25,54 @@ struct ContextSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(spacing: 14) {
-                        ConduitSettingsSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
-                            SettingsMetricRow(label: AppLocalization.string("Used"), value: AppLocalization.string("\(Int(appState.runtime.contextUsed)) tokens"))
-                            SettingsMetricRow(label: AppLocalization.string("Capacity"), value: AppLocalization.string("\(Int(appState.runtime.contextMax)) tokens"))
-                            VStack(alignment: .leading, spacing: 7) {
-                                HStack {
-                                    Text("Window usage")
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                }
-                                ProgressView(value: appState.runtime.contextPercent, total: 100)
-                                    .tint(.conduitAccent)
-                            }
-                            .padding(.top, 4)
+            // V2: laid out as a settings page, its cards on the profile's
+            // glow and fading under the bar; compact to fit the half sheet.
+            SettingsDetailContainer(compact: true) {
+                ConduitSettingsSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
+                    SettingsMetricRow(label: AppLocalization.string("Used"), value: AppLocalization.string("\(Int(appState.runtime.contextUsed)) tokens"))
+                    SettingsMetricRow(label: AppLocalization.string("Capacity"), value: AppLocalization.string("\(Int(appState.runtime.contextMax)) tokens"))
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            Text("Window usage")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
+                                .font(.caption.monospacedDigit().weight(.semibold))
                         }
+                        ContextWindowBar(
+                            segments: segments,
+                            capacity: Double(max(Int(appState.runtime.contextMax), breakdown?.contextMax ?? 0)),
+                            fallbackFraction: appState.runtime.contextPercent / 100
+                        )
+                        .accessibilityElement()
+                        .accessibilityLabel(Text("Window usage"))
+                        .accessibilityValue(Text("\(String(Int(appState.runtime.contextPercent.rounded())))%"))
+                    }
+                    .padding(.top, 4)
+                }
 
-                        if let breakdown {
-                            ConduitSettingsSection(title: AppLocalization.string("Breakdown"), symbol: "chart.pie", tint: .conduitAccent) {
-                                ForEach(breakdown.categories, id: \.id) { category in
-                                    HStack(spacing: 10) {
-                                        Circle()
-                                            .fill(colorFor(category.color))
-                                            .frame(width: 9, height: 9)
-                                        Text(category.label)
-                                        Spacer()
-                                        Text("\(category.tokens)")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.vertical, 3)
-                                }
+                if breakdown != nil {
+                    ConduitSettingsSection(title: AppLocalization.string("Breakdown"), symbol: "chart.pie", tint: .conduitAccent) {
+                        ForEach(segments) { category in
+                            HStack(spacing: 10) {
+                                Circle()
+                                    .fill(category.color)
+                                    .frame(width: 9, height: 9)
+                                Text(category.label)
+                                Spacer()
+                                Text("\(category.tokens)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
                             }
+                            .padding(.vertical, 3)
                         }
                     }
-                    .padding(16)
                 }
             }
             .navigationTitle("Context")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
         }
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
         .task { await loadBreakdown() }
     }
 
@@ -82,7 +83,28 @@ struct ContextSheet: View {
         breakdown = loaded
     }
 
-    private func colorFor(_ name: String) -> Color {
+    /// The breakdown's categories with the color each takes in the bar and
+    /// beside its row. Hermes's own colors only when each is one Conduit
+    /// knows and no two share one; otherwise (it often names one for all,
+    /// or names Conduit doesn't map) they take the palette in turn, so the
+    /// categories never all come out amber.
+    private var segments: [ContextWindowBar.Segment] {
+        guard let categories = breakdown?.categories else { return [] }
+        let named = categories.map { colorFor($0.color) }
+        let useNamed = named.allSatisfy { $0 != nil }
+            && Set(categories.map { $0.color.lowercased() }).count == categories.count
+        return categories.enumerated().map { index, category in
+            ContextWindowBar.Segment(
+                id: category.id,
+                label: category.label,
+                tokens: category.tokens,
+                color: (useNamed ? named[index] : nil)
+                    ?? ContextWindowBar.palette[index % ContextWindowBar.palette.count]
+            )
+        }
+    }
+
+    private func colorFor(_ name: String) -> Color? {
         switch name.lowercased() {
         case "blue": return .blue
         case "green": return .green
@@ -92,8 +114,53 @@ struct ContextSheet: View {
         case "pink": return .pink
         case "cyan": return .cyan
         case "amber", "yellow": return .yellow
-        default: return .conduitAccent
+        default: return nil
         }
+    }
+}
+
+/// The context window as one bar: a segment per category, sized by its
+/// share of the capacity, on a quiet track for what is still free. Before
+/// the breakdown loads, one gold segment for the used share.
+struct ContextWindowBar: View {
+    struct Segment: Identifiable {
+        let id: String
+        let label: String
+        let tokens: Int
+        let color: Color
+    }
+
+    static let palette: [Color] = [.conduitAccent, .conduitAura, .teal, .pink, .blue, .green, .orange, .purple]
+
+    let segments: [Segment]
+    let capacity: Double
+    let fallbackFraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let shown = segments.filter { $0.tokens > 0 }
+            let total = max(capacity, Double(shown.reduce(0) { $0 + $1.tokens }), 1)
+            HStack(spacing: 2) {
+                if shown.isEmpty {
+                    Rectangle()
+                        .fill(Color.conduitAccent)
+                        .frame(width: proxy.size.width * min(max(fallbackFraction, 0), 1))
+                } else {
+                    ForEach(shown) { segment in
+                        Rectangle()
+                            .fill(segment.color)
+                            // A sliver stays visible however small its share.
+                            .frame(width: max(3, (proxy.size.width - CGFloat(shown.count) * 2) * Double(segment.tokens) / total))
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .frame(height: 10)
+        .animation(.easeOut(duration: 0.25), value: segments.map(\.tokens))
     }
 }
 
@@ -828,7 +895,9 @@ struct SettingsView: View {
                 loadOptions: loadProfileConfigOptions,
                 loadModels: loadProfileModelDefaults,
                 loadSchema: { await appState.loadProfileConfigSchema() },
-                sections: Self.memorySections
+                sections: Self.memorySections,
+                loadDelegationPaused: { await appState.loadDelegationPaused() },
+                setDelegationPaused: { await appState.setDelegationPaused($0) }
             )
         case .advanced:
             ProfileConfigSettingsPage(
@@ -1336,7 +1405,7 @@ private struct SettingsHome: View {
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
                 .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1429,7 +1498,7 @@ private struct SettingsHome: View {
                 }
             }
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 5)
@@ -1575,11 +1644,13 @@ private struct ChatTextSizeSettings: View {
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    // Fixed size: the slider's small and large ends.
                     Text("A")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                     Spacer()
+                    // Fixed size: the slider's small and large ends.
                     Text("A")
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -1732,7 +1803,7 @@ private struct NotifierPluginUpdateNotice: View {
         if status.offersInstall {
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
         }
-        switch (dashboardLabel, status.restartPending && !status.updateAvailable) {
+        switch (dashboardLabel, status.restartPending && !status.updateRecommended) {
         case (let label?, true):
             return AppLocalization.string("The Conduit plugin on \(label) was updated, and Hermes needs a restart to use it.")
         case (.none, true):
@@ -2062,6 +2133,7 @@ private struct ProfileModelSettingsDetail: View {
     }
     private func persist() {
         Task {
+            guard defaults != nil else { return }
             saving = true
             error = nil
             if !(await save(provider, model, reasoning)) {
@@ -2134,7 +2206,7 @@ private struct DelegationModelSettings: View {
                 }
             } else { ProgressView("Loading available models…") }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
-                .disabled(saving).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
+                .disabled(saving || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
         .task { await reload() }
@@ -2154,7 +2226,14 @@ private struct DelegationModelSettings: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+        guard !next.isEmpty else {
+            model = ""
+            return
+        }
+        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
+        if !models.contains(where: { $0.id == model }) {
+            model = models.first?.id ?? ""
+        }
     }
     private func persist() {
         Task {
@@ -2164,6 +2243,67 @@ private struct DelegationModelSettings: View {
             let modelSaved = providerSaved ? await save("delegation.model", .text(model)) : false
             let reasoningSaved = modelSaved ? await save("delegation.reasoning_effort", .text(reasoning)) : false
             if !reasoningSaved { error = AppLocalization.string("Could not save delegate defaults.") }
+            saving = false
+        }
+    }
+}
+
+/// Holds new delegate agents on the whole Hermes (`delegation.pause`,
+/// #820). Agents already working carry on.
+private struct DelegationPauseSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let load: () async -> Bool?
+    let save: (Bool) async -> Bool?
+    @State private var paused: Bool?
+    @State private var loaded = false
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Pause delegation"), symbol: "pause.circle", tint: .orange) {
+            if let paused {
+                Toggle(isOn: Binding(get: { paused }, set: { change(to: $0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pause new delegate agents").font(.subheadline.weight(.medium))
+                        Text("Hermes starts no new delegate agents while this is on. Agents already working carry on. This applies to every profile on this Hermes.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(.conduitAccent)
+                .disabled(saving)
+                .padding(.vertical, 2)
+                .accessibilityIdentifier("settings.delegationPause")
+            } else if loaded {
+                Text("This Hermes can't pause delegation, or Conduit isn't connected.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button { Task { await reload() } } label: {
+                    Label("Try again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.settings)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        loaded = false
+        paused = await load()
+        loaded = true
+    }
+
+    private func change(to next: Bool) {
+        guard !saving else { return }
+        saving = true
+        Task {
+            error = nil
+            if let state = await save(next) {
+                paused = state
+            } else {
+                error = AppLocalization.string("Could not change the delegation pause.")
+            }
             saving = false
         }
     }
@@ -2192,7 +2332,12 @@ private struct FallbackModelsSettings: View {
             if !loaded {
                 // A list that didn't load is never edited: saving it would
                 // replace the real one.
-                if error == nil { ProgressView("Loading available models…") }
+                if error == nil {
+                    ProgressView("Loading available models…")
+                } else {
+                    Button(AppLocalization.string("Try Again")) { Task { await reload() } }
+                        .buttonStyle(.settings)
+                }
             } else {
                 if entries.isEmpty {
                     Text("No fallback models yet.")
@@ -2298,14 +2443,19 @@ private struct FallbackModelsSettings: View {
     }
 
     private func reload() async {
+        error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
-        defaults = models
-        guard let loadedEntries else {
+        // Without the model catalog no fallback can be added or changed, so
+        // a half-loaded list fails with Try Again instead of a silently
+        // disabled Add. A re-load (the editor re-appearing) that fails keeps
+        // the catalog and rows it already had: only the error is new.
+        guard let loadedEntries, let models else {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
+        defaults = models
         entries = loadedEntries
         saved = loadedEntries
         loaded = true
@@ -2334,6 +2484,8 @@ private struct MemorySettingsDetail: View {
     let loadModels: () async -> ProfileModelDefaults?
     let loadSchema: () async -> ProfileConfigSchema
     let sections: [ProfileSettingSection]
+    let loadDelegationPaused: () async -> Bool?
+    let setDelegationPaused: (Bool) async -> Bool?
     @State private var options = ProfileConfigOptions()
 
     var body: some View {
@@ -2344,7 +2496,12 @@ private struct MemorySettingsDetail: View {
             load: load,
             save: save,
             optionOverrides: ["memory.provider": options.memoryProviders, "context.engine": options.contextEngines],
-            trailingSection: AnyView(DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)),
+            trailingSection: AnyView(
+                VStack(spacing: 24) {
+                    DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)
+                    DelegationPauseSettings(load: loadDelegationPaused, save: setDelegationPaused)
+                }
+            ),
             sections: sections,
             loadSchema: loadSchema
         )
@@ -2509,7 +2666,7 @@ struct ProfileConfigSettingsPage: View {
             case .labeledOptions(let options, let defaultValue):
                 fieldLabel(field)
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
-                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? options.first?.label ?? ""
+                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? selectedValue
                 Menu {
                     ForEach(options, id: \.value) { option in
                         Button(option.label) { save(field, value: .text(option.value)) }
@@ -3653,7 +3810,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "lock.shield")
                         Text("Privacy policy")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/support/")!) {
@@ -3661,7 +3818,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "lifepreserver")
                         Text("Support")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
@@ -3669,7 +3826,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "chevron.left.forwardslash.chevron.right")
                         Text("GitHub")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
             }

@@ -590,7 +590,7 @@ final class KanbanStore: ObservableObject {
     @discardableResult
     func specifyTask(
         id: String,
-        expectedContext: KanbanBoardContextStamp? = nil,
+        expectedContext: KanbanBoardContextStamp,
         includeArchived: Bool = false
     ) async throws -> KanbanSpecifyResponse {
         guard !isMutating else {
@@ -612,7 +612,7 @@ final class KanbanStore: ObservableObject {
     @discardableResult
     func decomposeTask(
         id: String,
-        expectedContext: KanbanBoardContextStamp? = nil,
+        expectedContext: KanbanBoardContextStamp,
         includeArchived: Bool = false
     ) async throws -> KanbanDecomposeResponse {
         guard !isMutating else {
@@ -634,7 +634,7 @@ final class KanbanStore: ObservableObject {
     /// UI, and a completion after configure() is inert. The board reload
     /// after success doubles as the authoritative post-nudge refresh.
     func nudgeDispatcher(
-        expectedContext: KanbanBoardContextStamp? = nil,
+        expectedContext: KanbanBoardContextStamp,
         includeArchived: Bool = false
     ) async throws {
         guard !isMutating else {

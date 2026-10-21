@@ -406,9 +406,15 @@ final class FallbackSpeechStream: VoiceSpeechStream {
         let stream = FallbackSpeechStream(openOnDevice: onDevice, onFallback: onFallback, onStart: onStart, onPCM16: onPCM16)
         do {
             stream.current = try await hermes(
-                { [weak stream] rate in stream?.audioStarted = true; try onStart(rate) },
-                { [weak stream] data, rate in stream?.audioStarted = true; try onPCM16(data, rate) },
-                { [weak stream] data in stream?.audioStarted = true; try onEncodedAudio(data) }
+                { rate in try onStart(rate) },
+                { [weak stream] data, rate in
+                    try onPCM16(data, rate)
+                    if !data.isEmpty { stream?.audioStarted = true }
+                },
+                { [weak stream] data in
+                    try onEncodedAudio(data)
+                    if !data.isEmpty { stream?.audioStarted = true }
+                }
             )
         } catch is CancellationError {
             throw CancellationError()

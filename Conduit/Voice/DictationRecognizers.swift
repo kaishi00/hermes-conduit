@@ -89,9 +89,10 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
             // Set on the result that closes an utterance (a pause); the
             // recognizer may start the next one from empty.
             let endsUtterance = result?.speechRecognitionMetadata != nil
-            let isFinal = (result?.isFinal ?? false) || error != nil
+            let isFinal = result?.isFinal ?? false
+            let failed = error != nil
             Task { @MainActor [weak self] in
-                self?.receive(text, endsUtterance: endsUtterance, isFinal: isFinal)
+                self?.receive(text, endsUtterance: endsUtterance, isFinal: isFinal, failed: failed)
             }
         }
         return SpeechRequestAudioInput(request: request)
@@ -109,14 +110,15 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
         task = nil
     }
 
-    private func receive(_ text: String?, endsUtterance: Bool, isFinal: Bool) {
+    private func receive(_ text: String?, endsUtterance: Bool, isFinal: Bool, failed: Bool) {
         if let text, !text.isEmpty {
             transcript.receive(text, endsUtterance: endsUtterance)
         }
-        // A final result after the stop ends it; one while still
-        // listening (a recognizer error) does too, quietly, as before
-        // engines: its words are already in the draft.
-        onUpdate?(.text(transcript.text, isFinal: isFinal))
+        // Keep any recognized words, then report a runtime failure separately.
+        onUpdate?(.text(transcript.text, isFinal: isFinal && !failed))
+        if failed {
+            onUpdate?(.failed(AppLocalization.string("Dictation isn't available right now.")))
+        }
     }
 }
 

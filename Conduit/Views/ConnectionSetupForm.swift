@@ -621,7 +621,7 @@ struct ConnectionSetupStageRow: View {
         case .pending:
             Image(systemName: "circle")
                 .font(.body)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
         case .running:
             ProgressView()
                 .controlSize(.small)

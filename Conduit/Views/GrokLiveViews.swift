@@ -68,6 +68,7 @@ struct GrokLiveSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .grok)
+            LiveVoiceConsentRow(mode: .grokLive)
             if enabled {
                 HStack(spacing: 10) {
                     Circle()

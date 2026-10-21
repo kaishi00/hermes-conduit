@@ -231,6 +231,7 @@ struct BotEditorSheet: View {
                 Circle()
                     .fill(BotAvatarView.color(for: value, name: avatarName))
                 if value == nil {
+                    // Fixed size: it fills a fixed-size colour swatch.
                     Text(AppLocalization.string("Auto"))
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.white)

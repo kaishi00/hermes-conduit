@@ -573,6 +573,53 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(Set(column.tasks.map(\.id)).count, column.tasks.count, "no duplicate SwiftUI identities possible")
     }
 
+    /// A non-object element (the case a task's own decoder cannot absorb)
+    /// is skipped, and the rows after it still decode.
+    func testNonObjectTaskElementsAreSkippedNotFatal() throws {
+        let json = #"{"name":"todo","tasks":["junk",{"id":"a","title":"a","status":"todo"},7,null,{"id":"b","title":"b","status":"todo"}]}"#
+        let column = try JSONDecoder().decode(KanbanColumn.self, from: Data(json.utf8))
+        XCTAssertEqual(column.tasks.map(\.id), ["a", "b"])
+    }
+
+    func testOneMalformedBoardCollectionElementKeepsTheRest() throws {
+        let json = #"{"columns":"nope","tenants":[42,null,"alice"],"assignees":["bob",{"x":1}]}"#
+        let board = try JSONDecoder().decode(KanbanBoard.self, from: Data(json.utf8))
+        XCTAssertTrue(board.columns.isEmpty)
+        XCTAssertEqual(board.tenants, ["alice"])
+        XCTAssertEqual(board.assignees, ["bob"])
+    }
+
+    /// A board row without a real slug is dropped, never turned into the
+    /// default board's identity; the valid boards around it stay.
+    func testSlugLessBoardRowsAreDroppedFromTheBoardsResponse() throws {
+        let json = #"{"boards":[{"slug":""},{"slug":"  "},{"name":"x"},"junk",{"slug":"alpha"},{"slug":"beta"}],"current":"alpha"}"#
+        let response = try JSONDecoder().decode(KanbanBoardsResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(response.boards.map(\.slug), ["alpha", "beta"])
+        XCTAssertEqual(response.current, "alpha")
+    }
+
+    /// A boards response without a usable current pointer keeps its
+    /// boards, and takes the board the server marks current.
+    func testABoardsResponseWithoutCurrentKeepsItsBoards() throws {
+        let marked = #"{"boards":[{"slug":"alpha"},{"slug":"beta","is_current":true}]}"#
+        let response = try JSONDecoder().decode(KanbanBoardsResponse.self, from: Data(marked.utf8))
+        XCTAssertEqual(response.boards.map(\.slug), ["alpha", "beta"])
+        XCTAssertEqual(response.current, "beta")
+
+        let unmarked = #"{"boards":[{"slug":"alpha"}],"current":"  "}"#
+        let blank = try JSONDecoder().decode(KanbanBoardsResponse.self, from: Data(unmarked.utf8))
+        XCTAssertEqual(blank.boards.map(\.slug), ["alpha"])
+        XCTAssertEqual(blank.current, "", "no invented board identity: the server resolves its own")
+    }
+
+    func testOneMalformedDiagnosticKeepsTheOthers() throws {
+        let json = #"{"id":"t1","title":"t","status":"todo","diagnostics":["junk",{"kind":"stuck","title":"Stuck"},null]}"#
+        let task = try JSONDecoder().decode(KanbanTask.self, from: Data(json.utf8))
+        XCTAssertEqual(task.diagnostics?.map(\.kind), ["stuck"])
+        let absent = try JSONDecoder().decode(KanbanTask.self, from: Data(#"{"id":"t2","title":"t","status":"todo"}"#.utf8))
+        XCTAssertNil(absent.diagnostics)
+    }
+
     // MARK: - Capabilities request-scoped outcome contract
 
     func testCapabilityOutcomeMappingIsRequestScoped() {

@@ -15,6 +15,11 @@
 //  built engine, and retry once after re-applying the session policy when
 //  the start still fails with a graph/format error.
 //
+//  Some Bluetooth headset microphones (hearing aids over HFP, #177) still
+//  fail that way on a fresh engine. Capture then records from the iPhone's
+//  own microphone for the rest of its lease, which is what turning the
+//  headset's streaming off did by hand.
+//
 
 import AVFAudio
 import Foundation
@@ -81,6 +86,11 @@ enum VoiceAudioEngineRecovery {
     static func tapFormat(nodeOutput: AVAudioFormat, hardware: AVAudioFormat) -> AVAudioFormat? {
         guard nodeOutput.sampleRate > 0,
               abs(nodeOutput.sampleRate - hardware.sampleRate) >= 0.5 else { return nil }
+        // Logged here, for every mic-start path that asks: the field
+        // breadcrumb that this route-dependent guard engaged.
+        engineRecoveryLogger.notice(
+            "Input node output rate \(nodeOutput.sampleRate, privacy: .public) disagrees with hardware rate \(hardware.sampleRate, privacy: .public); tapping at the hardware format"
+        )
         return hardware
     }
 
@@ -88,11 +98,16 @@ enum VoiceAudioEngineRecovery {
     /// recoverable failure the session policy is re-applied, the engine is
     /// rebuilt again, and the start is retried exactly once; any other
     /// failure, or a second failure, is rethrown to the caller.
+    ///
+    /// `switchMicrophone`, for capture, is asked after the retry fails too:
+    /// when it moved the input to another microphone (true), the start is
+    /// tried once more, on that one.
     @MainActor
     static func startFresh(
         rebuild: () -> Void,
         reassert: () throws -> Void,
-        start: () throws -> Void
+        start: () throws -> Void,
+        switchMicrophone: (() throws -> Bool)? = nil
     ) throws {
         rebuild()
         do {
@@ -104,7 +119,78 @@ enum VoiceAudioEngineRecovery {
             )
             try reassert()
             rebuild()
-            try start()
+            do {
+                try start()
+            } catch where isRecoverable(error) {
+                guard let switchMicrophone else { throw error }
+                // A microphone that can't be switched to reports the graph
+                // failure that asked for it, not its own.
+                let switched: Bool
+                do {
+                    switched = try switchMicrophone()
+                } catch let switchError {
+                    engineRecoveryLogger.error("Could not prefer the built-in microphone: \(LogRedaction.message(switchError), privacy: .public)")
+                    throw error
+                }
+                guard switched else { throw error }
+                engineRecoveryLogger.notice("Audio engine still failed on the headset microphone; starting on the built-in microphone")
+                rebuild()
+                try start()
+            }
+        }
+    }
+}
+
+/// Records from the iPhone's own microphone when a Bluetooth headset's
+/// (HFP, hearing aids) won't start (#177). Playback stays where the route
+/// puts it. Held until `clear()`, which capture calls as it gives the
+/// session back.
+@MainActor
+final class VoiceBuiltInMicrophoneFallback {
+    private(set) var isEngaged = false
+    private let routeRecordsFromBluetooth: @MainActor () -> Bool
+    private let preferBuiltInMicrophone: @MainActor () throws -> Bool
+    private let clearPreferredInput: @MainActor () throws -> Void
+
+    /// The closures are seams for tests; nil uses the shared session.
+    init(
+        routeRecordsFromBluetooth: (@MainActor () -> Bool)? = nil,
+        preferBuiltInMicrophone: (@MainActor () throws -> Bool)? = nil,
+        clearPreferredInput: (@MainActor () throws -> Void)? = nil
+    ) {
+        self.routeRecordsFromBluetooth = routeRecordsFromBluetooth ?? {
+            AVAudioSession.sharedInstance().currentRoute.inputs.contains { VoiceBuiltInMicrophoneFallback.bluetoothInputs.contains($0.portType) }
+        }
+        self.preferBuiltInMicrophone = preferBuiltInMicrophone ?? {
+            let session = AVAudioSession.sharedInstance()
+            guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return false }
+            try session.setPreferredInput(builtIn)
+            return true
+        }
+        self.clearPreferredInput = clearPreferredInput ?? {
+            try AVAudioSession.sharedInstance().setPreferredInput(nil)
+        }
+    }
+
+    static let bluetoothInputs: Set<AVAudioSession.Port> = [.bluetoothHFP, .bluetoothLE]
+
+    /// Moves capture to the built-in microphone when it records from a
+    /// Bluetooth headset. Whether it moved.
+    func engage() throws -> Bool {
+        guard !isEngaged, routeRecordsFromBluetooth() else { return false }
+        guard try preferBuiltInMicrophone() else { return false }
+        isEngaged = true
+        return true
+    }
+
+    /// The headset's microphone again, for the next capture.
+    func clear() {
+        guard isEngaged else { return }
+        isEngaged = false
+        do {
+            try clearPreferredInput()
+        } catch {
+            engineRecoveryLogger.error("Could not clear the built-in microphone preference: \(LogRedaction.message(error), privacy: .public)")
         }
     }
 }

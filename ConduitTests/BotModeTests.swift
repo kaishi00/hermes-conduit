@@ -2430,6 +2430,54 @@ final class BotModeTests: XCTestCase {
         )
     }
 
+    /// The bounded history reads before a send and on a foreground return
+    /// address the same store the resume does. With only the in-memory
+    /// registry consulted, a restored Bot Chat read the workspace's store,
+    /// got 404 and fell back to a resume carrying the whole transcript.
+    func testPersistedTailReadsFollowTheResumeScopeAfterRegistryLoss() async {
+        let harness = makeBotHarness(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSession(
+                    .bot(botName: "atlas", label: "Scout", sessionID: "stored-1"),
+                    for: "default"
+                )
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+                openSessionWithProfile: { _, id, _, _ in
+                    SessionResumeResult(
+                        sessionId: id,
+                        storedSessionId: id,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-1")
+        harness.appState.clearBotChatRegistryForTesting()
+
+        XCTAssertNil(
+            harness.appState.botConversationProfileForTesting("stored-1"),
+            "control: the registry alone no longer knows the chat"
+        )
+        XCTAssertEqual(
+            harness.appState.persistedTailProfileForTesting("stored-1"),
+            "atlas",
+            "the history read asks the bot's store, as the resume does"
+        )
+        XCTAssertEqual(
+            harness.appState.persistedTailProfileForTesting("ordinary-1"),
+            "default",
+            "an ordinary chat still reads the workspace's store"
+        )
+    }
+
     /// Bot evidence can live on an ALIAS of the stored id (a compaction tip, a
     /// runtime the rebind minted, a lineage root). Healing and the
     /// missing-saved-session gate are therefore evaluated across the

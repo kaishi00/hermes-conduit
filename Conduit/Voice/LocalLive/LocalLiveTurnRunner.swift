@@ -50,6 +50,13 @@ final class LocalLiveTurnRunner {
         var submit: @MainActor (_ chat: Chat, _ text: String) async throws -> Submission
         /// Puts `text` into the reply running on `runtimeID`.
         var redirect: @MainActor (_ runtimeID: String, _ text: String) async throws -> VoiceRedirectResult
+        /// Answers the one card waiting on the user when `text` is a plain
+        /// yes or no to it; true when it did.
+        var answerWaiting: @MainActor (_ text: String) async -> Bool = { _ in false }
+        /// Answers the approval the followed reply waits on ("once" or
+        /// "deny"); true when Hermes took it.
+        var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async -> Bool
+            = { _, _, _ in false }
     }
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
@@ -78,6 +85,11 @@ final class LocalLiveTurnRunner {
         /// Corrections Hermes queued behind it: the current reply's end
         /// isn't the one the call waits for.
         var skipsCompletions = 0
+        /// The command approval the reply is paused on, which the user's
+        /// next yes or no answers.
+        var waitingApproval: ApprovalActivity?
+        /// The profile of the chat it runs in.
+        var profile: String?
     }
     private var reply: Reply?
     /// The open turn's words, with what's to be seen kept out.
@@ -149,6 +161,23 @@ final class LocalLiveTurnRunner {
             finish(turnID)
             return
         }
+        // A yes or no to the approval the reply is paused on: Hermes takes
+        // it and the reply goes on to answer this turn.
+        if let approval = reply?.waitingApproval {
+            let choice: String? = VoiceCallDecisionOutcome.isYes(words) ? "once"
+                : VoiceThreadRouting.heldRequestAnswer(words) == .no(change: nil) ? "deny" : nil
+            if let choice, await backend.respondToApproval(approval, choice, reply?.profile) {
+                if reply?.waitingApproval == approval { reply?.waitingApproval = nil }
+                return
+            }
+            guard generation == self.generation else { return }
+        }
+        // A yes or no to what waits on the user, answered as a tap would.
+        // When Hermes' reply is paused on it, the words aren't put into the
+        // reply: it goes on and answers this turn. Otherwise Hermes hears
+        // them as a turn, as in Classic voice.
+        if await backend.answerWaiting(words), reply != nil { return }
+        guard generation == self.generation else { return }
         var sentToken: UUID?
         do {
             if let running = reply {
@@ -172,7 +201,7 @@ final class LocalLiveTurnRunner {
             }
             guard generation == self.generation else { return }
             // Its events are this turn's from the send on.
-            let following = Reply(runtimeID: chat.runtimeID)
+            let following = Reply(runtimeID: chat.runtimeID, profile: chat.profile)
             reply = following
             sentToken = following.token
             switch try await backend.submit(chat, words) {
@@ -228,6 +257,8 @@ final class LocalLiveTurnRunner {
             // Hermes is writing again after the correction: a marker after
             // this ends the reply.
             if !current.correcting { reply?.skipsInterruption = false }
+            // Writing again: whatever it waited on was answered.
+            reply?.waitingApproval = nil
         case .messageDelta(let id, let text):
             guard id == current.runtimeID else { return }
             // Until Hermes takes the correction, the words are the reply
@@ -262,7 +293,12 @@ final class LocalLiveTurnRunner {
             guard id == current.runtimeID else { return }
             reply = nil
             if let turn { say(Self.errorLine, to: turn.id, generation: generation) }
-        case .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
+        case .approval(let id, let activity):
+            guard id == current.runtimeID else { return }
+            reply?.waitingApproval = activity
+            guard let turn else { return }
+            say(Self.approvalLine(activity), to: turn.id, generation: generation)
+        case .clarify(let id, _), .inputPrompt(let id, _):
             guard id == current.runtimeID, let turn else { return }
             // Hermes waits on the user: the call says where to answer, and
             // the reply is still followed for the turn after.
@@ -333,6 +369,14 @@ final class LocalLiveTurnRunner {
 
     static var onScreenLine: String {
         AppLocalization.string("The rest is on your screen.")
+    }
+
+    /// The command Hermes asks to run, which a yes or no answers here.
+    static func approvalLine(_ approval: ApprovalActivity) -> String {
+        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? approval.command : asked
+        let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
+        return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }
 
     static var needsInputLine: String {

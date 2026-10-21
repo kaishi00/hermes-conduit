@@ -503,6 +503,12 @@ final class VoiceConversationController: ObservableObject {
     /// may contain the assistant's own TTS.
     func interruptAssistantPlayback() async {
         guard isPlaybackCaptureSuspended else { return }
+        await stopAssistantReplyAndListen()
+    }
+
+    private func stopAssistantReplyAndListen() async {
+        bargeInTask?.cancel()
+        bargeInTask = nil
         cachedRoutePolicy = nil
         // Deliberately leaves lastBargeInState alone: that property records
         // acoustic barge-in provenance, and this path always lands in
@@ -513,6 +519,7 @@ final class VoiceConversationController: ObservableObject {
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
         assistantFinished = false
+        let turnStillRunning = isAwaitingVoiceAssistant
         // The in-flight assistant response is intentionally interrupted; its
         // terminal event belongs to the retired turn, not the next one.
         isAwaitingVoiceAssistant = false
@@ -524,7 +531,7 @@ final class VoiceConversationController: ObservableObject {
         // Manual Interrupt proceeds on the attempt regardless of the
         // cancellation result: the local turn retirement below already
         // re-opened the listening window.
-        _ = await interrupt()
+        if turnStillRunning { _ = await interrupt() }
         // The interruption is a real re-entrant async boundary (Hermes
         // cancellation/recovery), and the sheet can close while it is in
         // flight — stop() then advances the generation and tears the session
@@ -537,13 +544,14 @@ final class VoiceConversationController: ObservableObject {
     /// Stop (the CarPlay voice screen): Hermes' spoken reply stops and the
     /// conversation listens, on any route. Where the microphone is closed
     /// while Hermes speaks this is the sheet's Interrupt; where it is open
-    /// (talking over is allowed) it is what talking over does.
+    /// (talking over is allowed) it is what talking over does. A Stop in the
+    /// silent gap between spoken sentences (still `.speaking`) retires the
+    /// in-flight turn the same way. A Settings speech-provider test also
+    /// reads as `.speaking`, but it is no conversation to stop or reopen.
     func stopAssistantReply() async {
-        if isPlaybackCaptureSuspended {
-            await interruptAssistantPlayback()
-        } else if isTalkOverAvailable {
-            scheduleBargeIn()
-        }
+        guard !isProviderTestRunning,
+              isPlaybackCaptureSuspended || state == .speaking else { return }
+        await stopAssistantReplyAndListen()
     }
 
     func stop() {

@@ -86,6 +86,9 @@ enum TranscriptPerf {
                 if storage.recentPreWindowRepeatSources.count < 128 {
                     storage.recentPreWindowRepeatSources.append(context)
                 }
+                if storage.preWindowRepeatSpans.count < 8 {
+                    storage.preWindowRepeatSpans.append(span(context: context, ownFrames: 2))
+                }
             } else if storage.settledMarkdownWindowSources.contains(context) {
                 storage.settledMarkdownWindowDuplicateBody += 1
             } else {
@@ -113,6 +116,12 @@ enum TranscriptPerf {
     #if DEBUG
     private static func recordWindowSpan(context: String) {
         guard storage.windowEvaluationSpans.count < 8 else { return }
+        storage.windowEvaluationSpans.append(span(context: context, ownFrames: 3))
+    }
+
+    /// `ownFrames`: this file's frames atop the stack (`span`, `note`, and
+    /// `recordWindowSpan` when it is the caller), left out of the record.
+    private static func span(context: String, ownFrames: Int) -> String {
         let offset: String
         if let openedAt = storage.windowOpenedAt {
             offset = String(format: "%.3f", Date().timeIntervalSince(openedAt))
@@ -120,12 +129,11 @@ enum TranscriptPerf {
             offset = "?"
         }
         let stack = Thread.callStackSymbols
-            .dropFirst(2)
+            .dropFirst(ownFrames)
             .prefix(14)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .joined(separator: " <- ")
-        storage.windowEvaluationSpans
-            .append("t=\(offset)s src=\(context.prefix(24)) [\(stack)]")
+        return "t=\(offset)s src=\(context.prefix(24)) [\(stack)]"
     }
     #endif
 
@@ -158,14 +166,29 @@ enum TranscriptPerf {
         // Newest wins: dropping the report that names the violating field
         // (what a drop-newest cap would do after saturation) would recreate
         // the misdiagnosis this diagnostic exists to prevent.
+        let report = "t=\(offset)s \(component) opened by: \(fields.joined(separator: ", "))"
+        // The ring can evict the window's first reopen, the one a storm
+        // starts with, so it is kept too.
+        if storage.firstGateReopenReport == nil {
+            storage.firstGateReopenReport = report
+        }
         if storage.recentGateReopenReports.count >= 32 {
             storage.recentGateReopenReports.removeFirst()
         }
-        storage.recentGateReopenReports.append(
-            "t=\(offset)s \(component) opened by: \(fields.joined(separator: ", "))"
-        )
+        storage.recentGateReopenReports.append(report)
     }
     #endif
+
+    /// The current window's first gate-reopen report (DEBUG diagnostics).
+    static var firstGateReopenReport: String? {
+        #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
+        return storage.firstGateReopenReport
+        #else
+        return nil
+        #endif
+    }
 
     /// Most recent gate-reopen reports (bounded ring, DEBUG diagnostics).
     static var recentGateReopenReports: [String] {
@@ -375,6 +398,8 @@ enum TranscriptPerf {
     /// tolerated; interior rows are the cascade signature.
     static var recentPreWindowRepeatSources: [String] {
         #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
         return storage.recentPreWindowRepeatSources
         #else
         return []
@@ -408,6 +433,19 @@ enum TranscriptPerf {
         #endif
     }
 
+    /// The same records, kept only for re-evaluations of rows that rendered
+    /// before the window opened (the first 8), so a cascade's driver is
+    /// named even when fresh mounts fill `windowEvaluationSpans`. DEBUG-only.
+    static var preWindowRepeatSpans: [String] {
+        #if DEBUG
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
+        return storage.preWindowRepeatSpans
+        #else
+        return []
+        #endif
+    }
+
     /// Whether a settled-Markdown source matching `predicate` was first
     /// rendered inside the current measurement window. Lets a fixture wait
     /// for ONE specific row instead of any settled evaluation, which an
@@ -428,6 +466,11 @@ enum TranscriptPerf {
     /// far as already-at-rest.
     static func reset() {
         #if DEBUG
+        // Under the lock, so a concurrent off-main gate comparison neither
+        // overlaps these reads nor writes its report into the discarded
+        // instance.
+        gateReopenLock.lock()
+        defer { gateReopenLock.unlock() }
         var fresh = Storage()
         fresh.settledMarkdownKnownSources =
             storage.settledMarkdownKnownSources.union(storage.settledMarkdownWindowSources)
@@ -451,8 +494,11 @@ enum TranscriptPerf {
     /// dormancy fixtures measure.
     static func resetRenderLedgerForTesting() {
         #if DEBUG
-        storage = Storage()
-        storage.windowOpenedAt = Date()
+        var fresh = Storage()
+        fresh.windowOpenedAt = Date()
+        gateReopenLock.lock()
+        storage = fresh
+        gateReopenLock.unlock()
         #endif
     }
 
@@ -513,9 +559,14 @@ enum TranscriptPerf {
         /// Bounded evaluation spans inside the current window (DEBUG
         /// diagnostics, see `windowEvaluationSpans`).
         var windowEvaluationSpans: [String] = []
+        /// Bounded spans of pre-window repeats only (DEBUG diagnostics, see
+        /// `preWindowRepeatSpans`).
+        var preWindowRepeatSpans: [String] = []
         /// Bounded ring of gate-reopen reports (DEBUG diagnostics, see
         /// `recentGateReopenReports`); newest wins on overflow.
         var recentGateReopenReports: [String] = []
+        /// The window's first gate-reopen report, which the ring can evict.
+        var firstGateReopenReport: String?
         /// Settled-content gate consultations (DEBUG diagnostics, see
         /// `settledContentGateComparisons`).
         var settledContentGateComparison = 0

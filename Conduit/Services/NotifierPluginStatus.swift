@@ -81,6 +81,11 @@ struct NotifierPluginStatus: Equatable {
     /// The plugin on its repository's main branch, when Conduit has read it
     /// (NotifierPluginLatestVersion.swift).
     var latestVersion: String?
+    /// The stable plugin version (notifier main's channels.yaml), when read.
+    var stableVersion: String?
+    /// The notice asks for every version on main; otherwise only up to the
+    /// stable one (NotifierPluginNoticeChannel).
+    var followsMain = true
 
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
@@ -132,22 +137,34 @@ struct NotifierPluginStatus: Equatable {
     }
 
     /// Settings points at the plugin's page: an update or the install is
-    /// offered, a restart is left, or the copy on the host isn't running.
+    /// asked for, a restart is left, or the copy on the host isn't running.
     var needsAttention: Bool {
-        updateAvailable || restartPending || isNotServed
+        updateRecommended || restartPending || isNotServed
     }
 
     /// Worth offering an update: something Conduit uses is missing, or the
     /// plugin is older than the version an update brings. A plugin that
-    /// is already new enough on disk only needs its restart.
+    /// is already new enough on disk only needs its restart. Settings >
+    /// Conduit plugin offers it; the notice waits for `updateRecommended`.
     var updateAvailable: Bool {
+        isUpdate(below: offeredVersion)
+    }
+
+    /// Worth asking for an update unprompted: the update notice, the
+    /// Settings badge and Finish setting up. On the stable channel a newer
+    /// plugin on main alone doesn't count.
+    var updateRecommended: Bool {
+        isUpdate(below: noticeVersion)
+    }
+
+    private func isUpdate(below target: String) -> Bool {
         switch state {
         case .unknown:
             return false
         case .predatesCapabilities:
             return !isNotServed
         case .reported(let version, _):
-            let older = Self.isOlder(version, than: offeredVersion)
+            let older = Self.isOlder(version, than: target)
             return restartPending ? older : (needsUpdate || older)
         }
     }
@@ -160,6 +177,18 @@ struct NotifierPluginStatus: Equatable {
             return Self.recommendedVersion
         }
         return latestVersion
+    }
+
+    /// The version below which the notice asks for an update: every
+    /// version on main, or on the stable channel the stable one (never
+    /// below this build's floor, never above what an update brings).
+    var noticeVersion: String {
+        guard !followsMain else { return offeredVersion }
+        var target = Self.recommendedVersion
+        if let stableVersion, !Self.isOlder(stableVersion, than: target) {
+            target = stableVersion
+        }
+        return Self.isOlder(offeredVersion, than: target) ? offeredVersion : target
     }
 
     /// Dotted numeric versions compared part by part ("0.9.1" < "0.10.0").
@@ -280,7 +309,7 @@ extension NotifierPluginStatus {
             case .missing, nil: return finishSetupOffersInstall ? .none : .install
             }
         case .reported:
-            if updateAvailable { return .update }
+            if updateRecommended { return .update }
             if restartPending { return .restart }
             return .none
         }

@@ -101,7 +101,7 @@ struct ConduitPluginSettingsDetail: View {
                 SettingsMetricRow(
                     label: AppLocalization.string("Version"),
                     value: status.runningVersion ?? "—",
-                    valueColor: status.updateAvailable || status.restartPending ? .orange : .secondary
+                    valueColor: status.updateRecommended || status.restartPending ? .orange : .secondary
                 )
                 Text(verbatim: statusText(status))
                     .font(.footnote)
@@ -123,6 +123,23 @@ struct ConduitPluginSettingsDetail: View {
                     }
                 }
                 NotifierPluginUpdateStatusView()
+            }
+
+            ConduitSettingsSection(title: AppLocalization.string("Update notices"), symbol: "bell.badge", tint: .conduitAccent) {
+                ConduitMenuPicker(
+                    value: appState.notifierPluginNoticeChannel,
+                    choices: NotifierPluginNoticeChannel.allCases.map { (id: $0, title: Self.title(of: $0)) },
+                    onSelect: { channel in
+                        Haptics.selection()
+                        appState.setNotifierPluginNoticeChannel(channel)
+                    }
+                ) {
+                    Text("Ask to update for").foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("settings.plugin.notices")
+                Text(verbatim: noticeChannelDetail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if case .reported = status.state {
@@ -179,6 +196,28 @@ struct ConduitPluginSettingsDetail: View {
             await appState.refreshNotifierPluginStatus()
             if !Task.isCancelled { checking = false }
         }
+    }
+
+    private static func title(of channel: NotifierPluginNoticeChannel) -> String {
+        switch channel {
+        case .automatic: return AppLocalization.string("Automatic")
+        case .everyVersion: return AppLocalization.string("Every new version")
+        case .stableOnly: return AppLocalization.string("Stable versions only")
+        }
+    }
+
+    private var noticeChannelDetail: String {
+        let followsMain = appState.notifierPluginNoticeChannel.followsMain(installedFrom: appState.appInstallSource)
+        let what = followsMain
+            ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")
+            : AppLocalization.string("Conduit asks you to update only when a plugin version is marked stable, or this app needs a newer one. You can still update here any time.")
+        guard appState.notifierPluginNoticeChannel == .automatic else { return what }
+        let source = switch appState.appInstallSource {
+        case .appStore: AppLocalization.string("This copy of Conduit is from the App Store.")
+        case .testFlight: AppLocalization.string("This copy of Conduit is from TestFlight.")
+        case .xcode: AppLocalization.string("This copy of Conduit was built with Xcode.")
+        }
+        return "\(source) \(what)"
     }
 
     private func isInstall(_ status: NotifierPluginStatus) -> Bool {

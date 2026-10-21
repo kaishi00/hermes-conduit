@@ -71,6 +71,32 @@ final class TranscriptPerfLedgerContractTests: XCTestCase {
         )
     }
 
+    #if DEBUG
+    /// The failure diagnostics LongContextScalingFixtureTests prints: spans
+    /// only for pre-window repeats, the window's first gate reopen kept past
+    /// the ring's eviction, and both scoped to one window.
+    func testRepeatSpansAndFirstGateReopenAreWindowScoped() {
+        TranscriptPerf.note(.settledMarkdownBody, context: "row-source-1")
+        XCTAssertTrue(TranscriptPerf.preWindowRepeatSpans.isEmpty, "a first render records no repeat span")
+        TranscriptPerf.reset()
+        TranscriptPerf.note(.settledMarkdownBody, context: "row-source-1")
+        TranscriptPerf.note(.settledMarkdownBody, context: "row-source-2")
+        XCTAssertEqual(TranscriptPerf.preWindowRepeatSpans.count, 1, "only the pre-window repeat records a span")
+        XCTAssertTrue(TranscriptPerf.preWindowRepeatSpans[0].contains(" src=row-source-1"))
+
+        for index in 0..<33 {
+            TranscriptPerf.noteGateReopen(component: "row", fields: ["field\(index)"])
+        }
+        XCTAssertEqual(TranscriptPerf.recentGateReopenReports.count, 32)
+        XCTAssertFalse(TranscriptPerf.recentGateReopenReports.contains { $0.hasSuffix("field0") })
+        XCTAssertEqual(TranscriptPerf.firstGateReopenReport?.hasSuffix("opened by: field0"), true)
+
+        TranscriptPerf.reset()
+        XCTAssertTrue(TranscriptPerf.preWindowRepeatSpans.isEmpty, "reset() opens a window without spans")
+        XCTAssertNil(TranscriptPerf.firstGateReopenReport, "reset() clears the first gate reopen")
+    }
+    #endif
+
     /// The ever-seen mount ledger behind the fresh-mount diagnostic is
     /// bounded (4096 entries). Once SATURATED, classification must stop:
     /// an unseen source evaluated after saturation is neither counted nor

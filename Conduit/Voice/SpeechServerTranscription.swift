@@ -37,8 +37,9 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     private let socket: any HermesSpeechSocket
     private let captureSampleRate: Double
     private let finishTimeout: Duration
-    /// How long to wait for a segment to start after the end of speech when
-    /// none has: a server that heard nothing never sends one.
+    /// How long to allow more segments to start after the last audio is
+    /// sent: earlier completed segments do not prove the final audio was
+    /// processed.
     private let quietGrace: Duration
     private let onPartial: @MainActor (String) -> Void
     private let onFailure: @MainActor (String) -> Void
@@ -276,18 +277,20 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         onPartial(text)
     }
 
-    /// After the end of speech: every started segment has finished, and
-    /// either some speech was heard or the quiet grace ran out.
+    /// After the final audio and the quiet grace: every started segment
+    /// has finished.
     private func resolveIfSettled() {
-        guard ended, outcome == nil, finishedSegments >= startedSegments else { return }
-        if startedSegments > 0 || quietGraceElapsed {
-            resolve(.finished(joinedTranscript))
-        }
+        guard ended, quietGraceElapsed, outcome == nil,
+              finishedSegments >= startedSegments else { return }
+        resolve(.finished(joinedTranscript))
     }
 
     private func handleClose() {
         guard outcome == nil else { return }
-        if ended, finishedSegments >= startedSegments, !segments.isEmpty {
+        // Every segment the server started has finished: what it heard is
+        // complete, even if that was nothing, so a close during the quiet
+        // grace is no failure.
+        if ended, startedSegments > 0, finishedSegments >= startedSegments {
             resolve(.finished(joinedTranscript))
         } else {
             resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.")))

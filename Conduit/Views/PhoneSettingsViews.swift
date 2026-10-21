@@ -414,7 +414,13 @@ struct PhoneSettingsPage: View {
         Binding(
             get: { choices[keyPath: keyPath] },
             set: { value in
-                choices[keyPath: keyPath] = value
+                var next = choices
+                next[keyPath: keyPath] = value
+                if preferences.isOn && !next.sharesAnything {
+                    showsTurnOff = true
+                    return
+                }
+                choices = next
                 applyIfOn()
             }
         )

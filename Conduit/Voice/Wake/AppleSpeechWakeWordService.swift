@@ -139,17 +139,31 @@ final class AppleSpeechWakeWordService: WakeWordService {
         if lease == nil {
             lease = try audioCoordinator.acquire(.wakeListening)
         }
-        try applyPreferredInput()
+        try VoiceAudioEngineRecovery.startFresh(
+            rebuild: { stopAudio() },
+            reassert: { try audioCoordinator.reassert() },
+            start: {
+                try applyPreferredInput()
+                try startAudioAttempt()
+            }
+        )
+    }
+
+    private func startAudioAttempt() throws {
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw WakeWordServiceError.unavailable(
-                AppLocalization.string("The microphone is not available right now.")
-            )
+        let hardwareFormat = input.inputFormat(forBus: 0)
+        let nodeOutputFormat = input.outputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0,
+              nodeOutputFormat.sampleRate > 0, nodeOutputFormat.channelCount > 0 else {
+            throw VoiceAudioInputFormatUnavailable()
         }
+        let tapFormat = VoiceAudioEngineRecovery.tapFormat(
+            nodeOutput: nodeOutputFormat,
+            hardware: hardwareFormat
+        )
         let sink = audioSink
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { buffer, _ in
             // Runs on the audio render thread. The buffer request accepts
             // appends from any thread; the sink only guards the swap.
             sink.append(buffer)

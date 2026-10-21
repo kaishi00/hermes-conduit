@@ -2,14 +2,16 @@
 //  ChatSync.swift
 //  Conduit
 //
-//  One Hermes chat used from two devices. Hermes pushes no catalog changes,
-//  and a gateway older than Hermes v0.21.6 sends a session's live events
-//  only to the client that last resumed or sent in it: the other device's
-//  list and open chat go stale, and a turn it started can stay "Working…"
-//  after the reply streamed elsewhere. These rules work from what Conduit
-//  already reads, the gateway's `session.active_list` registry, and never
-//  resume a chat whose turn another device is receiving: with one event
-//  sink per session, that would take the stream away from it.
+//  One Hermes chat used from two devices. A gateway older than Hermes
+//  v0.21.6 sends a session's live events only to the client that last
+//  resumed or sent in it: the other device's list and open chat go stale,
+//  and a turn it started can stay "Working…" after the reply streamed
+//  elsewhere. These rules work from what Conduit already reads, the
+//  gateway's `session.active_list` registry, and never resume a chat whose
+//  turn another device is receiving: with one event sink per session, that
+//  would take the stream away from it. A turn run in another process (the
+//  TUI) never reaches the registry; Hermes v0.22's `sessions.changed` and
+//  the catalog's stored counts catch it (CatalogChangeSignal).
 //
 
 import Foundation
@@ -67,6 +69,40 @@ struct ChatListCatalogFreshness {
         if let last = lastTimedReadAt, now.timeIntervalSince(last) < interval { return false }
         lastTimedReadAt = now
         return true
+    }
+}
+
+/// Hermes' `sessions.changed`: a stored session row moved, whichever
+/// process wrote it. A turn run in the TUI on the gateway's computer, or
+/// through another gateway on the same Hermes home, shows only here and in
+/// the stored rows: this gateway's live registry never lists it (#1026).
+/// Each signal reads the catalog again, at most every 5 s, and never while
+/// a turn runs here (its own rows move the catalog the whole time); one
+/// held back is read once the wait or the turn is over.
+struct CatalogChangeSignal {
+    static let minimumInterval: TimeInterval = 5
+
+    private(set) var isPending = false
+    private var lastReadAt: Date?
+
+    mutating func noteChanged() {
+        isPending = true
+    }
+
+    /// Whether the pending change is read now. Taking it clears it.
+    mutating func takeRead(now: Date, turnRunningHere: Bool) -> Bool {
+        guard isPending, !turnRunningHere, delayUntilDue(now: now) == 0 else { return false }
+        isPending = false
+        lastReadAt = now
+        return true
+    }
+
+    /// How long until a pending change may be read: nil when none is
+    /// pending, 0 when it may be read now.
+    func delayUntilDue(now: Date) -> TimeInterval? {
+        guard isPending else { return nil }
+        guard let lastReadAt else { return 0 }
+        return max(0, Self.minimumInterval - now.timeIntervalSince(lastReadAt))
     }
 }
 
@@ -149,11 +185,27 @@ struct OpenChatSync {
     private(set) var idleBackoff = PollBackoff(steps: PollCadence.openChatIdleSteps)
     private var lastIdleRow: OpenChatRegistryRow?
     private var sawIdleRow = false
+    /// The open chat's stored message count at the last catalog read, to
+    /// tell a turn the registry never saw (#1026).
+    private var catalogCountBaseline: Int?
+    private var sentHereSinceCatalogBaseline = false
+    /// A read a moved stored count asked for was called off: the next
+    /// catalog read asks again, whatever the count.
+    private var catalogReadPending = false
 
     /// This device sent something in the open chat: the registry's count
     /// moving next is its own doing.
     mutating func noteSentHere() {
         sentHereSinceBaseline = true
+        sentHereSinceCatalogBaseline = true
+        idleBackoff.reset()
+    }
+
+    /// Hermes announced a user message another client sent in this chat
+    /// (`user.message`): its turn's rows are read once the chat is idle
+    /// here and on the server, as for a turn the registry saw run.
+    mutating func noteUserMessageElsewhere() {
+        sawRunElsewhere = true
         idleBackoff.reset()
     }
 
@@ -169,6 +221,7 @@ struct OpenChatSync {
     /// resume): the next idle snapshot asks again.
     mutating func readCalledOff() {
         sawRunElsewhere = true
+        catalogReadPending = true
         lastReadAt = nil
     }
 
@@ -224,6 +277,39 @@ struct OpenChatSync {
         let action = observeIdleChat(row, local: local, now: now, chatVisible: chatVisible)
         paceIdleCheck(after: row, action: action)
         return action
+    }
+
+    /// Applies one catalog read's stored message count for the open chat
+    /// (nil when the listing carries none, or doesn't list the chat). A
+    /// count that moved while the chat sat idle here is another device's
+    /// turn, or one the TUI ran: read its rows. The count moving with a turn
+    /// running here, within 5 s of one ending, or after a send here is this
+    /// device's own doing.
+    mutating func observeCatalog(
+        messageCount count: Int?,
+        local: OpenChatLocalTurn,
+        now: Date,
+        chatVisible: Bool
+    ) -> OpenChatSyncAction {
+        track(local, now: now)
+        guard let count else { return .none }
+        let idleLongEnough = idleSince.map { now.timeIntervalSince($0) >= Self.localIdleGrace } ?? false
+        if local.isRunning || !idleLongEnough || sentHereSinceCatalogBaseline || catalogCountBaseline == nil {
+            if !local.isRunning { sentHereSinceCatalogBaseline = false }
+            // A turn here brings the chat current (its send reads first).
+            if local.isRunning { catalogReadPending = false }
+            catalogCountBaseline = count
+            return .none
+        }
+        guard count != catalogCountBaseline || catalogReadPending else { return .none }
+        // Off screen, the change waits like the registry's: the baseline
+        // keeps it due for the next read while the chat shows.
+        guard chatVisible, readAllowed(now) else { return .none }
+        catalogCountBaseline = count
+        catalogReadPending = false
+        sawRunElsewhere = false
+        lastReadAt = now
+        return .readNewRows
     }
 
     /// The registry last showed a turn running or starting elsewhere in this
