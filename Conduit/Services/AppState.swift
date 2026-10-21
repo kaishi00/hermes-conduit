@@ -24232,7 +24232,7 @@ final class AppState: ObservableObject {
     /// Internal so localization tests can pin the protocol-value invariants
     /// (raw name/aliases, localized display copy) across every App Language.
     static var builtInSlashCommands: [SlashCommand] { [
-        SlashCommand(name: "new", aliases: ["reset"], description: AppLocalization.string("Start a new conversation"), category: AppLocalization.string("Session")),
+        SlashCommand(name: "new", aliases: ["reset", "clear"], description: AppLocalization.string("Start a new conversation"), category: AppLocalization.string("Session")),
         SlashCommand(name: "branch", aliases: ["fork"], description: AppLocalization.string("Branch this conversation into a new chat"), category: AppLocalization.string("Session")),
         SlashCommand(name: "model", description: AppLocalization.string("Open the model and run settings"), category: AppLocalization.string("Session")),
         SlashCommand(name: "yolo", description: AppLocalization.string("Toggle automatic tool approval"), category: AppLocalization.string("Session")),
