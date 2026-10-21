@@ -217,7 +217,7 @@ enum BotMentions {
     static func foreverChatRerouteText(for text: String, isCanonicalBotChat: Bool) -> String? {
         guard isCanonicalBotChat else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed == "/new" || trimmed == "/reset" else { return nil }
+        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
         return "/compact"
     }
 

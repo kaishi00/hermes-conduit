@@ -9654,7 +9654,7 @@ final class AppState: ObservableObject {
     /// sessions keep full `/new` freedom.
     private func canonicalForeverChatRerouteText(for text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed == "/new" || trimmed == "/reset" else { return nil }
+        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
         guard let sessionId = activeSessionId else { return nil }
         guard let bot = botOwnership.bot(owningAny: [sessionId]) else { return nil }
         let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
@@ -22147,7 +22147,8 @@ final class AppState: ObservableObject {
         attachments: [Attachment],
         submissionContext: ComposerSubmissionContext,
         onBusy: (() -> Void)?,
-        busyMode: BusyInputMode
+        busyMode: BusyInputMode,
+        runsSlashCommands: Bool = true
     ) async -> Bool {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
 
@@ -22158,7 +22159,7 @@ final class AppState: ObservableObject {
         guard composerIsEnabled else { return false }
 
         // Slash command intercept — handle before normal message/steer logic
-        if attachments.isEmpty && Self.parseSlashCommand(text) != nil {
+        if runsSlashCommands, attachments.isEmpty, Self.parseSlashCommand(text) != nil {
             await executeSlashCommand(text, context: submissionContext)
             return true
         }
@@ -24601,32 +24602,36 @@ final class AppState: ObservableObject {
                 )
                 return
             }
-            if !isSteer, let word = argument.split(separator: " ").first.map(String.init),
-               Self.hermesQueueManagementWords.contains(word.lowercased()) {
-                guard word.lowercased() == "add" else {
+            var message = argument
+            if !isSteer, let word = argument.split(separator: " ").first.map({ $0.lowercased() }) {
+                if word == "add" {
+                    message = argument.dropFirst(word.count).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if word == argument.lowercased(), Self.hermesQueueManagementWords.contains(word) {
+                    // `/queue list` alone is Hermes' queue management;
+                    // `/queue list the files` is a message to queue.
                     appendSlashOutput(
                         AppLocalization.string("Conduit can only add to the queue. Use /queue <message> to queue one."),
                         context: submissionContext
                     )
                     return
                 }
-                let rest = argument.dropFirst(word.count).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !rest.isEmpty else { return }
-                _ = await performComposerSubmission(
-                    text: rest,
-                    attachments: [],
-                    submissionContext: submissionContext,
-                    onBusy: nil,
-                    busyMode: .queue
+            }
+            guard !message.isEmpty else {
+                appendSlashOutput(
+                    AppLocalization.string("Usage: /queue <message>. Sends the message as the next turn once the running reply finishes."),
+                    context: submissionContext
                 )
                 return
             }
+            // The message goes as typed: `/steer /compact` steers with
+            // that text rather than running it as a command.
             _ = await performComposerSubmission(
-                text: argument,
+                text: message,
                 attachments: [],
                 submissionContext: submissionContext,
                 onBusy: nil,
-                busyMode: isSteer ? .steer : .queue
+                busyMode: isSteer ? .steer : .queue,
+                runsSlashCommands: false
             )
             return
         case "stop":
@@ -24680,9 +24685,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Hermes' `/queue` subcommands. Conduit can only add to the queue, so
-    /// `add` queues its text and the rest say so.
-    private static let hermesQueueManagementWords: Set<String> = ["list", "edit", "rm", "move", "clear", "add"]
+    /// Hermes' `/queue` management words. Conduit can only add to the
+    /// queue (`/queue add <message>` queues the message), so these say so.
+    private static let hermesQueueManagementWords: Set<String> = ["list", "edit", "rm", "move", "clear"]
 
     /// What a failed slash command shows. Hermes' `unsupported_command` is
     /// a refusal by design, not a failure: it says so in words, with the

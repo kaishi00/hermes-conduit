@@ -246,6 +246,11 @@ final class BotMentionTests: XCTestCase {
             BotMentions.foreverChatRerouteText(for: "/reset", isCanonicalBotChat: true),
             "/compact"
         )
+        XCTAssertEqual(
+            BotMentions.foreverChatRerouteText(for: "/clear", isCanonicalBotChat: true),
+            "/compact",
+            "/clear starts a new chat too, so a bot's forever chat compacts instead"
+        )
         XCTAssertNil(BotMentions.foreverChatRerouteText(for: "/new", isCanonicalBotChat: false))
         // Padded forms reroute; anything else keeps slash-command freedom.
         XCTAssertEqual(

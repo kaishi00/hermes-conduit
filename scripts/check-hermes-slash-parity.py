@@ -195,9 +195,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(report)
     if args.report:
-        args.report.write_text(report + "\n")
+        try:
+            args.report.write_text(report + "\n")
+        except OSError as error:
+            print(f"::error::{error}", file=sys.stderr)
+            return 2
     return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception:  # an unexpected failure is not drift (exit 1)
+        import traceback
+        traceback.print_exc()
+        sys.exit(2)

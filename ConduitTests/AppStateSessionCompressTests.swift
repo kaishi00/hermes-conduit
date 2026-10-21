@@ -1724,6 +1724,31 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(sent, ["check the logs"])
     }
 
+    func testSteerSendsASlashMessageAsTyped() async throws {
+        let recorder = SlashCallRecorder()
+        var sent: [String] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.refreshContext = { _, _ in }
+        operations.sendPrompt = { _, _, text in
+            sent.append(text)
+            return .accepted
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/s /status is wrong")
+
+        XCTAssertEqual(recorder.slashExecCount, 0, "The message must not run as /status")
+        XCTAssertEqual(sent, ["/status is wrong"])
+    }
+
     func testBareQueueExplainsItself() async throws {
         let recorder = SlashCallRecorder()
         var operations = ChatResumeLifecycleOperations()
