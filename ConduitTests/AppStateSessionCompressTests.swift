@@ -1697,6 +1697,107 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(notes, ["[bg bg_4d5e6f]\nLogs are clean."])
     }
 
+    // MARK: - Commands slash.exec refuses for Conduit (#1078 parity)
+
+    func testSteerWhileIdleSendsTheMessageAsATurn() async throws {
+        let recorder = SlashCallRecorder()
+        var sent: [String] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.refreshContext = { _, _ in }
+        operations.sendPrompt = { _, _, text in
+            sent.append(text)
+            return .accepted
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/steer check the logs")
+
+        XCTAssertEqual(recorder.slashExecCount, 0, "Hermes refuses /steer through slash.exec")
+        XCTAssertEqual(sent, ["check the logs"])
+    }
+
+    func testBareQueueExplainsItself() async throws {
+        let recorder = SlashCallRecorder()
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/queue")
+
+        XCTAssertEqual(recorder.slashExecCount, 0)
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Usage: /queue <message>. Sends the message as the next turn once the running reply finishes."
+        )
+    }
+
+    func testStopEndsThisChatsBackgroundProcesses() async throws {
+        let recorder = SlashCallRecorder()
+        var stopped: [String] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, command in
+            recorder.recordSlashExec(command: command)
+            return .object([:])
+        }
+        operations.stopProcesses = { _, sessionID in
+            stopped.append(sessionID)
+            return 2
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/stop")
+
+        XCTAssertEqual(recorder.slashExecCount, 0)
+        XCTAssertEqual(stopped, ["composer-origin"])
+        XCTAssertEqual(harness.appState.messages.last?.content, "Background processes stopped: 2")
+    }
+
+    func testRefusedCommandShowsHermesHintNotAFailure() async throws {
+        var operations = ChatResumeLifecycleOperations()
+        operations.executeSlash = { _, _, _ in
+            throw RpcError(
+                code: 4001,
+                message: "unsupported_command",
+                reason: "unsupported_command",
+                detail: "Run `hermes backup --quick` in a terminal."
+            )
+        }
+        operations.dispatchCommand = { _, _, name, _ in
+            throw RpcError(code: 4018, message: "not a quick/plugin/skill command: \(name)")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/snapshot")
+
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Hermes doesn't run /snapshot for Conduit chats.\nRun `hermes backup --quick` in a terminal."
+        )
+    }
+
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
         conversationIdentityIndex: ConversationIdentityIndex? = nil

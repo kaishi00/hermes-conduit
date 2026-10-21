@@ -171,6 +171,9 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
     /// (Hermes' contract; the message is for people), e.g.
     /// `SESSION_NOT_OWNED` on a `prompt.submit` 4090.
     var reason: String? = nil
+    /// Hermes' one-line explanation from `data.detail`, e.g. what to use
+    /// instead of a command `slash.exec` refuses.
+    var detail: String? = nil
 
     var errorDescription: String? { message }
 
@@ -199,7 +202,12 @@ extension RpcError {
             code = number.intValue
         }
         let data = AnyCodable(optionalJSONObject: object["data"])
-        self.init(code: code, message: message, reason: data?.objectValue?["reason"]?.stringValue)
+        self.init(
+            code: code,
+            message: message,
+            reason: data?.objectValue?["reason"]?.stringValue,
+            detail: data?.objectValue?["detail"]?.stringValue
+        )
     }
 
     init(from decoder: Decoder) throws {
@@ -208,7 +216,8 @@ extension RpcError {
         self.init(
             code: try container.decodeIfPresent(Int.self, forKey: .code),
             message: try container.decode(String.self, forKey: .message),
-            reason: data?.objectValue?["reason"]?.stringValue
+            reason: data?.objectValue?["reason"]?.stringValue,
+            detail: data?.objectValue?["detail"]?.stringValue
         )
     }
 }
@@ -2811,6 +2820,13 @@ final class HermesClient: ObservableObject {
             "text": text
         ])
         return result.objectValue?["task_id"]?.stringValue
+    }
+
+    /// The background processes this chat started (Hermes' `/stop`).
+    /// Returns how many stopped.
+    func stopProcesses(sessionId: String) async throws -> Int {
+        let result = try await rpc("process.stop", params: ["session_id": sessionId])
+        return result.objectValue?["killed"]?.intValue ?? 0
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {

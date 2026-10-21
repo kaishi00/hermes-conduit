@@ -194,7 +194,7 @@ struct ComposerBar: View, Equatable {
         isProgrammaticDraftRestore: Bool
     ) -> Bool {
         guard !isProgrammaticDraftRestore else { return false }
-        return slashPrefix(in: text) != nil
+        return slashPrefix(in: text) != nil || slashArgumentQuery(in: text) != nil
     }
 
     private static func slashPrefix(in text: String) -> String? {
@@ -203,6 +203,35 @@ struct ComposerBar: View, Equatable {
         let prefix = String(trimmed.dropFirst())
         guard !prefix.contains(where: { $0.isWhitespace || $0.isNewline }) else { return nil }
         return prefix.lowercased()
+    }
+
+    /// `/fast ul` → ("fast", "ul"): the command typed and the first word of
+    /// its argument so far, while that word is the last thing typed. Hermes'
+    /// subcommands for the command complete it.
+    static func slashArgumentQuery(in text: String) -> (command: String, partial: String)? {
+        let trimmed = text.replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
+        guard trimmed.hasPrefix("/"), !trimmed.contains(where: \.isNewline) else { return nil }
+        let body = trimmed.drop(while: { $0 == "/" })
+        guard let space = body.firstIndex(of: " ") else { return nil }
+        let command = body[..<space]
+        let partial = body[body.index(after: space)...]
+        guard !command.isEmpty, !partial.contains(" ") else { return nil }
+        return (command.lowercased(), partial.lowercased())
+    }
+
+    /// Hermes' subcommands for the command being typed that start with what
+    /// is typed so far, as suggestion rows whose name is `command sub`.
+    static func slashArgumentSuggestions(
+        for text: String,
+        commands: [SlashCommand],
+        subcommands: [String: [String]]
+    ) -> [SlashCommand] {
+        guard let query = slashArgumentQuery(in: text),
+              let command = commands.first(where: { $0.name == query.command || $0.aliases.contains(query.command) }),
+              let subs = subcommands[command.name] else { return [] }
+        return subs
+            .filter { $0.lowercased().hasPrefix(query.partial) && $0.lowercased() != query.partial }
+            .map { SlashCommand(name: "\(query.command) \($0)", description: "") }
     }
 
     static func pastedImageAttachmentMetadata(for typeIdentifier: String) -> (name: String, mimeType: String) {
@@ -251,7 +280,13 @@ struct ComposerBar: View, Equatable {
     }
 
     private var filteredSlashCommands: [SlashCommand] {
-        guard let prefix = slashPrefix else { return [] }
+        guard let prefix = slashPrefix else {
+            return Self.slashArgumentSuggestions(
+                for: text,
+                commands: appState.slashCommands,
+                subcommands: appState.slashSubcommands
+            )
+        }
         if prefix.isEmpty {
             return appState.slashCommands
         }
@@ -1424,7 +1459,7 @@ struct ComposerBar: View, Equatable {
             // A prefill the reply asked for (a slash command's) goes in
             // here if its update hasn't put it in yet.
             applyPendingPrefill()
-            isShowingSlashSuggestions = slashPrefix != nil
+            isShowingSlashSuggestions = Self.shouldShowSlashSuggestions(for: text, isProgrammaticDraftRestore: false)
         }
     }
 
@@ -2015,7 +2050,7 @@ struct ComposerBar: View, Equatable {
         appState.consumeComposerPrefill(appState.composerPrefillToken)
         replaceComposerText(appState.composerPrefillText)
         isFocused = !text.isEmpty
-        isShowingSlashSuggestions = slashPrefix != nil
+        isShowingSlashSuggestions = Self.shouldShowSlashSuggestions(for: text, isProgrammaticDraftRestore: false)
     }
 
     private func rotateAttachmentGeneration() {
