@@ -495,8 +495,10 @@ final class HermesSpeechStream: VoiceSpeechStream {
                     // came back. The keepalive stopped itself when it fired,
                     // so watch the socket again, or a second death before
                     // finish() waits out the whole idle window.
+                    // A stream already finished or cancelled has nothing
+                    // left to watch: its keepalive would outlive it.
                     pathLost = false
-                    startKeepalive()
+                    if !terminal, !cancelledByClient { startKeepalive() }
                 }
                 switch message {
                 case .data(let data):
