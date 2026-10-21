@@ -16,7 +16,7 @@ extension AppState {
         try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 
-    private func makeShortcutSendBackend() -> ShortcutSendBackend {
+    func makeShortcutSendBackend() -> ShortcutSendBackend {
         ShortcutSendBackend(
             connect: { [weak self] deadline in
                 guard let self else { return false }
@@ -44,17 +44,23 @@ extension AppState {
                 return try await self.liveVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
             reopenChat: { [weak self] chat in
-                guard let self, let client = self.client else { throw HermesError.notConnected }
-                let scoped = self.scopedShortcutChat(chat)
-                return try await client.openSession(scoped.storedSessionID ?? scoped.runtimeSessionID, profile: scoped.profile).sessionId
+                guard let self else { throw HermesError.notConnected }
+                return try await self.reopenVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
             submit: { [weak self] chat, runtimeID, text in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
+                let scoped = self.scopedShortcutChat(chat)
                 // Shortcut text is literal: "/…" never runs a composer command.
-                // A chat reopened after its runtime was gone runs on a runtime
-                // the composer doesn't have yet: that send goes straight there.
-                if self.isOpenChat(self.scopedShortcutChat(chat)), self.activeSessionId == runtimeID,
+                if self.isOpenChat(scoped), self.activeSessionId == runtimeID,
                    !self.isBusy, Self.parseSlashCommand(text) == nil {
+                    // Right after a cold launch the open chat's id is the one
+                    // from before, until the chat's own resume. The composer
+                    // only gets a runtime Hermes still has: a dead one would
+                    // leave a failed send on screen and the text back in the
+                    // composer. The run reopens the chat and sends again.
+                    guard await self.voiceThreadRuntimeIsLive(runtimeID, profile: scoped.profile) else {
+                        throw RpcError(code: 4001, message: "session not found")
+                    }
                     // A turn the composer finds running is never steered or
                     // interrupted from here: it declines and the gateway queues.
                     self.submissionTurnSurface = (text, .shortcut)

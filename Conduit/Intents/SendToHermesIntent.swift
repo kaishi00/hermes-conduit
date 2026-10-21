@@ -210,9 +210,11 @@ struct ShortcutSender {
         do {
             outcome = try await backend.submit(chat, runtimeID, text)
         } catch let error where HermesClient.isSessionNotFoundError(error) {
-            // Hermes no longer has that runtime, so nothing was sent. Right
-            // after a cold launch the open chat's id is the one from before,
-            // until the chat's own resume: reopen the chat and send once more.
+            // Hermes no longer has that runtime, so nothing was sent, and the
+            // reply read before the first try still marks what came before.
+            // Right after a cold launch the open chat's id is the one from
+            // before, until the chat's own resume: reopen the chat and send
+            // once more.
             runtimeID = try await backend.reopenChat(chat)
             try Task.checkCancellation()
             chat.runtimeSessionID = runtimeID

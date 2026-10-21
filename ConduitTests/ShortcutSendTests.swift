@@ -385,4 +385,85 @@ extension ScreenQuestionTests {
         let title = ShortcutSender.title(for: String(repeating: "a", count: 100))
         XCTAssertEqual(title, "Shortcut: " + String(repeating: "a", count: 59) + "…")
     }
+
+    // MARK: - The named chat is the chat on screen
+
+    /// A cold launch with the named chat on screen: the app still has the
+    /// runtime id from before, which Hermes no longer has.
+    @MainActor
+    private func openChatAfterColdLaunch() -> (AppState, ShortcutChatStore, OpenChatHermes) {
+        let suite = "ShortcutSendOpenChatTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let hermes = OpenChatHermes()
+        var operations = ChatResumeLifecycleOperations()
+        operations.openSession = { _, id, _ in
+            hermes.resumed.append(id)
+            return SessionResumeResult(sessionId: "fresh", storedSessionId: "stored-1", messages: [],
+                                       snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+        }
+        operations.probeActiveSessions = { _ in
+            hermes.resumed.isEmpty ? [] : [LiveSessionStatus(runtimeSessionId: "fresh", storedSessionId: "stored-1", status: "idle")]
+        }
+        operations.sendPrompt = { _, sessionID, text in
+            hermes.sent.append((sessionID, text))
+            return .accepted
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [SessionSummary(
+            id: "dead", storedSessionId: "stored-1", alternateIds: ["stored-1"], title: "Drop box", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )]
+        appState.activeSessionId = "dead"
+        let chats = shortcutChats()
+        chats.save(VoiceThreadTarget(runtimeSessionID: "dead", storedSessionID: "stored-1", title: "Drop box", profile: "default"),
+                   named: "Drop box", profile: "default")
+        return (appState, chats, hermes)
+    }
+
+    @MainActor
+    func testReopeningTheChatOnScreenMovesTheScreenToTheNewRuntime() async throws {
+        let (appState, _, _) = openChatAfterColdLaunch()
+        let chat = VoiceThreadTarget(runtimeSessionID: "dead", storedSessionID: "stored-1", title: "Drop box")
+
+        let runtimeID = try await appState.makeShortcutSendBackend().reopenChat(chat)
+
+        XCTAssertEqual(runtimeID, "fresh")
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+        XCTAssertTrue(appState.isOpenChat(VoiceThreadTarget(runtimeSessionID: "fresh", storedSessionID: "stored-1", title: "Drop box")))
+    }
+
+    @MainActor
+    func testARunIntoTheChatOnScreenWithAGoneRuntimeLeavesNoFailedSend() async throws {
+        let (appState, chats, hermes) = openChatAfterColdLaunch()
+        var backend = appState.makeShortcutSendBackend()
+        backend.connect = { _ in true }
+
+        let outcome = try await ShortcutSender(backend: backend, chats: chats)
+            .send(ShortcutSendRequest(text: "No more mayo", chatName: "Drop box", profile: nil, waitsForAnswer: false),
+                  deadline: Date().addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.resumed, ["stored-1"])
+        XCTAssertEqual(hermes.sent.map(\.sessionID), ["fresh"], "the dead runtime never gets the text")
+        XCTAssertEqual(hermes.sent.map(\.text), ["No more mayo"])
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+        XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.runtimeSessionID, "fresh")
+    }
+}
+
+/// What the open-chat tests' Hermes was asked.
+private final class OpenChatHermes {
+    var resumed: [String] = []
+    var sent: [(sessionID: String, text: String)] = []
 }
