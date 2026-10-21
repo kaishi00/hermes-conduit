@@ -208,6 +208,9 @@ final class V2ShownUpdates: ObservableObject {
     }
 
     private func scrollEnded() {
+        // The next scroll's hold gets a timer of its own.
+        holdLimitTask?.cancel()
+        holdLimitTask = nil
         guard missedScrollUpdate else { return }
         missedScrollUpdate = false
         passOn()
@@ -217,7 +220,7 @@ final class V2ShownUpdates: ObservableObject {
     var scrollHoldLimit: TimeInterval = 2
     private var scrollStartedAt = Date.distantPast
     private var missedScrollUpdate = false
-    private var holdLimitScheduled = false
+    private var holdLimitTask: Task<Void, Never>?
     /// The clock the hold reads; tests set their own.
     var now: () -> Date = Date.init
     /// How long the list beside a chat waits to draw the publishes since.
@@ -295,13 +298,12 @@ final class V2ShownUpdates: ObservableObject {
     /// even if nothing else publishes meanwhile.
     private func holdForScroll() {
         missedScrollUpdate = true
-        guard !holdLimitScheduled else { return }
-        holdLimitScheduled = true
+        guard holdLimitTask == nil else { return }
         let wait = max(scrollHoldLimit - now().timeIntervalSince(scrollStartedAt), 0.05)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(wait))
+        holdLimitTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
             guard let self else { return }
-            holdLimitScheduled = false
+            holdLimitTask = nil
             // A draw meanwhile restarted the hold; passing on holds again.
             if missedScrollUpdate { passOn() }
         }
