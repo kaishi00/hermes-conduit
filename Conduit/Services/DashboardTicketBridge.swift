@@ -404,6 +404,17 @@ enum DashboardTicketBridgeError: LocalizedError {
         }
     }
 
+    /// A FastAPI `detail` that is an object with a `code` (the notifier's
+    /// Pulse routes answer `{"detail": {"code": "pulse_off"}}`), kept as its
+    /// JSON text so the caller can read the code and its data. Nil for any
+    /// other detail.
+    static func structuredDetail(_ value: Any?) -> String? {
+        guard let object = value as? [String: Any], object["code"] is String,
+              JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -1509,7 +1520,9 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         }
 
         let status = payload["status"] as? Int ?? 0
-        let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
+        let detail = payload["error"] as? String
+            ?? DashboardTicketBridgeError.structuredDetail(payload["error"])
+            ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
         // Hermes' own 403 (its `detail` says why, such as a chat this
         // sign-in may not change or a file it won't serve) is a verdict on
         // the request, not an expired sign-in: signing in again can't change

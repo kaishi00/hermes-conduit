@@ -176,7 +176,8 @@ extension DashboardTicketBridge {
 
     /// The error text a failed response carries, as the page reads it.
     private static func errorDetail(_ object: [String: Any]?) -> String? {
-        (object?["error"] ?? object?["message"] ?? object?["detail"]) as? String
+        let raw = object?["error"] ?? object?["message"] ?? object?["detail"]
+        return raw as? String ?? DashboardTicketBridgeError.structuredDetail(raw)
     }
 
     /// The response, or `URLError(.timedOut)` once `deadline` passes in
