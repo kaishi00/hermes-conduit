@@ -155,6 +155,10 @@ final class CarPlayVoiceCoordinator {
     /// Test seam over the connection wait. nil (production) observes the
     /// bound AppState's `isConnected` for up to `connectionWaitTimeout`.
     var connectionWaiter: (@MainActor (AppState) async -> Bool)?
+    /// Test seam awaited just before a live call starts, once Hermes is
+    /// reached: it stands in for a start slow enough that the driver can
+    /// tap Listen and End before the call goes active. nil in production.
+    var liveCallStartGate: (@MainActor () async -> Void)?
     /// The in-flight connection wait, cancelled at every connect and
     /// disconnect so a wait for a surface that is gone resolves at once
     /// instead of holding its observation for the rest of the timeout.
@@ -230,7 +234,7 @@ final class CarPlayVoiceCoordinator {
     /// sees it change leaves the conversation to the driver.
     private(set) var driverStartRequest: UInt64 = 0
     /// `driverStartRequest` when End was last tapped: a driver start after
-    /// it owns the classic conversation an ended start would close.
+    /// it owns the conversation (classic or live) an ended start would close.
     private var driverStartRequestAtLastEnd: UInt64 = 0
     /// A list is pushed over the voice screen. A conversation that starts
     /// meanwhile (from the phone, say) brings the voice screen back (#378).
@@ -1718,7 +1722,6 @@ final class CarPlayVoiceCoordinator {
         attachingTo thread: VoiceThreadTarget? = nil
     ) async {
         let startRequest = voiceStartRequest
-        let driverRequest = driverStartRequest
         guard await waitForHermes(appState: appState, generation: generation) else { return }
         // The setting may have changed while Hermes was being reached; the
         // controls start whichever mode is current on the next tap. End
@@ -1726,6 +1729,7 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
               CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
         appState.keepVoiceFromHermesCallCleanup()
+        if let liveCallStartGate { await liveCallStartGate() }
         switch mode {
         case .geminiLive:
             await appState.startGeminiLiveForCarPlay(attachingTo: thread)
@@ -1745,10 +1749,12 @@ final class CarPlayVoiceCoordinator {
             }
         }
         // End tapped while the call was starting: the call it closed may
-        // not have been running yet, so close whatever started after it.
-        // A newer driver start now owns the call and must not be closed.
+        // not have been running yet, so close whatever started after it,
+        // unless a driver start (Listen, a picked chat) came after the
+        // latest End: that start owns the call now. A driver start that a
+        // later End ended protects nothing, as with classic Voice.
         if isCurrent(generation), isConnected, voiceStartRequest != startRequest,
-           driverStartRequest == driverRequest {
+           driverStartRequest == driverStartRequestAtLastEnd {
             endConversation()
             forward(.ready)
         }

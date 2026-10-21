@@ -2139,6 +2139,62 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.activations.contains(.error), "\(harness.activations)")
     }
 
+    /// The live-mode version: a connect-time GPT-Live start slow to go
+    /// active, with the driver's Listen and End (in either order) before it
+    /// does. The ended start's late call is closed: the driver ended every
+    /// start, and the Listen before the last End protects nothing.
+    func testALiveStartEndedAroundAListenLeavesNoCallOpen() async {
+        for endsFirst in [true, false] {
+            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+                defaults.removePersistentDomain(forName: suite)
+            }
+            harness.appState.activeSessionId = "existing-session"
+            harness.coordinator.handleConnect(harness.spy)
+            await harness.coordinator.waitForPresentation()
+            harness.appState.setGPTLiveEnabled(true)
+            let session = FakeGPTLiveSessionControl()
+            let client = FakeGPTLiveClient()
+            _ = harness.appState.gptLiveController
+            harness.appState.gptLiveController = GPTLiveConversationController(
+                makeSession: { session },
+                availability: { try await client.availability() },
+                briefing: { "[rules]" },
+                supervisor: harness.appState.voiceBackgroundJobSupervisor,
+                requestPermission: { true }
+            )
+            var held: CheckedContinuation<Void, Never>?
+            var didHold = false
+            harness.coordinator.liveCallStartGate = {
+                guard !didHold else { return }
+                didHold = true
+                await withCheckedContinuation { held = $0 }
+            }
+            let generation = harness.coordinator.connectionGeneration
+
+            let first = Task { @MainActor in
+                await harness.coordinator.establishVoice(generation: generation)
+            }
+            for _ in 0..<500 where held == nil { await Task.yield() }
+            XCTAssertNotNil(held, "the connect-time call is still starting")
+
+            if endsFirst { harness.coordinator.endTapped() }
+            harness.coordinator.startListeningTurn()
+            for _ in 0..<500 where !harness.appState.gptLiveController.isActive { await Task.yield() }
+            XCTAssertTrue(harness.appState.gptLiveController.isActive, "the driver's Listen started a call")
+            harness.coordinator.endTapped()
+            XCTAssertFalse(harness.appState.gptLiveController.isActive, "End closed the driver's call")
+
+            held?.resume()
+            await first.value
+
+            XCTAssertFalse(harness.appState.gptLiveController.isActive,
+                           "the driver ended every start; no call may stay open (ends first: \(endsFirst))")
+            XCTAssertEqual(harness.activations.last, .ready, "\(harness.activations)")
+            harness.coordinator.handleDisconnect()
+        }
+    }
+
     func testWaitingForTheConnectionShowsProcessingInsteadOfReady() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
