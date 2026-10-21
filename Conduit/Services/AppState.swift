@@ -15069,6 +15069,7 @@ final class AppState: ObservableObject {
             // this one's (session.info), and this chat may run on another.
             runtime.model = ""
             runtime.provider = ""
+            runtime.serviceTier = ""
             keepDelegateAgents(of: [])
             newChatOpenedSessionID = runtimeSessionID
             newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID

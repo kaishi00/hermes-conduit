@@ -385,13 +385,9 @@ struct ModelPickerView: View {
             speed = new
             initialSpeed = new
         }
-        .onChange(of: ultrafastOffered) { _, offered in
-            // Picking a model that says it lacks Ultrafast falls back to
-            // Fast. The session's own model keeps what Hermes reports.
-            guard offered == false, speed == .ultrafast,
-                  selectedModel != seededModel else { return }
-            speed = .fast
-        }
+        .onChange(of: ultrafastOffered) { _, _ in dropUnofferedUltrafast() }
+        .onChange(of: selectedModel) { _, _ in dropUnofferedUltrafast() }
+        .onChange(of: selectedProvider) { _, _ in dropUnofferedUltrafast() }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
             guard let message else { return }
@@ -847,6 +843,14 @@ struct ModelPickerView: View {
             speed: speed,
             yolo: yoloEnabled
         )
+    }
+
+    /// Picking a model that says it lacks Ultrafast falls back to Fast. The
+    /// session's own model keeps what Hermes reports.
+    private func dropUnofferedUltrafast() {
+        guard ultrafastOffered == false, speed == .ultrafast,
+              selectedModel != seededModel else { return }
+        speed = .fast
     }
 
     private var runtimeSpeed: ModelSpeed {

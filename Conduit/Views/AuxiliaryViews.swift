@@ -587,6 +587,9 @@ struct SettingsView: View {
 
     @State private var path: [SettingsDestination] = []
     @State private var openedAtLink = false
+    /// Counts main-model saves, so Fast mode's model-dependent choices
+    /// reload for the new model.
+    @State private var mainModelSaves = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -672,7 +675,11 @@ struct SettingsView: View {
                 load: loadProfileSettings,
                 save: persistProfileSetting,
                 fieldsHeader: AppLocalization.string("Speed & limits"),
-                leadingSection: AnyView(ProfileModelSettingsDetail(load: loadProfileModelDefaults, save: persistProfileMainModel)),
+                leadingSection: AnyView(ProfileModelSettingsDetail(load: loadProfileModelDefaults, save: { provider, model, reasoning in
+                    let saved = await persistProfileMainModel(provider, model, reasoning)
+                    if saved { await MainActor.run { mainModelSaves += 1 } }
+                    return saved
+                })),
                 trailingSection: AnyView(FallbackModelsSettings(
                     loadModels: loadProfileModelDefaults,
                     load: { await appState.loadProfileFallbackModels() },
@@ -682,7 +689,8 @@ struct SettingsView: View {
                 loadExtraOptions: {
                     await loadProfileModelDefaults()?.mainModelOffersUltrafast == true
                         ? ["agent.service_tier": ["ultrafast"]] : [:]
-                }
+                },
+                extraOptionsRefresh: mainModelSaves
             )
         case .chat:
             ChatSettingsDetail(
@@ -2561,6 +2569,8 @@ struct ProfileConfigSettingsPage: View {
     var loadSchema: (() async -> ProfileConfigSchema)? = nil
     /// Choices a field gains beyond its schema's, loaded with the page.
     var loadExtraOptions: (() async -> [String: [String]])? = nil
+    /// Changing it reloads the extra choices (the first load rides `reload`).
+    var extraOptionsRefresh = 0
 
     @State private var extraOptions: [String: [String]] = [:]
     @State private var values: [String: ProfileSettingValue] = [:]
@@ -2595,6 +2605,9 @@ struct ProfileConfigSettingsPage: View {
         }
         .navigationTitle(showsNavigationTitle ? title : "")
         .task { await reload() }
+        .onChange(of: extraOptionsRefresh) { _, _ in
+            Task { extraOptions = await loadExtras() }
+        }
     }
 
     private struct FieldsCard: Identifiable {
