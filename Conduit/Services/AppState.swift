@@ -3467,7 +3467,7 @@ final class AppState: ObservableObject {
         },
         submit: { [weak self] chat, text in
             guard let self else { throw HermesError.notConnected }
-            let client = try await self.clientForVoiceRequest(throughComposer: chat.runtimeID == self.activeSessionId)
+            let client = try await self.clientForVoiceRequest()
             if chat.runtimeID == self.activeSessionId {
                 // On screen it goes through the composer, so the chat shows
                 // and streams it like Classic voice's turns.
@@ -3998,9 +3998,6 @@ final class AppState: ObservableObject {
     /// conversation. Pure surface bookkeeping: CarPlay is another Voice
     /// presentation surface over the same runtime, never a second owner.
     @Published private(set) var isCarPlayVoiceSurfaceActive = false
-    /// How long a call's request to Hermes waits for a dropped chat
-    /// connection before it is reported as not sent (#1060). A seam for tests.
-    var voiceRequestConnectionWait: Duration = .seconds(20)
 
     func setCarPlayVoiceSurfaceActive(_ active: Bool) {
         isCarPlayVoiceSurfaceActive = active
@@ -7629,7 +7626,7 @@ final class AppState: ObservableObject {
     /// it like a typed message. Off screen it goes to `runtimeID`, the live
     /// runtime `liveVoiceThreadRuntime` already resolved.
     private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, runtimeID: String, text: String) async throws -> String {
-        let client = try await clientForVoiceRequest(throughComposer: isOpenChat(thread))
+        let client = try await clientForVoiceRequest()
         if isOpenChat(thread), let sessionID = activeSessionId {
             // A turn found running, here or by the composer's own stale-idle
             // probe, is waited for: never steered or interrupted.
@@ -30811,7 +30808,7 @@ final class AppState: ObservableObject {
         await answerWaitingBySpeech(transcript)
         // Said while the connection is coming back from a drop (a car
         // losing signal): the turn waits for it rather than fail (#1060).
-        await waitForTransportIfDropped(throughComposer: true)
+        await waitForTransportIfDropped()
         // Marks this exact text as a spoken turn for the prompt.submit it
         // reaches, so Hermes asks for a reply meant to be read aloud. A typed
         // send interleaving on another text never matches.
@@ -30828,6 +30825,8 @@ final class AppState: ObservableObject {
         // A yes or no to the approval the running turn waits on (or another
         // card waiting) answers it, and the turn goes on from there.
         if await answerWaitingBySpeech(text) { return .steered }
+        // Mid-reconnect, wait for the chat to be back first (#1060).
+        await waitForTransportIfDropped()
         switch turnState {
         case .running:
             return await steer(text, surfacesFailure: false) ? .steered : .failed
@@ -31620,7 +31619,9 @@ final class AppState: ObservableObject {
     func handleCarPlaySceneWillEnterForeground() {
         guard isCarPlayVoiceSurfaceActive, !isSceneActive else { return }
         if isConnected {
-            // The same check a network change runs: ping, close if unanswered.
+            // The same check a network change runs: ping, close if
+            // unanswered. A socket that turns out dead reconnects through
+            // the ordinary backoff (at most 8 s while CarPlay is up).
             client?.networkPathChanged()
         } else {
             reconnectNowForWaitingVoice("CarPlay on screen")
@@ -31643,49 +31644,59 @@ final class AppState: ObservableObject {
         scheduleReconnect(immediately: true, purpose: purpose)
     }
 
-    /// The client for a call's request to Hermes (start a job, send to the
-    /// attached chat, steer a reply). While the chat connection is coming
-    /// back from a drop, as it often is in a car, the request reconnects at
-    /// once and waits for it, up to `voiceRequestConnectionWait`, instead of
-    /// failing on the spot and leaving the call to say it didn't go through
-    /// (#1060). `throughComposer`: the request goes through the open chat's
-    /// composer, which also waits for the reconnect's sync to finish.
-    /// Without a drop under way nothing waits, and the result is what it
-    /// was before: the current client, or `notConnected` without one.
-    func clientForVoiceRequest(throughComposer: Bool = false) async throws -> HermesClient {
-        await waitForTransportIfDropped(throughComposer: throughComposer)
+    /// How long a call's request to Hermes waits for a dropped chat
+    /// connection before it is reported as not sent (#1060). A seam for tests.
+    var voiceRequestConnectionWait: Duration = .seconds(20)
+
+    /// The client for a call's request to Hermes (start a job, send to a
+    /// chat, steer a reply). While the chat connection is coming back from a
+    /// drop, as it often is in a car, the request reconnects at once and
+    /// waits, up to `voiceRequestConnectionWait`, for the reconnect to have
+    /// resumed the chat as well: until then Hermes may no longer hold the
+    /// chat's runtime and refuses what is sent to it. That replaces failing
+    /// on the spot and leaving the call to say it didn't go through (#1060).
+    /// A wait that runs out throws `notConnected`. Without a drop under way
+    /// nothing waits, and the result is what it was before: the current
+    /// client, or `notConnected` without one.
+    func clientForVoiceRequest() async throws -> HermesClient {
+        if await waitForTransportIfDropped(), !isConnected { throw HermesError.notConnected }
         guard let client else { throw HermesError.notConnected }
         return client
     }
 
-    /// `clientForVoiceRequest`'s wait on its own, for Classic voice's turns,
-    /// which go through the composer.
-    func waitForTransportIfDropped(throughComposer: Bool) async {
-        guard voiceRequestWaitsForTransport(throughComposer: throughComposer) else { return }
+    /// `clientForVoiceRequest`'s wait on its own, for Classic voice's turns
+    /// and steers, which go through the composer. True when it waited.
+    @discardableResult
+    func waitForTransportIfDropped() async -> Bool {
+        guard voiceRequestWaitsForTransport else { return false }
         reconnectNowForWaitingVoice("Voice request waiting")
-        await awaitTransportForVoiceRequest(throughComposer: throughComposer, timeout: voiceRequestConnectionWait)
+        await awaitTransportForVoiceRequest(timeout: voiceRequestConnectionWait)
+        return true
     }
 
-    /// A drop is under way that a reconnect from here can repair.
-    private func voiceRequestWaitsForTransport(throughComposer: Bool) -> Bool {
+    /// A drop is under way that a reconnect from here can repair: the socket
+    /// is down and coming back, or it is back and the reconnect is still
+    /// resuming the chat.
+    private var voiceRequestWaitsForTransport: Bool {
         guard connection != nil, canRunTransportRecovery, !signInRequiredForReconnect else { return false }
         if !isConnected { return isConnecting || turnState == .reconnecting }
-        return throughComposer && (turnState == .reconnecting || turnState == .synchronizing)
+        return turnState == .reconnecting || turnState == .synchronizing
     }
 
-    private func awaitTransportForVoiceRequest(throughComposer: Bool, timeout: Duration) async {
+    private func awaitTransportForVoiceRequest(timeout: Duration) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
                 let states = self.$isConnected.combineLatest(self.$isConnecting, self.$turnState).values
                 for await (connected, connecting, turn) in states {
-                    if connected, !throughComposer || turn.acceptsComposerActions || turn == .unsupportedGateway {
-                        return
-                    }
+                    if connected, turn != .reconnecting, turn != .synchronizing { return }
                     // Signed out, or sign-in needed: no reconnect is coming.
                     if self.connection == nil || self.signInRequiredForReconnect { return }
-                    // A cycle that failed hands off to the backoff, as a
-                    // CarPlay connection wait does.
-                    if !connected, !connecting { self.recoverTransportForCarPlayIfNeeded() }
+                    // A cycle that ended without arming the next one hands
+                    // off to the backoff. scheduleReconnect keeps its own
+                    // gate on who may reconnect.
+                    if !connected, !connecting, self.reconnectTask == nil {
+                        self.scheduleReconnect(purpose: self.chatResumePurposeForDisconnect())
+                    }
                 }
             }
             group.addTask {

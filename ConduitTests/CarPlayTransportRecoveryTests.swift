@@ -305,6 +305,25 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         }
     }
 
+    func testCallRequestGivesUpOnAStaleClientWhenTheConnectionDoesNotComeBack() async throws {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        // A drop leaves the old client in place, its socket closed.
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.isConnecting = true
+        appState.voiceRequestConnectionWait = .milliseconds(200)
+
+        do {
+            _ = try await appState.clientForVoiceRequest()
+            XCTFail("the dead connection's client is not handed out")
+        } catch HermesError.notConnected {}
+    }
+
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)
