@@ -90,6 +90,8 @@ struct ShortcutSendBackend {
     var submit: @MainActor (_ chat: VoiceThreadTarget, _ runtimeID: String, _ text: String) async throws -> PromptSubmissionOutcome
     var liveSessions: @MainActor (_ profile: String) async throws -> [LiveSessionStatus]
     var latestReply: @MainActor (_ chat: VoiceThreadTarget) async -> ShortcutReply?
+    /// The send after a reopen went in: clears what the failed try left.
+    var retryLanded: @MainActor () -> Void = {}
     var sleep: (_ seconds: Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     var now: () -> Date = Date.init
 }
@@ -221,6 +223,7 @@ struct ShortcutSender {
             if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
             guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
             outcome = try await backend.submit(chat, runtimeID, text)
+            backend.retryLanded()
         }
         switch outcome {
         case .accepted: break

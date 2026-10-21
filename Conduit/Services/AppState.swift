@@ -7515,12 +7515,27 @@ final class AppState: ObservableObject {
             throw RpcError(code: 4001, message: "session not found")
         }
         let deadRuntimeID = thread.runtimeSessionID
+        // The chat's own resume already moved it off the dead runtime: its
+        // runtime is the live one, and a second resume would only mint another.
+        if isOpenChat(thread), let current = activeSessionId, current != deadRuntimeID { return current }
         let resumed = try await openChatResumeSession(storedID, using: client, compact: true, profile: thread.profile)
         let recoveredID = resumed.sessionId
         guard !recoveredID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HermesError.invalidResponse
         }
         let profile = thread.profile ?? activeProfile
+        // The identity check the compression recovery runs: the resume must
+        // answer for this conversation, never move the chat to another one.
+        let selected = ConversationIdentity(
+            profile: profile,
+            durableSessionID: storedID,
+            runtimeSessionID: deadRuntimeID,
+            acceptedSessionIDs: knownSessionIDs(for: deadRuntimeID).union([storedID, deadRuntimeID])
+        )
+        let claim = ResumeIdentityClaim(runtimeSessionID: recoveredID, durableSessionID: resumed.storedSessionId)
+        guard case .success = ConversationIdentityGate.admit(claim: claim, selected: selected, catalog: sessions + cronSessions) else {
+            throw RpcError(code: 4001, message: "session not found")
+        }
         conversationIdentityIndex.recordAuthoritative(runtimeID: recoveredID, durableID: storedID, profile: profile, source: .resume)
         conversationIdentityIndex.recordAuthoritative(runtimeID: deadRuntimeID, durableID: storedID, profile: profile, source: .resume)
         guard isOpenChat(thread), let current = activeSessionId else { return recoveredID }
@@ -7528,6 +7543,16 @@ final class AppState: ObservableObject {
         if current != deadRuntimeID { return current }
         setActiveSessionState(id: recoveredID)
         return recoveredID
+    }
+
+    /// A shortcut's text sent straight to `runtimeID`, through the test seam
+    /// when one is set.
+    func sendShortcutPrompt(_ runtimeID: String, text: String) async throws -> PromptSubmissionOutcome {
+        guard let client else { throw HermesError.notConnected }
+        if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+            return try await sendPrompt(client, runtimeID, text)
+        }
+        return try await client.sendPrompt(runtimeID, text: text)
     }
 
     /// Whether Hermes still has `runtimeID`. A failed read says yes: the send

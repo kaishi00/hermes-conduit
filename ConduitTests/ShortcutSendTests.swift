@@ -23,6 +23,7 @@ private final class FakeHermes {
     /// Runtimes Hermes no longer has: a send to one answers "session not found".
     var goneRuntimes: Set<String> = []
     var reopened: [VoiceThreadTarget] = []
+    var retriesLanded = 0
     /// One list per poll; the last one repeats.
     var polls: [[LiveSessionStatus]] = []
     var replies: [ShortcutReply?] = []
@@ -66,6 +67,7 @@ private final class FakeHermes {
                 guard !self.replies.isEmpty else { return nil }
                 return self.replies.count > 1 ? self.replies.removeFirst() : self.replies[0]
             },
+            retryLanded: { self.retriesLanded += 1 },
             sleep: { seconds in
                 if self.cancelsSleep { throw CancellationError() }
                 self.now = self.now.addingTimeInterval(seconds)
@@ -162,6 +164,7 @@ extension ScreenQuestionTests {
         XCTAssertEqual(hermes.reopened.map(\.storedSessionID), ["stored-1"])
         XCTAssertEqual(hermes.submitted.map(\.text), ["one", "two", "three"])
         XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["run-1", "reopened-1", "resumed-2"])
+        XCTAssertEqual(hermes.retriesLanded, 1, "only the retried send clears a failed try")
         XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.storedSessionID, "stored-1")
     }
 
@@ -189,8 +192,7 @@ extension ScreenQuestionTests {
     func testOtherSendFailuresAreNotRetried() async throws {
         let hermes = FakeHermes()
         let chats = shortcutChats()
-        let backend = hermes.backend()
-        var failing = backend
+        var failing = hermes.backend()
         failing.submit = { _, _, _ in throw HermesError.invalidResponse }
         do {
             _ = try await ShortcutSender(backend: failing, chats: chats)
@@ -391,21 +393,32 @@ extension ScreenQuestionTests {
     /// A cold launch with the named chat on screen: the app still has the
     /// runtime id from before, which Hermes no longer has.
     @MainActor
-    private func openChatAfterColdLaunch() -> (AppState, ShortcutChatStore, OpenChatHermes) {
+    private func openChatAfterColdLaunch(probeFails: Bool = false) -> (AppState, ShortcutChatStore, OpenChatHermes) {
         let suite = "ShortcutSendOpenChatTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let hermes = OpenChatHermes()
+        hermes.probeFails = probeFails
         var operations = ChatResumeLifecycleOperations()
         operations.openSession = { _, id, _ in
             hermes.resumed.append(id)
             return SessionResumeResult(sessionId: "fresh", storedSessionId: "stored-1", messages: [],
                                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
         }
+        let row = SessionSummary(
+            id: "dead", storedSessionId: "stored-1", alternateIds: ["stored-1"], title: "Drop box", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        // The composer's own recovery reloads the chat list after a failed send.
+        operations.loadCatalog = { _, _ in [row] }
+        operations.refreshContext = { _, _ in }
         operations.probeActiveSessions = { _ in
-            hermes.resumed.isEmpty ? [] : [LiveSessionStatus(runtimeSessionId: "fresh", storedSessionId: "stored-1", status: "idle")]
+            // A gateway without the live-session list, or a failed read.
+            if hermes.probeFails { throw HermesError.invalidResponse }
+            return hermes.resumed.isEmpty ? [] : [LiveSessionStatus(runtimeSessionId: "fresh", storedSessionId: "stored-1", status: "idle")]
         }
         operations.sendPrompt = { _, sessionID, text in
+            if sessionID == "dead" { throw RpcError(code: 4001, message: "session not found") }
             hermes.sent.append((sessionID, text))
             return .accepted
         }
@@ -419,10 +432,7 @@ extension ScreenQuestionTests {
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
         appState.connection = connection
         appState.client = HermesClient(connection: connection, profile: "default")
-        appState.sessions = [SessionSummary(
-            id: "dead", storedSessionId: "stored-1", alternateIds: ["stored-1"], title: "Drop box", model: "Hermes",
-            updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
-        )]
+        appState.sessions = [row]
         appState.activeSessionId = "dead"
         let chats = shortcutChats()
         chats.save(VoiceThreadTarget(runtimeSessionID: "dead", storedSessionID: "stored-1", title: "Drop box", profile: "default"),
@@ -460,10 +470,27 @@ extension ScreenQuestionTests {
         XCTAssertEqual(appState.activeSessionId, "fresh")
         XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.runtimeSessionID, "fresh")
     }
+
+    @MainActor
+    func testWhenTheRuntimeCheckCantReadTheFailedTryLeavesNoErrorOnceTheRetryLands() async throws {
+        let (appState, chats, hermes) = openChatAfterColdLaunch(probeFails: true)
+        var backend = appState.makeShortcutSendBackend()
+        backend.connect = { _ in true }
+
+        let outcome = try await ShortcutSender(backend: backend, chats: chats)
+            .send(ShortcutSendRequest(text: "No more mayo", chatName: "Drop box", profile: nil, waitsForAnswer: false),
+                  deadline: Date().addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.sent.filter { $0.text == "No more mayo" }.map(\.sessionID), ["fresh"], "sent once, to the live runtime")
+        XCTAssertNil(appState.errorMessage, "the composer's failed try doesn't stay on screen")
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+    }
 }
 
 /// What the open-chat tests' Hermes was asked.
 private final class OpenChatHermes {
+    var probeFails = false
     var resumed: [String] = []
     var sent: [(sessionID: String, text: String)] = []
 }
