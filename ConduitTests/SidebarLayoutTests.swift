@@ -339,7 +339,8 @@ final class SidebarLayoutTests: XCTestCase {
     func testChatsRenderMemoSharesWalksWithinARender() {
         let memo = V2ChatsRenderMemo()
         var walks = 0
-        let walk: () -> [SessionSummary] = { walks += 1; return [pinnedTestSession("a")] }
+        let rows = [pinnedTestSession("a")]
+        let walk: () -> [SessionSummary] = { walks += 1; return rows }
 
         _ = memo.sourceRows(nil, walk)
         _ = memo.sourceRows(nil, walk)
