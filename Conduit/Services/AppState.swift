@@ -4474,12 +4474,6 @@ final class AppState: ObservableObject {
     /// stored override.
     private var lastReportedSessionYolo: Bool?
 
-    /// One page of the dashboard's rows, handed off the main actor to be
-    /// converted. Plain JSON values, read by one task at a time.
-    private struct DashboardSessionPage: @unchecked Sendable {
-        let rows: [Any]
-    }
-
     /// The dashboard's persisted transcript is richer than `session.resume`:
     /// it retains database timestamps, complete tool-call inputs, and other
     /// presentation fields. The resume RPC remains authoritative for live turn
@@ -26278,12 +26272,14 @@ final class AppState: ObservableObject {
     ///
     /// A page is up to 200 rows, and converting it took up to 26 ms on main
     /// at launch, while the Chats list was scrolling: it runs off the main
-    /// actor, in order, like large socket frames.
+    /// actor, in order, like large socket frames (`decodeInBackground`).
     private func dashboardOwnedSessions(_ batch: [Any], profile: String) async -> [SessionSummary] {
-        let page = DashboardSessionPage(rows: batch)
-        return await Task.detached(priority: .userInitiated) {
-            Self.dashboardOwnedSessions(page.rows, profile: profile)
-        }.value
+        await Self.convertDashboardPage(batch, profile: profile)
+    }
+
+    /// Nonisolated and async: runs on the generic executor, off main.
+    nonisolated private static func convertDashboardPage(_ batch: [Any], profile: String) async -> [SessionSummary] {
+        dashboardOwnedSessions(batch, profile: profile)
     }
 
     nonisolated static func dashboardOwnedSessions(_ batch: [Any], profile: String) -> [SessionSummary] {

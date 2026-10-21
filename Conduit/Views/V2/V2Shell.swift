@@ -273,7 +273,7 @@ final class V2ShownUpdates: ObservableObject {
         drawScheduled = true
         let delay = coalescingDelay
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self else { return }
             drawScheduled = false
             // Covered meanwhile, it waits for the list to show again;
