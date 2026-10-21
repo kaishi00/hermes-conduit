@@ -453,17 +453,21 @@ struct PulseSettingsPage: View {
     // MARK: Actions
 
     private func load() async {
+        let client = self.client
         do {
             let next = try await client.state()
+            guard isShown(client), !Task.isCancelled else { return }
             apply(next)
             loadError = nil
         } catch {
+            guard isShown(client), !Task.isCancelled else { return }
             if state == nil { loadError = PulseRefusal.message(for: error) }
         }
     }
 
     private func reload() async {
-        guard let next = try? await client.state() else { return }
+        let client = self.client
+        guard let next = try? await client.state(), isShown(client) else { return }
         apply(next)
     }
 
