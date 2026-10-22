@@ -65,6 +65,9 @@ struct PulseMessageMark: View {
 
 struct V2PulsePage: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
+    /// On screen (not under a chat pushed over it): only then is it read and marked seen.
+    @State private var isShown = false
     @ObservedObject var appLanguage = AppLanguageStore.shared
 
     @State private var page: PulseFeedPage?
@@ -126,13 +129,16 @@ struct V2PulsePage: View {
         } message: { _ in
             Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
         }
-        .task(id: appState.activeDashboardID) {
+        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active)) {
+            guard isShown, scenePhase == .active else { return }
             // Cards that come in while the page is open show up too.
             while !Task.isCancelled {
                 await load()
                 try? await Task.sleep(for: .seconds(60))
             }
         }
+        .onAppear { isShown = true }
+        .onDisappear { isShown = false }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reply = ""
             errorMessage = nil
@@ -268,6 +274,8 @@ struct V2PulsePage: View {
                             .font(.footnote.weight(.medium))
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityValue(expandedWhy.contains(card.id)
+                        ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
                 }
                 Spacer(minLength: 0)
                 thumb(card, up: true)
