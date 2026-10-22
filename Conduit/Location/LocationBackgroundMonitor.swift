@@ -153,11 +153,18 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
         if on {
             manager.startMonitoringLocationPushes { [weak self] token, error in
                 let hex = token.map { $0.map { String(format: "%02x", $0) }.joined() }
+                let failed = hex == nil && error != nil
                 if let error {
                     LocationSyncEngine.log.info("Location pushes unavailable: \(LogRedaction.message(error), privacy: .public)")
                 }
                 Task { @MainActor in
                     guard let self, self.pushesOn else { return }
+                    // A failed fetch says nothing about the token: keep the
+                    // relay's and ask again at the next configure (#287).
+                    guard !failed else {
+                        self.pushesReported = false
+                        return
+                    }
                     self.locationPushToken?(hex)
                 }
             }

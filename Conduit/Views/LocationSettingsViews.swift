@@ -326,6 +326,7 @@ struct LocationSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if settings.background, controller.authorization == .authorizedAlways, notifications.isEnabled,
+                      notifications.authorizationStatus != .denied,
                       notifications.relayMeta?.supportsLocationPush == true, !notifications.relayHasLocationToken {
                 // The token goes with the next registration update; until
                 // the relay has it, a locate finds nothing to wake (#287).

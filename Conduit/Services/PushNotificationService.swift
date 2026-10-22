@@ -492,6 +492,9 @@ final class PushNotificationService: ObservableObject {
     /// The last metadata fetch didn't get an answer (`relayMeta` keeps the
     /// one before, if any).
     @Published private(set) var relayMetaFetchFailed = false
+    /// The relay answered 404 to `/v1/meta` (it predates version reporting),
+    /// so returning to the front doesn't ask it again.
+    private var relayLacksMetaRoute = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
     @Published private(set) var relayNotice: String?
@@ -932,6 +935,7 @@ final class PushNotificationService: ObservableObject {
         guard let registration else {
             relayMeta = nil
             relayMetaFetchFailed = false
+            relayLacksMetaRoute = false
             isFetchingMeta = false
             return
         }
@@ -959,6 +963,7 @@ final class PushNotificationService: ObservableObject {
         }
         relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
         relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        relayLacksMetaRoute = status == 404
         // The relay answers again: an update that failed while it couldn't
         // (a cleared location token) goes now. Nothing changed, nothing sent.
         if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
@@ -1327,6 +1332,7 @@ final class PushNotificationService: ObservableObject {
         removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
         relayMetaFetchFailed = false
+        relayLacksMetaRoute = false
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
@@ -1548,7 +1554,7 @@ final class PushNotificationService: ObservableObject {
     /// known, a token change an earlier update failed to send goes again
     /// (nothing is sent when nothing changed).
     private func refreshMetaIfUnknown() {
-        guard registration != nil, !isFetchingMeta else { return }
+        guard registration != nil, !isFetchingMeta, !relayLacksMetaRoute else { return }
         guard relayMeta == nil else {
             queueRegistrationUpdate()
             return
