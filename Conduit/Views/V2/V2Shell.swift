@@ -511,6 +511,12 @@ struct V2Shell: View {
             .onChange(of: appState.activeProfile) { _, _ in
                 fadeContentBackIn()
             }
+            .onChange(of: appState.showsPulseScreen) { _, shows in
+                // No Pulse here any more (another dashboard, an older plugin): no badge or marks.
+                guard !shows else { return }
+                appState.pulseUnseen = 0
+                appState.pulseSources = [:]
+            }
             .onChange(of: appState.pulseOpenRequest) { _, request in
                 // The page reads the card to show and clears the request.
                 guard request != nil else { return }

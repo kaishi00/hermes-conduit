@@ -140,6 +140,7 @@ struct V2PulsePage: View {
         .onAppear { isShown = true }
         .onDisappear { isShown = false }
         .onChange(of: appState.activeDashboardID) { _, _ in
+            reasonCard = nil
             reply = ""
             errorMessage = nil
             // Another dashboard: its own cards and Pulse chat.
@@ -151,7 +152,8 @@ struct V2PulsePage: View {
             expandedWhy = []
         }
         .onChange(of: appState.pulseOpenRequest) { _, request in
-            if let request { focus(request) }
+            // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
+            if let request, isShown { focus(request) }
         }
     }
 
