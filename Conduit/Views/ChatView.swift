@@ -263,6 +263,7 @@ struct ChatView: View {
                 MinimisedLiveVoiceBar()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            planDock
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()
@@ -523,9 +524,22 @@ struct ChatView: View {
         }
     }
 
+    /// The open chat's plan, docked above the composer (ChatCards.swift).
+    /// It is in the composer's stack, so the transcript's bottom inset
+    /// grows by its height rather than the plan covering messages.
+    @ViewBuilder
+    private var planDock: some View {
+        if appState.showsChatCards {
+            ChatPlanDock(cards: appState.chatCards, isCompact: composerTyping)
+        }
+    }
+
     private func lifecycleObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
+            .onChange(of: appState.chatTranscriptRevision) { appState.refreshChatCards() }
+            .onChange(of: appState.activeSessionId) { appState.refreshChatCards() }
             .onAppear {
+                appState.refreshChatCards()
                 installScrollEngineCallbacks(proxy: proxy)
                 scrollEngine.setPaused(scenePhase == .background)
                 scrollEngine.renderedSessionChanged(

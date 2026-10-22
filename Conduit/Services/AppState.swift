@@ -1051,6 +1051,9 @@ final class AppState: ObservableObject {
     /// A message an Artifacts screen asked to show; the chat scrolls to it
     /// once its transcript has the row (AppState+Artifacts).
     @Published var pendingArtifactReveal: ArtifactReveal?
+    /// The open chat's plan card (AppState+ChatCards). Its own observable:
+    /// the card changing redraws the card alone.
+    let chatCards = ChatCardsModel()
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
     @Published var messages: [ChatMessage] = [] {
@@ -15899,6 +15902,10 @@ final class AppState: ObservableObject {
         applyRuntime(
             result.snapshot,
             for: result.sessionId
+        )
+        chatCards.applyServerPlan(
+            result.snapshot.todoState,
+            for: chatCardsChat(including: [result.sessionId, result.storedSessionId])
         )
 
         noteConnectionStep("Chat ready")

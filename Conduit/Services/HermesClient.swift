@@ -509,6 +509,9 @@ struct SessionRuntimeSnapshot {
     /// `session.resume` (`open_requests`), oldest first. Upstream never puts
     /// `open_requests` in `session.info`, so a live snapshot parses none.
     let pendingInputPrompts: [InputPromptActivity]
+    /// The agent's plan (Hermes 0.21+ `todo_state`), worked out by the
+    /// gateway from the whole stored history; nil when the chat has none.
+    let todoState: AgentPlan?
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -573,6 +576,7 @@ struct SessionRuntimeSnapshot {
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
+        todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
         self.inflight = inflight
         self.queued = queued
     }
@@ -2252,9 +2256,10 @@ final class HermesClient: ObservableObject {
                 snapshotObject[key] = value
             }
         }
-        // Pending decisions ride the resume response top level. Hoist both so
-        // the snapshot parser sees the same contract as session.info.
-        for key in ["pending_clarify", "pending_approval"] {
+        // Pending decisions and the plan ride the resume response top level.
+        // Hoist them so the snapshot parser sees the same contract as
+        // session.info.
+        for key in ["pending_clarify", "pending_approval", "todo_state"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
