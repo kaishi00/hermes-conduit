@@ -147,6 +147,9 @@ struct GroupChatView: View {
         // Cross-block selection chrome, and Quote on selected text into the
         // room's draft, as in a chat.
         .overlay { MarkdownSelectionChromeRoot() }
+        // As in a chat, text draws until a touch needs its text view, and
+        // a drawn bubble sizes to its text.
+        .environment(\.selectableTextDrawsUntilTouched, true)
         .environment(
             \.chatQuoteAction,
             ChatQuoteAction(

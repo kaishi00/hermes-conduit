@@ -349,11 +349,34 @@ struct SelectableTextView: UIViewRepresentable {
                 canvas.height(atWidth: width)
             }
         }
+        // A mounted text view asked for its ideal width gives its unbroken
+        // width too. Without one, an ideal-width bubble (a group room's, or
+        // any bubble under VoiceOver) shrank to nothing.
+        if wrapsLines, selfSizingWidthRange == nil,
+           proposal.width == nil || proposal.width == .infinity {
+            return Self.naturalSize(of: uiView.mountedTextView)
+        }
         return measuredSizeCached(
             proposalWidth: proposal.width,
             textView: uiView.mountedTextView,
             coordinator: context.coordinator
         )
+    }
+
+    /// The text's unbroken size in a mounted text view: the widest line plus
+    /// the view's insets, and its height laid out at that width.
+    @MainActor
+    static func naturalSize(of textView: UITextView) -> CGSize {
+        let text = textView.attributedText ?? NSAttributedString()
+        let inset = textView.textContainerInset
+        let padding = textView.textContainer.lineFragmentPadding * 2
+        let lines = text.boundingRect(
+            with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        let width = max(1, ceil(lines.width + padding + inset.left + inset.right))
+        return CGSize(width: width, height: measuredWrappingHeight(of: textView, at: width))
     }
 
     /// Cached measurement entry for the SwiftUI sizing hook: an unchanged
