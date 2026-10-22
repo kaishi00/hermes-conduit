@@ -42,6 +42,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if location.settings.isOn || location.configUnreadable {
                 AppStateRuntimeRegistry.shared.appState.activateLocationSharing()
             }
+            // Without background sharing the location monitor has no token
+            // to report: say so, so a token the relay still holds is cleared
+            // (notifier #287). An unreadable config says nothing yet.
+            if !location.settings.background, !location.configUnreadable {
+                PushNotificationService.shared.updateLocationToken(nil)
+            }
             // Calendar, reminders and phone status: a background refresh, and
             // the calendar changing while Conduit runs.
             AppState.registerPhoneSyncTask()
