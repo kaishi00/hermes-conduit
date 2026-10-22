@@ -626,7 +626,7 @@ enum GroupRoomMentions {
     /// The color an agent mention link carries: the named bot's own, as
     /// "#RRGGBB", so the tag matches who it names.
     static func tint(ofLink url: URL) -> CustomAccentColor? {
-        guard url.scheme == linkScheme,
+        guard kind(ofLink: url) == .agent,
               let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "c" })?.value else { return nil }
         return CustomAccentColor(hex: "#" + value)
@@ -737,7 +737,7 @@ enum GroupRoomRecipients {
     static func addressing(_ text: String, to handles: [String], members: [GroupMember]) -> String {
         let tagged = Set(
             GroupRoomTurns.resolveMentions(in: [text], members: members, defaultAll: false)
-                .compactMap { $0.handle?.lowercased() }
+                .compactMap { $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         )
         // A pick for a bot that has since left the room would leave no
         // routable tag, and an untagged message reaches every member.
