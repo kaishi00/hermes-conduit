@@ -12277,6 +12277,10 @@ final class AppState: ObservableObject {
         recordOfflineChatCopy()
         recordSavedChatList()
         selectDashboardTarget(id)
+        // Pulse's badge, marks and chat are the outgoing dashboard's.
+        pulseUnseen = 0
+        pulseSources = [:]
+        pulseHomeChatID = nil
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         retireConnectionRuntimeForDashboardSwitch()

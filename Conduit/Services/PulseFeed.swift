@@ -39,6 +39,9 @@ struct PulseCard: Equatable, Identifiable {
     /// "up", "down" or "".
     var rating: String
     var reason: String
+    /// Hermes' reply as it wrote it (a report, a brief): bold, links and
+    /// lines kept. Parsed once, not on every redraw.
+    let formattedNews: AttributedString
 
     init?(json: Any) {
         guard let object = json as? [String: Any], let id = PulseJSON.int(object["id"]) else { return nil }
@@ -58,6 +61,7 @@ struct PulseCard: Equatable, Identifiable {
         briefedAt = PulseJSON.date(object["briefed_at"])
         rating = object["rating"] as? String ?? ""
         reason = object["reason"] as? String ?? ""
+        formattedNews = Self.formatted(news, markdown: kind != "followup")
     }
 
     /// Held for the morning brief and not in one yet.
@@ -66,10 +70,8 @@ struct PulseCard: Equatable, Identifiable {
     /// Follow-ups take ratings; a report or a brief is Hermes' own reply.
     var isRatable: Bool { kind == "followup" }
 
-    /// Hermes' reply as it wrote it (a report, a brief): bold, links and
-    /// lines kept.
-    var formattedNews: AttributedString {
-        guard !isRatable else { return AttributedString(news) }
+    private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
+        guard markdown else { return AttributedString(news) }
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: news, options: options)) ?? AttributedString(news)
     }
