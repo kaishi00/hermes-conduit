@@ -17,6 +17,7 @@ import SwiftUI
 struct V2PulseButton: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.v2Shell) private var shell
 
     var body: some View {
         NavigationLink(value: V2Route.pulse) {
@@ -28,10 +29,11 @@ struct V2PulseButton: View {
             ? AppLocalization.string("Pulse, new cards")
             : AppLocalization.string("Pulse"))
         .accessibilityIdentifier("chats.pulse")
-        // While the list shows, every minute: new cards light the dot and
+        // While the Chats tab shows, every minute: new cards light the dot and
         // mark their messages in the chats.
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: scenePhase == .active)) {
-            guard scenePhase == .active else { return }
+        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
+                                  active: scenePhase == .active && shell.isTabActive)) {
+            guard scenePhase == .active, shell.isTabActive else { return }
             while !Task.isCancelled {
                 await appState.refreshPulseFeed()
                 try? await Task.sleep(for: .seconds(60))
@@ -77,6 +79,8 @@ struct V2PulsePage: View {
     /// A note on what the last rating changed.
     @State private var learnedNote: String?
     @State private var focusedCard: Int?
+    /// VoiceOver lands on the card a Pulse mark opened, as sight does.
+    @AccessibilityFocusState private var voiceOverCard: Int?
     @State private var reasonCard: PulseCard?
     @State private var showsLearned = false
     @State private var expandedWhy: Set<Int> = []
@@ -203,6 +207,8 @@ struct V2PulsePage: View {
                     }
                     ForEach(page.cards) { card in
                         cardView(card)
+                            .accessibilityElement(children: .contain)
+                            .accessibilityFocused($voiceOverCard, equals: card.id)
                             .id(card.id)
                     }
                 }
@@ -353,8 +359,9 @@ struct V2PulsePage: View {
             page = loaded
             loadError = nil
             errorMessage = nil
+            learnedNote = nil
             appState.applyPulseFeed(loaded)
-            if let request = appState.pulseOpenRequest { focus(request) }
+            if let request = appState.pulseOpenRequest, isShown { focus(request) }
             if loaded.unseen > 0, (try? await client.markSeen(nil)) != nil, appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
@@ -373,14 +380,17 @@ struct V2PulsePage: View {
         guard let card = request.card else { return }
         focusedCard = card
         expandedWhy.insert(card)
+        voiceOverCard = card
     }
 
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
         ratingCards.insert(card.id)
+        let dashboard = appState.activeDashboardID
         Task {
             defer { ratingCards.remove(card.id) }
             do {
                 let lessons = try await client.rate(card: card.id, up: up, reason: reason)
+                guard appState.activeDashboardID == dashboard else { return }
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].rating = up ? "up" : "down"
                     page?.cards[index].reason = reason?.rawValue ?? ""
@@ -389,6 +399,7 @@ struct V2PulsePage: View {
                 learnedNote = lessons.isEmpty ? nil
                     : AppLocalization.string("Pulse learned: \(lessons.map(\.text).joined(separator: "; "))")
             } catch {
+                guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
             }
         }
@@ -398,9 +409,12 @@ struct V2PulsePage: View {
         guard let homeChatID else { return }
         let text = reply
         sending = true
+        let dashboard = appState.activeDashboardID
         Task {
             defer { sending = false }
-            if await appState.replyInPulseChat(text, chatID: homeChatID) {
+            let sent = await appState.replyInPulseChat(text, chatID: homeChatID)
+            guard appState.activeDashboardID == dashboard else { return }
+            if sent {
                 reply = ""
                 errorMessage = nil
             } else {
