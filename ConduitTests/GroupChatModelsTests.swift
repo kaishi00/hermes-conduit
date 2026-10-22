@@ -684,6 +684,11 @@ final class GroupChatModelsTests: XCTestCase {
             "@atlas @scout what now?"
         )
         XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: [], members: members), "hi")
+        // Files sent alone still go only to the picked bots.
+        XCTAssertEqual(GroupRoomRecipients.addressing("", to: ["scout"], members: members), "@scout")
+        // A bot that left since it was picked is dropped, not tagged.
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: ["gone", "atlas"], members: members), "@atlas hi")
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: ["gone"], members: members), "hi")
         let routed = GroupRoomTurns.resolveMentions(
             in: [GroupRoomRecipients.addressing("hi", to: ["atlas"], members: members)],
             members: members,

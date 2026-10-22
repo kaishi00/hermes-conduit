@@ -153,11 +153,11 @@ struct GroupRoomComposer: View {
         .onAppear {
             draft = appState.activeRoomDraft()
             applyQuoteRequest(appState.roomQuoteRequest)
+            applyRecipientRequest(appState.roomRecipientRequest)
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
-        .onAppear { applyRecipientRequest(appState.roomRecipientRequest) }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
         }
@@ -473,8 +473,9 @@ struct GroupRoomComposer: View {
         let reply = replyReference
         let picked = recipients
         // The picked bots' tags lead the user's own words, so they show in
-        // the sent bubble too.
-        let addressed = hasText ? GroupRoomRecipients.addressing(typed, to: picked, members: members) : typed
+        // the sent bubble too. Files sent alone still carry the tags, or
+        // every bot would answer them.
+        let addressed = GroupRoomRecipients.addressing(typed, to: picked, members: members)
         // The quoted message goes ahead of that; with nothing typed, the
         // chip waits for the next message.
         let quoted = reply.flatMap { reply in
@@ -482,7 +483,7 @@ struct GroupRoomComposer: View {
         }
         let text = quoted ?? addressed
         let sendsReply = quoted != nil
-        let sendsRecipients = hasText && !picked.isEmpty
+        let sendsRecipients = !picked.isEmpty
         let files = attachments
         dictation.stop()
         Haptics.light()

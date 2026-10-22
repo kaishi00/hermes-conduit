@@ -739,10 +739,15 @@ enum GroupRoomRecipients {
             GroupRoomTurns.resolveMentions(in: [text], members: members, defaultAll: false)
                 .compactMap { $0.handle?.lowercased() }
         )
+        // A pick for a bot that has since left the room would leave no
+        // routable tag, and an untagged message reaches every member.
+        let routable = Set(pickable(members).compactMap {
+            $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
         var seen = Set<String>()
         let missing = handles.filter { handle in
             let key = handle.lowercased()
-            return !tagged.contains(key) && seen.insert(key).inserted
+            return routable.contains(key) && !tagged.contains(key) && seen.insert(key).inserted
         }
         guard !missing.isEmpty else { return text }
         let tags = missing.map { "@" + $0 }.joined(separator: " ")
