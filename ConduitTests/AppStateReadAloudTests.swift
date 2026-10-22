@@ -430,3 +430,24 @@ private final class MockVoiceStream: VoiceSpeechStream {
         continuation?.resume(throwing: URLError(.cancelled))
     }
 }
+
+// MARK: - Room bots' own voices
+
+extension AppStateReadAloudTests {
+    func testABotsMessageSpeaksAsItsOwnProfile() {
+        XCTAssertEqual(AppState.readAloudSpeaker(" atlas ", activeProfile: "default"), "atlas")
+        // The active profile, or no profile, keeps the active gateway.
+        XCTAssertNil(AppState.readAloudSpeaker("Default", activeProfile: "default"))
+        XCTAssertNil(AppState.readAloudSpeaker("  ", activeProfile: "default"))
+        XCTAssertNil(AppState.readAloudSpeaker(nil, activeProfile: "default"))
+    }
+
+    func testAKeptBotGatewayLastsOnlyWhileTheSameProfileIsActive() {
+        let speaker = (profile: "atlas", activeProfile: "default")
+        // A capability refresh keeps the bot's gateway mid-message.
+        XCTAssertEqual(AppState.readAloudKeptProfile(speaker: speaker, activeProfile: "default"), "atlas")
+        // After a profile switch it is rebuilt for the new active profile.
+        XCTAssertEqual(AppState.readAloudKeptProfile(speaker: speaker, activeProfile: "work"), "work")
+        XCTAssertEqual(AppState.readAloudKeptProfile(speaker: nil, activeProfile: "default"), "default")
+    }
+}

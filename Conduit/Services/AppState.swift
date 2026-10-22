@@ -10863,6 +10863,7 @@ final class AppState: ObservableObject {
         // from its own bridge (capability refresh, read-aloud assignment).
         voiceConversationController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         // Server replacement is a destructive Voice boundary: a suspended
         // conversation from the outgoing server must never be restored.
         suspendedVoiceConversation = nil
@@ -12263,6 +12264,7 @@ final class AppState: ObservableObject {
         // never open a stream again, so it must not survive the re-login.
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
@@ -12712,6 +12714,7 @@ final class AppState: ObservableObject {
         presentationCacheFlushTask = nil
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         voiceConversationController.setGateway(nil)
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
@@ -13362,6 +13365,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         // Forced sign-out supersedes any suspended Voice conversation (the
         // restore-time connection identity check would fail closed anyway);
         // stop the controller and drop the sheet immediately like
@@ -32062,7 +32066,9 @@ final class AppState: ObservableObject {
     /// audio is spoken on this iPhone instead. Settings' speech test turns it
     /// off, because it checks the Hermes provider itself.
     /// `profile`: another profile on this host to speak as (a group room's
-    /// bot); nil is the active one.
+    /// bot); nil is the active one. Whether read aloud is offered, and
+    /// whether Hermes or this iPhone speaks, still follow the active
+    /// profile's Voice settings.
     func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
@@ -32178,16 +32184,33 @@ final class AppState: ObservableObject {
     /// this iPhone's voice, as any failed Hermes read does.
     func toggleRoomReadAloud(eventID: String, text: String, memberProfile: String? = nil) {
         guard let roomID = activeRoomSurface?.room.roomID else { return }
-        let profile = memberProfile?.trimmingCharacters(in: .whitespacesAndNewlines)
         toggleReadAloud(
             messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID),
             content: text,
-            speakingAs: profile?.isEmpty == false ? profile : nil
+            speakingAs: memberProfile
         )
     }
 
     static func roomReadAloudID(roomID: String, eventID: String) -> String {
         "room:\(roomID):\(eventID)"
+    }
+
+    /// The profile a read aloud speaks as besides the active one: a room
+    /// bot's own, or nil when none was given or it is the active profile.
+    static func readAloudSpeaker(_ requested: String?, activeProfile: String) -> String? {
+        guard let profile = requested?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+              profile.caseInsensitiveCompare(activeProfile) != .orderedSame else { return nil }
+        return profile
+    }
+
+    /// The profile a kept read aloud gateway speaks as: the bot it last
+    /// spoke as while the profile active then still is, else the active one.
+    static func readAloudKeptProfile(
+        speaker: (profile: String, activeProfile: String)?,
+        activeProfile: String
+    ) -> String {
+        guard let speaker, speaker.activeProfile == activeProfile else { return activeProfile }
+        return speaker.profile
     }
 
     private func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
@@ -32205,7 +32228,7 @@ final class AppState: ObservableObject {
         // profile switch or re-login, when a stale gateway may still be set.
         // A bot's message speaks as its profile; anything else as the
         // active one, which also takes back a gateway a bot left behind.
-        let speaker = speakingAs.flatMap { $0 == activeProfile ? nil : $0 }
+        let speaker = Self.readAloudSpeaker(speakingAs, activeProfile: activeProfile)
         if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
             assignReadAloudGateway(speakingAs: speaker)
         }
@@ -33563,8 +33586,7 @@ final class AppState: ObservableObject {
     /// the live dashboard bridge — a gateway built against an invalidated or
     /// rotated bridge (re-login, profile switch) is rebuilt instead.
     private var readAloudGatewayIsCurrent: Bool {
-        let speaker = readAloudSpeaker.flatMap { $0.activeProfile == activeProfile ? $0.profile : nil }
-        return readAloudGateway(isCurrentFor: speaker ?? activeProfile)
+        readAloudGateway(isCurrentFor: Self.readAloudKeptProfile(speaker: readAloudSpeaker, activeProfile: activeProfile))
     }
 
     private func readAloudGateway(isCurrentFor profile: String) -> Bool {
