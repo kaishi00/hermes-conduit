@@ -928,7 +928,7 @@ struct V2ChatsView: View, Equatable {
                         hasOfflineCopy: false,
                         catalogPhase: appState.sessionCatalogPhase,
                         isRefreshing: appState.isRefreshingSessionCatalog,
-                        filteredOutRows: !appState.listedSessions.isEmpty || !appState.listedCronSessions.isEmpty
+                        filteredOutRows: !listedChats.isEmpty || !appState.listedCronSessions.isEmpty
                     ),
                     emptyTitle: selection.emptyStateFilter.emptyTitle,
                     emptyDescription: isSearching

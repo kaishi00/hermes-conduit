@@ -309,11 +309,12 @@ extension AppState {
     }
 
     /// A reply Pulse pushed from its own chat opens the Pulse screen, where
-    /// it is a card. Decisions, calls and chat links still open the chat.
+    /// it is a card. Decisions, calls and chat links still open the chat, and
+    /// so does any reply while a sheet is up, which the screen can't cover.
     func opensPulseScreen(for target: ConduitNotificationTarget) async -> Bool {
         guard target.type == "response.ready", target.decision == nil, target.call == nil, !target.isChatLink,
               target.profile.map({ profilesMatch($0, Self.pulseHomeProfile) }) ?? true,
-              showsPulseScreen else { return false }
+              showsPulseScreen, !isModalSheetPresented else { return false }
         if pulseHomeChatID == nil { await refreshPulseFeed() }
         guard let home = pulseHomeChatID, home == target.sessionId || home == target.durableSessionID else {
             return false

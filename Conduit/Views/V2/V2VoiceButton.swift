@@ -60,9 +60,12 @@ struct V2VoiceButton: View {
         return true
     }
 
-    /// The three most recently active conversations of this profile.
+    /// The three most recently active conversations of this profile, but
+    /// Pulse's own chat, which the Pulse screen stands in for.
     private var recentSessions: [SessionSummary] {
-        Self.mostRecent(appState.activeProfileSessions, limit: 3)
+        let sessions = appState.activeProfileSessions
+        guard appState.pulseHomeChatID != nil else { return Self.mostRecent(sessions, limit: 3) }
+        return Self.mostRecent(sessions.filter { !appState.isPulseHomeChat($0) }, limit: 3)
     }
 
     /// The `limit` most recently active of `sessions`, newest first, ties
