@@ -56,7 +56,7 @@ struct PulseMessageMark: View {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.conduitAccent)
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -218,9 +218,19 @@ struct V2PulsePage: View {
             .onChange(of: focusedCard) { _, card in
                 guard let card else { return }
                 withAnimation { proxy.scrollTo(card, anchor: .top) }
+                // Once the scroll has brought the card into the lazy stack.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    voiceOverCard = card
+                }
             }
             .onAppear {
-                if let card = focusedCard { proxy.scrollTo(card, anchor: .top) }
+                guard let card = focusedCard else { return }
+                proxy.scrollTo(card, anchor: .top)
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    voiceOverCard = card
+                }
             }
         }
     }
@@ -362,12 +372,13 @@ struct V2PulsePage: View {
             learnedNote = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest, isShown { focus(request) }
-            if loaded.unseen > 0, (try? await client.markSeen(nil)) != nil, appState.activeDashboardID == dashboard {
+            if isShown, loaded.unseen > 0, (try? await client.markSeen(nil)) != nil,
+               appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
-            appState.pulseOpenRequest = nil
+            if isShown { appState.pulseOpenRequest = nil }
             if page == nil { loadError = PulseRefusal.message(for: error) }
         }
         if homeChatID == nil, let state = try? await client.state(), appState.activeDashboardID == dashboard {
@@ -380,7 +391,6 @@ struct V2PulsePage: View {
         guard let card = request.card else { return }
         focusedCard = card
         expandedWhy.insert(card)
-        voiceOverCard = card
     }
 
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
@@ -525,13 +535,17 @@ struct PulseLearnedSheet: View {
 
     private func run(_ step: @escaping @MainActor () async throws -> PulseLearned) {
         working = true
+        let dashboard = appState.activeDashboardID
         Task {
             defer { working = false }
             do {
-                learned = try await step()
+                let result = try await step()
+                guard appState.activeDashboardID == dashboard else { return }
+                learned = result
                 errorMessage = nil
                 onChange()
             } catch {
+                guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
             }
         }
