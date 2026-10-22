@@ -602,6 +602,82 @@ enum GroupRoomMentions {
         return nil
     }
 
+    /// The URL scheme a recognized mention is linked with for Markdown
+    /// rendering; the host is its kind. Never opened: the text bridge
+    /// styles these links as mentions instead (see `SelectableTextView`).
+    static let linkScheme = "conduit-mention"
+
+    /// The kind a mention link names, or nil for any other URL.
+    static func kind(ofLink url: URL) -> Kind? {
+        guard url.scheme == linkScheme else { return nil }
+        switch url.host {
+        case "agent": return .agent
+        case "broadcast": return .broadcast
+        case "human": return .human
+        default: return nil
+        }
+    }
+
+    /// `text` with every recognized mention turned into a mention link, so
+    /// the full Markdown renderer can style them. Code (fenced blocks and
+    /// inline spans) is left alone: a tag there is code, not a mention.
+    static func linkingMarkdown(_ text: String, members: [GroupMember]) -> String {
+        guard let regex = mentionScanRegex, text.contains("@") else { return text }
+        var fence: String?
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let open = fence {
+                if trimmed.hasPrefix(open) { fence = nil }
+                return line
+            }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fence = String(trimmed.prefix(3))
+                return line
+            }
+            guard line.contains("@") else { return line }
+            // Even segments between backticks are prose, odd ones code.
+            return line.components(separatedBy: "`").enumerated().map { index, segment in
+                index.isMultiple(of: 2) ? linking(segment, regex: regex, members: members) : segment
+            }.joined(separator: "`")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func linking(_ prose: String, regex: NSRegularExpression, members: [GroupMember]) -> String {
+        var result = prose
+        let range = NSRange(prose.startIndex..., in: prose)
+        for match in regex.matches(in: prose, range: range).reversed() {
+            guard let tokenRange = Range(match.range(at: 1), in: prose),
+                  let fullRange = Range(match.range, in: result) else { continue }
+            let token = String(prose[tokenRange])
+            guard let kind = classify(token: token, members: members) else { continue }
+            let host: String
+            switch kind {
+            case .agent: host = "agent"
+            case .broadcast: host = "broadcast"
+            case .human: host = "human"
+            }
+            result.replaceSubrange(fullRange, with: "[@\(token)](\(linkScheme)://\(host))")
+        }
+        return result
+    }
+
+    /// A word joiner after each `@` that starts a tag: the text reads the
+    /// same, but the gateway no longer routes it. Quoted text goes out like
+    /// this, so quoting a message that names a bot doesn't wake that bot.
+    static func defanged(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: "@(?=[A-Za-z0-9])",
+            with: "@\u{2060}",
+            options: .regularExpression
+        )
+    }
+
+    /// `text` without the word joiners `defanged` added, for display.
+    static func refanged(_ text: String) -> String {
+        text.replacingOccurrences(of: "@\u{2060}", with: "@")
+    }
+
     /// The separator-stripped form of the member's most identity-bearing
     /// name (handle → profile → id), upstream's collapsed fallback.
     private static func candidateCollapsedForm(_ candidates: [String]) -> String {
@@ -614,6 +690,47 @@ enum GroupRoomMentions {
             if !stripped.isEmpty { return stripped }
         }
         return ""
+    }
+}
+
+// MARK: - Room replies
+
+/// A whole room message quoted into the next one, like a chat's reply
+/// envelope (`ReplyQuoteEnvelope`) but naming whose message it was, since a
+/// room has several speakers. The quote and the name are defanged, so only
+/// the user's own words address anyone:
+///
+///     [Replying to Atlas]
+///     > the earlier message
+///
+///     the user's message
+enum GroupRoomReplyQuote {
+    private static let prefix = "[Replying to "
+
+    static func outboundText(quoting text: String, author: String, message: String) -> String {
+        let quote = ChatQuote.blockquote(GroupRoomMentions.defanged(text))
+        guard !quote.isEmpty else { return message }
+        let name = GroupRoomMentions.defanged(
+            author.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "\n", with: " ")
+        )
+        return "\(prefix)\(name)]\n\(quote)\n\n\(message)"
+    }
+
+    /// Splits a sent message back into whose message it quoted, the quote
+    /// and the user's own words, or nil when it is not a room reply.
+    static func parse(_ content: String) -> (author: String, quote: String, message: String)? {
+        guard content.hasPrefix(prefix),
+              let lineEnd = content.firstIndex(of: "\n") else { return nil }
+        let header = content[..<lineEnd]
+        guard header.hasSuffix("]") else { return nil }
+        let author = String(header.dropFirst(prefix.count).dropLast())
+        guard !author.isEmpty,
+              let body = ReplyQuoteEnvelope.parse(ReplyQuoteEnvelope.marker + String(content[lineEnd...])) else { return nil }
+        return (
+            GroupRoomMentions.refanged(author),
+            GroupRoomMentions.refanged(body.quote),
+            body.message
+        )
     }
 }
 

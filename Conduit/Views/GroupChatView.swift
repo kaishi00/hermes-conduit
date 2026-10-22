@@ -142,6 +142,17 @@ struct GroupChatView: View {
             .onAppear { scrollToBottom(proxy) }
         }
         .background(Color.clear)
+        // Cross-block selection chrome, and Quote on selected text into the
+        // room's draft, as in a chat.
+        .overlay { MarkdownSelectionChromeRoot() }
+        .environment(
+            \.chatQuoteAction,
+            ChatQuoteAction(
+                owner: appState,
+                isAvailable: appState.canQuoteIntoRoom,
+                handler: appState.quoteIntoRoomComposer
+            )
+        )
     }
 
     private var emptyState: some View {
@@ -474,7 +485,8 @@ struct GroupEventRow: View {
                 text: event.messageText ?? "",
                 members: members,
                 timestamp: event.createdAt,
-                continuesRun: continuesRun
+                continuesRun: continuesRun,
+                roomEventID: event.id
             )
         } else {
             GroupSystemEventCaption(event: event, members: members)
@@ -544,15 +556,26 @@ struct GroupUserBubble<Footer: View>: View {
 
     var body: some View {
         let parts = GroupMessageParts(text)
+        // A message that quoted a whole room message shows a compact
+        // "Replying to" card instead of the full quote.
+        let reply = GroupRoomReplyQuote.parse(parts.text)
+        let ownText = reply?.message ?? parts.text
         HStack {
             Spacer(minLength: 48)
             VStack(alignment: .trailing, spacing: 2) {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
-                    if !parts.text.isEmpty {
-                        GroupMentionTextRenderer.render(parts.text, members: members, onAccent: true)
-                            .foregroundStyle(.white)
-                            .textSelection(.enabled)
+                    if let reply {
+                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author)
+                    }
+                    if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        HugsIdealWidth {
+                            MarkdownText(
+                                source: GroupRoomMentions.linkingMarkdown(ownText, members: members),
+                                foregroundStyle: .white,
+                                usesAccentSurface: true
+                            )
+                        }
                     }
                 }
                 .padding(.horizontal, 15)
@@ -596,6 +619,9 @@ struct GroupMemberBubble: View {
     let members: [GroupMember]
     let timestamp: Double?
     var continuesRun = false
+    /// A hosted room's event id: its messages can be quoted and read
+    /// aloud. A Desktop group, read-only here, passes none.
+    var roomEventID: String? = nil
 
     static let avatarSize: CGFloat = 30
 
@@ -627,9 +653,9 @@ struct GroupMemberBubble: View {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files)
                     if !parts.text.isEmpty {
-                        GroupMentionTextRenderer.render(parts.text, members: members)
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
+                        HugsIdealWidth {
+                            MarkdownText(source: GroupRoomMentions.linkingMarkdown(parts.text, members: members))
+                        }
                     }
                 }
                 .padding(.horizontal, 14)
@@ -640,8 +666,14 @@ struct GroupMemberBubble: View {
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                 }
                 if !parts.text.isEmpty {
-                    GroupMessageCopyButton(text: parts.text, label: .response)
-                        .padding(.leading, 4)
+                    HStack(spacing: 2) {
+                        GroupMessageCopyButton(text: parts.text, label: .response)
+                        if let roomEventID {
+                            GroupMessageQuoteButton(text: parts.text, authorName: name)
+                            GroupReadAloudButton(eventID: roomEventID, text: parts.text)
+                        }
+                    }
+                    .padding(.leading, 4)
                 }
             }
             Spacer(minLength: 32)
@@ -925,50 +957,92 @@ enum GroupBubbleTime {
     }
 }
 
-// MARK: - Mention text rendering
+// MARK: - Room message actions
 
-enum GroupMentionTextRenderer {
-    /// Inline Markdown (bold, italics, code, links) with recognized mention
-    /// spans tinted. Kind tints differ: agent mentions (member handles),
-    /// broadcast (@all/@everyone), and the human handoff (@user). On the
-    /// user's accent bubble, mentions are white on a light wash instead.
-    static func render(_ text: String, members: [GroupMember], onAccent: Bool = false) -> Text {
-        var attributed = (try? AttributedString(
-            markdown: text,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(text)
-        guard let regex = GroupRoomMentions.mentionScanRegex else { return Text(attributed) }
-        // Markdown markup is gone from the parsed text, so mentions are found
-        // in what shows and mapped back by character offset.
-        let plain = String(attributed.characters)
-        let range = NSRange(plain.startIndex..., in: plain)
-        for match in regex.matches(in: plain, range: range).reversed() {
-            guard match.numberOfRanges > 1,
-                  let tokenRange = Range(match.range(at: 1), in: plain),
-                  let fullRange = Range(match.range, in: plain) else { continue }
-            let token = String(plain[tokenRange])
-            guard let kind = GroupRoomMentions.classify(token: token, members: members) else { continue }
-            let lower = plain.distance(from: plain.startIndex, to: fullRange.lowerBound)
-            let length = plain.distance(from: fullRange.lowerBound, to: fullRange.upperBound)
-            let characters = attributed.characters
-            guard lower + length <= characters.count else { continue }
-            let start = characters.index(characters.startIndex, offsetBy: lower)
-            let end = characters.index(start, offsetBy: length)
-            let attrRange = start..<end
-            // Color only: the enclosing Text keeps its own font and size.
-            if onAccent {
-                attributed[attrRange].foregroundColor = .white
-                attributed[attrRange].backgroundColor = .white.opacity(0.22)
-                continue
-            }
-            attributed[attrRange].foregroundColor = .conduitAccent
-            switch kind {
-            case .agent: attributed[attrRange].backgroundColor = .conduitAccent.opacity(0.10)
-            case .broadcast: attributed[attrRange].backgroundColor = .orange.opacity(0.10)
-            case .human: attributed[attrRange].backgroundColor = .yellow.opacity(0.12)
-            }
+/// Attaches a whole room message to the next one, as the "Replying to…"
+/// chip in the room composer.
+struct GroupMessageQuoteButton: View {
+    @EnvironmentObject private var appState: AppState
+    let text: String
+    let authorName: String
+
+    var body: some View {
+        Button {
+            appState.replyInRoomComposer(text: text, authorName: authorName)
+        } label: {
+            Image(systemName: "quote.bubble")
+                .font(.footnote.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .padding(-6)
         }
-        return Text(attributed)
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(!appState.canQuoteIntoRoom())
+        .accessibilityLabel(AppLocalization.string("Quote this response"))
+    }
+}
+
+/// Reads a room message aloud, like a chat reply's button. The only part
+/// of a member's bubble that observes the read aloud controller.
+struct GroupReadAloudButton: View {
+    @EnvironmentObject private var appState: AppState
+    let eventID: String
+    let text: String
+
+    var body: some View {
+        GroupReadAloudControl(
+            controller: appState.messageReadAloudController,
+            messageID: appState.activeRoomSurface.map {
+                AppState.roomReadAloudID(roomID: $0.room.roomID, eventID: eventID)
+            } ?? "",
+            unavailable: appState.readAloudUnavailableReason != nil,
+            toggle: { appState.toggleRoomReadAloud(eventID: eventID, text: text) }
+        )
+    }
+}
+
+private struct GroupReadAloudControl: View {
+    @ObservedObject var controller: MessageReadAloudController
+    let messageID: String
+    let unavailable: Bool
+    let toggle: () -> Void
+
+    private var isActive: Bool { controller.isActiveMessage(messageID) }
+    private var isPaused: Bool { isActive && controller.isPaused }
+
+    var body: some View {
+        Button {
+            if isPaused {
+                Haptics.light()
+                controller.resume()
+                return
+            }
+            if isActive { Haptics.medium() } else { Haptics.light() }
+            toggle()
+        } label: {
+            Group {
+                if case .preparing(let id) = controller.state, id == messageID {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .padding(-6)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
+        .disabled(unavailable && !isActive)
+        .opacity(unavailable && !isActive ? 0.45 : 1)
+        .accessibilityLabel(
+            isPaused ? AppLocalization.string("Resume reading response")
+                : isActive ? AppLocalization.string("Stop reading response")
+                : AppLocalization.string("Read response aloud")
+        )
     }
 }
 

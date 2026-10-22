@@ -699,11 +699,34 @@ struct SelectableTextView: UIViewRepresentable {
                 bridged.addAttribute(.foregroundColor, value: UIColor(runColor), range: range)
             }
             if let link = run.link {
+                // A group room's @mention is linked only to be found here:
+                // it shows as a tinted tag, not a tappable link.
+                if let kind = GroupRoomMentions.kind(ofLink: link) {
+                    let onAccent = linkColor == .white
+                    bridged.addAttribute(.foregroundColor, value: onAccent ? UIColor.white : UIColor.conduitAccent, range: range)
+                    bridged.addAttribute(.backgroundColor, value: Self.mentionWash(kind, onAccent: onAccent), range: range)
+                    continue
+                }
                 bridged.addAttribute(.link, value: link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
             }
         }
         return bridged
+    }
+
+    private static let accentMentionWash = UIColor { traits in
+        UIColor.conduitAccent.resolvedColor(with: traits).withAlphaComponent(0.10)
+    }
+
+    /// The wash behind a mention: the kinds differ (a member, everyone, the
+    /// user), except on the accent bubble, where every mention is white.
+    private static func mentionWash(_ kind: GroupRoomMentions.Kind, onAccent: Bool) -> UIColor {
+        if onAccent { return UIColor.white.withAlphaComponent(0.22) }
+        switch kind {
+        case .agent: return accentMentionWash
+        case .broadcast: return UIColor.orange.withAlphaComponent(0.10)
+        case .human: return UIColor.yellow.withAlphaComponent(0.12)
+        }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {

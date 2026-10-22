@@ -2160,6 +2160,9 @@ final class AppState: ObservableObject {
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
+    /// The same for the open group room's composer, kept apart so a chat's
+    /// composer never takes a quote meant for a room.
+    @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
     /// Asks the composer to take focus (a screenshot chat opened with the
     /// keyboard). ComposerBar focuses and then consumes it.
     @Published var composerFocusRequest: ComposerFocusRequest?
@@ -10137,6 +10140,35 @@ final class AppState: ObservableObject {
     private func showRoomSendError(_ message: String) {
         errorMessage = message
         roomSendErrorMessage = message
+    }
+
+    /// Whether the open room takes a quote: one that is still running.
+    func canQuoteIntoRoom() -> Bool {
+        activeRoomSurface?.room.isDisbanded == false
+    }
+
+    /// Selected room text goes into the room's draft as a `>` quote, with
+    /// its tags defanged so quoting doesn't address anyone.
+    func quoteIntoRoomComposer(_ selectedText: String) {
+        guard canQuoteIntoRoom() else { return }
+        let quote = ChatQuote.blockquote(GroupRoomMentions.defanged(selectedText))
+        guard !quote.isEmpty else { return }
+        roomQuoteRequest = ComposerQuoteRequest(content: .text(quote))
+    }
+
+    /// A room message's Quote button: the whole message rides along with
+    /// the next one, shown in the room composer as a "Replying to…" chip.
+    func replyInRoomComposer(text: String, authorName: String) {
+        guard canQuoteIntoRoom(), text.contains(where: { !$0.isWhitespace }) else { return }
+        roomQuoteRequest = ComposerQuoteRequest(
+            content: .reply(ComposerReplyReference(authorName: authorName, text: text))
+        )
+    }
+
+    /// The room composer took the quote.
+    func consumeRoomQuoteRequest(_ id: UUID) {
+        guard roomQuoteRequest?.id == id else { return }
+        roomQuoteRequest = nil
     }
 
     /// The open room's unsent composer text.
@@ -32077,11 +32109,26 @@ final class AppState: ObservableObject {
     func toggleReadAloud(message: ChatMessage) {
         // The saved copy is read-only and has no gateway to speak through.
         guard offlineChatPresentation == nil else { return }
-        if messageReadAloudController.isActiveMessage(message.id) {
+        toggleReadAloud(messageID: message.id, content: message.content)
+    }
+
+    /// A group room message read aloud. Its id is the room's and the
+    /// event's, so it can never be taken for a chat message.
+    func toggleRoomReadAloud(eventID: String, text: String) {
+        guard let roomID = activeRoomSurface?.room.roomID else { return }
+        toggleReadAloud(messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID), content: text)
+    }
+
+    static func roomReadAloudID(roomID: String, eventID: String) -> String {
+        "room:\(roomID):\(eventID)"
+    }
+
+    private func toggleReadAloud(messageID: String, content: String) {
+        if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
             return
         }
-        guard !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if let reason = readAloudUnavailableReason {
             errorMessage = reason
             return
@@ -32097,7 +32144,7 @@ final class AppState: ObservableObject {
         // instance, so a speech test or conversation still speaking must stop
         // before the manual stream opens — otherwise both engines play at once.
         voiceConversationController.stop()
-        messageReadAloudController.toggle(messageID: message.id, content: message.content)
+        messageReadAloudController.toggle(messageID: messageID, content: content)
     }
 
     func refreshVoiceCapabilities() async {
