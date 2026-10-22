@@ -354,14 +354,15 @@ struct SelectableTextView: UIViewRepresentable {
         // any bubble under VoiceOver) shrank to nothing.
         if wrapsLines, selfSizingWidthRange == nil,
            proposal.width == nil || proposal.width == .infinity {
+            // Its own slot: the wrapping measurement that follows in the
+            // same layout pass would otherwise evict it every time.
             let coordinator = context.coordinator
-            if let cached = coordinator.cachedMeasurement,
-               cached.generation == coordinator.presentationGeneration,
-               cached.key == .natural {
+            if let cached = coordinator.cachedNaturalSize,
+               cached.generation == coordinator.presentationGeneration {
                 return cached.size
             }
             let size = Self.naturalSize(of: uiView.mountedTextView)
-            coordinator.cachedMeasurement = Coordinator.CachedMeasurement(
+            coordinator.cachedNaturalSize = Coordinator.CachedMeasurement(
                 generation: coordinator.presentationGeneration,
                 key: .natural,
                 size: size
@@ -375,20 +376,15 @@ struct SelectableTextView: UIViewRepresentable {
         )
     }
 
-    /// The text's unbroken size in a mounted text view: the widest line plus
-    /// the view's insets, and its height laid out at that width.
+    /// The text's unbroken size in a mounted text view, insets included,
+    /// from one layout so the width never wraps the height it came with.
     @MainActor
     static func naturalSize(of textView: UITextView) -> CGSize {
-        let text = textView.attributedText ?? NSAttributedString()
-        let inset = textView.textContainerInset
-        let padding = textView.textContainer.lineFragmentPadding * 2
-        let lines = text.boundingRect(
-            with: CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            context: nil
+        TranscriptPerf.note(.textKitMeasurement)
+        let measured = textView.sizeThatFits(
+            CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
         )
-        let width = max(1, ceil(lines.width + padding + inset.left + inset.right))
-        return CGSize(width: width, height: measuredWrappingHeight(of: textView, at: width))
+        return CGSize(width: max(1, ceil(measured.width)), height: ceil(measured.height))
     }
 
     /// Cached measurement entry for the SwiftUI sizing hook: an unchanged
@@ -840,6 +836,9 @@ struct SelectableTextView: UIViewRepresentable {
         /// generation. Invalidated by any generation bump; lives and dies
         /// with the coordinator (i.e. the mounted view).
         var cachedMeasurement: CachedMeasurement?
+        /// A mounted view's unbroken size, kept apart from the wrapping
+        /// measurement asked for in the same layout pass.
+        var cachedNaturalSize: CachedMeasurement?
         /// The environment's link opener, so in-app links (a voice call's
         /// job link) open inside Conduit; others fall through to the system.
         var openURL: OpenURLAction?
