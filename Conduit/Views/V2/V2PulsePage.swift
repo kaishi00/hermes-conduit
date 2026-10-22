@@ -108,6 +108,7 @@ struct V2PulsePage: View {
         }
         .sheet(isPresented: $showsLearned) {
             PulseLearnedSheet {
+                learnedNote = nil  // it may name a lesson just undone
                 Task { await load() }
             }
             .environmentObject(appState)
@@ -125,8 +126,16 @@ struct V2PulsePage: View {
         } message: { _ in
             Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
         }
-        .task(id: appState.activeDashboardID) { await load() }
+        .task(id: appState.activeDashboardID) {
+            // Cards that come in while the page is open show up too.
+            while !Task.isCancelled {
+                await load()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
         .onChange(of: appState.activeDashboardID) { _, _ in
+            reply = ""
+            errorMessage = nil
             // Another dashboard: its own cards and Pulse chat.
             page = nil
             homeChatID = nil
@@ -292,7 +301,7 @@ struct V2PulsePage: View {
                                  : (chosen ? "hand.thumbsdown.fill" : "hand.thumbsdown"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(chosen ? Color.conduitAccent : Color.secondary)
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -333,6 +342,7 @@ struct V2PulsePage: View {
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
             loadError = nil
+            errorMessage = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest { focus(request) }
             if loaded.unseen > 0, (try? await client.markSeen(nil)) != nil, appState.activeDashboardID == dashboard {

@@ -136,7 +136,7 @@ struct PulseLesson: Equatable, Identifiable {
         switch what {
         case "level":
             let level = PulseLevel(rawValue: value)?.title ?? value
-            return "\(PulseCardKind.title(kind)): \(level)"
+            return AppLocalization.string("\(PulseCardKind.title(kind)): \(level)")
         case "rule":
             return AppLocalization.string("No updates about “\(value)”")
         case "sooner":

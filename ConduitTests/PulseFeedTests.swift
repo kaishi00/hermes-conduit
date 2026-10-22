@@ -92,7 +92,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(learned.lessons.map(\.id), [1, 2, 3, 4, 5])
         let lessons = learned.lessons
 
-        XCTAssertEqual(lessons[0].text, "\(PulseCardKind.title("followup")): \(PulseLevel.screen.title)")
+        XCTAssertEqual(lessons[0].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.screen.title)"))
         XCTAssertEqual(lessons[0].causeText, AppLocalization.string("After thumbs down"))
         XCTAssertEqual(lessons[0].createdAt, Date(timeIntervalSince1970: 1761033600))
 
@@ -102,7 +102,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(lessons[2].causeText, AppLocalization.string("You said too late"))
         XCTAssertEqual(lessons[3].text, AppLocalization.string("Skip news you already saw in the chat"))
         XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew"))
-        XCTAssertEqual(lessons[4].text, "\(PulseCardKind.title("followup")): \(PulseLevel.off.title)")
+        XCTAssertEqual(lessons[4].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.off.title)"))
         XCTAssertNil(lessons[4].causeText)
     }
 
