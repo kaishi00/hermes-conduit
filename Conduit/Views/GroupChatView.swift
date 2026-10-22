@@ -685,7 +685,7 @@ struct GroupMemberBubble: View {
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
                         if let roomEventID {
                             GroupMessageQuoteButton(text: parts.text, authorName: name, authorHandle: handle)
-                            GroupReadAloudButton(eventID: roomEventID, text: parts.text)
+                            GroupReadAloudButton(eventID: roomEventID, text: parts.text, memberProfile: member?.profile)
                         }
                     }
                     .padding(.leading, 4)
@@ -1048,6 +1048,8 @@ struct GroupReadAloudButton: View {
     @EnvironmentObject private var appState: AppState
     let eventID: String
     let text: String
+    /// The bot's profile, whose own voice reads the message.
+    var memberProfile: String? = nil
 
     var body: some View {
         GroupReadAloudControl(
@@ -1056,7 +1058,7 @@ struct GroupReadAloudButton: View {
                 AppState.roomReadAloudID(roomID: $0.room.roomID, eventID: eventID)
             } ?? "",
             unavailable: appState.readAloudUnavailableReason != nil,
-            toggle: { appState.toggleRoomReadAloud(eventID: eventID, text: text) }
+            toggle: { appState.toggleRoomReadAloud(eventID: eventID, text: text, memberProfile: memberProfile) }
         )
     }
 }

@@ -4165,6 +4165,10 @@ final class AppState: ObservableObject {
     /// (disconnect, re-login, bridge rotation) is dead and must be rebuilt
     /// rather than kept.
     private var readAloudGatewayBridge: DashboardTicketBridge?
+    /// The room bot whose profile read aloud last spoke as, and the profile
+    /// that was active then. Kept while that profile stays active, so a
+    /// capability refresh doesn't cut off a bot mid-message.
+    private var readAloudSpeaker: (profile: String, activeProfile: String)?
 
     /// Test-only seam: when set, the voice capability refresh requests
     /// through it instead of the dashboard bridge, keeping
@@ -32057,12 +32061,14 @@ final class AppState: ObservableObject {
     /// `fallsBackToOnDeviceSpeech`: a Hermes reply that fails before any
     /// audio is spoken on this iPhone instead. Settings' speech test turns it
     /// off, because it checks the Hermes provider itself.
-    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true) -> HermesVoiceGateway? {
+    /// `profile`: another profile on this host to speak as (a group room's
+    /// bot); nil is the active one.
+    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
             bridge: dashboardTicketBridge,
             baseURL: connection.baseUrl,
-            profile: activeProfile,
+            profile: profile ?? activeProfile,
             speechOutput: { [weak self] in self?.voiceSpeechOutput ?? .onDevice },
             makeOnDeviceSpeech: { onStart, onPCM16 in OnDeviceSpeechStream(onStart: onStart, onPCM16: onPCM16) },
             fallsBackToOnDeviceSpeech: fallsBackToOnDeviceSpeech
@@ -32166,17 +32172,25 @@ final class AppState: ObservableObject {
     }
 
     /// A group room message read aloud. Its id is the room's and the
-    /// event's, so it can never be taken for a chat message.
-    func toggleRoomReadAloud(eventID: String, text: String) {
+    /// event's, so it can never be taken for a chat message. With Hermes
+    /// speaking, a bot's message is read with its own profile's voice
+    /// (`memberProfile`); a profile Hermes can't speak for falls back to
+    /// this iPhone's voice, as any failed Hermes read does.
+    func toggleRoomReadAloud(eventID: String, text: String, memberProfile: String? = nil) {
         guard let roomID = activeRoomSurface?.room.roomID else { return }
-        toggleReadAloud(messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID), content: text)
+        let profile = memberProfile?.trimmingCharacters(in: .whitespacesAndNewlines)
+        toggleReadAloud(
+            messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID),
+            content: text,
+            speakingAs: profile?.isEmpty == false ? profile : nil
+        )
     }
 
     static func roomReadAloudID(roomID: String, eventID: String) -> String {
         "room:\(roomID):\(eventID)"
     }
 
-    private func toggleReadAloud(messageID: String, content: String) {
+    private func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
         if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
             return
@@ -32189,8 +32203,11 @@ final class AppState: ObservableObject {
         // The capability refresh keeps the gateway current; this covers the
         // gap before the next refresh has run — including right after a
         // profile switch or re-login, when a stale gateway may still be set.
-        if !readAloudGatewayIsCurrent {
-            assignReadAloudGateway()
+        // A bot's message speaks as its profile; anything else as the
+        // active one, which also takes back a gateway a bot left behind.
+        let speaker = speakingAs.flatMap { $0 == activeProfile ? nil : $0 }
+        if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
+            assignReadAloudGateway(speakingAs: speaker)
         }
         // Mutual exclusion (reverse of openVoiceConversation / runVoiceTTSTest):
         // the voice conversation and read aloud each own their own playback
@@ -33546,13 +33563,21 @@ final class AppState: ObservableObject {
     /// the live dashboard bridge — a gateway built against an invalidated or
     /// rotated bridge (re-login, profile switch) is rebuilt instead.
     private var readAloudGatewayIsCurrent: Bool {
-        guard let gateway = messageReadAloudController.gateway,
-              let bridge = dashboardTicketBridge else { return false }
-        return gateway.profile == activeProfile && readAloudGatewayBridge === bridge
+        let speaker = readAloudSpeaker.flatMap { $0.activeProfile == activeProfile ? $0.profile : nil }
+        return readAloudGateway(isCurrentFor: speaker ?? activeProfile)
     }
 
-    private func assignReadAloudGateway() {
-        messageReadAloudController.setGateway(makeVoiceGateway())
+    private func readAloudGateway(isCurrentFor profile: String) -> Bool {
+        guard let gateway = messageReadAloudController.gateway,
+              let bridge = dashboardTicketBridge else { return false }
+        return gateway.profile == profile && readAloudGatewayBridge === bridge
+    }
+
+    /// `speakingAs`: a room bot's profile, so Hermes reads its message with
+    /// that profile's own voice. Nil is the active profile.
+    private func assignReadAloudGateway(speakingAs profile: String? = nil) {
+        readAloudSpeaker = profile.map { ($0, activeProfile) }
+        messageReadAloudController.setGateway(makeVoiceGateway(profile: profile))
         readAloudGatewayBridge = dashboardTicketBridge
     }
 
@@ -33560,6 +33585,7 @@ final class AppState: ObservableObject {
         if readAloudUnavailableReason != nil {
             messageReadAloudController.setGateway(nil)
             readAloudGatewayBridge = nil
+            readAloudSpeaker = nil
             return
         }
         guard rebuild || !readAloudGatewayIsCurrent else { return }
