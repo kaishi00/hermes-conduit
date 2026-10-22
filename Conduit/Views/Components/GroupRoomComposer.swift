@@ -161,6 +161,11 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
         }
+        // A picked bot that leaves drops off the To row, so the row shows
+        // who the next message actually goes to.
+        .onChange(of: pickableHandles) { _, handles in
+            recipients.removeAll { !handles.contains($0.lowercased()) }
+        }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
             composerError = nil
@@ -554,6 +559,10 @@ struct GroupRoomComposer: View {
 
     private var pickableMembers: [GroupMember] { GroupRoomRecipients.pickable(members) }
 
+    private var pickableHandles: Set<String> {
+        Set(pickableMembers.compactMap { $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+    }
+
     /// "To" and a chip per bot: tap to address the next message to it.
     private var recipientRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -617,7 +626,7 @@ struct GroupRoomComposer: View {
         appState.consumeRoomRecipientRequest(request.id)
         guard let member = pickableMembers.first(where: {
             $0.handle?.caseInsensitiveCompare(request.handle) == .orderedSame
-        }), let handle = member.handle else { return }
+        }), let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         if !recipients.contains(where: { $0.caseInsensitiveCompare(handle) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
                 recipients.append(handle)
