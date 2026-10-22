@@ -4169,6 +4169,10 @@ final class AppState: ObservableObject {
     /// that was active then. Kept while that profile stays active, so a
     /// capability refresh doesn't cut off a bot mid-message.
     private var readAloudSpeaker: (profile: String, activeProfile: String)?
+    /// Test-only seam: builds the read aloud gateway for a profile instead
+    /// of `makeVoiceGateway`, so which profile a read speaks as can be
+    /// checked without opening a socket.
+    var readAloudGatewayFactoryForTesting: ((String) -> VoiceGatewayService?)?
 
     /// Test-only seam: when set, the voice capability refresh requests
     /// through it instead of the dashboard bridge, keeping
@@ -32213,7 +32217,7 @@ final class AppState: ObservableObject {
         return speaker.profile
     }
 
-    private func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
+    func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
         if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
             return
@@ -33599,11 +33603,15 @@ final class AppState: ObservableObject {
     /// that profile's own voice. Nil is the active profile.
     private func assignReadAloudGateway(speakingAs profile: String? = nil) {
         readAloudSpeaker = profile.map { ($0, activeProfile) }
-        messageReadAloudController.setGateway(makeVoiceGateway(profile: profile))
+        if let factory = readAloudGatewayFactoryForTesting {
+            messageReadAloudController.setGateway(factory(profile ?? activeProfile))
+        } else {
+            messageReadAloudController.setGateway(makeVoiceGateway(profile: profile))
+        }
         readAloudGatewayBridge = dashboardTicketBridge
     }
 
-    private func refreshReadAloudGateway(rebuild: Bool = false) {
+    func refreshReadAloudGateway(rebuild: Bool = false) {
         if readAloudUnavailableReason != nil {
             messageReadAloudController.setGateway(nil)
             readAloudGatewayBridge = nil

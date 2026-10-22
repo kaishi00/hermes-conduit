@@ -373,12 +373,15 @@ private final class MockVoiceTranscriber: DeviceSpeechTranscriptionService {
 
 @MainActor
 private final class MockVoiceGateway: VoiceGatewayService {
-    let profile = "default"
+    let profile: String
     private(set) var openCount = 0
     private(set) var streams: [MockVoiceStream] = []
     private let pausesAfterEmission: Bool
 
-    init(pausesAfterEmission: Bool) { self.pausesAfterEmission = pausesAfterEmission }
+    init(pausesAfterEmission: Bool, profile: String = "default") {
+        self.pausesAfterEmission = pausesAfterEmission
+        self.profile = profile
+    }
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String { "transcript" }
 
@@ -449,5 +452,42 @@ extension AppStateReadAloudTests {
         // After a profile switch it is rebuilt for the new active profile.
         XCTAssertEqual(AppState.readAloudKeptProfile(speaker: speaker, activeProfile: "work"), "work")
         XCTAssertEqual(AppState.readAloudKeptProfile(speaker: nil, activeProfile: "default"), "default")
+    }
+
+    func testRoomBotReadSpeaksAsItsProfileUntilAChatReadTakesItBack() async {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        var built: [String] = []
+        harness.appState.readAloudGatewayFactoryForTesting = { profile in
+            built.append(profile)
+            return MockVoiceGateway(pausesAfterEmission: true, profile: profile)
+        }
+
+        harness.appState.toggleReadAloud(messageID: "room:r:e1", content: "Hello from Atlas", speakingAs: "atlas")
+        XCTAssertEqual(harness.readAloudController.gateway?.profile, "atlas")
+        let botGateway = harness.readAloudController.gateway
+        await awaitUntil("the bot's read to play") {
+            harness.readAloudController.state == .playing(messageID: "room:r:e1")
+        }
+
+        // A capability refresh keeps the bot's gateway, so it isn't cut off.
+        harness.appState.refreshReadAloudGateway()
+        XCTAssertTrue(harness.readAloudController.gateway === botGateway)
+        XCTAssertEqual(harness.readAloudController.state, .playing(messageID: "room:r:e1"))
+
+        // The same bot again reuses it; the active profile's own id doesn't
+        // build a second gateway for itself.
+        harness.appState.toggleReadAloud(messageID: "room:r:e2", content: "More", speakingAs: "atlas")
+        XCTAssertTrue(harness.readAloudController.gateway === botGateway)
+        harness.appState.toggleReadAloud(messageID: "room:r:e3", content: "Me", speakingAs: "Default")
+        XCTAssertEqual(harness.readAloudController.gateway?.profile, "default")
+
+        // A chat read speaks as the active profile.
+        harness.appState.toggleReadAloud(messageID: "room:r:e1", content: "Hello from Atlas", speakingAs: "atlas")
+        let message = ChatMessage(id: "msg-a", role: .assistant, content: "Response A", timestamp: "1")
+        harness.appState.toggleReadAloud(message: message)
+        XCTAssertEqual(harness.readAloudController.gateway?.profile, "default")
+        XCTAssertEqual(built, ["atlas", "default", "atlas", "default"])
+
+        harness.readAloudController.stop()
     }
 }
