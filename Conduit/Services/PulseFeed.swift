@@ -272,7 +272,7 @@ extension AppState {
     }
 
     func applyPulseFeed(_ page: PulseFeedPage) {
-        pulseUnseen = page.unseen
+        if pulseUnseen != page.unseen { pulseUnseen = page.unseen }
         let sources = page.sources
         if sources != pulseSources { pulseSources = sources }
     }
@@ -295,18 +295,21 @@ extension AppState {
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
-    /// Opens Pulse's own chat and sends `text` there once it's open.
+    /// Opens Pulse's own chat and sends `text` there once it's open (or
+    /// leaves it in that chat's composer); false when the chat didn't open.
     func replyInPulseChat(_ text: String, chatID: String) async -> Bool {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
         openAppLink(.session(id: chatID, profile: Self.pulseHomeProfile))
         for _ in 0..<40 {
             if activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID {
-                return await sendMessage(message)
+                // The chat is open: a send it refused waits in its composer.
+                let sent = await sendMessage(message)
+                if !sent { prefillComposer(message) }
+                return true
             }
             try? await Task.sleep(for: .milliseconds(250))
         }
-        prefillComposer(message)
         return false
     }
 }

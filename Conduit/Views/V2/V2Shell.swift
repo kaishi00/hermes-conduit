@@ -513,8 +513,16 @@ struct V2Shell: View {
             }
             .onChange(of: appState.pulseOpenRequest) { _, request in
                 // The page reads the card to show and clears the request.
-                guard request != nil, !appState.isModalSheetPresented else { return }
-                if chatsPath.last != .pulse { chatsPath.append(.pulse) }
+                guard request != nil else { return }
+                guard !appState.isModalSheetPresented else {
+                    appState.pulseOpenRequest = nil
+                    return
+                }
+                if chatsPath.last != .pulse {
+                    // One Pulse page: over a chat opened from it, it comes back to the top.
+                    chatsPath.removeAll { $0 == .pulse }
+                    chatsPath.append(.pulse)
+                }
                 visitedTabs.insert(.chats)
                 selectTab(.chats)
             }

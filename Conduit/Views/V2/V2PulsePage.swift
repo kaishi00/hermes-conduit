@@ -126,6 +126,15 @@ struct V2PulsePage: View {
             Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
         }
         .task(id: appState.activeDashboardID) { await load() }
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            // Another dashboard: its own cards and Pulse chat.
+            page = nil
+            homeChatID = nil
+            loadError = nil
+            learnedNote = nil
+            focusedCard = nil
+            expandedWhy = []
+        }
         .onChange(of: appState.pulseOpenRequest) { _, request in
             if let request { focus(request) }
         }
@@ -326,12 +335,12 @@ struct V2PulsePage: View {
             loadError = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest { focus(request) }
-            if loaded.unseen > 0 {
-                try? await client.markSeen(nil)
-                if appState.activeDashboardID == dashboard { appState.pulseUnseen = 0 }
+            if loaded.unseen > 0, (try? await client.markSeen(nil)) != nil, appState.activeDashboardID == dashboard {
+                appState.pulseUnseen = 0
             }
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
+            appState.pulseOpenRequest = nil
             if page == nil { loadError = PulseRefusal.message(for: error) }
         }
         if homeChatID == nil, let state = try? await client.state(), appState.activeDashboardID == dashboard {
@@ -371,7 +380,12 @@ struct V2PulsePage: View {
         sending = true
         Task {
             defer { sending = false }
-            if await appState.replyInPulseChat(text, chatID: homeChatID) { reply = "" }
+            if await appState.replyInPulseChat(text, chatID: homeChatID) {
+                reply = ""
+                errorMessage = nil
+            } else {
+                errorMessage = AppLocalization.string("Couldn't send that to Pulse. Try again.")
+            }
         }
     }
 }
