@@ -379,7 +379,6 @@ struct V2PulsePage: View {
             }
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
-            if isShown { appState.pulseOpenRequest = nil }
             if page == nil { loadError = PulseRefusal.message(for: error) }
         }
         if homeChatID == nil, let state = try? await client.state(), appState.activeDashboardID == dashboard {
