@@ -711,7 +711,7 @@ enum GroupRoomReplyQuote {
         let quote = ChatQuote.blockquote(GroupRoomMentions.defanged(text))
         guard !quote.isEmpty else { return message }
         let name = GroupRoomMentions.defanged(
-            author.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "\n", with: " ")
+            author.replacingOccurrences(of: "]", with: ")").replacingOccurrences(of: "\n", with: " ")
         )
         return "\(prefix)\(name)]\n\(quote)\n\n\(message)"
     }
