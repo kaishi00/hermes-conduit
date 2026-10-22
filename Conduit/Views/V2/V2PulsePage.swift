@@ -56,7 +56,8 @@ struct PulseMessageMark: View {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.conduitAccent)
-                .frame(width: 44, height: 44)
+                // The message action row's 34 pt, like the buttons beside it.
+                .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
