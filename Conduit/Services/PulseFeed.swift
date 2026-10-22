@@ -13,10 +13,11 @@
 
 import Foundation
 
-/// One thing Pulse brought the user (a follow-up on what Hermes promised).
+/// One thing Pulse brought the user: a follow-up on what Hermes promised,
+/// a report on what it saw in the chats, or the morning brief.
 struct PulseCard: Equatable, Identifiable {
     let id: Int
-    /// "followup" for now.
+    /// "followup", "report" or "brief".
     let kind: String
     /// The loudness it went out at: "push", "screen" or "brief".
     let level: String
@@ -61,6 +62,17 @@ struct PulseCard: Equatable, Identifiable {
 
     /// Held for the morning brief and not in one yet.
     var isHeld: Bool { level == PulseLevel.brief.rawValue && briefedAt == nil }
+
+    /// Follow-ups take ratings; a report or a brief is Hermes' own reply.
+    var isRatable: Bool { kind == "followup" }
+
+    /// Hermes' reply as it wrote it (a report, a brief): bold, links and
+    /// lines kept.
+    var formattedNews: AttributedString {
+        guard !isRatable else { return AttributedString(news) }
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: news, options: options)) ?? AttributedString(news)
+    }
 }
 
 /// A kind's loudness on the ladder, loudest first.
@@ -103,6 +115,8 @@ enum PulseCardKind {
     static func title(_ kind: String) -> String {
         switch kind {
         case "followup": return AppLocalization.string("Follow-ups")
+        case "report": return AppLocalization.string("Reports")
+        case "brief": return AppLocalization.string("Morning brief")
         default: return kind
         }
     }
@@ -168,6 +182,9 @@ struct PulseFeedPage: Equatable {
     var cards: [PulseCard] = []
     var unseen = 0
     var levels: [String: PulseLevel] = [:]
+    /// Pulse's own chat, behind the screen (0.56.0); nil from an older
+    /// plugin, or before the chat is made.
+    var homeChatID: String?
 
     init() {}
 
@@ -176,6 +193,8 @@ struct PulseFeedPage: Equatable {
         self.cards = cards.compactMap(PulseCard.init(json:))
         unseen = PulseJSON.int(json["unseen"]) ?? 0
         levels = PulseFeedPage.levels(json["levels"])
+        let home = (json["home_chat_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        homeChatID = home?.isEmpty == false ? home : nil
     }
 
     static func levels(_ value: Any?) -> [String: PulseLevel] {
@@ -264,6 +283,7 @@ extension AppState {
         guard showsPulseScreen else {
             pulseUnseen = 0
             pulseSources = [:]
+            pulseHomeChatID = nil
             return
         }
         let dashboard = activeDashboardID
@@ -275,6 +295,29 @@ extension AppState {
         if pulseUnseen != page.unseen { pulseUnseen = page.unseen }
         let sources = page.sources
         if sources != pulseSources { pulseSources = sources }
+        if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
+    }
+
+    /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
+    func isPulseHomeChat(_ session: SessionSummary) -> Bool {
+        guard let home = pulseHomeChatID, showsPulseScreen, profilesMatch(activeProfile, Self.pulseHomeProfile) else {
+            return false
+        }
+        return session.nestingIDs.contains(home)
+    }
+
+    /// A reply Pulse pushed from its own chat opens the Pulse screen, where
+    /// it is a card. Decisions, calls and chat links still open the chat.
+    func opensPulseScreen(for target: ConduitNotificationTarget) async -> Bool {
+        guard target.type == "response.ready", target.decision == nil, target.call == nil, !target.isChatLink,
+              target.profile.map({ profilesMatch($0, Self.pulseHomeProfile) }) ?? true,
+              showsPulseScreen else { return false }
+        if pulseHomeChatID == nil { await refreshPulseFeed() }
+        guard let home = pulseHomeChatID, home == target.sessionId || home == target.durableSessionID else {
+            return false
+        }
+        openPulse(card: nil)
+        return true
     }
 
     /// The card a message of the open chat has, by Hermes' message id.

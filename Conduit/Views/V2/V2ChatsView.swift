@@ -689,13 +689,20 @@ struct V2ChatsView: View, Equatable {
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         renderMemo.sourceRows(source) {
             SidebarSourceRows.rows(
-                sessions: appState.listedSessions,
+                sessions: listedChats,
                 cronSessions: appState.listedCronSessions,
                 source: source,
                 category: category,
                 isPinned: appState.isSessionPinned
             )
         }
+    }
+
+    /// The profile's chats but Pulse's own, which the Pulse screen stands in for.
+    private var listedChats: [SessionSummary] {
+        let sessions = appState.listedSessions
+        guard appState.pulseHomeChatID != nil else { return sessions }
+        return sessions.filter { !appState.isPulseHomeChat($0) }
     }
 
     /// The row's filter source, worked out once per render: it looks up
@@ -722,7 +729,7 @@ struct V2ChatsView: View, Equatable {
         }
         return selection.rows(
             everything: sourceRows(nil),
-            sessions: appState.listedSessions,
+            sessions: listedChats,
             cronSessions: appState.listedCronSessions,
             category: category,
             hasStatus: hasStatus

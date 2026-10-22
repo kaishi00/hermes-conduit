@@ -397,6 +397,12 @@ struct V2Shell: View {
         }
     }
 
+    /// Whether the visible tab shows the Pulse screen, which takes the
+    /// whole window as a chat does: no tabs or voice button, split or not.
+    private var pulseVisible: Bool {
+        selectedTab == .chats && chatsPath.last == .pulse
+    }
+
     /// Whether either tab holds the conversation, shown or not.
     private var conversationPushed: Bool {
         chatsPath.contains(.conversation) || botsPath.contains(.conversation)
@@ -516,9 +522,11 @@ struct V2Shell: View {
                 guard !shows else { return }
                 appState.pulseUnseen = 0
                 appState.pulseSources = [:]
+                appState.pulseHomeChatID = nil
             }
-            .onChange(of: appState.pulseOpenRequest) { _, request in
-                // The page reads the card to show and clears the request.
+            .onChange(of: appState.pulseOpenRequest, initial: true) { _, request in
+                // The page reads the card to show and clears the request. A
+                // push tapped at launch can ask before the shell is up.
                 guard request != nil else { return }
                 guard !appState.isModalSheetPresented else {
                     appState.pulseOpenRequest = nil
@@ -597,7 +605,7 @@ struct V2Shell: View {
         // (`tabBarClearance`).
         .overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
-                if split || !conversationVisible {
+                if !pulseVisible, split || !conversationVisible {
                     HStack(spacing: 10) {
                         V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton
@@ -618,7 +626,7 @@ struct V2Shell: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible || pulseVisible)
         }
         .overlay(alignment: .top) {
             // Animated on its own, so the notice slides in without
@@ -741,7 +749,8 @@ struct V2Shell: View {
         case .artifacts:
             tabBarClearance(V2ArtifactsPage())
         case .pulse:
-            tabBarClearance(V2PulsePage())
+            // Full screen, as a chat is: its reply box sits where the tabs were.
+            V2PulsePage()
         }
     }
 

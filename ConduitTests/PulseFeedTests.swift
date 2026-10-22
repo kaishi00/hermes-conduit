@@ -57,6 +57,24 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseDownReason(rawValue: rated.reason), .tooLate)
     }
 
+    func testFeedNamesPulsesChatAndItsTurnCards() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": " pulse_chat ", "cards": [
+          {"id": 2, "kind": "brief", "level": "push", "news": "**Morning.**\\n- Flight on time", "chat_id": "pulse_chat"},
+          {"id": 1, "kind": "report", "level": "screen", "news": "Nothing new"}]}
+        """)))
+
+        XCTAssertEqual(page.homeChatID, "pulse_chat")
+        XCTAssertFalse(page.cards[0].isRatable)
+        XCTAssertFalse(page.cards[0].isHeld)
+        XCTAssertEqual(String(page.cards[0].formattedNews.characters), "Morning.\n- Flight on time")
+        XCTAssertEqual(PulseCardKind.title("report"), AppLocalization.string("Reports"))
+        XCTAssertEqual(PulseCardKind.title("brief"), AppLocalization.string("Morning brief"))
+
+        let older = try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "", "cards": []}"#)))
+        XCTAssertNil(older.homeChatID)
+    }
+
     func testFeedWithoutCardsIsInvalid() throws {
         XCTAssertNil(PulseFeedPage(json: try json(#"{"ok": true, "unseen": 1}"#)))
     }
@@ -125,5 +143,9 @@ final class PulseFeedTests: XCTestCase {
 
         XCTAssertEqual(state.pulseUnseen, 3)
         XCTAssertEqual(state.pulseSources, ["a": [5: 9]])
+        XCTAssertNil(state.pulseHomeChatID)
+
+        state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "p", "cards": []}"#))))
+        XCTAssertEqual(state.pulseHomeChatID, "p")
     }
 }

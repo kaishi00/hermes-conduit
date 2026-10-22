@@ -99,6 +99,16 @@ struct V2PulsePage: View {
         .navigationTitle(Text("Pulse"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            if let homeChatID {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        appState.openAppLink(.session(id: homeChatID, profile: AppState.pulseHomeProfile))
+                    } label: {
+                        Label(AppLocalization.string("Open the Pulse chat"), systemImage: "bubble.left.and.text.bubble.right")
+                    }
+                    .accessibilityIdentifier("pulse.chat")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showsLearned = true
@@ -168,7 +178,7 @@ struct V2PulsePage: View {
                 ContentUnavailableView {
                     Label(AppLocalization.string("Nothing yet"), systemImage: "waveform.path.ecg")
                 } description: {
-                    Text("When Hermes promises to come back to something, Pulse checks on it and brings the news here.")
+                    Text("Your reports, your morning brief and the news on what Hermes promised to check land here.")
                 }
             } else {
                 cardList(page)
@@ -254,7 +264,7 @@ struct V2PulsePage: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text(verbatim: card.news)
+            Text(card.formattedNews)
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
             if !card.quote.isEmpty {
@@ -297,8 +307,10 @@ struct V2PulsePage: View {
                         ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
                 }
                 Spacer(minLength: 0)
-                thumb(card, up: true)
-                thumb(card, up: false)
+                if card.isRatable {
+                    thumb(card, up: true)
+                    thumb(card, up: false)
+                }
             }
             if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason) {
                 Text(verbatim: reason.title)
@@ -372,6 +384,7 @@ struct V2PulsePage: View {
             errorMessage = nil
             learnedNote = nil
             appState.applyPulseFeed(loaded)
+            if let home = loaded.homeChatID { homeChatID = home }
             if let request = appState.pulseOpenRequest, isShown { focus(request) }
             if isShown, loaded.unseen > 0, (try? await client.markSeen(nil)) != nil,
                appState.activeDashboardID == dashboard {
