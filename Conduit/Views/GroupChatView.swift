@@ -600,8 +600,9 @@ struct GroupUserBubble<Footer: View>: View {
                             .font(.caption2)
                             .foregroundStyle(.conduitTertiary)
                     }
-                    if !parts.text.isEmpty {
-                        GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .message)
+                    // Like a chat, Copy takes only what the user wrote.
+                    if !ownText.isEmpty {
+                        GroupMessageCopyButton(text: GroupRoomMentions.refanged(ownText), label: .message)
                     }
                 }
             }
