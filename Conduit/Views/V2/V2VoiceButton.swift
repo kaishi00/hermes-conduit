@@ -84,7 +84,7 @@ struct V2VoiceButton: View {
     }
 
     private var showsRecentMenu: Bool {
-        context == .home && !returnsToCall && !needsSetup && !appState.activeProfileSessions.isEmpty
+        context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
     }
 
     private var label: String {

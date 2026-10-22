@@ -833,7 +833,8 @@ struct V2ChatsView: View, Equatable {
         // Pulse's chat stays behind the Pulse screen, message matches too.
         guard let home = appState.pulseHomeChatID else { return rows }
         return rows.filter { row in
-            row.session.map { !appState.isPulseHomeChat($0) } ?? (row.hit.sessionID != home)
+            row.session.map { !appState.isPulseHomeChat($0) }
+                ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
         }
     }
 

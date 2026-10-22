@@ -56,7 +56,8 @@ extension AppState {
 
     /// Puts Pulse's memory on `model` (nil: the main model), in the
     /// dashboard's default profile where Pulse runs. The user picked it for
-    /// Pulse, so Hermes' price check doesn't ask again.
+    /// Pulse, so Hermes' price check doesn't ask again. It goes to the
+    /// dashboard in use: the caller checks that's still the one it means.
     func setPulseMemoryModel(_ model: PulseModel?) async throws {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let profile = Self.pulseHomeProfile

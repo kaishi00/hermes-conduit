@@ -310,16 +310,29 @@ struct PulseSettingsPage: View {
                 .foregroundStyle(.secondary)
         }
         .task(id: appState.activeDashboardID) {
-            providers = await appState.loadVoiceJobModelProviders()
+            let dashboard = appState.activeDashboardID
+            let loaded = await appState.loadVoiceJobModelProviders()
+            if appState.activeDashboardID == dashboard { providers = loaded }
         }
     }
 
-    /// Memory's model slot first, then the turns': a refused slot changes
-    /// neither.
+    /// The turns' model first, as Pulse checks it, then memory's slot. A
+    /// refused slot puts the turns back, so the two never part.
     private func setModel(_ model: PulseModel?) {
+        guard !working, var shown = state else { return }
+        let previous = shown.model
+        shown.model = model
+        state = shown
         run { client in
-            try await appState.setPulseMemoryModel(model)
-            return try await client.update(["model": model?.setting ?? NSNull()])
+            let next = try await client.update(["model": model?.setting ?? NSNull()])
+            guard isShown(client) else { return nil }
+            do {
+                try await appState.setPulseMemoryModel(model)
+            } catch {
+                if isShown(client) { _ = try? await client.update(["model": previous?.setting ?? NSNull()]) }
+                throw error
+            }
+            return next
         }
     }
 
