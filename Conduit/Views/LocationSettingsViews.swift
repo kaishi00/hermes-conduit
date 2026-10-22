@@ -84,6 +84,7 @@ struct LocationSettingsPage: View {
     @ObservedObject var controller: LocationSharingController
     @ObservedObject var engine: LocationSyncEngine
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject private var notifications = PushNotificationService.shared
 
     private enum PendingLayer: Identifiable {
         case talking, background
@@ -324,6 +325,13 @@ struct LocationSettingsPage: View {
                 Text("Hermes can't ask this iPhone for a fresh position yet; it uses the last one sent.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if settings.background, controller.authorization == .authorizedAlways, notifications.isEnabled,
+                      notifications.relayMeta?.supportsLocationPush == true, !notifications.relayHasLocationToken {
+                // The token goes with the next registration update; until
+                // the relay has it, a locate finds nothing to wake (#287).
+                Text("Hermes can't ask this iPhone for a fresh position: the notification relay doesn't have its location token yet. Keep notifications on and open Conduit again in a moment.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
     }

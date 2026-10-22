@@ -237052,6 +237052,88 @@
         }
       }
     },
+    "Hermes can't ask this iPhone for a fresh position: the notification relay doesn't have its location token yet. Keep notifications on and open Conduit again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes kann dieses iPhone nicht nach einem aktuellen Standort fragen: Das Mitteilungs-Relay hat sein Standort-Token noch nicht. Lass Mitteilungen eingeschaltet und öffne Conduit gleich noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no puede pedir a este iPhone una posición actual: el relé de notificaciones aún no tiene su token de ubicación. Mantén las notificaciones activadas y vuelve a abrir Conduit en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne peut pas demander une position récente à cet iPhone : le relais de notifications n’a pas encore son jeton de localisation. Laissez les notifications activées et rouvrez Conduit dans un instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak dapat meminta posisi terbaru dari iPhone ini: relai notifikasi belum memiliki token lokasinya. Biarkan notifikasi tetap aktif dan buka Conduit lagi sebentar lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non può chiedere a questo iPhone una posizione aggiornata: il relay delle notifiche non ha ancora il suo token di posizione. Lascia attive le notifiche e riapri Conduit tra un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesはこのiPhoneに最新の位置を問い合わせられません。通知リレーがまだ位置情報トークンを持っていません。通知をオンのままにして、少ししてからConduitをもう一度開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 iPhone에 최신 위치를 요청할 수 없습니다. 알림 릴레이에 아직 위치 토큰이 없습니다. 알림을 켜 둔 채 잠시 후 Conduit을 다시 열어 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie może poprosić tego iPhone’a o świeżą pozycję: przekaźnik powiadomień nie ma jeszcze jego tokenu lokalizacji. Zostaw powiadomienia włączone i za chwilę otwórz Conduit ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não pode pedir uma posição atual a este iPhone: o relay de notificações ainda não tem o token de localização dele. Mantenha as notificações ativadas e abra o Conduit de novo em instantes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не может запросить у этого iPhone свежую позицию: у ретранслятора уведомлений пока нет его токена геопозиции. Оставьте уведомления включёнными и откройте Conduit снова через минуту."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu iPhone'dan yeni bir konum isteyemiyor: bildirim aktarıcısında henüz konum belirteci yok. Bildirimleri açık tut ve birazdan Conduit'i yeniden aç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法向这台 iPhone 请求最新位置：通知中继还没有它的位置令牌。请保持通知开启，稍后再次打开 Conduit。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 無法向這部 iPhone 要求最新位置：通知中繼還沒有它的位置權杖。請保持通知開啟，稍後再次開啟 Conduit。"
+          }
+        }
+      }
+    },
     "Hermes hasn't read your location yet." : {
       "localizations" : {
         "de" : {
