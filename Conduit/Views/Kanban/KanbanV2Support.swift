@@ -50,6 +50,17 @@ enum KanbanLanePolicy {
             ?? columns.first?.name
     }
 
+    /// The lane a new task starts from. The V2 sideways board shows the
+    /// column it is scrolled to (or its leading one), and never sets the chip
+    /// selection, so it asks the scroll position; the chip board asks the
+    /// effective selection. No columns: the chip answer, which is nil.
+    static func newTaskLane(columnsLayout: Bool, scrolledColumn: String?, selected: String?, columns: [KanbanColumn]) -> String? {
+        if columnsLayout, let visible = KanbanColumnBoardPolicy.currentColumn(scrolledTo: scrolledColumn, in: columns) {
+            return visible
+        }
+        return effectiveSelectedLane(selected: selected, columns: columns)
+    }
+
     /// Creation target derived from the effective visible lane. Locked lanes
     /// are never valid creation targets (upstream gives them no add button);
     /// they collapse to the backend's default unlocked landing lane.

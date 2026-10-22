@@ -15,7 +15,7 @@ struct V2TasksView: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
-    @AppStorage("conduit.v2.tasksSegment") private var segmentRaw = Segment.board.rawValue
+    @AppStorage(V2TasksView.segmentKey) private var segmentRaw = Segment.board.rawValue
     /// How far a page slides: the pages' own width.
     @State private var pageWidth: CGFloat = 0
 
@@ -23,6 +23,10 @@ struct V2TasksView: View {
         case board
         case scheduled
     }
+
+    /// The page Tasks shows, which the shell also reads: tapping the
+    /// selected Tasks tab makes a task on Board and a job on Scheduled.
+    static let segmentKey = "conduit.v2.tasksSegment"
 
     private var segment: Binding<Segment> {
         Binding(
@@ -227,6 +231,11 @@ struct V2ScheduledList: View {
             await appState.refreshCronContent()
         }
         .refreshable { await appState.refreshCronContent() }
+        // The selected Tasks tab tapped again on this page: New job.
+        .onChange(of: shell.newJobRequest) { _, _ in
+            guard appState.dashboardTicketBridge != nil, editorTarget == nil else { return }
+            editorTarget = .create
+        }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)

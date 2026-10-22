@@ -45,6 +45,14 @@ enum V2Tab: String, Identifiable, Hashable {
     }
 }
 
+/// What the selected tab does when it is tapped again, shown in its place
+/// in the bar: Chats becomes New Chat, Tasks New task (or New job on its
+/// Scheduled page). A tab tap that only re-selected it did nothing before.
+struct V2TabAction: Equatable {
+    let title: String
+    let symbol: String
+}
+
 /// Screens pushed inside a tab.
 enum V2Route: Hashable {
     /// The open conversation (AppState's active session or room).
@@ -104,6 +112,10 @@ struct V2ShellContext: Equatable {
         var isSplit = false
         /// Split, with a chat open beside this tab's list.
         var hasChatBeside = false
+        /// Bumped each time the selected Tasks tab is tapped again: the
+        /// Board opens New task, Scheduled opens New job.
+        var newTaskRequest = 0
+        var newJobRequest = 0
     }
 
     var pickProfile: (String) -> Void = { _ in }
@@ -139,6 +151,16 @@ struct V2ShellContext: Equatable {
     var hasChatBeside: Bool {
         get { values.hasChatBeside }
         set { values.hasChatBeside = newValue }
+    }
+
+    var newTaskRequest: Int {
+        get { values.newTaskRequest }
+        set { values.newTaskRequest = newValue }
+    }
+
+    var newJobRequest: Int {
+        get { values.newJobRequest }
+        set { values.newJobRequest = newValue }
     }
 
     static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
@@ -382,6 +404,9 @@ struct V2Shell: View {
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @AppStorage(V2TasksView.segmentKey) private var tasksSegmentRaw = V2TasksView.Segment.board.rawValue
+    @State private var newTaskRequest = 0
+    @State private var newJobRequest = 0
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -551,6 +576,10 @@ struct V2Shell: View {
                             $0.isTabActive = isSelected
                             $0.isRootCovered = rootCovered
                             $0.hasChatBeside = chatBeside
+                            if tab == .tasks {
+                                $0.newTaskRequest = newTaskRequest
+                                $0.newJobRequest = newJobRequest
+                            }
                         }
                         // The opened tab shows at once and the one left
                         // hides at once. A fade read as slow, and a slide
@@ -573,7 +602,11 @@ struct V2Shell: View {
             ZStack(alignment: .bottom) {
                 if split || !conversationVisible {
                     HStack(spacing: 10) {
-                        V2CapsuleTabBar(selection: $selectedTab)
+                        V2CapsuleTabBar(
+                            selection: $selectedTab,
+                            action: tabAction(split: split),
+                            perform: performTabAction
+                        )
                         voiceButton
                     }
                     .padding(.horizontal, 16)
@@ -714,6 +747,45 @@ struct V2Shell: View {
             tabBarClearance(V2ProjectPage(project: project))
         case .artifacts:
             tabBarClearance(V2ArtifactsPage())
+        }
+    }
+
+    // MARK: - Tab actions
+
+    /// What tapping the selected tab again does, if anything. Chats only on
+    /// its list: over a project page or Artifacts it stays Chats. Not when
+    /// the gold button beside it is already New chat (Settings >
+    /// Appearance), which would put two side by side.
+    private func tabAction(split: Bool) -> V2TabAction? {
+        switch selectedTab {
+        case .chats:
+            guard !mainButtonNewChat, !isRootCovered(.chats, split: split) else { return nil }
+            return V2TabAction(title: AppLocalization.string("V2Tab.NewChat"), symbol: "square.and.pencil")
+        case .tasks:
+            if V2TasksView.Segment(rawValue: tasksSegmentRaw) == .scheduled {
+                return V2TabAction(title: AppLocalization.string("New job"), symbol: "plus")
+            }
+            return V2TabAction(title: AppLocalization.string("New task"), symbol: "plus")
+        case .bots, .settings:
+            return nil
+        }
+    }
+
+    private func performTabAction() {
+        switch selectedTab {
+        case .chats:
+            guard appState.canTapNewChat else { return }
+            Haptics.medium()
+            appState.startNewChat()
+        case .tasks:
+            Haptics.medium()
+            if V2TasksView.Segment(rawValue: tasksSegmentRaw) == .scheduled {
+                newJobRequest += 1
+            } else {
+                newTaskRequest += 1
+            }
+        case .bots, .settings:
+            break
         }
     }
 
@@ -960,6 +1032,9 @@ private struct V2NoticeBanner: View {
 /// highlight sliding between them on the overshoot spring.
 private struct V2CapsuleTabBar: View {
     @Binding var selection: V2Tab
+    /// The selected tab's action, shown in its place (`V2TabAction`).
+    var action: V2TabAction?
+    var perform: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
 
@@ -967,18 +1042,30 @@ private struct V2CapsuleTabBar: View {
         HStack(spacing: 2) {
             ForEach(V2Tab.destinations) { tab in
                 let isSelected = selection == tab
+                let shownAction = isSelected ? action : nil
+                let title = shownAction?.title ?? tab.title
+                let symbol = shownAction?.symbol ?? tab.symbol
                 Button {
+                    // A selected tab without an action (Chats over a
+                    // project page, or beside the New chat button) stays
+                    // inert, as before: its label promises nothing.
+                    if isSelected {
+                        if shownAction != nil { perform() }
+                        return
+                    }
                     withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
                         selection = tab
                     }
                 } label: {
                     VStack(spacing: 2) {
-                        Image(systemName: tab.symbol)
+                        Image(systemName: symbol)
                             .font(.system(size: 17, weight: .semibold))
                             .conduitFixedGlyph()
-                        Text(tab.title)
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(title)
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                     .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -992,16 +1079,20 @@ private struct V2CapsuleTabBar: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(tab.title)
+                .accessibilityIdentifier("V2Tab.\(tab.rawValue)")
+                .accessibilityLabel(title)
+                .accessibilityHint(shownAction != nil ? tab.title : "")
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
                 .accessibilityShowsLargeContentViewer {
-                    Label(tab.title, systemImage: tab.symbol)
+                    Label(title, systemImage: symbol)
                 }
+                .macTooltip(title)
             }
         }
         .padding(4)
         .conduitGlassControl(cornerRadius: 28, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: action)
     }
 }
 

@@ -138,7 +138,8 @@ final class AppStoreScreenshotTests: XCTestCase {
         // Wall-clock markers in the test log, so the recording can be cut
         // to the part worth showing (scripts/app-store/cut-preview.sh).
         print("PREVIEW_MARK start \(Date().timeIntervalSince1970)")
-        let newChat = app.buttons["New Chat"]
+        // The top bar's pencil and the selected Chats tab both read New Chat.
+        let newChat = app.buttons["New Chat"].firstMatch
         guard newChat.waitForExistence(timeout: 10) else {
             snap("debug-no-new-chat")
             XCTFail("No New Chat button, so the preview has nothing to record")

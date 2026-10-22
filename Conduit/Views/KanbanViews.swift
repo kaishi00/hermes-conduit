@@ -658,6 +658,11 @@ struct KanbanView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        // The selected Tasks tab tapped again on the Board page.
+        .onChange(of: shell.newTaskRequest) { _, _ in
+            guard canStartNewTask, !showNewTask, selectedTask == nil else { return }
+            startNewTask()
+        }
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus, expectedContext: newTaskContext)
                 .environmentObject(store)
@@ -1921,23 +1926,38 @@ struct KanbanView: View {
             .accessibilityLabel("Refresh Kanban board")
 
             Button {
-                // The global + creates relative to the lane the UI actually
-                // considers visible (effectiveSelectedLane), NOT the raw chip
-                // selection — selectedLane stays nil until a chip is tapped,
-                // and falling back to Todo then would ignore the resolved
-                // visible lane. Locked lanes collapse to the default unlocked
-                // landing status.
-                newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: effectiveSelectedLane)
-                newTaskContext = store.loadedContextStamp
-                showNewTask = true
+                startNewTask()
             } label: {
                 Image(systemName: "plus")
                     .frame(width: 36, height: 36)
             }
             .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
-            .disabled(store.board == nil || store.isMutating || !store.isSelectedSnapshotLoaded || isSelectionActive)
+            .disabled(!canStartNewTask)
             .accessibilityLabel("New Kanban task")
         }
+    }
+
+    private var canStartNewTask: Bool {
+        store.board != nil && !store.isMutating && store.isSelectedSnapshotLoaded && !isSelectionActive
+    }
+
+    /// The global + (and, in V2, the selected Tasks tab tapped again)
+    /// creates relative to the lane the UI actually considers visible, NOT
+    /// the raw chip selection — selectedLane stays nil until a chip is
+    /// tapped, and falling back to Todo then would ignore the resolved
+    /// visible lane. On the V2 columns board that lane is the column it is
+    /// scrolled to (KanbanLanePolicy.newTaskLane). Locked lanes collapse to
+    /// the default unlocked landing status.
+    private func startNewTask() {
+        let lane = KanbanLanePolicy.newTaskLane(
+            columnsLayout: columnsLayout,
+            scrolledColumn: scrolledColumn,
+            selected: selectedLane,
+            columns: visibleColumns
+        )
+        newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: lane)
+        newTaskContext = store.loadedContextStamp
+        showNewTask = true
     }
 
     /// V3B search + filters row. Hidden while selection mode is active:
