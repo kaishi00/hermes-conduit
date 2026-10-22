@@ -601,7 +601,7 @@ struct GroupUserBubble<Footer: View>: View {
                             .foregroundStyle(.conduitTertiary)
                     }
                     if !parts.text.isEmpty {
-                        GroupMessageCopyButton(text: parts.text, label: .message)
+                        GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .message)
                     }
                 }
             }
@@ -667,7 +667,7 @@ struct GroupMemberBubble: View {
                 }
                 if !parts.text.isEmpty {
                     HStack(spacing: 2) {
-                        GroupMessageCopyButton(text: parts.text, label: .response)
+                        GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
                         if let roomEventID {
                             GroupMessageQuoteButton(text: parts.text, authorName: name)
                             GroupReadAloudButton(eventID: roomEventID, text: parts.text)

@@ -641,6 +641,15 @@ final class GroupChatModelsTests: XCTestCase {
             GroupRoomMentions.linkingMarkdown(fenced, members: members),
             "```\n@all\n```\n[@all](conduit-mention://broadcast)"
         )
+        // A link's label can't hold another link, and a quoted fence is a fence.
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("see [the @all notes](https://example.com) @all", members: members),
+            "see [the @all notes](https://example.com) [@all](conduit-mention://broadcast)"
+        )
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("> ```\n> @all\n> ```\n@user", members: members),
+            "> ```\n> @all\n> ```\n[@user](conduit-mention://human)"
+        )
         XCTAssertEqual(
             GroupRoomMentions.kind(ofLink: URL(string: "conduit-mention://agent")!), .agent
         )

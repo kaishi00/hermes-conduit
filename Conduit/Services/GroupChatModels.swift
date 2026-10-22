@@ -625,9 +625,12 @@ enum GroupRoomMentions {
         guard let regex = mentionScanRegex, text.contains("@") else { return text }
         var fence: String?
         let lines = text.components(separatedBy: "\n").map { line -> String in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // A fence inside a quote is a fence too.
+            let trimmed = line
+                .replacingOccurrences(of: "^\\s*(?:>\\s?)*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
             if let open = fence {
-                if trimmed.hasPrefix(open) { fence = nil }
+                if trimmed.hasPrefix(open), trimmed.drop(while: { $0 == open.first }).isEmpty { fence = nil }
                 return line
             }
             if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
@@ -635,10 +638,13 @@ enum GroupRoomMentions {
                 return line
             }
             guard line.contains("@") else { return line }
-            // Even segments between backticks are prose, odd ones code.
-            return line.components(separatedBy: "`").enumerated().map { index, segment in
-                index.isMultiple(of: 2) ? linking(segment, regex: regex, members: members) : segment
-            }.joined(separator: "`")
+            // Code spans keep their tags, and so do links' labels: a link
+            // can't hold another.
+            return HermesSessionReference.outsideInlineCode(line) { segment in
+                HermesSessionReference.outsideLinks(segment) { prose in
+                    linking(prose, regex: regex, members: members)
+                }
+            }
         }
         return lines.joined(separator: "\n")
     }

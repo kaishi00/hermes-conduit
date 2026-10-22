@@ -138,7 +138,7 @@ struct HermesSessionReference: Equatable {
     private static let anyLink = try! NSRegularExpression(pattern: #"!?\[(?:\\.|[^\]\\\n])*\]\([^)\n]*\)"#)
 
     /// Applies `transform` to the parts of `text` outside Markdown links.
-    private static func outsideLinks(_ text: String, _ transform: (String) -> String) -> String {
+    static func outsideLinks(_ text: String, _ transform: (String) -> String) -> String {
         let matches = anyLink.matches(in: text, range: NSRange(text.startIndex..., in: text))
         guard !matches.isEmpty else { return transform(text) }
         var result = ""
@@ -153,7 +153,7 @@ struct HermesSessionReference: Equatable {
     }
 
     /// Applies `transform` to the parts of `line` outside backtick code spans.
-    private static func outsideInlineCode(_ line: String, _ transform: (String) -> String) -> String {
+    static func outsideInlineCode(_ line: String, _ transform: (String) -> String) -> String {
         guard line.contains("`") else { return transform(line) }
         let parts = line.split(separator: "`", omittingEmptySubsequences: false)
         // An unmatched backtick leaves its tail as prose.
