@@ -31,6 +31,8 @@ struct GroupChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
+        // Each bot's color, for its name, bubble, tags and "To" chip.
+        .environment(\.groupMemberTints, appState.groupMemberTints(members))
         .toolbar { toolbarContent }
         .modifier(GroupRoomPicturePicker(isPresented: $choosingPicture))
         .confirmationDialog(
@@ -623,8 +625,19 @@ struct GroupMemberBubble: View {
     /// A hosted room's event id: its messages can be quoted and read
     /// aloud. A Desktop group, read-only here, passes none.
     var roomEventID: String? = nil
+    @Environment(\.groupMemberTints) private var tints
 
     static let avatarSize: CGFloat = 30
+
+    private var tint: CustomAccentColor? { member.flatMap { tints[$0.identityKey] } }
+
+    /// The member's tag, when the room can be addressed to it.
+    private var handle: String? {
+        guard roomEventID != nil,
+              let handle = member?.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !handle.isEmpty else { return nil }
+        return handle
+    }
 
     var body: some View {
         let parts = GroupMessageParts(text)
@@ -632,6 +645,11 @@ struct GroupMemberBubble: View {
             Group {
                 if continuesRun {
                     Color.clear
+                } else if let handle {
+                    // Tapping a bot's picture picks it in the "To" row.
+                    GroupMemberMentionButton(handle: handle, name: name) {
+                        GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
+                    }
                 } else {
                     GroupMemberAvatar(member: member, name: name, size: Self.avatarSize)
                 }
@@ -642,7 +660,7 @@ struct GroupMemberBubble: View {
                     HStack(spacing: 6) {
                         Text(name)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
@@ -655,22 +673,18 @@ struct GroupMemberBubble: View {
                     GroupMessageFiles(files: parts.files)
                     if !parts.text.isEmpty {
                         HugsIdealWidth {
-                            MarkdownText(source: GroupRoomMentions.linkingMarkdown(parts.text, members: members))
+                            MarkdownText(source: GroupRoomMentions.linkingMarkdown(parts.text, members: members, tints: tints))
                         }
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 19, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                }
+                .groupMemberBubbleSurface(tint: tint)
                 if !parts.text.isEmpty {
                     HStack(spacing: 2) {
                         GroupMessageCopyButton(text: GroupRoomMentions.refanged(parts.text), label: .response)
                         if let roomEventID {
-                            GroupMessageQuoteButton(text: parts.text, authorName: name)
+                            GroupMessageQuoteButton(text: parts.text, authorName: name, authorHandle: handle)
                             GroupReadAloudButton(eventID: roomEventID, text: parts.text)
                         }
                     }
@@ -737,15 +751,17 @@ struct GroupSystemEventCaption: View {
 /// reply will land.
 struct GroupRespondingRow: View {
     let member: GroupMember
+    @Environment(\.groupMemberTints) private var tints
 
     var body: some View {
         let name = GroupRoomTurns.displayName(of: member)
+        let tint = tints[member.identityKey]
         HStack(alignment: .top, spacing: 9) {
             GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     ProgressView()
@@ -756,7 +772,7 @@ struct GroupRespondingRow: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+                .groupMemberBubbleSurface(tint: tint)
             }
             Spacer(minLength: 32)
         }
@@ -775,18 +791,8 @@ struct GroupMemberAvatar: View {
     let name: String
     let size: CGFloat
 
-    /// The roster bot this member is: by profile, else (a Desktop group's
-    /// member, which has none) by name.
-    private var bot: BotProfile? {
-        let roster = appState.botRoster
-        if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
-           let bot = roster.first(where: { $0.name == profile }) {
-            return bot
-        }
-        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !label.isEmpty else { return nil }
-        return roster.first { $0.displayLabel == label || $0.name == label }
-    }
+    /// The roster bot this member is.
+    private var bot: BotProfile? { appState.groupMemberBot(member, name: name) }
 
     var body: some View {
         if let bot {
@@ -966,10 +972,12 @@ struct GroupMessageQuoteButton: View {
     @EnvironmentObject private var appState: AppState
     let text: String
     let authorName: String
+    /// The author's tag: replying also addresses the next message to it.
+    var authorHandle: String? = nil
 
     var body: some View {
         Button {
-            appState.replyInRoomComposer(text: text, authorName: authorName)
+            appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
         } label: {
             Image(systemName: "quote.bubble")
                 .font(.footnote.weight(.semibold))
@@ -980,7 +988,57 @@ struct GroupMessageQuoteButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .disabled(!appState.canQuoteIntoRoom())
-        .accessibilityLabel(AppLocalization.string("Quote this response"))
+        .accessibilityLabel(
+            authorHandle == nil
+                ? AppLocalization.string("Quote this response")
+                : AppLocalization.string("Reply to \(authorName)")
+        )
+    }
+}
+
+/// A bot's picture in the room: tapping it picks the bot in the composer's
+/// "To" row.
+struct GroupMemberMentionButton<Label: View>: View {
+    @EnvironmentObject private var appState: AppState
+    let handle: String
+    let name: String
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            appState.mentionInRoomComposer(handle: handle)
+        } label: {
+            label
+        }
+        .buttonStyle(.plain)
+        .disabled(!appState.canQuoteIntoRoom())
+        .accessibilityLabel(AppLocalization.string("Mention \(name)"))
+    }
+}
+
+extension View {
+    /// A member's bubble: a wash of the bot's color, else the neutral one.
+    func groupMemberBubbleSurface(tint: CustomAccentColor?) -> some View {
+        let fill = tint.map { Color(uiColor: $0.readableColor).opacity(0.10) } ?? Color.primary.opacity(0.06)
+        let stroke = tint.map { Color(uiColor: $0.readableColor).opacity(0.18) } ?? Color.primary.opacity(0.06)
+        return background(fill, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .strokeBorder(stroke, lineWidth: 1)
+            }
+    }
+}
+
+private struct GroupMemberTintsKey: EnvironmentKey {
+    static let defaultValue: [String: CustomAccentColor] = [:]
+}
+
+extension EnvironmentValues {
+    /// The open room's member colors by `identityKey`.
+    var groupMemberTints: [String: CustomAccentColor] {
+        get { self[GroupMemberTintsKey.self] }
+        set { self[GroupMemberTintsKey.self] = newValue }
     }
 }
 

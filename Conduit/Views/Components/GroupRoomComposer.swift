@@ -24,6 +24,10 @@ struct GroupRoomComposer: View {
     @State private var draft = ""
     /// A whole room message quoted with the next one (its Quote button).
     @State private var replyReference: ComposerReplyReference?
+    /// The bots picked in the "To" row, by tag, in the order picked. The
+    /// next message is addressed to them; none picked, it goes to every bot.
+    @State private var recipients: [String] = []
+    @Environment(\.groupMemberTints) private var tints
     @State private var attachments: [Attachment] = []
     @FocusState private var isFocused: Bool
     @State private var isUploading = false
@@ -73,7 +77,7 @@ struct GroupRoomComposer: View {
     /// progress opens the controls row under the field.
     private var rests: Bool {
         !isFocused && !hasText && attachments.isEmpty && !isDictationActive && !isUploading
-            && composerError == nil && replyReference == nil
+            && composerError == nil && replyReference == nil && recipients.isEmpty
     }
 
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
@@ -103,6 +107,11 @@ struct GroupRoomComposer: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if !rests, !pickableMembers.isEmpty {
+                recipientRow
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if let replyReference {
                 replyReferenceChip(replyReference)
@@ -147,6 +156,10 @@ struct GroupRoomComposer: View {
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onAppear { applyRecipientRequest(appState.roomRecipientRequest) }
+        .onChange(of: appState.roomRecipientRequest) { _, request in
+            applyRecipientRequest(request)
         }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
@@ -458,17 +471,24 @@ struct GroupRoomComposer: View {
         guard canSend else { return }
         let typed = draft
         let reply = replyReference
-        // The quoted message goes ahead of what was typed; with nothing
-        // typed, the chip waits for the next message.
-        let text = reply.flatMap { reply in
-            hasText ? GroupRoomReplyQuote.outboundText(quoting: reply.text, author: reply.authorName, message: typed) : nil
-        } ?? typed
-        let sendsReply = text != typed
+        let picked = recipients
+        // The picked bots' tags lead the user's own words, so they show in
+        // the sent bubble too.
+        let addressed = hasText ? GroupRoomRecipients.addressing(typed, to: picked, members: members) : typed
+        // The quoted message goes ahead of that; with nothing typed, the
+        // chip waits for the next message.
+        let quoted = reply.flatMap { reply in
+            hasText ? GroupRoomReplyQuote.outboundText(quoting: reply.text, author: reply.authorName, message: addressed) : nil
+        }
+        let text = quoted ?? addressed
+        let sendsReply = quoted != nil
+        let sendsRecipients = hasText && !picked.isEmpty
         let files = attachments
         dictation.stop()
         Haptics.light()
         isShowingFullEditor = false
         if sendsReply { replyReference = nil }
+        if sendsRecipients { recipients = [] }
         if files.isEmpty {
             draft = ""
             Task {
@@ -479,7 +499,7 @@ struct GroupRoomComposer: View {
                 if !registered {
                     // Anything typed since goes after the text handed back.
                     draft = draft.isEmpty ? typed : typed + "\n" + draft
-                    if sendsReply, replyReference == nil { replyReference = reply }
+                    restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
                 }
             }
             return
@@ -498,7 +518,7 @@ struct GroupRoomComposer: View {
                 }
                 composerError = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 Haptics.error()
-                if sendsReply, replyReference == nil { replyReference = reply }
+                restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
                 return
             }
             // Left for another room while the files went up: they never go
@@ -524,9 +544,93 @@ struct GroupRoomComposer: View {
             } else {
                 if handedOver, !typed.isEmpty { draft = draft.isEmpty ? typed : typed + "\n" + draft }
                 attachments = files + attachments
-                if sendsReply, replyReference == nil { replyReference = reply }
+                restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
             }
         }
+    }
+
+    // MARK: - Recipients
+
+    private var pickableMembers: [GroupMember] { GroupRoomRecipients.pickable(members) }
+
+    /// "To" and a chip per bot: tap to address the next message to it.
+    private var recipientRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Text(AppLocalization.string("To"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                ForEach(pickableMembers, id: \.identityKey) { member in
+                    recipientChip(member)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AppLocalization.string("To"))
+        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer."))
+    }
+
+    private func recipientChip(_ member: GroupMember) -> some View {
+        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = GroupRoomTurns.displayName(of: member)
+        let picked = recipients.contains { $0.caseInsensitiveCompare(handle) == .orderedSame }
+        let tint = tints[member.identityKey].map { Color(uiColor: $0.readableColor) } ?? Color.conduitAccent
+        return Button {
+            Haptics.selection()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                if picked {
+                    recipients.removeAll { $0.caseInsensitiveCompare(handle) == .orderedSame }
+                } else {
+                    recipients.append(handle)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                GroupMemberAvatar(member: member, name: name, size: 20)
+                Text(name)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .padding(.leading, 3)
+            .padding(.trailing, 10)
+            .padding(.vertical, 3)
+            .foregroundStyle(picked ? tint : Color.secondary)
+            .background(
+                Capsule().fill(picked ? tint.opacity(0.16) : Color.primary.opacity(0.05))
+            )
+            .overlay {
+                Capsule().strokeBorder(picked ? tint.opacity(0.55) : Color.clear, lineWidth: 1)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(name))
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+
+    private func applyRecipientRequest(_ request: RoomRecipientRequest?) {
+        guard let request else { return }
+        appState.consumeRoomRecipientRequest(request.id)
+        guard let member = pickableMembers.first(where: {
+            $0.handle?.caseInsensitiveCompare(request.handle) == .orderedSame
+        }), let handle = member.handle else { return }
+        if !recipients.contains(where: { $0.caseInsensitiveCompare(handle) == .orderedSame }) {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                recipients.append(handle)
+            }
+        }
+        Haptics.selection()
+        isFocused = true
+    }
+
+    /// A send that didn't go through hands back its reply chip and picks,
+    /// unless new ones were chosen meanwhile.
+    private func restoreAfterDecline(reply: ComposerReplyReference?, recipients picked: [String]) {
+        if let reply, replyReference == nil { replyReference = reply }
+        if !picked.isEmpty, recipients.isEmpty { recipients = picked }
     }
 
     // MARK: - Quotes

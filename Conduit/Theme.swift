@@ -212,6 +212,17 @@ extension UIColor {
 }
 
 extension CustomAccentColor {
+    /// The colour as text and tint on the app's backdrop: the shade that
+    /// reads in the mode it draws in. A group room draws each bot in its
+    /// own colour this way.
+    var readableColor: UIColor {
+        let light = UIColor(lightShade)
+        let dark = UIColor(darkShade)
+        return UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+    }
+}
+
+extension CustomAccentColor {
     /// The last colour of the user's own, kept on this device while a
     /// preset is picked.
     static let lastPickKey = "conduit.accentLastCustomColor"

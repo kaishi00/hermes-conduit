@@ -656,6 +656,46 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomMentions.kind(ofLink: URL(string: "https://agent")!))
     }
 
+    func testAgentMentionLinksCarryTheBotsColor() throws {
+        let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
+        let tint = CustomAccentColor(red: 0.2, green: 0.4, blue: 0.8)
+        let linked = GroupRoomMentions.linkingMarkdown("hi @scout and @all", members: [scout], tints: ["scout": tint])
+        XCTAssertEqual(
+            linked,
+            "hi [@scout](conduit-mention://agent?c=\(tint.hex.dropFirst())) and [@all](conduit-mention://broadcast)"
+        )
+        let url = try XCTUnwrap(URL(string: "conduit-mention://agent?c=\(tint.hex.dropFirst())"))
+        XCTAssertEqual(GroupRoomMentions.kind(ofLink: url), .agent)
+        XCTAssertEqual(GroupRoomMentions.tint(ofLink: url), tint)
+        XCTAssertNil(GroupRoomMentions.tint(ofLink: URL(string: "conduit-mention://broadcast")!))
+    }
+
+    func testRecipientsLeadTheMessageOnce() {
+        let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
+        let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!
+        let members = [scout, atlas]
+        XCTAssertEqual(
+            GroupRoomRecipients.addressing("what now?", to: ["atlas", "scout"], members: members),
+            "@atlas @scout what now?"
+        )
+        // A tag already typed isn't repeated; nothing picked leaves the text.
+        XCTAssertEqual(
+            GroupRoomRecipients.addressing("@scout what now?", to: ["scout", "atlas", "ATLAS"], members: members),
+            "@atlas @scout what now?"
+        )
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: [], members: members), "hi")
+        let routed = GroupRoomTurns.resolveMentions(
+            in: [GroupRoomRecipients.addressing("hi", to: ["atlas"], members: members)],
+            members: members,
+            defaultAll: true
+        )
+        XCTAssertEqual(routed, [atlas])
+        // Members without a tag, or reusing a reserved one, can't be picked.
+        let untagged = GroupDecoders.member(any(["member_id": "x", "profile": "x"]))!
+        let reserved = GroupDecoders.member(any(["member_id": "y", "profile": "y", "handle": "all"]))!
+        XCTAssertEqual(GroupRoomRecipients.pickable([scout, untagged, reserved, atlas]), [scout, atlas])
+    }
+
     func testDefangedTagsNoLongerRoute() {
         let researcher = GroupDecoders.member(any([
             "member_id": "researcher", "profile": "researcher", "handle": "scout",

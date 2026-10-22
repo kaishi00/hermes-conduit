@@ -703,8 +703,18 @@ struct SelectableTextView: UIViewRepresentable {
                 // it shows as a tinted tag, not a tappable link.
                 if let kind = GroupRoomMentions.kind(ofLink: link) {
                     let onAccent = linkColor == .white
-                    bridged.addAttribute(.foregroundColor, value: onAccent ? UIColor.white : UIColor.conduitAccent, range: range)
-                    bridged.addAttribute(.backgroundColor, value: Self.mentionWash(kind, onAccent: onAccent), range: range)
+                    // A bot's tag takes the bot's own color.
+                    let tint = onAccent ? nil : GroupRoomMentions.tint(ofLink: link)?.readableColor
+                    bridged.addAttribute(
+                        .foregroundColor,
+                        value: onAccent ? UIColor.white : tint ?? UIColor.conduitAccent,
+                        range: range
+                    )
+                    bridged.addAttribute(
+                        .backgroundColor,
+                        value: tint?.withAlphaComponent(0.12) ?? Self.mentionWash(kind, onAccent: onAccent),
+                        range: range
+                    )
                     continue
                 }
                 bridged.addAttribute(.link, value: link, range: range)

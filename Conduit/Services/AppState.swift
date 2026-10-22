@@ -2163,6 +2163,9 @@ final class AppState: ObservableObject {
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
+    /// A bot to add to the room composer's "To" row (its picture tapped, or
+    /// its message replied to). The room composer applies and consumes it.
+    @Published private(set) var roomRecipientRequest: RoomRecipientRequest?
     /// Asks the composer to take focus (a screenshot chat opened with the
     /// keyboard). ComposerBar focuses and then consumes it.
     @Published var composerFocusRequest: ComposerFocusRequest?
@@ -10156,13 +10159,58 @@ final class AppState: ObservableObject {
         roomQuoteRequest = ComposerQuoteRequest(content: .text(quote))
     }
 
-    /// A room message's Quote button: the whole message rides along with
-    /// the next one, shown in the room composer as a "Replying to…" chip.
-    func replyInRoomComposer(text: String, authorName: String) {
+    /// A room message's Reply button: the whole message rides along with
+    /// the next one, shown in the room composer as a "Replying to…" chip,
+    /// and the bot that wrote it is picked in the "To" row.
+    func replyInRoomComposer(text: String, authorName: String, authorHandle: String? = nil) {
         guard canQuoteIntoRoom(), text.contains(where: { !$0.isWhitespace }) else { return }
         roomQuoteRequest = ComposerQuoteRequest(
             content: .reply(ComposerReplyReference(authorName: authorName, text: text))
         )
+        if let authorHandle { mentionInRoomComposer(handle: authorHandle) }
+    }
+
+    /// Picks a bot in the room composer's "To" row.
+    func mentionInRoomComposer(handle: String) {
+        let handle = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canQuoteIntoRoom(), !handle.isEmpty else { return }
+        roomRecipientRequest = RoomRecipientRequest(handle: handle)
+    }
+
+    func consumeRoomRecipientRequest(_ id: UUID) {
+        guard roomRecipientRequest?.id == id else { return }
+        roomRecipientRequest = nil
+    }
+
+    /// The roster bot a room member is: by profile, else (a Desktop group's
+    /// member, which has none) by name.
+    func groupMemberBot(_ member: GroupMember?, name: String) -> BotProfile? {
+        let roster = botRoster
+        if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+           let bot = roster.first(where: { $0.name == profile }) {
+            return bot
+        }
+        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return nil }
+        return roster.first { $0.displayLabel == label || $0.name == label }
+    }
+
+    /// Each member's color by `identityKey`: its bot's color, else the hue
+    /// its picture falls back to, so a bot looks the same in its picture,
+    /// its name, its bubble and the tags that name it.
+    func groupMemberTints(_ members: [GroupMember]) -> [String: CustomAccentColor] {
+        var tints: [String: CustomAccentColor] = [:]
+        for member in members {
+            let key = member.identityKey
+            guard !key.isEmpty, tints[key] == nil else { continue }
+            let name = GroupRoomTurns.displayName(of: member)
+            let bot = groupMemberBot(member, name: name)
+            let color = UIColor(BotAvatarView.color(for: bot?.appearanceColor, name: bot?.name ?? name))
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { continue }
+            tints[key] = CustomAccentColor(red: Double(red), green: Double(green), blue: Double(blue))
+        }
+        return tints
     }
 
     /// The room composer took the quote.

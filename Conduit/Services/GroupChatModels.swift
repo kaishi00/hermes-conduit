@@ -578,9 +578,14 @@ enum GroupRoomMentions {
     /// name, their slug/collapsed reductions, the title's FIRST WORD
     /// ("Research Buddy" → @research), and `previous_names` gap-fill.
     static func classify(token: String, members: [GroupMember]) -> Kind? {
+        resolve(token: token, members: members)?.kind
+    }
+
+    /// `classify`, plus which member an agent mention names.
+    static func resolve(token: String, members: [GroupMember]) -> (kind: Kind, member: GroupMember?)? {
         let handle = token.lowercased()
-        if handle == "user" { return .human }
-        if handle == "all" || handle == "everyone" { return .broadcast }
+        if handle == "user" { return (.human, nil) }
+        if handle == "all" || handle == "everyone" { return (.broadcast, nil) }
         let collapsed = handle
             .replacingOccurrences(of: ".", with: "")
             .replacingOccurrences(of: "-", with: "")
@@ -590,14 +595,14 @@ enum GroupRoomMentions {
                 .compactMap { $0 } + member.previousNames
             for candidate in candidates {
                 let lowered = candidate.lowercased()
-                if lowered == handle || lowered == collapsed { return .agent }
-                if BotMentions.mentionNameForms(candidate).contains(handle) { return .agent }
+                if lowered == handle || lowered == collapsed { return (.agent, member) }
+                if BotMentions.mentionNameForms(candidate).contains(handle) { return (.agent, member) }
                 // Upstream styles the title's first word too.
                 if let firstWord = lowered.split(separator: " ").first,
-                   String(firstWord) == handle { return .agent }
+                   String(firstWord) == handle { return (.agent, member) }
             }
             let stripped = candidateCollapsedForm(candidates)
-            if !stripped.isEmpty, stripped == collapsed { return .agent }
+            if !stripped.isEmpty, stripped == collapsed { return (.agent, member) }
         }
         return nil
     }
@@ -618,10 +623,24 @@ enum GroupRoomMentions {
         }
     }
 
+    /// The color an agent mention link carries: the named bot's own, as
+    /// "#RRGGBB", so the tag matches who it names.
+    static func tint(ofLink url: URL) -> CustomAccentColor? {
+        guard url.scheme == linkScheme,
+              let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "c" })?.value else { return nil }
+        return CustomAccentColor(hex: "#" + value)
+    }
+
     /// `text` with every recognized mention turned into a mention link, so
     /// the full Markdown renderer can style them. Code (fenced blocks and
     /// inline spans) is left alone: a tag there is code, not a mention.
-    static func linkingMarkdown(_ text: String, members: [GroupMember]) -> String {
+    /// `tints` are the members' colors by `identityKey`.
+    static func linkingMarkdown(
+        _ text: String,
+        members: [GroupMember],
+        tints: [String: CustomAccentColor] = [:]
+    ) -> String {
         guard let regex = mentionScanRegex, text.contains("@") else { return text }
         var fence: String?
         let lines = text.components(separatedBy: "\n").map { line -> String in
@@ -642,28 +661,36 @@ enum GroupRoomMentions {
             // can't hold another.
             return HermesSessionReference.outsideInlineCode(line) { segment in
                 HermesSessionReference.outsideLinks(segment) { prose in
-                    linking(prose, regex: regex, members: members)
+                    linking(prose, regex: regex, members: members, tints: tints)
                 }
             }
         }
         return lines.joined(separator: "\n")
     }
 
-    private static func linking(_ prose: String, regex: NSRegularExpression, members: [GroupMember]) -> String {
+    private static func linking(
+        _ prose: String,
+        regex: NSRegularExpression,
+        members: [GroupMember],
+        tints: [String: CustomAccentColor]
+    ) -> String {
         var result = prose
         let range = NSRange(prose.startIndex..., in: prose)
         for match in regex.matches(in: prose, range: range).reversed() {
             guard let tokenRange = Range(match.range(at: 1), in: prose),
                   let fullRange = Range(match.range, in: result) else { continue }
             let token = String(prose[tokenRange])
-            guard let kind = classify(token: token, members: members) else { continue }
-            let host: String
-            switch kind {
-            case .agent: host = "agent"
-            case .broadcast: host = "broadcast"
-            case .human: host = "human"
+            guard let resolved = resolve(token: token, members: members) else { continue }
+            var target: String
+            switch resolved.kind {
+            case .agent: target = "agent"
+            case .broadcast: target = "broadcast"
+            case .human: target = "human"
             }
-            result.replaceSubrange(fullRange, with: "[@\(token)](\(linkScheme)://\(host))")
+            if let key = resolved.member?.identityKey, let tint = tints[key] {
+                target += "?c=" + String(tint.hex.dropFirst())
+            }
+            result.replaceSubrange(fullRange, with: "[@\(token)](\(linkScheme)://\(target))")
         }
         return result
     }
@@ -697,6 +724,48 @@ enum GroupRoomMentions {
         }
         return ""
     }
+}
+
+// MARK: - Room recipients
+
+/// The bots picked in the room composer's "To" row, as tags ahead of the
+/// message: the gateway routes on tags in the text, and a message with none
+/// goes to every member.
+enum GroupRoomRecipients {
+    /// `text` addressed to `handles` as well: each one the text doesn't
+    /// already tag goes in front, in the order picked.
+    static func addressing(_ text: String, to handles: [String], members: [GroupMember]) -> String {
+        let tagged = Set(
+            GroupRoomTurns.resolveMentions(in: [text], members: members, defaultAll: false)
+                .compactMap { $0.handle?.lowercased() }
+        )
+        var seen = Set<String>()
+        let missing = handles.filter { handle in
+            let key = handle.lowercased()
+            return !tagged.contains(key) && seen.insert(key).inserted
+        }
+        guard !missing.isEmpty else { return text }
+        let tags = missing.map { "@" + $0 }.joined(separator: " ")
+        return text.isEmpty ? tags : tags + " " + text
+    }
+
+    /// The members the "To" row offers: those with a handle the gateway
+    /// can route, each once.
+    static func pickable(_ members: [GroupMember]) -> [GroupMember] {
+        var seen: Set<String> = ["all", "everyone", "user"]
+        return members.filter { member in
+            guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !handle.isEmpty else { return false }
+            return seen.insert(handle.lowercased()).inserted
+        }
+    }
+}
+
+/// One bot on its way to the room composer's "To" row. Each request has
+/// its own id, so picking the same bot again still lands.
+struct RoomRecipientRequest: Equatable {
+    let id = UUID()
+    let handle: String
 }
 
 // MARK: - Room replies
