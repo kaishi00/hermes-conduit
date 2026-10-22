@@ -739,6 +739,8 @@ final class PushNotificationService: ObservableObject {
                 saved.relayURL = configuredRelayURL.absoluteString
             }
             registration = saved
+            // didSet doesn't run in init.
+            relayHasLocationToken = saved.locationToken != nil
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
@@ -1767,11 +1769,15 @@ final class PushNotificationService: ObservableObject {
     /// The APNs token for the agent's on-demand locate (the Location Push
     /// extension), while background location sharing is on; nil otherwise.
     private(set) var locationToken: String?
+    /// LocationBackgroundMonitor has said this launch whether there is a
+    /// token: until then a nil `locationToken` means "not known yet".
+    private var locationTokenReported = false
 
     /// LocationBackgroundMonitor has a new location push token, or none.
     func updateLocationToken(_ token: String?) {
-        guard token != locationToken else { return }
+        guard token != locationToken || !locationTokenReported else { return }
         locationToken = token
+        locationTokenReported = true
         queueRegistrationUpdate()
     }
 
@@ -1781,18 +1787,21 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// What an update does to the relay's location token. Until this launch
-    /// has heard whether the relay sends locates, nothing: relayMeta isn't
-    /// kept across launches, and taking "not heard yet" for "no" cleared the
-    /// token at every launch, so locates found none (notifier #287).
-    nonisolated static func locationTokenChange(registered: String?, current: String?, relaySendsLocates: Bool?) -> VoIPTokenChange {
-        guard let relaySendsLocates else { return .keep }
+    /// has heard whether the relay sends locates, and whether there is a
+    /// token (`reported`), nothing: neither is kept across launches, and
+    /// taking "not heard yet" for "no" cleared the token at every launch, so
+    /// locates found none (notifier #287).
+    nonisolated static func locationTokenChange(registered: String?, current: String?, reported: Bool,
+                                                relaySendsLocates: Bool?) -> VoIPTokenChange {
+        guard let relaySendsLocates, reported || !relaySendsLocates else { return .keep }
         let wanted = relaySendsLocates ? current : nil
         if registered == wanted { return .keep }
         return wanted.map(VoIPTokenChange.set) ?? .clear
     }
 
     private func locationTokenChange(registered: String?) -> VoIPTokenChange {
-        Self.locationTokenChange(registered: registered, current: locationToken, relaySendsLocates: relayMeta?.supportsLocationPush)
+        Self.locationTokenChange(registered: registered, current: locationToken, reported: locationTokenReported,
+                                 relaySendsLocates: relayMeta?.supportsLocationPush)
     }
 
     private var ringingWatchVoIPToken: String? {

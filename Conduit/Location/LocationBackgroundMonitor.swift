@@ -34,6 +34,9 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
     private var visitsOn = false
     private var significantOn = false
     private var pushesOn = false
+    /// Whether this launch has said if there's a location push token: the
+    /// first configure always does, even with pushes off (notifier #287).
+    private var pushesReported = false
 
     /// A saved place's state: inside or not, and when.
     var placeStateChanged: ((_ placeID: String, _ inside: Bool, _ at: Date) -> Void)?
@@ -144,7 +147,8 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
     // MARK: On-demand locate
 
     private func setLocationPushes(_ on: Bool) {
-        guard on != pushesOn else { return }
+        guard on != pushesOn || !pushesReported else { return }
+        pushesReported = true
         pushesOn = on
         if on {
             manager.startMonitoringLocationPushes { [weak self] token, error in

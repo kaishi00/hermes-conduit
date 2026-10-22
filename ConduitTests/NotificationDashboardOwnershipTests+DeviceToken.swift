@@ -133,15 +133,23 @@ extension NotificationDashboardOwnershipTests {
     }
 
     func testTheLocationTokenChangesOnlyOnceTheRelayIsKnown() {
-        typealias Service = PushNotificationService
-        XCTAssertEqual(Service.locationTokenChange(registered: "a", current: nil, relaySendsLocates: nil), .keep)
-        XCTAssertEqual(Service.locationTokenChange(registered: nil, current: "a", relaySendsLocates: nil), .keep)
-        XCTAssertEqual(Service.locationTokenChange(registered: nil, current: "a", relaySendsLocates: true), .set("a"))
-        XCTAssertEqual(Service.locationTokenChange(registered: "a", current: "a", relaySendsLocates: true), .keep)
-        XCTAssertEqual(Service.locationTokenChange(registered: "a", current: "b", relaySendsLocates: true), .set("b"))
-        XCTAssertEqual(Service.locationTokenChange(registered: "a", current: nil, relaySendsLocates: true), .clear)
-        XCTAssertEqual(Service.locationTokenChange(registered: "a", current: "a", relaySendsLocates: false), .clear)
-        XCTAssertEqual(Service.locationTokenChange(registered: nil, current: "a", relaySendsLocates: false), .keep)
+        func change(_ registered: String?, _ current: String?, reported: Bool = true, relay: Bool?) -> VoIPTokenChange {
+            PushNotificationService.locationTokenChange(registered: registered, current: current, reported: reported,
+                                                        relaySendsLocates: relay)
+        }
+        // The relay not heard from yet.
+        XCTAssertEqual(change("a", nil, relay: nil), .keep)
+        XCTAssertEqual(change(nil, "a", relay: nil), .keep)
+        // The location monitor not heard from yet: its nil isn't "none".
+        XCTAssertEqual(change("a", nil, reported: false, relay: true), .keep)
+        XCTAssertEqual(change(nil, "a", relay: true), .set("a"))
+        XCTAssertEqual(change("a", "a", relay: true), .keep)
+        XCTAssertEqual(change("a", "b", relay: true), .set("b"))
+        XCTAssertEqual(change("a", nil, relay: true), .clear)
+        // A relay that doesn't send locates loses the token either way.
+        XCTAssertEqual(change("a", "a", relay: false), .clear)
+        XCTAssertEqual(change("a", nil, reported: false, relay: false), .clear)
+        XCTAssertEqual(change(nil, "a", relay: false), .keep)
     }
 
     private func savedDeviceToken() -> String? {
