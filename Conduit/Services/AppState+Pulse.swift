@@ -50,6 +50,30 @@ extension AppState {
         if inUse { await loadSessions(forceRefresh: true) }
     }
 
+    /// Hermes' model slot for Pulse's memory and follow-up checks, which
+    /// the plugin registers; nil follows the main model.
+    static let pulseMemoryTask = "pulse_memory"
+
+    /// Puts Pulse's memory on `model` (nil: the main model), in the
+    /// dashboard's default profile where Pulse runs. The user picked it for
+    /// Pulse, so Hermes' price check doesn't ask again.
+    func setPulseMemoryModel(_ model: PulseModel?) async throws {
+        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let profile = Self.pulseHomeProfile
+        _ = try await bridge.requestJSON(
+            path: DashboardPath.withProfile("/api/model/set", profile: profile),
+            method: "POST",
+            body: [
+                "scope": "auxiliary",
+                "task": Self.pulseMemoryTask,
+                "provider": model.map { $0.provider.isEmpty ? "auto" : $0.provider } ?? "auto",
+                "model": model?.model ?? "",
+                "confirm_expensive_model": true,
+                "profile": profile
+            ]
+        )
+    }
+
     /// Pins Pulse's chat on the host.
     func pinPulseHomeChat(id: String) async throws {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }

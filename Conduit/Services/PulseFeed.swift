@@ -368,4 +368,6 @@ struct PulseOpenRequest: Equatable {
 extension PulseClient {
     /// The plugin serves the feed, ratings and lessons (0.55.0).
     static let feedCapability = "pulse_feed"
+    /// Settings > Pulse picks Pulse's model (0.57.0).
+    static let modelCapability = "pulse_model"
 }

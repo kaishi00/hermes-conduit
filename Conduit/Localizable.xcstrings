@@ -1,6 +1,170 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Same as the Pulse chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie der Pulse-Chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual que el chat de Pulse"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comme le chat Pulse"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sama seperti obrolan Pulse"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come la chat di Pulse"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseのチャットと同じ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 채팅과 동일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jak czat Pulse"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual ao chat do Pulse"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как в чате Pulse"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse sohbetiyle aynı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Pulse 聊天相同"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Pulse 聊天相同"
+          }
+        }
+      }
+    },
+    "Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Berichte, das Morgenbriefing, die Nachfragen und das Gedächtnis von Pulse laufen mit diesem Modell. Ein schnelles, günstiges Modell reicht völlig."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los informes, el resumen matutino, los seguimientos y la memoria de Pulse usan este modelo. Basta con un modelo rápido y barato."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les rapports, le point du matin, les suivis et la mémoire de Pulse utilisent ce modèle. Un modèle rapide et bon marché suffit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laporan, ringkasan pagi, tindak lanjut, dan memori Pulse memakai model ini. Model yang cepat dan murah sudah cukup."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I resoconti, il riepilogo del mattino, i follow-up e la memoria di Pulse usano questo modello. Basta un modello veloce ed economico."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseのレポート、朝のブリーフ、フォローアップ、メモリーはこのモデルで動きます。速くて安いモデルで十分です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse의 보고서, 아침 브리핑, 후속 확인과 메모리는 이 모델로 실행됩니다. 빠르고 저렴한 모델이면 충분합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raporty, poranny przegląd, przypomnienia i pamięć Pulse działają na tym modelu. Szybki, tani model w zupełności wystarczy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os relatórios, o resumo da manhã, os acompanhamentos e a memória do Pulse usam este modelo. Um modelo rápido e barato basta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отчёты, утренняя сводка, напоминания и память Pulse работают на этой модели. Быстрой недорогой модели вполне достаточно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse'un raporları, sabah özeti, takipleri ve hafızası bu modelle çalışır. Hızlı ve ucuz bir model yeterlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 的报告、晨间简报、跟进和记忆都使用这个模型。一个快速、便宜的模型就足够了。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 的報告、晨間簡報、追蹤和記憶都使用這個模型。一個快速、便宜的模型就足夠了。"
+          }
+        }
+      }
+    },
     "Reports" : {
       "localizations" : {
         "de" : {

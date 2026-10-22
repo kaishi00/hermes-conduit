@@ -29,6 +29,8 @@ struct PulseSettingsPage: View {
     /// Report times being edited, saved a moment after the last change.
     @State private var draftTimes: [String]?
     @State private var timesSave: Task<Void, Never>?
+    /// The models Hermes offers, for the Model picker.
+    @State private var providers: [ProviderInfo] = []
 
     private var client: PulseClient { appState.pulseClient }
     private var working: Bool { workingID != nil }
@@ -39,6 +41,7 @@ struct PulseSettingsPage: View {
                 overviewSection(state)
                 homeChatSection(state)
                 if state.enabled {
+                    if appState.notifierPlugin.reports(PulseClient.modelCapability) { modelSection(state) }
                     reportSection(state)
                     memorySection(state)
                     if state.memory || state.backfill.phase != .none {
@@ -91,6 +94,7 @@ struct PulseSettingsPage: View {
             seededDays = false
             estimate = nil
             draftTimes = nil
+            providers = []
         }
     }
 
@@ -278,6 +282,45 @@ struct PulseSettingsPage: View {
         .buttonStyle(.settings)
         .disabled(times.count >= PulseReportTime.maxCount)
         .accessibilityIdentifier("settings.pulse.add-time")
+    }
+
+    private func modelSection(_ state: PulseState) -> some View {
+        let selection = state.model.map { VoiceJobModelSettingsSection.tag(provider: $0.provider, model: $0.model) } ?? ""
+        return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: selection,
+                choices: VoiceJobModelSettingsSection.modelChoices(
+                    defaultTitle: AppLocalization.string("Same as the Pulse chat"),
+                    defaultTag: "",
+                    selection: selection,
+                    providers: providers
+                ),
+                onSelect: { tag in
+                    guard tag != selection else { return }
+                    let pick = tag.isEmpty ? nil : VoiceJobModelSettingsSection.parse(tag)
+                    setModel(pick.map { PulseModel(provider: $0.provider ?? "", model: $0.model) })
+                }
+            ) {
+                Text("Model").foregroundStyle(.secondary)
+            }
+            .disabled(working)
+            .accessibilityIdentifier("settings.pulse.model")
+            Text("Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .task(id: appState.activeDashboardID) {
+            providers = await appState.loadVoiceJobModelProviders()
+        }
+    }
+
+    /// Memory's model slot first, then the turns': a refused slot changes
+    /// neither.
+    private func setModel(_ model: PulseModel?) {
+        run { client in
+            try await appState.setPulseMemoryModel(model)
+            return try await client.update(["model": model?.setting ?? NSNull()])
+        }
     }
 
     private func memorySection(_ state: PulseState) -> some View {

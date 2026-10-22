@@ -85,6 +85,17 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertTrue(state.offersProfileChoice)
     }
 
+    func testStateReadsPulsesModel() throws {
+        let picked = try XCTUnwrap(PulseState(json: json("""
+        {"enabled": true, "model": {"provider": "openrouter", "model": "google/gemini-flash"}}
+        """)))
+        XCTAssertEqual(picked.model, PulseModel(provider: "openrouter", model: "google/gemini-flash"))
+        XCTAssertEqual(picked.model?.setting as? [String: String],
+                       ["provider": "openrouter", "model": "google/gemini-flash"])
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "model": null}"#))).model)
+        XCTAssertNil(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).model)
+    }
+
     func testABodyThatIsntPulsesStateIsRefused() throws {
         XCTAssertNil(PulseState(json: try json(#"{"ok": true}"#)))
         // A JSON number is not a flag.

@@ -137,6 +137,8 @@ struct PulseState: Equatable {
     var backfill = PulseBackfill()
     var backfillDays = 30
     var ratings: [String: PulseRating] = [:]
+    /// The model Pulse's turns run on (0.57.0); nil, the Pulse chat's own.
+    var model: PulseModel?
 
     init() {}
 
@@ -183,6 +185,9 @@ struct PulseState: Equatable {
         if let days = PulseJSON.int(json["backfill_days"]), (1...PulseBackfillEstimate.maxDays).contains(days) {
             backfillDays = days
         }
+        if let raw = json["model"] as? [String: Any], let name = raw["model"] as? String, !name.isEmpty {
+            model = PulseModel(provider: raw["provider"] as? String ?? "", model: name)
+        }
         for (kind, raw) in json["ratings"] as? [String: Any] ?? [:] {
             guard let counts = raw as? [String: Any] else { continue }
             ratings[kind] = PulseRating(yes: PulseJSON.int(counts["yes"]) ?? 0, no: PulseJSON.int(counts["no"]) ?? 0)
@@ -192,6 +197,16 @@ struct PulseState: Equatable {
     /// The profile choice is offered when there's more than this profile to
     /// report on, or the user already narrowed it to this one.
     var offersProfileChoice: Bool { !otherProfiles.isEmpty || reportProfiles == "this" }
+}
+
+/// A model Pulse runs on: its reports, brief and follow-ups in the Pulse chat,
+/// and its memory (Hermes' `pulse_memory` slot).
+struct PulseModel: Equatable {
+    let provider: String
+    let model: String
+
+    /// PUT /pulse's "model".
+    var setting: [String: Any] { ["provider": provider, "model": model] }
 }
 
 /// What reading back some days would cost (POST /pulse/backfill estimate).
