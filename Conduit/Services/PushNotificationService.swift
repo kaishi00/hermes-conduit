@@ -1544,9 +1544,15 @@ final class PushNotificationService: ObservableObject {
 
     /// Whether the relay sends locates decides what happens to the location
     /// push token, so it's asked at launch (and on return while unknown),
-    /// not only when Settings > Notifications opens (notifier #287).
+    /// not only when Settings > Notifications opens (notifier #287). Once
+    /// known, a token change an earlier update failed to send goes again
+    /// (nothing is sent when nothing changed).
     private func refreshMetaIfUnknown() {
-        guard registration != nil, relayMeta == nil, !isFetchingMeta else { return }
+        guard registration != nil, !isFetchingMeta else { return }
+        guard relayMeta == nil else {
+            queueRegistrationUpdate()
+            return
+        }
         Task { await refreshMeta() }
     }
 
