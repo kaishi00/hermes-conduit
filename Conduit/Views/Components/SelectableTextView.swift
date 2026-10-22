@@ -354,7 +354,19 @@ struct SelectableTextView: UIViewRepresentable {
         // any bubble under VoiceOver) shrank to nothing.
         if wrapsLines, selfSizingWidthRange == nil,
            proposal.width == nil || proposal.width == .infinity {
-            return Self.naturalSize(of: uiView.mountedTextView)
+            let coordinator = context.coordinator
+            if let cached = coordinator.cachedMeasurement,
+               cached.generation == coordinator.presentationGeneration,
+               cached.key == .natural {
+                return cached.size
+            }
+            let size = Self.naturalSize(of: uiView.mountedTextView)
+            coordinator.cachedMeasurement = Coordinator.CachedMeasurement(
+                generation: coordinator.presentationGeneration,
+                key: .natural,
+                size: size
+            )
+            return size
         }
         return measuredSizeCached(
             proposalWidth: proposal.width,
@@ -371,7 +383,7 @@ struct SelectableTextView: UIViewRepresentable {
         let inset = textView.textContainerInset
         let padding = textView.textContainer.lineFragmentPadding * 2
         let lines = text.boundingRect(
-            with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            with: CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
         )
@@ -803,6 +815,7 @@ struct SelectableTextView: UIViewRepresentable {
             case nonWrapping
             case selfSizing
             case wrapping(width: CGFloat)
+            case natural
         }
 
         struct CachedMeasurement {
