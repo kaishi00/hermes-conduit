@@ -53,11 +53,14 @@ enum V2Route: Hashable {
     case project(ProjectSummary)
     /// What the active profile's chats produced (Chats bar).
     case artifacts
+    /// The Pulse screen (Chats bar, pulse branch): its cards and ratings.
+    case pulse
 
     static func == (lhs: V2Route, rhs: V2Route) -> Bool {
         switch (lhs, rhs) {
         case (.conversation, .conversation): return true
         case (.artifacts, .artifacts): return true
+        case (.pulse, .pulse): return true
         case let (.project(left), .project(right)): return left.id == right.id
         default: return false
         }
@@ -72,6 +75,8 @@ enum V2Route: Hashable {
             hasher.combine(project.id)
         case .artifacts:
             hasher.combine(2)
+        case .pulse:
+            hasher.combine(3)
         }
     }
 }
@@ -506,6 +511,13 @@ struct V2Shell: View {
             .onChange(of: appState.activeProfile) { _, _ in
                 fadeContentBackIn()
             }
+            .onChange(of: appState.pulseOpenRequest) { _, request in
+                // The page reads the card to show and clears the request.
+                guard request != nil, !appState.isModalSheetPresented else { return }
+                if chatsPath.last != .pulse { chatsPath.append(.pulse) }
+                visitedTabs.insert(.chats)
+                selectTab(.chats)
+            }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
                 appState.settingsLinkRequest = nil
@@ -714,6 +726,8 @@ struct V2Shell: View {
             tabBarClearance(V2ProjectPage(project: project))
         case .artifacts:
             tabBarClearance(V2ArtifactsPage())
+        case .pulse:
+            tabBarClearance(V2PulsePage())
         }
     }
 
@@ -730,7 +744,12 @@ struct V2Shell: View {
             if botsPath.last != .conversation { botsPath.append(.conversation) }
         default:
             botsPath.removeAll { $0 == .conversation }
-            if chatsPath.last != .conversation { chatsPath.append(.conversation) }
+            if chatsPath.last != .conversation {
+                // A chat opened from a page over another chat (Pulse) moves
+                // to the top instead of showing twice in the stack.
+                chatsPath.removeAll { $0 == .conversation }
+                chatsPath.append(.conversation)
+            }
         }
         visitedTabs.insert(target)
         selectTab(target)

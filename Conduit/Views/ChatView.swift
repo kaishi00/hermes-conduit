@@ -2037,6 +2037,10 @@ struct AssistantBubble: View {
             }
 
             HStack(spacing: 4) {
+                // Pulse follows up on what Hermes promised here: opens its card.
+                if let rowID = message.rowId, let card = rowState.pulseCards[rowID] {
+                    PulseMessageMark { appState.openPulse(card: card) }
+                }
                 Spacer(minLength: 0)
                 if message.role == .assistant {
                     MessageReactButton(message: message, isPresented: $showsTapback)

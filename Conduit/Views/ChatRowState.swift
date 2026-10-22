@@ -32,6 +32,9 @@ struct ChatRowState: Equatable {
     /// Each live card's last row: earlier rows with that live name show
     /// that it was updated below.
     var latestLiveRows: [String: String] = [:]
+    /// The open chat's messages that have a Pulse card, by Hermes' message
+    /// id (PulseFeed.swift): they show a Pulse mark that opens it.
+    var pulseCards: [Int: Int] = [:]
 
     init() {}
 
@@ -51,6 +54,7 @@ struct ChatRowState: Equatable {
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = RichCard.latestLiveRows(appState.messages)
+        pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

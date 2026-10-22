@@ -540,6 +540,10 @@ struct V2ChatsView: View, Equatable {
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
+            if appState.showsPulseScreen {
+                V2PulseButton()
+            }
+
             NavigationLink(value: V2Route.artifacts) {
                 V2CapsuleIcon(systemImage: "square.grid.2x2")
             }
