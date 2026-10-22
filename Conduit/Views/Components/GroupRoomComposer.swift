@@ -625,7 +625,8 @@ struct GroupRoomComposer: View {
         guard let request else { return }
         appState.consumeRoomRecipientRequest(request.id)
         guard let member = pickableMembers.first(where: {
-            $0.handle?.caseInsensitiveCompare(request.handle) == .orderedSame
+            $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(request.handle.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
         }), let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         if !recipients.contains(where: { $0.caseInsensitiveCompare(handle) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
