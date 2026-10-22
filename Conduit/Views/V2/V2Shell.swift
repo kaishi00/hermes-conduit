@@ -398,7 +398,8 @@ struct V2Shell: View {
     }
 
     /// Whether the visible tab shows the Pulse screen, which takes the
-    /// whole window as a chat does: no tabs or voice button, split or not.
+    /// whole window as a chat does: no tabs or voice button. Split, it is a
+    /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
         selectedTab == .chats && chatsPath.last == .pulse
     }
@@ -605,7 +606,7 @@ struct V2Shell: View {
         // (`tabBarClearance`).
         .overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
-                if !pulseVisible, split || !conversationVisible {
+                if split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
                         V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton
@@ -709,7 +710,13 @@ struct V2Shell: View {
         return HStack(spacing: 0) {
             NavigationStack(path: V2SplitLayout.listPath(path)) {
                 list
-                    .navigationDestination(for: V2Route.self, destination: destination)
+                    .navigationDestination(for: V2Route.self) { route in
+                        if route == .pulse {
+                            tabBarClearance(V2PulsePage())
+                        } else {
+                            destination(route)
+                        }
+                    }
             }
             .frame(width: V2SplitLayout.listWidth)
             // Each column's backdrop stays in its own column.
@@ -749,7 +756,8 @@ struct V2Shell: View {
         case .artifacts:
             tabBarClearance(V2ArtifactsPage())
         case .pulse:
-            // Full screen, as a chat is: its reply box sits where the tabs were.
+            // Full screen on a phone, as a chat is: its reply box sits where
+            // the tabs were. Split, the list column keeps the bar (`splitColumns`).
             V2PulsePage()
         }
     }

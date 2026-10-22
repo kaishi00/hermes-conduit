@@ -824,12 +824,17 @@ struct V2ChatsView: View, Equatable {
     private func contentSearchRows(_ displayed: [SessionSummary]) -> [SessionContentSearchRow] {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
-        return SessionContentSearch.rows(
+        let rows = SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
             allowed: selection.isEmpty ? nil : filterRows(selection, searching: true)
         )
+        // Pulse's chat stays behind the Pulse screen, message matches too.
+        guard let home = appState.pulseHomeChatID else { return rows }
+        return rows.filter { row in
+            row.session.map { !appState.isPulseHomeChat($0) } ?? (row.hit.sessionID != home)
+        }
     }
 
     private func nestedSections(_ displayed: [SessionSummary]) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
