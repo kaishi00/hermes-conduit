@@ -93,6 +93,9 @@ struct V2PulsePage: View {
     @State private var actingCard: Int?
     @State private var finishingCards: Set<Int> = []
     @State private var showsOldDone = false
+    /// Do it opened their chat but Pulse wasn't told; kept across refreshes
+    /// until the card is done.
+    @State private var untoldCards: Set<Int> = []
 
     private var client: PulseClient { appState.pulseClient }
 
@@ -174,6 +177,8 @@ struct V2PulsePage: View {
             ratingCards = []
             finishingCards = []
             actingCard = nil
+            showsOldDone = false
+            untoldCards = []
         }
         .onChange(of: appState.pulseOpenRequest) { _, request in
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
@@ -225,8 +230,9 @@ struct V2PulsePage: View {
                             .foregroundStyle(.red)
                             .padding(.horizontal, 4)
                     }
-                    let folded = page.cards.filter { isFolded($0) }
-                    ForEach(page.cards.filter { !isFolded($0) }) { card in
+                    let now = Date()
+                    let folded = page.cards.filter { isFolded($0, now: now) }
+                    ForEach(page.cards.filter { !isFolded($0, now: now) }) { card in
                         listedCard(card)
                     }
                     if !folded.isEmpty {
@@ -270,9 +276,9 @@ struct V2PulsePage: View {
 
     /// Done more than a day ago: kept under the Done row at the bottom, so
     /// the list is about what's still open. The card a push opened stays out.
-    private func isFolded(_ card: PulseCard) -> Bool {
+    private func isFolded(_ card: PulseCard, now: Date) -> Bool {
         guard let doneAt = card.doneAt, card.id != focusedCard else { return false }
-        return Date().timeIntervalSince(doneAt) > 86_400
+        return now.timeIntervalSince(doneAt) > 86_400
     }
 
     private func oldDoneToggle(count: Int) -> some View {
@@ -300,6 +306,10 @@ struct V2PulsePage: View {
         .accessibilityHint(Text(AppLocalization.string("Shows the cards done more than a day ago")))
         .accessibilityAddTraits(showsOldDone ? .isSelected : [])
         .accessibilityIdentifier("pulse.done-cards")
+    }
+
+    private static var untoldNote: String {
+        AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.")
     }
 
     /// One request at a time per card, whichever of its buttons sent it.
@@ -334,6 +344,12 @@ struct V2PulsePage: View {
                 Text(verbatim: "“\(card.quote)”")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if card.doneAt == nil, untoldCards.contains(card.id) {
+                Label(Self.untoldNote, systemImage: "exclamationmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if card.doneAt != nil {
@@ -422,9 +438,11 @@ struct V2PulsePage: View {
                 if appState.notifierPlugin.reports(PulseClient.actedCapability) {
                     do {
                         try await client.acted(card: card.id)
+                        untoldCards.remove(card.id)
                     } catch {
                         guard appState.activeDashboardID == dashboard else { return }
-                        errorMessage = AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.")
+                        untoldCards.insert(card.id)
+                        AccessibilityNotification.Announcement(Self.untoldNote).post()
                     }
                 }
             }
