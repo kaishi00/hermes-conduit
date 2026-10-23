@@ -3,12 +3,15 @@
 //  Conduit
 //
 //  The Pulse screen (TestFlight and Xcode builds, pulse branch): what Pulse
-//  brought up, newest first, as cards. Each card links back to the chat
-//  the promise was made in, says why Pulse spoke up, and takes a thumbs up
-//  or down; a thumbs down asks why, and each answer changes what Pulse does
-//  on the host (PulseFeed.swift). What Pulse learned is listed, with each
-//  kind's loudness, and every lesson can be undone. Pulse's own chat, where
-//  its hidden turns run, isn't shown: the cards are the way to answer it.
+//  brought up, as cards. A morning brief comes first with the cards it
+//  brought, then what's new and what's still open, then Done and cleared,
+//  folded. Each card links back to the chat it came from and takes a thumbs
+//  up or down; a follow-up's thumbs down asks why, and each answer changes
+//  what Pulse does on the host (PulseFeed.swift). Swiping a card away is
+//  Not now: off the list, nothing learned, with Undo. What Pulse learned is
+//  listed, with each kind's loudness, and every lesson can be undone.
+//  Pulse's own chat, where its hidden turns run, isn't shown: the cards are
+//  the way to answer it.
 //
 
 import SwiftUI
@@ -87,7 +90,13 @@ struct V2PulsePage: View {
     @State private var ratingCards: Set<Int> = []
     @State private var actingCard: Int?
     @State private var finishingCards: Set<Int> = []
-    @State private var showsOldDone = false
+    @State private var showsCleared = false
+    /// Handled briefs opened again from their folded row.
+    @State private var expandedBriefs: Set<Int> = []
+    /// The cards unseen when the page opened: they read as new while it's up.
+    @State private var newCards: Set<Int>?
+    /// The last Done or Not now, for the Undo bar.
+    @State private var undo: PulseUndo?
     /// Do it opened their chat but Pulse wasn't told; kept across refreshes
     /// until the card is done.
     @State private var untoldCards: Set<Int> = []
@@ -142,8 +151,24 @@ struct V2PulsePage: View {
                 try? await Task.sleep(for: .seconds(60))
             }
         }
+        .overlay(alignment: .bottom) {
+            if let undo {
+                undoBar(undo)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .task(id: undo?.id) {
+            guard undo != nil else { return }
+            try? await Task.sleep(for: .seconds(6))
+            withAnimation(.snappy) { undo = nil }
+        }
         .onAppear { isShown = true }
-        .onDisappear { isShown = false }
+        .onDisappear {
+            isShown = false
+            newCards = nil
+        }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
             errorMessage = nil
@@ -156,7 +181,10 @@ struct V2PulsePage: View {
             ratingCards = []
             finishingCards = []
             actingCard = nil
-            showsOldDone = false
+            showsCleared = false
+            expandedBriefs = []
+            newCards = nil
+            undo = nil
             untoldCards = []
         }
         .onChange(of: appState.pulseOpenRequest) { _, request in
@@ -190,9 +218,13 @@ struct V2PulsePage: View {
     }
 
     private func cardList(_ page: PulseFeedPage) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+        let layout = PulseLayout(cards: page.cards, keeping: focusedCard.map { [$0] } ?? [])
+        let fresh = layout.open.filter { newCards?.contains($0.id) == true }
+        let earlier = layout.open.filter { newCards?.contains($0.id) != true }
+        return ScrollViewReader { proxy in
+            List {
+                Group {
+                    summary(layout, new: fresh.count).pulseRow()
                     if let learnedNote {
                         Label {
                             Text(verbatim: learnedNote)
@@ -202,34 +234,45 @@ struct V2PulsePage: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
+                        .pulseRow()
                     }
                     if let errorMessage {
                         Text(verbatim: errorMessage)
                             .font(.footnote)
                             .foregroundStyle(.red)
                             .padding(.horizontal, 4)
+                            .pulseRow()
                     }
-                    let now = Date()
-                    let folded = page.cards.filter { isFolded($0, now: now) }
-                    ForEach(page.cards.filter { !isFolded($0, now: now) }) { card in
-                        listedCard(card)
+                    ForEach(layout.briefs) { brief in
+                        briefRows(brief)
                     }
-                    if !folded.isEmpty {
-                        oldDoneToggle(count: folded.count)
-                        if showsOldDone {
-                            ForEach(folded) { card in
-                                listedCard(card)
+                    if !fresh.isEmpty {
+                        sectionHeading(AppLocalization.string("New"))
+                        ForEach(fresh) { card in listedCard(card) }
+                    }
+                    if !earlier.isEmpty {
+                        if !fresh.isEmpty || !layout.briefs.isEmpty {
+                            sectionHeading(AppLocalization.string("Earlier"))
+                        }
+                        ForEach(earlier) { card in listedCard(card) }
+                    }
+                    if layout.clearedCount > 0 {
+                        clearedToggle(count: layout.clearedCount)
+                        if showsCleared {
+                            ForEach(layout.clearedBriefs) { brief in
+                                briefRows(brief)
                             }
+                            ForEach(layout.cleared) { card in listedCard(card) }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .onChange(of: focusedCard) { _, card in
                 guard let card else { return }
                 withAnimation { proxy.scrollTo(card, anchor: .top) }
-                // Once the scroll has brought the card into the lazy stack.
+                // Once the scroll has brought the card into the list.
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
                     voiceOverCard = card
@@ -246,44 +289,257 @@ struct V2PulsePage: View {
         }
     }
 
+    /// The line under the title: how many are new, or that nothing is open.
+    @ViewBuilder private func summary(_ layout: PulseLayout, new count: Int) -> some View {
+        let open = layout.open.count + layout.briefs.reduce(0) { $0 + $1.left }
+        if count > 0 || open == 0 {
+            Text(verbatim: count > 0 ? AppLocalization.string("\(count) new since you last looked")
+                                     : AppLocalization.string("You're all caught up"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private func sectionHeading(_ title: String) -> some View {
+        Text(verbatim: title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.top, 6)
+            .accessibilityAddTraits(.isHeader)
+            .pulseRow()
+    }
+
     private func listedCard(_ card: PulseCard) -> some View {
         cardView(card)
             .accessibilityElement(children: .contain)
             .accessibilityFocused($voiceOverCard, equals: card.id)
             .id(card.id)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) { notNowButton(card) }
+            .pulseRow()
     }
 
-    /// Done more than a day ago: kept under the Done row at the bottom, so
-    /// the list is about what's still open. The card a push opened stays out.
-    private func isFolded(_ card: PulseCard, now: Date) -> Bool {
-        guard let doneAt = card.doneAt, card.id != focusedCard else { return false }
-        return now.timeIntervalSince(doneAt) > 86_400
+    /// Not now: off the list, nothing learned. A plugin before 0.67.0 can't take it.
+    @ViewBuilder private func notNowButton(_ card: PulseCard) -> some View {
+        if card.dismissedAt == nil, card.doneAt == nil, canDismiss {
+            Button {
+                Haptics.light()
+                dismiss(card, true)
+            } label: {
+                Label(AppLocalization.string("Not now"), systemImage: "clock")
+            }
+            .tint(.gray)
+        }
     }
 
-    private func oldDoneToggle(count: Int) -> some View {
+    private var canDismiss: Bool { appState.notifierPlugin.reports(PulseClient.dismissCapability) }
+
+    // MARK: Morning brief
+
+    /// A morning brief and the cards it brought, as one block: open while
+    /// anything in it is, else one row that opens it again.
+    @ViewBuilder private func briefRows(_ brief: PulseLayout.Brief) -> some View {
+        if brief.isHandled, !expandedBriefs.contains(brief.id) {
+            handledBriefRow(brief)
+                .id(brief.card.id)
+                .pulseRow()
+        } else {
+            briefHeader(brief)
+                .id(brief.card.id)
+                .pulseRow(bottom: 0)
+            ForEach(Array(brief.items.enumerated()), id: \.element.id) { index, item in
+                briefItem(item, last: index == brief.items.count - 1)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityFocused($voiceOverCard, equals: item.id)
+                    .id(item.id)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) { notNowButton(item) }
+                    .pulseRow(top: 0, bottom: index == brief.items.count - 1 ? 6 : 0)
+            }
+        }
+    }
+
+    private static let briefShape: CGFloat = 22
+
+    private func briefHeader(_ brief: PulseLayout.Brief) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "sunrise")
+                    .foregroundStyle(Color.conduitAccent)
+                    .accessibilityHidden(true)
+                Text("Morning brief")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                if brief.isHandled {
+                    Button {
+                        withAnimation(.snappy) { _ = expandedBriefs.remove(brief.id) }
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.footnote.weight(.semibold))
+                            .frame(width: 44, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(AppLocalization.string("Fold the morning brief"))
+                }
+                Text(verbatim: briefStamp(brief))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !brief.card.news.isEmpty {
+                Text(brief.card.formattedNews)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.primary.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(briefBackground(top: true, bottom: false))
+    }
+
+    /// "08:00 · 2 left".
+    private func briefStamp(_ brief: PulseLayout.Brief) -> String {
+        let time = brief.card.createdAt.map { $0.formatted(date: .omitted, time: .shortened) }
+        let left = brief.isHandled ? AppLocalization.string("All handled")
+            : AppLocalization.string("\(Int(brief.left)) left")
+        return [time, left].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func briefItem(_ card: PulseCard, last: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle()
+                .fill(Color.conduitAccent.opacity(0.2))
+                .frame(height: 1)
+                .padding(.horizontal, -16)
+            if card.isCleared {
+                HStack(spacing: 8) {
+                    Image(systemName: card.dismissedAt != nil ? "clock" : "checkmark.circle")
+                        .foregroundStyle(card.dismissedAt != nil ? Color.secondary : Color.green)
+                        .accessibilityHidden(true)
+                    Text(card.formattedNews)
+                        .font(.subheadline)
+                        .strikethrough(card.doneAt != nil)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    clearedUndoButton(card)
+                }
+                .padding(.vertical, 4)
+            } else {
+                topicLine(card)
+                Text(card.formattedNews)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                actionRow(card)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 0)
+        .padding(.bottom, last ? 12 : 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(briefBackground(top: false, bottom: last))
+    }
+
+    private func briefBackground(top: Bool, bottom: Bool) -> some View {
+        let radius = Self.briefShape
+        return UnevenRoundedRectangle(topLeadingRadius: top ? radius : 0, bottomLeadingRadius: bottom ? radius : 0,
+                                      bottomTrailingRadius: bottom ? radius : 0, topTrailingRadius: top ? radius : 0,
+                                      style: .continuous)
+            .fill(Color.conduitAccent.opacity(0.10))
+    }
+
+    private func handledBriefRow(_ brief: PulseLayout.Brief) -> some View {
         Button {
             Haptics.selection()
-            withAnimation(.snappy) { showsOldDone.toggle() }
+            withAnimation(.snappy) { _ = expandedBriefs.insert(brief.id) }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "sunrise")
+                    .foregroundStyle(Color.conduitAccent)
+                Text(AppLocalization.string("Morning brief · all \(brief.items.count) handled"))
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.conduitAccent.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.conduitAccent.opacity(0.24)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text(AppLocalization.string("Shows what the brief brought")))
+    }
+
+    // MARK: Done and cleared
+
+    private func clearedToggle(count: Int) -> some View {
+        Button {
+            Haptics.selection()
+            withAnimation(.snappy) { showsCleared.toggle() }
+        } label: {
+            HStack(spacing: 10) {
                 Image(systemName: "checkmark.circle")
-                Text(AppLocalization.string("Done"))
+                Text(AppLocalization.string("Done and cleared"))
                 Text(verbatim: "\(count)")
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
-                    .rotationEffect(.degrees(showsOldDone ? 180 : 0))
+                    .rotationEffect(.degrees(showsCleared ? 180 : 0))
             }
-            .font(.footnote.weight(.semibold))
+            .font(.subheadline)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 48)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.secondary.opacity(0.12)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text(AppLocalization.string("Shows the cards done more than a day ago")))
-        .accessibilityAddTraits(showsOldDone ? .isSelected : [])
+        .padding(.top, 6)
+        .accessibilityHint(Text(AppLocalization.string("Shows the cards that are done or swiped away")))
+        .accessibilityAddTraits(showsCleared ? .isSelected : [])
         .accessibilityIdentifier("pulse.done-cards")
+        .pulseRow()
+    }
+
+    // MARK: Undo
+
+    private func undoBar(_ undo: PulseUndo) -> some View {
+        HStack(spacing: 12) {
+            Text(verbatim: undo.message)
+                .font(.subheadline)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button(AppLocalization.string("Undo")) {
+                Haptics.selection()
+                withAnimation(.snappy) { self.undo = nil }
+                if let card = page?.cards.first(where: { $0.id == undo.card }) {
+                    switch undo.action {
+                    case .dismissed: dismiss(card, false)
+                    case .done: markDone(card, false)
+                    }
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .tint(.conduitAccent)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 50)
+        .background(Capsule().fill(.regularMaterial))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func showUndo(_ action: PulseUndo.Action, card: Int) {
+        let message = action == .dismissed ? AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
+                                           : AppLocalization.string("Marked done")
+        withAnimation(.snappy) { undo = PulseUndo(card: card, action: action, message: message) }
+        AccessibilityNotification.Announcement(message).post()
     }
 
     private static var untoldNote: String {
@@ -297,58 +553,20 @@ struct V2PulsePage: View {
 
     private func cardView(_ card: PulseCard) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text(verbatim: card.heading)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.conduitAccent)
-                    .accessibilityAddTraits(.isHeader)
-                if card.isHeld {
-                    Text("For the morning brief")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                if let created = card.createdAt {
-                    Text(created, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            topicLine(card)
             Text(card.formattedNews)
                 .font(.body)
                 .strikethrough(card.doneAt != nil)
-                .foregroundStyle(card.doneAt == nil ? Color.primary : Color.secondary)
+                .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            if !card.quote.isEmpty, card.doneAt == nil {
+            if !card.quote.isEmpty, !card.isCleared {
                 Text(verbatim: "“\(card.quote)”")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if card.doneAt == nil, untoldCards.contains(card.id) {
-                Label(Self.untoldNote, systemImage: "exclamationmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if card.doneAt != nil {
-                doneRow(card)
-            } else if card.isActionable || canMarkDone(card) {
-                HStack(spacing: 8) {
-                    if card.isActionable { doItButton(card) }
-                    if canMarkDone(card) { doneButton(card) }
-                }
-            }
             if appState.pulseCardHasChat(card) {
-                Button {
-                    appState.openPulseCardChat(card)
-                } label: {
-                    Label(card.chatTitle.isEmpty ? AppLocalization.string("Open the chat") : card.chatTitle,
-                          systemImage: "bubble.left.and.text.bubble.right")
-                        .font(.footnote.weight(.medium))
-                        .lineLimit(1)
-                }
-                .buttonStyle(.borderless)
+                chatLink(card)
             }
             if expandedWhy.contains(card.id), !card.why.isEmpty {
                 Text(verbatim: card.why)
@@ -358,26 +576,7 @@ struct V2PulsePage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary))
             }
-            HStack(spacing: 4) {
-                if !card.why.isEmpty {
-                    Button {
-                        withAnimation {
-                            if expandedWhy.contains(card.id) { expandedWhy.remove(card.id) } else { expandedWhy.insert(card.id) }
-                        }
-                    } label: {
-                        Text("Why?")
-                            .font(.footnote.weight(.medium))
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityValue(expandedWhy.contains(card.id)
-                        ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
-                }
-                Spacer(minLength: 0)
-                if card.isRatable {
-                    thumb(card, up: true)
-                    thumb(card, up: false)
-                }
-            }
+            actionRow(card)
             if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason) {
                 Text(verbatim: reason.title)
                     .font(.caption)
@@ -385,17 +584,141 @@ struct V2PulsePage: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .padding(14)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(.thinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.conduitAccent.opacity(focusedCard == card.id ? 0.8 : 0), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(focusedCard == card.id ? Color.conduitAccent.opacity(0.8) : Color.white.opacity(0.14),
+                              lineWidth: focusedCard == card.id ? 1.5 : 1)
         )
-        // A done card steps back: struck through and faded.
-        .opacity(card.doneAt == nil ? 1 : 0.7)
+        // A cleared card steps back.
+        .opacity(card.isCleared ? 0.7 : 1)
+    }
+
+    /// The coloured dot and what it's about, and when.
+    private func topicLine(_ card: PulseCard) -> some View {
+        let tint = PulseTopicTint.color(card)
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(tint)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(verbatim: card.heading)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .accessibilityAddTraits(.isHeader)
+            if let created = card.createdAt {
+                Text(verbatim: "· " + PulseTopicTint.stamp(created))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if card.isHeld {
+                Text("For the morning brief")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if !card.why.isEmpty, !card.isNoticed {
+                Button {
+                    withAnimation {
+                        if expandedWhy.contains(card.id) { expandedWhy.remove(card.id) } else { expandedWhy.insert(card.id) }
+                    }
+                } label: {
+                    Text("Why?")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityValue(expandedWhy.contains(card.id)
+                    ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+            }
+        }
+    }
+
+    /// The chat it came from, a tap away.
+    private func chatLink(_ card: PulseCard) -> some View {
+        Button {
+            appState.openPulseCardChat(card)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left")
+                Text(verbatim: card.chatTitle.isEmpty ? AppLocalization.string("Open the chat") : card.chatTitle)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    /// Do it and Done on the left, the thumbs on the right; for a cleared
+    /// card, what happened to it and Undo.
+    @ViewBuilder private func actionRow(_ card: PulseCard) -> some View {
+        if card.isCleared {
+            HStack(spacing: 8) {
+                clearedLabel(card)
+                Spacer(minLength: 0)
+                clearedUndoButton(card)
+            }
+        } else {
+            HStack(spacing: 8) {
+                if card.doneAt == nil, untoldCards.contains(card.id) {
+                    Label(Self.untoldNote, systemImage: "exclamationmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    if card.isActionable { doItButton(card) }
+                    if canMarkDone(card) { doneButton(card) }
+                }
+                Spacer(minLength: 0)
+                if card.isRatable {
+                    thumb(card, up: true)
+                    thumb(card, up: false)
+                }
+            }
+        }
+    }
+
+    private func clearedLabel(_ card: PulseCard) -> some View {
+        let title = card.dismissedAt != nil ? AppLocalization.string("Not now")
+            : card.doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat") : AppLocalization.string("Done")
+        return Label(title, systemImage: card.dismissedAt != nil ? "clock" : "checkmark.circle.fill")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(card.dismissedAt != nil ? Color.secondary : Color.green)
+    }
+
+    /// Puts a swiped-away card back, or takes Done off.
+    @ViewBuilder private func clearedUndoButton(_ card: PulseCard) -> some View {
+        if card.dismissedAt != nil, canDismiss {
+            Button {
+                Haptics.selection()
+                dismiss(card, false)
+            } label: {
+                Text(AppLocalization.string("Put back"))
+                    .font(.footnote.weight(.medium))
+            }
+            .buttonStyle(.borderless)
+            .disabled(isBusy(card))
+            .accessibilityHint(Text(AppLocalization.string("Puts the card back on the list")))
+        } else if card.doneAt != nil, appState.notifierPlugin.reports(PulseClient.doneCapability) {
+            Button {
+                Haptics.selection()
+                markDone(card, false)
+            } label: {
+                Text(AppLocalization.string("Undo"))
+                    .font(.footnote.weight(.medium))
+            }
+            .buttonStyle(.borderless)
+            .disabled(isBusy(card))
+            .accessibilityLabel(Text(AppLocalization.string("Undo Done")))
+            .accessibilityHint(Text(AppLocalization.string("Pulse checks on it again")))
+            .accessibilityIdentifier("pulse.card.undo-done")
+        }
     }
 
     private func doItButton(_ card: PulseCard) -> some View {
@@ -459,31 +782,6 @@ struct V2PulsePage: View {
         .accessibilityIdentifier("pulse.card.done")
     }
 
-    private func doneRow(_ card: PulseCard) -> some View {
-        HStack(spacing: 8) {
-            Label(card.doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat")
-                                         : AppLocalization.string("Done"),
-                  systemImage: "checkmark.circle.fill")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.green)
-            Spacer(minLength: 0)
-            if appState.notifierPlugin.reports(PulseClient.doneCapability) {
-                Button {
-                    Haptics.selection()
-                    markDone(card, false)
-                } label: {
-                    Text(AppLocalization.string("Undo"))
-                        .font(.footnote.weight(.medium))
-                }
-                .buttonStyle(.borderless)
-                .disabled(isBusy(card))
-                .accessibilityLabel(Text(AppLocalization.string("Undo Done")))
-                .accessibilityHint(Text(AppLocalization.string("Pulse checks on it again")))
-                .accessibilityIdentifier("pulse.card.undo-done")
-            }
-        }
-    }
-
     private func thumb(_ card: PulseCard, up: Bool) -> some View {
         let chosen = card.rating == (up ? "up" : "down")
         return Button {
@@ -512,6 +810,9 @@ struct V2PulsePage: View {
             let loaded = try await client.feed()
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
+            if newCards == nil, isShown {
+                newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
+            }
             loadError = nil
             errorMessage = nil
             learnedNote = nil
@@ -532,6 +833,11 @@ struct V2PulsePage: View {
         guard let card = request.card else { return }
         focusedCard = card
         expandedWhy.insert(card)
+        // A card a folded brief brought: the brief opens to show it.
+        if let tag = page?.cards.first(where: { $0.id == card })?.brief, !tag.isEmpty,
+           let brief = page?.cards.first(where: { $0.kind == "brief" && $0.brief == tag }) {
+            expandedBriefs.insert(brief.id)
+        }
     }
 
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
@@ -549,6 +855,32 @@ struct V2PulsePage: View {
                 errorMessage = nil
                 learnedNote = lessons.isEmpty ? nil
                     : AppLocalization.string("Pulse learned: \(lessons.map(\.text).joined(separator: "; "))")
+            } catch {
+                guard appState.activeDashboardID == dashboard else { return }
+                errorMessage = PulseRefusal.message(for: error)
+            }
+        }
+    }
+
+    /// Not now (or Put back): off the list into Done and cleared, nothing
+    /// learned; the card moves at once.
+    private func dismiss(_ card: PulseCard, _ dismissed: Bool) {
+        finishingCards.insert(card.id)
+        let dashboard = appState.activeDashboardID
+        Task {
+            defer { finishingCards.remove(card.id) }
+            do {
+                let changed = try await client.dismiss(card: card.id, dismissed: dismissed)
+                guard appState.activeDashboardID == dashboard else { return }
+                guard changed else { return await load() }
+                withAnimation(.snappy) {
+                    if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
+                        page?.cards[index].dismissedAt = dismissed ? Date() : nil
+                    }
+                    if focusedCard == card.id, dismissed { focusedCard = nil }
+                }
+                if dismissed { showUndo(.dismissed, card: card.id) }
+                errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
@@ -575,6 +907,7 @@ struct V2PulsePage: View {
                 }
                 if done {
                     untoldCards.remove(card.id)
+                    showUndo(.done, card: card.id)
                 }
                 errorMessage = nil
             } catch {
@@ -582,6 +915,48 @@ struct V2PulsePage: View {
                 errorMessage = PulseRefusal.message(for: error)
             }
         }
+    }
+}
+
+/// The Undo bar's last Done or Not now.
+struct PulseUndo: Equatable {
+    enum Action { case done, dismissed }
+
+    let id = UUID()
+    let card: Int
+    let action: Action
+    let message: String
+}
+
+/// A card's colour by what it's about, and when it came, as the card says it.
+enum PulseTopicTint {
+    static func color(_ card: PulseCard) -> Color {
+        guard card.isNoticed else { return .conduitAccent }
+        switch card.topic {
+        case "commitment", "promise", "follow-up": return .conduitAccent
+        case "date", "reminder": return .blue
+        case "watch": return .purple
+        case "intention", "interest": return .teal
+        case "fact": return .green
+        default: return .secondary
+        }
+    }
+
+    /// The time for today's, else the weekday and time.
+    static func stamp(_ date: Date, now: Date = Date()) -> String {
+        if Calendar.current.isDate(date, inSameDayAs: now) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
+}
+
+private extension View {
+    /// A Pulse screen row: no list chrome, the cards' own spacing.
+    func pulseRow(top: CGFloat = 6, bottom: CGFloat = 6) -> some View {
+        listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: top, leading: 16, bottom: bottom, trailing: 16))
     }
 }
 

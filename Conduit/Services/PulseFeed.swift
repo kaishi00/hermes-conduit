@@ -40,6 +40,11 @@ struct PulseCard: Equatable, Identifiable {
     let itemID: Int?
     /// What a report item is about ("date", "promise"…) on a "noticed" card.
     let topic: String
+    /// The morning brief it went out in (0.67.0): the brief's own card and
+    /// the held cards it brought share it, and show together.
+    let brief: String
+    /// Swiped away ("Not now"): in Done and cleared, nothing learned.
+    var dismissedAt: Date?
     /// When it was marked done: by the user on the Pulse screen, or by
     /// Pulse after Do it, once the chat showed it got done.
     var doneAt: Date?
@@ -70,6 +75,8 @@ struct PulseCard: Equatable, Identifiable {
         briefedAt = PulseJSON.date(object["briefed_at"])
         itemID = PulseJSON.int(object["item_id"])
         topic = object["topic"] as? String ?? ""
+        brief = object["brief"] as? String ?? ""
+        dismissedAt = PulseJSON.date(object["dismissed_at"])
         doneAt = PulseJSON.date(object["done_at"])
         doneBy = object["done_by"] as? String ?? ""
         rating = object["rating"] as? String ?? ""
@@ -82,6 +89,9 @@ struct PulseCard: Equatable, Identifiable {
 
     /// One of a report's items, on its own card.
     var isNoticed: Bool { kind == "noticed" }
+
+    /// Done or swiped away: it goes under Done and cleared.
+    var isCleared: Bool { doneAt != nil || dismissedAt != nil }
 
     /// Follow-ups and report items take ratings; a whole report or a brief
     /// is Hermes' own reply.
@@ -111,6 +121,59 @@ struct PulseCard: Equatable, Identifiable {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: news, options: options)) ?? AttributedString(news)
     }
+}
+
+/// The Pulse screen's order: morning briefs with the cards they brought,
+/// then what's still open, then what's done or swiped away.
+struct PulseLayout: Equatable {
+    struct Brief: Equatable, Identifiable {
+        let card: PulseCard
+        /// The held cards it brought, oldest first.
+        let items: [PulseCard]
+
+        var id: Int { card.id }
+        var left: Int { items.filter { !$0.isCleared }.count }
+        /// Every card it brought is done or swiped away.
+        var isHandled: Bool { left == 0 }
+    }
+
+    /// Briefs still holding something open, newest first, then the newest
+    /// brief even when it's all handled (it folds to one row).
+    var briefs: [Brief] = []
+    var open: [PulseCard] = []
+    /// Done or swiped away, newest first, with older briefs all handled.
+    var cleared: [PulseCard] = []
+    var clearedBriefs: [Brief] = []
+
+    init() {}
+
+    /// `keeping`: cards that stay where they are though cleared (the one a
+    /// push or a Pulse mark opened).
+    init(cards: [PulseCard], keeping: Set<Int> = []) {
+        var grouped: [String: [PulseCard]] = [:]
+        for card in cards where !card.brief.isEmpty && card.kind != "brief" {
+            grouped[card.brief, default: []].append(card)
+        }
+        var taken: Set<Int> = []
+        var newest = true
+        for card in cards where card.kind == "brief" && !card.brief.isEmpty {
+            guard let items = grouped[card.brief], !items.isEmpty else { continue }
+            let brief = Brief(card: card, items: items.sorted { ($0.createdAt ?? .distantPast, $0.id) < ($1.createdAt ?? .distantPast, $1.id) })
+            taken.insert(card.id)
+            taken.formUnion(items.map(\.id))
+            if !brief.isHandled || newest || items.contains(where: { keeping.contains($0.id) }) {
+                briefs.append(brief)
+            } else {
+                clearedBriefs.append(brief)
+            }
+            newest = false
+        }
+        for card in cards where !taken.contains(card.id) {
+            if card.isCleared && !keeping.contains(card.id) { cleared.append(card) } else { open.append(card) }
+        }
+    }
+
+    var clearedCount: Int { cleared.count + clearedBriefs.reduce(0) { $0 + $1.items.count } }
 }
 
 /// A kind's loudness on the ladder, loudest first.
@@ -320,6 +383,14 @@ extension PulseClient {
         _ = try await request("\(Self.path)/acted", "POST", ["card": card])
     }
 
+    /// Not now: swipes a card away (nothing learned), or puts it back;
+    /// whether it changed.
+    @discardableResult
+    func dismiss(card: Int, dismissed: Bool) async throws -> Bool {
+        let response = try await request("\(Self.path)/dismiss", "POST", ["card": card, "dismissed": dismissed])
+        return PulseJSON.bool(response["changed"]) ?? false
+    }
+
     func learned() async throws -> PulseLearned {
         let response = try await request("\(Self.path)/learned", "GET", nil)
         guard let learned = PulseLearned(json: response) else { throw HermesError.invalidResponse }
@@ -463,4 +534,6 @@ extension PulseClient {
     static let doneCapability = "pulse_done"
     /// After Do it, Pulse marks the card done itself once the chat shows it (0.64.0).
     static let actedCapability = "pulse_acted"
+    /// Cards can be swiped away, and briefs name the cards they brought (0.67.0).
+    static let dismissCapability = "pulse_dismiss"
 }

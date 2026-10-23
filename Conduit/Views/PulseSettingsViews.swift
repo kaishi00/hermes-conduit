@@ -3,8 +3,10 @@
 //  Conduit
 //
 //  Settings > Pulse (beta), on TestFlight and Xcode builds: Pulse on or
-//  off, its chat, the shadow report's times, memory, reading older chats
-//  and its latest checks (PulseSettings.swift). Every change goes to the
+//  off; when it speaks up (how often, the times it looks through your
+//  chats, the morning brief); what it reads (profiles, memory, older
+//  chats); its model; and behind the scenes, its time zone, token budgets,
+//  chat and latest checks (PulseSettings.swift). Every change goes to the
 //  plugin and the page shows the state it answers with.
 //
 
@@ -31,9 +33,6 @@ struct PulseSettingsPage: View {
     @State private var timesSave: Task<Void, Never>?
     /// The models Hermes offers, for the Model picker.
     @State private var providers: [ProviderInfo] = []
-    /// The Nudging slider while it moves, sent once it's let go.
-    @State private var nudgeDraft: Double?
-    @State private var nudgeEditing = false
 
     private var client: PulseClient { appState.pulseClient }
     private var working: Bool { workingID != nil }
@@ -42,19 +41,16 @@ struct PulseSettingsPage: View {
         SettingsDetailContainer {
             if let state {
                 overviewSection(state)
-                homeChatSection(state)
+                if state.homeChat == nil { homeChatSection(state) }
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
-                    if budgets { nudgeSection(state) }
-                    if appState.notifierPlugin.reports(PulseClient.modelCapability) { modelSection(state) }
-                    reportSection(state)
-                    memorySection(state, budgets: budgets)
+                    speakUpSection(state, budgets: budgets)
+                    readsSection(state)
                     if state.memory || state.backfill.phase != .none {
                         backfillSection(state)
                     }
-                    if !state.recent.isEmpty {
-                        recentSection(state)
-                    }
+                    if appState.notifierPlugin.reports(PulseClient.modelCapability) { modelSection(state) }
+                    behindTheScenesSection(state, budgets: budgets)
                 }
             } else if let loadError {
                 ConduitSettingsSection(title: AppLocalization.string("Pulse"), symbol: "waveform.path.ecg", tint: .conduitAura) {
@@ -100,8 +96,6 @@ struct PulseSettingsPage: View {
             estimate = nil
             draftTimes = nil
             providers = []
-            nudgeDraft = nil
-            nudgeEditing = false
         }
     }
 
@@ -109,7 +103,7 @@ struct PulseSettingsPage: View {
 
     private func overviewSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Pulse"), symbol: "waveform.path.ecg", tint: .conduitAura) {
-            Text("Pulse watches your chats. For now it only sends a shadow report to its own chat at the times you set, listing what it would have brought up. Rate each line yes or no there to help tune it.")
+            Text("Pulse reads your chats, keeps track of what you and Hermes said you'd do, and brings things up as cards on the Pulse screen.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Pulse", isOn: Binding(
@@ -134,11 +128,6 @@ struct PulseSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            if let notice {
-                Text(verbatim: notice)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .font(.caption)
@@ -149,34 +138,19 @@ struct PulseSettingsPage: View {
 
     private func homeChatSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Pulse chat"), symbol: "pin", tint: .conduitAccent) {
-            if let chat = state.homeChat {
-                SettingsMetricRow(label: AppLocalization.string("Chat"), value: chat.title, lineLimit: 1)
-                if !chat.pinned {
-                    Button(AppLocalization.string("Pin it")) {
-                        run { _ in
-                            try await appState.pinPulseHomeChat(id: chat.id)
-                            return nil
-                        }
-                    }
-                    .buttonStyle(.settings)
-                    .disabled(working)
-                    .accessibilityIdentifier("settings.pulse.pin")
+            Text(AppLocalization.string("Pulse sends its reports to a pinned chat titled “\(state.homeTitle)” in the dashboard's default profile."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Create Pulse chat")) {
+                let title = state.homeTitle
+                run { _ in
+                    try await appState.createPulseHomeChat(title: title)
+                    return nil
                 }
-            } else {
-                Text(AppLocalization.string("Pulse sends its reports to a pinned chat titled “\(state.homeTitle)” in the dashboard's default profile."))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button(AppLocalization.string("Create Pulse chat")) {
-                    let title = state.homeTitle
-                    run { _ in
-                        try await appState.createPulseHomeChat(title: title)
-                        return nil
-                    }
-                }
-                .buttonStyle(.settingsPrimary)
-                .disabled(working || appState.client == nil)
-                .accessibilityIdentifier("settings.pulse.create-chat")
             }
+            .buttonStyle(.settingsPrimary)
+            .disabled(working || appState.client == nil)
+            .accessibilityIdentifier("settings.pulse.create-chat")
             if !state.homeProblem.isEmpty {
                 // The plugin's own words, in English.
                 Text(verbatim: state.homeProblem)
@@ -186,9 +160,31 @@ struct PulseSettingsPage: View {
         }
     }
 
-    private func reportSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Reports"), symbol: "doc.text.magnifyingglass", tint: .conduitAccent) {
-            Toggle("Send reports", isOn: Binding(
+    /// How often Pulse nudges, when it looks through the chats, and the
+    /// morning brief's time.
+    private func speakUpSection(_ state: PulseState, budgets: Bool) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("When Pulse speaks up"), symbol: "bell.badge", tint: .conduitAccent) {
+            if budgets {
+                Picker(AppLocalization.string("How often"), selection: Binding(
+                    get: { PulseNudge.levels.contains(state.nudge) ? state.nudge : PulseNudge.defaultLevel },
+                    set: { picked in
+                        guard picked != state.nudge else { return }
+                        Haptics.selection()
+                        change(["nudge": picked]) { $0.nudge = picked }
+                    }
+                )) {
+                    ForEach(PulseNudge.levels, id: \.self) { level in
+                        Text(verbatim: PulseNudge.title(level)).tag(level)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(working)
+                .accessibilityIdentifier("settings.pulse.nudge")
+                Text(verbatim: PulseNudge.detail(state.nudge))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Toggle("Look through your chats", isOn: Binding(
                 get: { state.dailyReport },
                 set: { on in change(["daily_report": on]) { $0.dailyReport = on } }
             ))
@@ -196,23 +192,18 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.report")
             if state.dailyReport {
                 reportTimes(state)
-                SettingsMetricRow(label: AppLocalization.string("Time zone"), value: state.timeZone, lineLimit: 1)
-                let phoneZone = TimeZone.current.identifier
-                if phoneZone != state.timeZone {
-                    Button(AppLocalization.string("Use this iPhone's time zone (\(phoneZone))")) {
-                        change(["time_zone": phoneZone])
-                    }
-                    .buttonStyle(.settings)
-                    .accessibilityIdentifier("settings.pulse.time-zone")
-                    .disabled(working)
-                }
-                if let next = state.nextReportAt {
-                    SettingsMetricRow(
-                        label: AppLocalization.string("Next report"),
-                        value: next.formatted(date: .abbreviated, time: .shortened)
-                    )
-                }
             }
+            // The plugin takes the brief's time with the Pulse screen (0.55.0).
+            if appState.notifierPlugin.reports(PulseClient.feedCapability) { briefTime(state) }
+            Text("Each look that finds something sends one notification. Things you've asked to hear less often wait for the morning brief instead.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Which profiles Pulse reads, and what it keeps from them.
+    private func readsSection(_ state: PulseState) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("What Pulse reads"), symbol: "brain.head.profile", tint: .conduitAccent) {
             if state.offersProfileChoice {
                 ConduitMenuPicker(
                     value: state.reportProfiles,
@@ -225,24 +216,143 @@ struct PulseSettingsPage: View {
                         change(["report_profiles": picked]) { $0.reportProfiles = picked }
                     }
                 ) {
-                    Text("Report on").foregroundStyle(.secondary)
+                    Text("Profiles").foregroundStyle(.secondary)
                 }
                 .accessibilityIdentifier("settings.pulse.profiles")
             }
-            Button(AppLocalization.string("Send a report now")) {
-                run { client in
-                    try await client.sendReport()
-                    if isShown(client) {
-                        notice = AppLocalization.string("Pulse will report shortly. Anything it notices shows up as cards.")
-                    }
-                    return nil
-                }
-            }
-            .buttonStyle(.settings)
+            Toggle("Memory", isOn: Binding(
+                get: { state.memory },
+                set: { on in change(["memory": on]) { $0.memory = on } }
+            ))
             .disabled(working)
-            .accessibilityIdentifier("settings.pulse.report-now")
-            // The plugin takes the brief's time with the Pulse screen (0.55.0).
-            if appState.notifierPlugin.reports(PulseClient.feedCapability) { briefTime(state) }
+            .accessibilityIdentifier("settings.pulse.memory")
+            NavigationLink {
+                PulseMemoryList()
+                    .v2TabBarClearance()
+            } label: {
+                HStack {
+                    Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
+                    Spacer(minLength: 8)
+                    if state.memory {
+                        Text(verbatim: state.memoryCounts.values.reduce(0, +).formatted())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 44)
+            }
+            .accessibilityIdentifier("settings.pulse.remembers")
+            Text("Pulse keeps short notes on promises, plans and dates, so it can bring them up later. You can remove any of them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The rest, folded: the time zone, a look through the chats now, token
+    /// budgets, Pulse's chat and its latest checks.
+    private func behindTheScenesSection(_ state: PulseState, budgets: Bool) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("Behind the scenes"), symbol: "gearshape.2", tint: .conduitAura) {
+            DisclosureGroup(isExpanded: $showsRecent) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingsMetricRow(label: AppLocalization.string("Time zone"), value: state.timeZone, lineLimit: 1)
+                    let phoneZone = TimeZone.current.identifier
+                    if phoneZone != state.timeZone {
+                        Button(AppLocalization.string("Use this iPhone's time zone (\(phoneZone))")) {
+                            change(["time_zone": phoneZone])
+                        }
+                        .buttonStyle(.settings)
+                        .accessibilityIdentifier("settings.pulse.time-zone")
+                        .disabled(working)
+                    }
+                    if state.dailyReport, let next = state.nextReportAt {
+                        SettingsMetricRow(
+                            label: AppLocalization.string("Next look"),
+                            value: next.formatted(date: .abbreviated, time: .shortened)
+                        )
+                    }
+                    Button(AppLocalization.string("Look through my chats now")) {
+                        run { client in
+                            try await client.sendReport()
+                            if isShown(client) {
+                                notice = AppLocalization.string("Pulse will report shortly. Anything it notices shows up as cards.")
+                            }
+                            return nil
+                        }
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(working)
+                    .accessibilityIdentifier("settings.pulse.report-now")
+                    if let notice {
+                        Text(verbatim: notice)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    budgetRows(state, budgets: budgets)
+                    if let chat = state.homeChat {
+                        SettingsMetricRow(label: AppLocalization.string("Pulse chat"), value: chat.title, lineLimit: 1)
+                        if !state.homeProblem.isEmpty {
+                            // The plugin's own words, in English.
+                            Text(verbatim: state.homeProblem)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    if !state.recent.isEmpty {
+                        recentChecks(state)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Recent checks, daily token budgets, time zone, and looking through your chats now.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Memory's and follow-ups' tokens today, and their daily budgets.
+    @ViewBuilder
+    private func budgetRows(_ state: PulseState, budgets: Bool) -> some View {
+        if state.memory {
+            ForEach(PulseMemoryKind.sorted(state.memoryCounts.keys), id: \.self) { kind in
+                SettingsMetricRow(label: PulseMemoryKind.title(kind), value: String(state.memoryCounts[kind] ?? 0))
+            }
+            let used = state.tokensToday.formatted()
+            let cap = state.dailyTokens.formatted()
+            SettingsMetricRow(label: AppLocalization.string("Tokens today"), value: AppLocalization.string("\(used) of \(cap)"))
+            if budgets {
+                ConduitMenuPicker(
+                    value: state.dailyTokens,
+                    choices: PulseNudge.budgets(PulseNudge.memoryBudgets, current: state.dailyTokens)
+                        .map { (id: $0, title: $0.formatted()) },
+                    onSelect: { picked in
+                        Haptics.selection()
+                        change(["memory_daily_tokens": picked]) { $0.dailyTokens = picked }
+                    }
+                ) {
+                    Text("Memory tokens a day").foregroundStyle(.secondary)
+                }
+                .disabled(working)
+                .accessibilityIdentifier("settings.pulse.memory-budget")
+            }
+        }
+        if budgets, state.followups || state.followupTokensToday > 0 {
+            ConduitMenuPicker(
+                value: state.followupDailyTokensSet ? state.followupDailyTokens : 0,
+                choices: Self.followupBudgetChoices(state),
+                onSelect: { picked in
+                    Haptics.selection()
+                    change(["followup_daily_tokens": picked == 0 ? NSNull() as Any : picked as Any])
+                }
+            ) {
+                Text("Follow-up tokens a day").foregroundStyle(.secondary)
+            }
+            .disabled(working)
+            .accessibilityIdentifier("settings.pulse.followup-budget")
+            let used = state.followupTokensToday.formatted()
+            let cap = state.followupDailyTokens.formatted()
+            SettingsMetricRow(label: AppLocalization.string("Follow-up tokens today"),
+                              value: AppLocalization.string("\(used) of \(cap)"))
         }
     }
 
@@ -263,15 +373,12 @@ struct PulseSettingsPage: View {
         )
         .disabled(working)
         .accessibilityIdentifier("settings.pulse.brief-time")
-        Text("Cards Pulse holds back, because you asked for fewer pushes, arrive together at this time with one push. Nothing held, no brief.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder
     private func reportTimes(_ state: PulseState) -> some View {
         let times = draftTimes ?? state.reportTimes
-        Text("Report times")
+        Text("Looks through your chats at")
             .font(.subheadline.weight(.semibold))
         ForEach(Array(times.enumerated()), id: \.offset) { index, time in
             HStack(spacing: 10) {
@@ -367,75 +474,6 @@ struct PulseSettingsPage: View {
         }
     }
 
-    private func nudgeSection(_ state: PulseState) -> some View {
-        let last = Double(PulseNudge.levels.count - 1)
-        let shown = nudgeDraft ?? Double(PulseNudge.levels.firstIndex(of: state.nudge) ?? 1)
-        let level = PulseNudge.levels[min(max(Int(shown.rounded()), 0), PulseNudge.levels.count - 1)]
-        return ConduitSettingsSection(title: AppLocalization.string("Nudging"), symbol: "bell.badge", tint: .conduitAccent) {
-            VStack(spacing: 4) {
-                Slider(
-                    value: Binding(
-                        get: { shown },
-                        set: { value in
-                            nudgeDraft = value
-                            // VoiceOver's adjust steps never begin editing.
-                            if !nudgeEditing { commitNudge() }
-                        }
-                    ),
-                    in: 0...last,
-                    step: 1,
-                    onEditingChanged: { editing in
-                        nudgeEditing = editing
-                        if !editing { commitNudge() }
-                    }
-                )
-                .disabled(working)
-                // A drag cut off by another save never ends editing; without
-                // this, VoiceOver's steps would stop committing.
-                .onChange(of: working) { _, busy in
-                    if busy {
-                        nudgeEditing = false
-                        nudgeDraft = nil
-                    }
-                }
-                .accessibilityLabel(Text(AppLocalization.string("Nudging")))
-                .accessibilityValue(Text(verbatim: PulseNudge.title(level)))
-                .accessibilityIdentifier("settings.pulse.nudge")
-                HStack {
-                    ForEach(Array(PulseNudge.levels.enumerated()), id: \.offset) { index, name in
-                        Text(verbatim: PulseNudge.title(name))
-                            .font(.caption.weight(name == level ? .semibold : .regular))
-                            .foregroundStyle(name == level ? Color.primary : Color.secondary)
-                            .frame(maxWidth: .infinity, alignment: index == 0 ? .leading
-                                : index == PulseNudge.levels.count - 1 ? .trailing : .center)
-                    }
-                }
-                .accessibilityHidden(true)
-            }
-            Text(verbatim: PulseNudge.detail(level))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if state.followups || state.followupTokensToday > 0 {
-                ConduitMenuPicker(
-                    value: state.followupDailyTokensSet ? state.followupDailyTokens : 0,
-                    choices: Self.followupBudgetChoices(state),
-                    onSelect: { picked in
-                        Haptics.selection()
-                        change(["followup_daily_tokens": picked == 0 ? NSNull() as Any : picked as Any])
-                    }
-                ) {
-                    Text("Follow-up tokens a day").foregroundStyle(.secondary)
-                }
-                .disabled(working)
-                .accessibilityIdentifier("settings.pulse.followup-budget")
-                let used = state.followupTokensToday.formatted()
-                let cap = state.followupDailyTokens.formatted()
-                SettingsMetricRow(label: AppLocalization.string("Follow-up tokens today"),
-                                  value: AppLocalization.string("\(used) of \(cap)"))
-            }
-        }
-    }
-
     /// 0 is the nudge level's budget, named with its amount while it's in use.
     private static func followupBudgetChoices(_ state: PulseState) -> [(id: Int, title: String)] {
         let set = state.followupDailyTokensSet
@@ -443,63 +481,6 @@ struct PulseSettingsPage: View {
             : AppLocalization.string("With nudging (\(state.followupDailyTokens.formatted()))")
         let budgets = PulseNudge.budgets(PulseNudge.followupBudgets, current: set ? state.followupDailyTokens : 0)
         return [(id: 0, title: byLevel)] + budgets.map { (id: $0, title: $0.formatted()) }
-    }
-
-    /// Sends the slider's level once it settles; a step that can't go now
-    /// (another is running) springs back to Pulse's own.
-    private func commitNudge() {
-        guard let draft = nudgeDraft else { return }
-        nudgeDraft = nil
-        let picked = PulseNudge.levels[min(max(Int(draft.rounded()), 0), PulseNudge.levels.count - 1)]
-        guard picked != state?.nudge, !working else { return }
-        Haptics.selection()
-        change(["nudge": picked]) { $0.nudge = picked }
-    }
-
-    private func memorySection(_ state: PulseState, budgets: Bool) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Memory"), symbol: "brain.head.profile", tint: .conduitAccent) {
-            Toggle("Memory", isOn: Binding(
-                get: { state.memory },
-                set: { on in change(["memory": on]) { $0.memory = on } }
-            ))
-            .disabled(working)
-            .accessibilityIdentifier("settings.pulse.memory")
-            Text("Pulse keeps short notes on commitments, plans and interests from your chats, so its reports can bring them up later.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if state.memory {
-                ForEach(PulseMemoryKind.sorted(state.memoryCounts.keys), id: \.self) { kind in
-                    SettingsMetricRow(label: PulseMemoryKind.title(kind), value: String(state.memoryCounts[kind] ?? 0))
-                }
-                let used = state.tokensToday.formatted()
-                let cap = state.dailyTokens.formatted()
-                SettingsMetricRow(label: AppLocalization.string("Tokens today"), value: AppLocalization.string("\(used) of \(cap)"))
-                if budgets {
-                    ConduitMenuPicker(
-                        value: state.dailyTokens,
-                        choices: PulseNudge.budgets(PulseNudge.memoryBudgets, current: state.dailyTokens)
-                            .map { (id: $0, title: $0.formatted()) },
-                        onSelect: { picked in
-                            Haptics.selection()
-                            change(["memory_daily_tokens": picked]) { $0.dailyTokens = picked }
-                        }
-                    ) {
-                        Text("Memory tokens a day").foregroundStyle(.secondary)
-                    }
-                    .disabled(working)
-                    .accessibilityIdentifier("settings.pulse.memory-budget")
-                }
-            }
-            NavigationLink {
-                PulseMemoryList()
-                    .v2TabBarClearance()
-            } label: {
-                Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: 44)
-            }
-            .accessibilityIdentifier("settings.pulse.remembers")
-        }
     }
 
     private func backfillSection(_ state: PulseState) -> some View {
@@ -584,35 +565,28 @@ struct PulseSettingsPage: View {
         }
     }
 
-    private func recentSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Recent checks"), symbol: "list.bullet.clipboard", tint: .conduitAura) {
-            DisclosureGroup(isExpanded: $showsRecent) {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(state.recent.prefix(5)) { attempt in
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Text(verbatim: "\(Self.kindTitle(attempt.kind)) · \(attempt.state)")
-                                    .font(.subheadline)
-                                Spacer(minLength: 8)
-                                Text(attempt.at.formatted(.relative(presentation: .named)))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if !attempt.detail.isEmpty {
-                                Text(verbatim: attempt.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
+    private func recentChecks(_ state: PulseState) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Pulse's latest checks and reports")
+                .font(.subheadline.weight(.semibold))
+            ForEach(state.recent.prefix(5)) { attempt in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(verbatim: "\(Self.kindTitle(attempt.kind)) · \(attempt.state)")
+                            .font(.subheadline)
+                        Spacer(minLength: 8)
+                        Text(attempt.at.formatted(.relative(presentation: .named)))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !attempt.detail.isEmpty {
+                        Text(verbatim: attempt.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
                     }
                 }
-                .padding(.top, 8)
-            } label: {
-                Text("Pulse's latest checks and reports")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
             }
         }
     }

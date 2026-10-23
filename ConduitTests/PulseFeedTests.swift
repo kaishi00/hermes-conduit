@@ -207,6 +207,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
 
+<<<<<<< HEAD
     func testACardPointingAtPulsesOwnChatOpensNoChat() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
@@ -218,5 +219,54 @@ final class PulseFeedTests: XCTestCase {
         state.applyPulseFeed(page)
         XCTAssertFalse(state.pulseCardHasChat(page.cards[0]))
         XCTAssertTrue(state.pulseCardHasChat(page.cards[1]))
+=======
+    func testABriefShowsWithTheCardsItBroughtAndFoldsOnceHandled() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 9, "kind": "noticed", "topic": "date", "level": "screen", "news": "New", "created_at": 300},
+          {"id": 8, "kind": "brief", "level": "push", "news": "Two things waited.", "brief": "b2", "created_at": 200},
+          {"id": 7, "kind": "followup", "level": "brief", "news": "Deck", "brief": "b2", "created_at": 120, "item_id": 1},
+          {"id": 6, "kind": "followup", "level": "brief", "news": "Gym", "brief": "b2", "created_at": 110,
+           "dismissed_at": 250},
+          {"id": 5, "kind": "brief", "level": "push", "news": "Old", "brief": "b1", "created_at": 100},
+          {"id": 4, "kind": "followup", "level": "brief", "news": "Paid", "brief": "b1", "created_at": 50,
+           "done_at": 90, "item_id": 2},
+          {"id": 3, "kind": "brief", "level": "push", "news": "From an older plugin", "created_at": 40},
+          {"id": 2, "kind": "noticed", "topic": "fact", "level": "screen", "news": "Gone", "dismissed_at": 60,
+           "created_at": 30}
+        ]}
+        """)))
+        let layout = PulseLayout(cards: page.cards)
+        XCTAssertEqual(layout.briefs.map(\.id), [8])
+        let brief = try XCTUnwrap(layout.briefs.first)
+        XCTAssertEqual(brief.items.map(\.id), [6, 7], "oldest first")
+        XCTAssertEqual(brief.left, 1)
+        XCTAssertFalse(brief.isHandled)
+        XCTAssertEqual(layout.open.map(\.id), [9, 3], "an untagged brief is a card of its own")
+        XCTAssertEqual(layout.cleared.map(\.id), [2])
+        XCTAssertEqual(layout.clearedBriefs.map(\.id), [5], "an older brief all handled folds into Done and cleared")
+        XCTAssertEqual(layout.clearedCount, 2)
+        XCTAssertEqual(page.cards.first { $0.id == 6 }?.dismissedAt, Date(timeIntervalSince1970: 250))
+
+        // The newest brief stays at the top, folded, once everything in it is handled.
+        var handled = page
+        if let index = handled.cards.firstIndex(where: { $0.id == 7 }) { handled.cards[index].doneAt = Date() }
+        XCTAssertEqual(PulseLayout(cards: handled.cards).briefs.map(\.isHandled), [true])
+        // The card a push opened stays where it is, though cleared.
+        XCTAssertEqual(PulseLayout(cards: page.cards, keeping: [2]).open.map(\.id), [9, 3, 2])
+    }
+
+    func testNotNowPostsTheCardToThePlugin() async throws {
+        var calls: [(path: String, body: [String: Any]?)] = []
+        let client = PulseClient { path, _, body in
+            calls.append((path, body))
+            return ["ok": true, "changed": true]
+        }
+        let changed = try await client.dismiss(card: 4, dismissed: true)
+        XCTAssertTrue(changed)
+        XCTAssertEqual(calls.first?.path, "\(PulseClient.path)/dismiss")
+        XCTAssertEqual(calls.first?.body?["card"] as? Int, 4)
+        XCTAssertEqual(calls.first?.body?["dismissed"] as? Bool, true)
+>>>>>>> 7e395edc (WIP settings regroup, push titles)
     }
 }

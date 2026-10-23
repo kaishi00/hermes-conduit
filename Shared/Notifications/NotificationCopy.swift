@@ -52,6 +52,8 @@ enum NotificationCopy {
             title = sessionTitle.map { "\(heading) · \($0)" } ?? heading
         } else if let phoneTitle = phoneTitle(for: label) {
             title = phoneTitle
+        } else if let pulse = pulseTitle(for: label, count: content["count"] as? Int) {
+            title = pulse
         } else {
             title = hostTitle
         }
@@ -68,6 +70,19 @@ enum NotificationCopy {
         case "turn.failed": return AppLocalization.string("Turn failed")
         case "background_task.finished": return AppLocalization.string("Task finished")
         case "call.requested": return AppLocalization.string("Hermes wants to talk")
+        default: return nil
+        }
+    }
+
+    /// What Pulse brings (`pulse.<kind>`), titled by itself: its chat is
+    /// hidden. A report says how many things it noticed (`count`).
+    private static func pulseTitle(for label: String, count: Int?) -> String? {
+        switch label {
+        case "pulse.noticed":
+            guard let count, count > 1 else { return AppLocalization.string("Pulse noticed something") }
+            return AppLocalization.string("Pulse noticed \(count) things")
+        case "pulse.brief": return AppLocalization.string("Your morning brief")
+        case "pulse.followup": return AppLocalization.string("Pulse · Follow-up")
         default: return nil
         }
     }
