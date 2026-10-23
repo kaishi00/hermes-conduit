@@ -174,6 +174,8 @@ struct V2PulsePage: View {
             focusedCard = nil
             voiceOverCard = nil
             undo = nil  // an undo belongs to the visit that made it
+            expandedBriefs = []
+            expandedWhy = []
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
@@ -546,6 +548,8 @@ struct V2PulsePage: View {
     }
 
     private func showUndo(_ action: PulseUndo.Action, card: Int) {
+        // The page was left before the plugin answered: no bar comes back later.
+        guard isShown else { return }
         let message = action == .dismissed ? AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
                                            : AppLocalization.string("Marked done")
         withAnimation(.snappy) { undo = PulseUndo(card: card, action: action, message: message) }
