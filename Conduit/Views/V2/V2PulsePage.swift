@@ -426,7 +426,7 @@ struct V2PulsePage: View {
             let dashboard = appState.activeDashboardID
             actingCard = card.id
             Task {
-                defer { actingCard = nil }
+                defer { if actingCard == card.id { actingCard = nil } }
                 let opened = await appState.actOnPulseCard(card)
                 guard appState.activeDashboardID == dashboard else { return }
                 if !opened {
