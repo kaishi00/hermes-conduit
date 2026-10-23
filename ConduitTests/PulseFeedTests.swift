@@ -207,7 +207,6 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
 
-<<<<<<< HEAD
     func testACardPointingAtPulsesOwnChatOpensNoChat() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
@@ -219,7 +218,8 @@ final class PulseFeedTests: XCTestCase {
         state.applyPulseFeed(page)
         XCTAssertFalse(state.pulseCardHasChat(page.cards[0]))
         XCTAssertTrue(state.pulseCardHasChat(page.cards[1]))
-=======
+    }
+
     func testABriefShowsWithTheCardsItBroughtAndFoldsOnceHandled() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [
@@ -267,6 +267,5 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(calls.first?.path, "\(PulseClient.path)/dismiss")
         XCTAssertEqual(calls.first?.body?["card"] as? Int, 4)
         XCTAssertEqual(calls.first?.body?["dismissed"] as? Bool, true)
->>>>>>> 7e395edc (WIP settings regroup, push titles)
     }
 }

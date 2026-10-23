@@ -162,6 +162,8 @@ struct V2PulsePage: View {
         .task(id: undo?.id) {
             guard undo != nil else { return }
             try? await Task.sleep(for: .seconds(6))
+            // A newer undo restarted this task: that one clears its own bar.
+            guard !Task.isCancelled else { return }
             withAnimation(.snappy) { undo = nil }
         }
         .onAppear { isShown = true }
@@ -275,6 +277,7 @@ struct V2PulsePage: View {
                 // Once the scroll has brought the card into the list.
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
+                    guard focusedCard == card else { return }
                     voiceOverCard = card
                 }
             }
@@ -283,6 +286,7 @@ struct V2PulsePage: View {
                 proxy.scrollTo(card, anchor: .top)
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
+                    guard focusedCard == card else { return }
                     voiceOverCard = card
                 }
             }
@@ -377,7 +381,7 @@ struct V2PulsePage: View {
                     } label: {
                         Image(systemName: "chevron.up")
                             .font(.footnote.weight(.semibold))
-                            .frame(width: 44, height: 32)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)

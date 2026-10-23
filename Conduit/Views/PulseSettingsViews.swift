@@ -96,6 +96,7 @@ struct PulseSettingsPage: View {
             estimate = nil
             draftTimes = nil
             providers = []
+            showsRecent = false
         }
     }
 
