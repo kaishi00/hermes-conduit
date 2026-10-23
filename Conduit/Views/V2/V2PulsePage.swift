@@ -274,9 +274,10 @@ struct V2PulsePage: View {
             }
             Text(card.formattedNews)
                 .font(.body)
+                .strikethrough(card.doneAt != nil)
                 .foregroundStyle(card.doneAt == nil ? Color.primary : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if !card.quote.isEmpty {
+            if !card.quote.isEmpty, card.doneAt == nil {
                 Text(verbatim: "“\(card.quote)”")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -345,6 +346,8 @@ struct V2PulsePage: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAccent.opacity(focusedCard == card.id ? 0.8 : 0), lineWidth: 1.5)
         )
+        // A done card steps back: struck through and faded.
+        .opacity(card.doneAt == nil ? 1 : 0.7)
     }
 
     private func doItButton(_ card: PulseCard) -> some View {
@@ -359,8 +362,12 @@ struct V2PulsePage: View {
                 guard appState.activeDashboardID == dashboard else { return }
                 if !opened {
                     errorMessage = failure
-                } else if errorMessage == failure {
-                    errorMessage = nil
+                    return
+                }
+                if errorMessage == failure { errorMessage = nil }
+                // Pulse reads the chat once Hermes has answered and marks the card done itself.
+                if appState.notifierPlugin.reports(PulseClient.actedCapability) {
+                    try? await client.acted(card: card.id)
                 }
             }
         } label: {
@@ -398,9 +405,11 @@ struct V2PulsePage: View {
 
     private func doneRow(_ card: PulseCard) -> some View {
         HStack(spacing: 8) {
-            Label(AppLocalization.string("Done"), systemImage: "checkmark.circle.fill")
+            Label(card.doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat")
+                                         : AppLocalization.string("Done"),
+                  systemImage: "checkmark.circle.fill")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color.conduitAccent)
+                .foregroundStyle(.green)
             Spacer(minLength: 0)
             if appState.notifierPlugin.reports(PulseClient.doneCapability) {
                 Button {

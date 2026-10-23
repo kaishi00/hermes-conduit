@@ -38,8 +38,11 @@ struct PulseCard: Equatable, Identifiable {
     let briefedAt: Date?
     /// The promise or to-do a follow-up is about (memory's item).
     let itemID: Int?
-    /// When the user marked it done on the Pulse screen.
+    /// When it was marked done: by the user on the Pulse screen, or by
+    /// Pulse after Do it, once the chat showed it got done.
     var doneAt: Date?
+    /// "user" or "pulse".
+    var doneBy: String
     /// "up", "down" or "".
     var rating: String
     var reason: String
@@ -65,6 +68,7 @@ struct PulseCard: Equatable, Identifiable {
         briefedAt = PulseJSON.date(object["briefed_at"])
         itemID = PulseJSON.int(object["item_id"])
         doneAt = PulseJSON.date(object["done_at"])
+        doneBy = object["done_by"] as? String ?? ""
         rating = object["rating"] as? String ?? ""
         reason = object["reason"] as? String ?? ""
         formattedNews = Self.formatted(news, markdown: kind != "followup")
@@ -277,7 +281,13 @@ extension PulseClient {
     @discardableResult
     func markDone(card: Int, done: Bool) async throws -> Bool {
         let response = try await request("\(Self.path)/done", "POST", ["card": card, "done": done])
-        return response["changed"] as? Bool ?? false
+        return PulseJSON.bool(response["changed"]) ?? false
+    }
+
+    /// Do it on a follow-up card: Pulse reads that chat once Hermes has
+    /// answered and marks the card done if it got done.
+    func acted(card: Int) async throws {
+        _ = try await request("\(Self.path)/acted", "POST", ["card": card])
     }
 
     func learned() async throws -> PulseLearned {
@@ -428,4 +438,6 @@ extension PulseClient {
     static let nudgeCapability = "pulse_nudge"
     /// Follow-up cards can be marked done (0.64.0).
     static let doneCapability = "pulse_done"
+    /// After Do it, Pulse marks the card done itself once the chat shows it (0.64.0).
+    static let actedCapability = "pulse_acted"
 }

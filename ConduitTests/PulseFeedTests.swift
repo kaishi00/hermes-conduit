@@ -29,7 +29,7 @@ final class PulseFeedTests: XCTestCase {
          "cards": [
           {"id": 7, "kind": "followup", "level": "brief", "title": "Check the flight", "quote": "I'll check back",
            "news": "Flight is on time", "why": "Hermes said it would check", "profile": "work",
-           "chat_id": "20261021_080000_abc", "chat_title": "Trip", "message_id": 42, "item_id": 11, "done_at": 1761040000,
+           "chat_id": "20261021_080000_abc", "chat_title": "Trip", "message_id": 42, "item_id": 11, "done_at": 1761040000, "done_by": "pulse",
            "created_at": 1761033600.5, "seen_at": null, "briefed_at": null, "rating": "", "reason": ""},
           {"id": 3, "kind": "followup", "level": "push", "title": "", "quote": "", "news": "Done",
            "why": "", "profile": "", "chat_id": "", "chat_title": "", "message_id": null,
@@ -57,11 +57,13 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(held.itemID, 11)
         XCTAssertTrue(held.canBeDone)
         XCTAssertEqual(held.doneAt, Date(timeIntervalSince1970: 1761040000))
+        XCTAssertEqual(held.doneBy, "pulse")
 
         let rated = page.cards[1]
         XCTAssertFalse(rated.isActionable)  // no chat to act in
         XCTAssertFalse(rated.canBeDone)  // no promise to close
         XCTAssertNil(rated.doneAt)
+        XCTAssertEqual(rated.doneBy, "")
         XCTAssertNil(rated.messageID)
         XCTAssertFalse(rated.isHeld)
         XCTAssertEqual(rated.rating, "down")
