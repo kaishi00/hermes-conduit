@@ -540,6 +540,7 @@ struct V2PulsePage: View {
                 guard appState.activeDashboardID == dashboard else { return }
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].doneAt = done ? Date() : nil
+                    page?.cards[index].doneBy = done ? "user" : ""
                 }
                 errorMessage = nil
             } catch {
