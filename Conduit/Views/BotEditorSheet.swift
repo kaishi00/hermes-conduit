@@ -97,7 +97,9 @@ struct BotEditorSheet: View {
                 }
             }
         }
-        .interactiveDismissDisabled(isSaving)
+        // Also while the model alert is up: a swipe would drop the pick
+        // without saying so.
+        .interactiveDismissDisabled(isSaving || modelConfirmation != nil)
         .alert(
             AppLocalization.string("Use This Model?"),
             isPresented: Binding(
@@ -478,7 +480,7 @@ struct BotEditorSheet: View {
                 Haptics.warning()
                 error = message
             case .saved(let warning, let needsModel):
-                Haptics.success()
+                if warning == nil { Haptics.success() } else { Haptics.warning() }
                 dismiss()
                 onFinished(createdName, warning, createdName != nil && !needsModel)
             case .confirmModel(let message):
@@ -497,7 +499,7 @@ struct BotEditorSheet: View {
             isSaving = false
             switch result {
             case .saved(let warning, _):
-                Haptics.success()
+                if warning == nil { Haptics.success() } else { Haptics.warning() }
                 dismiss()
                 onFinished(nil, warning, false)
             case .confirmModel, .failed:

@@ -20389,6 +20389,7 @@ final class AppState: ObservableObject {
                 confirmed: confirmed
             )
             if let message = BotModelConfirmation.message(in: result) { return .confirmModel(message) }
+            await refreshBotRosterAfterWrite()
             if !BotConfigureSections.failed(in: result, among: ["model"]).isEmpty {
                 return .saved(warning: AppLocalization.string("The model was not saved."))
             }
