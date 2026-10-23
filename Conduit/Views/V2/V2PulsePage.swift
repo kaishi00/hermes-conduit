@@ -170,6 +170,9 @@ struct V2PulsePage: View {
             learnedNote = nil
             focusedCard = nil
             expandedWhy = []
+            ratingCards = []
+            finishingCards = []
+            actingCard = nil
         }
         .onChange(of: appState.pulseOpenRequest) { _, request in
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
@@ -399,17 +402,20 @@ struct V2PulsePage: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
             Spacer(minLength: 0)
-            Button {
-                Haptics.selection()
-                markDone(card, false)
-            } label: {
-                Text("Undo")
-                    .font(.footnote.weight(.medium))
+            if appState.notifierPlugin.reports(PulseClient.doneCapability) {
+                Button {
+                    Haptics.selection()
+                    markDone(card, false)
+                } label: {
+                    Text("Undo")
+                        .font(.footnote.weight(.medium))
+                }
+                .buttonStyle(.borderless)
+                .disabled(finishingCards.contains(card.id))
+                .accessibilityLabel(Text(AppLocalization.string("Undo Done")))
+                .accessibilityHint(Text(AppLocalization.string("Pulse checks on it again")))
+                .accessibilityIdentifier("pulse.card.undo-done")
             }
-            .buttonStyle(.borderless)
-            .disabled(finishingCards.contains(card.id))
-            .accessibilityHint(Text(AppLocalization.string("Pulse checks on it again")))
-            .accessibilityIdentifier("pulse.card.undo-done")
         }
     }
 
