@@ -20254,6 +20254,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The skills, toolsets and MCP servers a new bot starting from
+    /// `profile` would have (`profiles.describe` of that profile).
+    func loadBotCapabilities(startingFrom profile: String) async -> BotCapabilities? {
+        guard let client, isConnected else { return nil }
+        return try? await client.describeBotProfile(name: profile).capabilities
+    }
+
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
@@ -20335,12 +20342,26 @@ final class AppState: ObservableObject {
             meta["imageKind"] = "photo"
             meta["custom"] = true
         }
+        // Skills, tools and MCP picks staged from the Start From profile
+        // ride the same write; the profile holds the source's set already.
+        var sections: [String: Any] = [:]
+        if let edited = draft.capabilities, let baseline = draft.capabilitiesBaseline {
+            sections = BotCapabilities.configureParams(original: baseline, edited: edited)
+            // Skipping the bundled skills leaves nothing to toggle.
+            if draft.noSkills { sections["disabled_skills"] = nil }
+        }
         var lookSaved = true
+        var capabilitiesSaved = true
         do {
-            let result = try await client.configureBotProfile(name: slug, botMeta: meta)
+            let result = try await client.configureBotProfile(name: slug, botMeta: meta, sections: sections)
             lookSaved = BotMetaWriteOutcome(configureResult: result) != .failed
+            capabilitiesSaved = BotConfigureSections.failed(
+                in: result,
+                among: BotCapabilities.appliedSections(for: sections)
+            ).isEmpty
         } catch {
             lookSaved = false
+            capabilitiesSaved = sections.isEmpty
         }
         // The introduction is a real model turn: a bot whose profile has no
         // usable model skips it and says so, instead of a failed first turn.
@@ -20355,6 +20376,9 @@ final class AppState: ObservableObject {
         }
         if !modelPinned {
             warnings.append(AppLocalization.string("The model was not saved."))
+        }
+        if !capabilitiesSaved {
+            warnings.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
         }
         if needsModel {
             warnings.append(AppLocalization.string(
@@ -20523,6 +20547,21 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 problems.append(AppLocalization.string("The picture was not removed."))
+            }
+        }
+        // Skills, tools and MCP: only the sections the user changed, and
+        // only once the editor loaded them from the bot itself.
+        if let loadedDetails, let edited = draft.capabilities {
+            let sections = BotCapabilities.configureParams(original: loadedDetails.capabilities, edited: edited)
+            if !sections.isEmpty {
+                do {
+                    let result = try await client.configureBotProfile(name: bot.name, sections: sections)
+                    if !BotConfigureSections.failed(in: result, among: BotCapabilities.appliedSections(for: sections)).isEmpty {
+                        problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+                    }
+                } catch {
+                    problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+                }
             }
         }
         // The model goes last and on its own: a pick the gateway wants

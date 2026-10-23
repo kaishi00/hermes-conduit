@@ -37,6 +37,9 @@ struct BotEditorSheet: View {
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
     @State private var modelConfirmation: String?
+    @State private var capabilitiesLoadFailed = false
+    /// The Start From profile the staged lists were read from.
+    @State private var capabilitiesSource: String?
 
     private enum DetailsState {
         case idle, loading, loaded, failed
@@ -132,6 +135,7 @@ struct BotEditorSheet: View {
             pickedImage = nil
         }
         .task { await seed() }
+        .task(id: capabilitySource) { await loadStartFromCapabilities() }
         .task {
             // The stored picture, independent of whether the roster row's
             // fetch succeeded.
@@ -339,8 +343,9 @@ struct BotEditorSheet: View {
     }
 
     /// Desktop's Advanced disclosure. Creating: where the profile starts
-    /// from, its model, shared keys and bundled skills. Editing: its model,
-    /// once the bot's details have loaded.
+    /// from, its model, skills, tools and MCP, shared keys and bundled
+    /// skills. Editing: its model, skills, tools and MCP, once the bot's
+    /// details have loaded.
     @ViewBuilder
     private var advancedSection: some View {
         if isCreating || detailsState == .loaded {
@@ -378,6 +383,7 @@ struct BotEditorSheet: View {
                             Text(verbatim: BotModelPicker.summary(model: draft.model, allowsInherit: isCreating))
                         }
                     }
+                    capabilitiesRow
                     if isCreating {
                         Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
                         Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
@@ -388,6 +394,65 @@ struct BotEditorSheet: View {
                     Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var capabilitiesRow: some View {
+        if draft.capabilities != nil {
+            NavigationLink {
+                BotCapabilitiesView(
+                    capabilities: Binding(
+                        get: { draft.capabilities ?? BotCapabilities() },
+                        set: { draft.capabilities = $0 }
+                    ),
+                    skillsSkipped: isCreating && draft.noSkills,
+                    sourceLabel: isCreating ? startFromLabel : nil
+                )
+            } label: {
+                Text(AppLocalization.string("Skills, Tools and MCP"))
+            }
+        } else if capabilitiesLoadFailed {
+            Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
+                .foregroundStyle(.secondary)
+        } else {
+            LabeledContent(AppLocalization.string("Skills, Tools and MCP")) {
+                ProgressView()
+            }
+        }
+    }
+
+    /// The profile a new bot's skills, tools and MCP lists are read from
+    /// while Advanced is open: its Start From profile (the main profile for
+    /// a fresh start, as on Desktop). Nil when nothing should load.
+    private var capabilitySource: String? {
+        guard isCreating, showsAdvanced else { return nil }
+        return draft.cloneFrom.isEmpty ? BotCreateRequest.mainProfile : draft.cloneFrom
+    }
+
+    private var startFromLabel: String {
+        let source = capabilitySource ?? BotCreateRequest.mainProfile
+        if BotManagement.isDefaultProfile(source) { return AppLocalization.string("Main Profile") }
+        return appState.botRoster.first { $0.name == source }?.displayLabel ?? source
+    }
+
+    /// A new Start From pick replaces the staged lists: picks made against
+    /// another profile's set don't carry over.
+    private func loadStartFromCapabilities() async {
+        guard let source = capabilitySource,
+              source != capabilitiesSource || draft.capabilities == nil else { return }
+        capabilitiesSource = source
+        draft.capabilities = nil
+        draft.capabilitiesBaseline = nil
+        capabilitiesLoadFailed = false
+        let loaded = await appState.loadBotCapabilities(startingFrom: source)
+        guard !Task.isCancelled else { return }
+        if let loaded {
+            draft.capabilities = loaded
+            draft.capabilitiesBaseline = loaded
+        } else {
+            capabilitiesSource = nil
+            capabilitiesLoadFailed = true
         }
     }
 
@@ -454,6 +519,7 @@ struct BotEditorSheet: View {
         draft.soul = loaded.soul
         draft.provider = loaded.provider
         draft.model = loaded.model
+        draft.capabilities = loaded.capabilities
         detailsState = .loaded
     }
 

@@ -2011,8 +2011,8 @@ final class HermesClient: ObservableObject {
         try? await rpc("setup.runtime_check", params: ["profile": profile], timeout: 30, scoped: false)
     }
 
-    /// `profiles.describe`: the editor snapshot (description, SOUL.md, and
-    /// the profile's own model pin).
+    /// `profiles.describe`: the editor snapshot (description, SOUL.md, the
+    /// profile's own model pin, and its skills, toolsets and MCP servers).
     func describeBotProfile(name: String) async throws -> BotProfileDetails {
         let result = try await rpc("profiles.describe", params: ["name": name], scoped: false)
         guard let object = result.objectValue else { throw HermesError.invalidResponse }
@@ -2021,7 +2021,8 @@ final class HermesClient: ObservableObject {
             description: object["description"]?.stringValue ?? "",
             soul: object["soul"]?.stringValue ?? "",
             provider: model["provider"]?.stringValue ?? "",
-            model: model["default"]?.stringValue ?? ""
+            model: model["default"]?.stringValue ?? "",
+            capabilities: BotCapabilities(describe: object)
         )
     }
 
@@ -2036,15 +2037,16 @@ final class HermesClient: ObservableObject {
     /// `profiles.configure`. Sections are independent; the answer's
     /// `applied` reports each. `expectedMetaRevision` turns the ui_meta
     /// write into a compare-and-swap against the roster snapshot it was
-    /// built from.
+    /// built from. `sections` carries `BotCapabilities.configureParams`.
     func configureBotProfile(
         name: String,
         botMeta: [String: Any]? = nil,
         expectedMetaRevision: Int? = nil,
         description: String? = nil,
-        soul: String? = nil
+        soul: String? = nil,
+        sections: [String: Any] = [:]
     ) async throws -> AnyCodable {
-        var params: [String: Any] = ["name": name]
+        var params: [String: Any] = sections.merging(["name": name]) { _, new in new }
         if let botMeta {
             params["ui_meta"] = [BotManagement.uiMetaKey: botMeta]
             if let expectedMetaRevision {

@@ -270,6 +270,60 @@ extension BotModeTests {
         XCTAssertNil(BotModelConfirmation.message(in: .object(["ok": .bool(true), "applied": .object(["model": .bool(true)])])))
     }
 
+    // MARK: - Skills, tools and MCP
+
+    func testCapabilitiesDecodeTheDescribeLists() {
+        let caps = BotCapabilities(describe: [
+            "skills": .array([
+                .object(["name": .string("web-search"), "enabled": .bool(true)]),
+                .object(["name": .string("arxiv"), "enabled": .bool(false)])
+            ]),
+            "toolsets": .array([
+                .object(["name": .string("terminal"), "label": .string("Terminal"), "description": .string("Shell"),
+                         "tool_count": .number(3), "enabled": .bool(true)])
+            ]),
+            "mcp_servers": .array([.object(["name": .string("github"), "transport": .string("http")])])
+        ])
+        XCTAssertEqual(caps.skills.map(\.name), ["arxiv", "web-search"], "skills list alphabetically")
+        XCTAssertEqual(caps.toolsets.first?.label, "Terminal")
+        XCTAssertEqual(caps.toolsets.first?.toolCount, 3)
+        XCTAssertEqual(caps.mcpServers.first?.enabled, true, "an MCP entry without the flag is on")
+    }
+
+    func testCapabilityParamsWriteOnlyChangedSections() {
+        let original = BotCapabilities(
+            skills: [BotCapability(name: "a", enabled: true), BotCapability(name: "b", enabled: true)],
+            toolsets: [BotCapability(name: "web", enabled: true), BotCapability(name: "terminal", enabled: true)],
+            mcpServers: [BotCapability(name: "github", enabled: false)]
+        )
+        XCTAssertTrue(BotCapabilities.configureParams(original: original, edited: original).isEmpty)
+
+        var edited = original
+        edited.skills[1].enabled = false
+        let skillsOnly = BotCapabilities.configureParams(original: original, edited: edited)
+        XCTAssertEqual(skillsOnly["disabled_skills"] as? [String], ["b"])
+        XCTAssertNil(skillsOnly["enabled_toolsets"])
+        XCTAssertNil(skillsOnly["enabled_mcp_servers"])
+        XCTAssertEqual(BotCapabilities.appliedSections(for: skillsOnly), ["skills"])
+
+        edited.toolsets[1].enabled = false
+        edited.mcpServers[0].enabled = true
+        let all = BotCapabilities.configureParams(original: original, edited: edited)
+        XCTAssertEqual(all["enabled_toolsets"] as? [String], ["web"])
+        XCTAssertEqual(all["enabled_mcp_servers"] as? [String], ["github"])
+        XCTAssertEqual(BotCapabilities.appliedSections(for: all), ["skills", "toolsets", "mcp_servers"])
+
+        var pinned = original
+        pinned.toolsets[1].enabled = false
+        var everyToolBack = pinned
+        everyToolBack.toolsets[1].enabled = true
+        XCTAssertEqual(
+            BotCapabilities.configureParams(original: pinned, edited: everyToolBack)["enabled_toolsets"] as? [String],
+            [],
+            "every tool on clears the pin"
+        )
+    }
+
     // MARK: - Avatar images
 
     func testGetAssetResultDecodesTheDataURL() {

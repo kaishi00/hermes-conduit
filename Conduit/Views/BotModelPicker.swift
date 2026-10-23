@@ -45,7 +45,7 @@ struct BotModelPicker: View {
                             }
                         }
                     } header: {
-                        Text(verbatim: option.displayName ?? option.name)
+                        Text(verbatim: option.title)
                     }
                 }
             } else if loadFailed {

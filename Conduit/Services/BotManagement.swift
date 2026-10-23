@@ -434,6 +434,85 @@ struct BotProfileDetails: Equatable {
     /// has no pin of its own.
     var provider: String = ""
     var model: String = ""
+    var capabilities = BotCapabilities()
+}
+
+/// One skill, toolset or MCP server a profile can turn on or off.
+struct BotCapability: Equatable, Identifiable {
+    var name: String
+    var label: String?
+    var description: String = ""
+    var toolCount: Int?
+    var enabled: Bool
+
+    var id: String { name }
+}
+
+/// `profiles.describe`'s skills, toolsets and MCP servers (upstream
+/// `profile-config.tsx` `AdvancedProfileConfig`).
+struct BotCapabilities: Equatable {
+    var skills: [BotCapability] = []
+    var toolsets: [BotCapability] = []
+    var mcpServers: [BotCapability] = []
+
+    var isEmpty: Bool { skills.isEmpty && toolsets.isEmpty && mcpServers.isEmpty }
+
+    init(skills: [BotCapability] = [], toolsets: [BotCapability] = [], mcpServers: [BotCapability] = []) {
+        self.skills = skills
+        self.toolsets = toolsets
+        self.mcpServers = mcpServers
+    }
+
+    init(describe object: [String: AnyCodable]) {
+        func rows(_ key: String) -> [BotCapability] {
+            (object[key]?.arrayValue ?? []).compactMap { row in
+                guard let item = row.objectValue,
+                      let name = item["name"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !name.isEmpty else { return nil }
+                let label = item["label"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return BotCapability(
+                    name: name,
+                    label: label?.isEmpty == false ? label : nil,
+                    description: item["description"]?.stringValue ?? "",
+                    toolCount: item["tool_count"]?.intValue,
+                    // An MCP entry without the flag is on, as the runtime reads it.
+                    enabled: item["enabled"]?.boolValue ?? (key == "mcp_servers")
+                )
+            }
+        }
+        skills = rows("skills").sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        toolsets = rows("toolsets")
+        mcpServers = rows("mcp_servers")
+    }
+
+    /// The `profiles.configure` sections for what `edited` changed from
+    /// `original`; an untouched section is never written. Toolsets all on
+    /// (or all off) clear the pin so the platform default applies, as
+    /// Desktop does.
+    static func configureParams(original: BotCapabilities, edited: BotCapabilities) -> [String: Any] {
+        func enabledNames(_ rows: [BotCapability]) -> Set<String> { Set(rows.filter(\.enabled).map(\.name)) }
+        var params: [String: Any] = [:]
+        if enabledNames(edited.skills) != enabledNames(original.skills) {
+            params["disabled_skills"] = edited.skills.filter { !$0.enabled }.map(\.name)
+        }
+        if enabledNames(edited.toolsets) != enabledNames(original.toolsets) {
+            let enabled = edited.toolsets.filter(\.enabled).map(\.name)
+            params["enabled_toolsets"] = enabled.count == edited.toolsets.count ? [String]() : enabled
+        }
+        if enabledNames(edited.mcpServers) != enabledNames(original.mcpServers) {
+            params["enabled_mcp_servers"] = edited.mcpServers.filter(\.enabled).map(\.name)
+        }
+        return params
+    }
+
+    /// The `applied` keys `configureParams` sections report under.
+    static func appliedSections(for params: [String: Any]) -> [String] {
+        var sections: [String] = []
+        if params["disabled_skills"] != nil { sections.append("skills") }
+        if params["enabled_toolsets"] != nil { sections.append("toolsets") }
+        if params["enabled_mcp_servers"] != nil { sections.append("mcp_servers") }
+        return sections
+    }
 }
 
 /// The bot editor's form, shared by create and edit.
@@ -463,6 +542,11 @@ struct BotEditorDraft: Equatable {
     var shareAuth = true
     /// Skip the bundled skills.
     var noSkills = false
+    /// Skills, toolsets and MCP servers as the user left them, and as they
+    /// were loaded (for a new bot: its Start From profile's). Nil until
+    /// loaded; only changed sections are written.
+    var capabilities: BotCapabilities?
+    var capabilitiesBaseline: BotCapabilities?
 }
 
 /// Upstream `create-dialog.tsx` `ensureAgentCreated`: the `profiles.create`
