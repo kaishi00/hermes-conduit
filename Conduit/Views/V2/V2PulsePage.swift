@@ -336,6 +336,8 @@ struct V2PulsePage: View {
     @ViewBuilder private func notNowButton(_ card: PulseCard) -> some View {
         if card.dismissedAt == nil, card.doneAt == nil, canDismiss {
             Button {
+                // One request per card: not while its Done is still out.
+                guard !isBusy(card) else { return }
                 Haptics.light()
                 dismiss(card, true)
             } label: {

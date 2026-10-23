@@ -6,7 +6,7 @@
 //  off; when it speaks up (how often, the times it looks through your
 //  chats, the morning brief); what it reads (profiles, memory, older
 //  chats); its model; and behind the scenes, its time zone, token budgets,
-//  chat and latest checks (PulseSettings.swift). Every change goes to the
+//  a look now and latest checks (PulseSettings.swift). Every change goes to the
 //  plugin and the page shows the state it answers with.
 //
 
@@ -306,7 +306,7 @@ struct PulseSettingsPage: View {
                 }
                 .padding(.top, 8)
             } label: {
-                Text("Budgets, memory, next look, time zone, the Pulse chat and recent checks.")
+                Text("Budgets, memory, next look, time zone, a look through your chats now and recent checks.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

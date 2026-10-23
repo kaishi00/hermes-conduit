@@ -339806,88 +339806,6 @@
         }
       }
     },
-    "Budgets, memory, next look, time zone, the Pulse chat and recent checks." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Budgets, Gedächtnis, nächste Durchsicht, Zeitzone, der Pulse-Chat und letzte Durchsichten."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Presupuestos, memoria, próxima revisión, zona horaria, el chat de Pulse y revisiones recientes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Budgets, mémoire, prochain passage, fuseau horaire, la discussion Pulse et passages récents."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anggaran, memori, pemeriksaan berikutnya, zona waktu, chat Pulse, dan pemeriksaan terbaru."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Budget, memoria, prossimo controllo, fuso orario, la chat di Pulse e controlli recenti."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "予算、メモリ、次回の確認、タイムゾーン、Pulseチャット、最近の確認。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "예산, 메모리, 다음 확인, 시간대, Pulse 채팅, 최근 확인."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Budżety, pamięć, następne przejrzenie, strefa czasowa, czat Pulse i ostatnie przejrzenia."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Orçamentos, memória, próxima verificação, fuso horário, a conversa do Pulse e verificações recentes."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Бюджеты, память, следующий просмотр, часовой пояс, чат Pulse и последние просмотры."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bütçeler, bellek, sonraki tarama, saat dilimi, Pulse sohbeti ve son taramalar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "预算、记忆、下次查看、时区、Pulse 聊天和最近的查看。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "預算、記憶、下次查看、時區、Pulse 聊天和最近的查看。"
-          }
-        }
-      }
-    },
     "Send text" : {
       "localizations" : {
         "de" : {
@@ -340048,6 +339966,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要傳送的訊息"
+          }
+        }
+      }
+    },
+    "Budgets, memory, next look, time zone, a look through your chats now and recent checks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgets, Gedächtnis, nächste Durchsicht, Zeitzone, Chats jetzt durchsehen und letzte Durchsichten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Presupuestos, memoria, próxima revisión, zona horaria, revisar tus chats ahora y revisiones recientes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budgets, mémoire, prochain passage, fuseau horaire, parcourir vos discussions maintenant et passages récents."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anggaran, memori, pemeriksaan berikutnya, zona waktu, periksa chat sekarang, dan pemeriksaan terbaru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget, memoria, prossimo controllo, fuso orario, controlla le chat ora e controlli recenti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "予算、メモリ、次回の確認、タイムゾーン、今すぐチャットを確認、最近の確認。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예산, 메모리, 다음 확인, 시간대, 지금 채팅 살펴보기, 최근 확인."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budżety, pamięć, następne przejrzenie, strefa czasowa, przejrzenie czatów teraz i ostatnie przejrzenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orçamentos, memória, próxima verificação, fuso horário, verificar suas conversas agora e verificações recentes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бюджеты, память, следующий просмотр, часовой пояс, просмотр чатов сейчас и последние просмотры."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bütçeler, bellek, sonraki tarama, saat dilimi, sohbetleri şimdi tarama ve son taramalar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预算、记忆、下次查看、时区、立即查看聊天和最近的查看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預算、記憶、下次查看、時區、立即查看聊天和最近的查看。"
           }
         }
       }
