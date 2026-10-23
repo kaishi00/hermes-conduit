@@ -36,8 +36,8 @@ FILE_NAME = re.compile(r"^[\w.+-]+\.(swift|py|md|mjs|js|json|ya?ml|xcstrings|sh|
 # What every entry has, as the line each part starts with, in this order.
 PARTS = ["**Siblings:**", "**Code**", "**Rulings**", "**Open gaps**", "**Checked:**"]
 DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-# A PR (#1167) or a commit (64d53c3).
-CHECKED_AT = re.compile(r"#\d+|\b[0-9a-f]{7,40}\b")
+# A PR (#1167) or a commit (64d53c3): hex with a digit in it, so not a word.
+CHECKED_AT = re.compile(r"#\d+|\b(?=[a-f]*\d)[0-9a-f]{7,40}\b")
 
 
 class Unreachable(Exception):
@@ -145,7 +145,6 @@ def on_notifier_main(path, attempts=3):
                 raise Unreachable(error) from error
             print(f"fetch failed ({error}), retrying", file=sys.stderr)
         time.sleep(2 ** attempt)
-    return False
 
 
 def main(argv=None):

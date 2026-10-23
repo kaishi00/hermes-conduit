@@ -106,6 +106,8 @@ class CheckFeatureMapTests(unittest.TestCase):
         code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23"))
         self.assertEqual(code, 1)
         self.assertIn("and the PR or commit", out)
+        code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23, all defaced"))
+        self.assertEqual(code, 1)
         code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23, seeded from main at 64d53c3."))
         self.assertEqual(code, 0, out)
 

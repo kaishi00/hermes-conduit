@@ -182,7 +182,9 @@ jobs:
               updated one. Each of these is a major finding: a sibling left out
               without a reason; a change against a ruling; a ruling the PR
               changes without naming the maintainer's decision; a sibling, code
-              path or gap the PR adds or moves that its entry doesn't record.
+              path or gap the PR adds or moves that its entry doesn't record. A
+              PR that changes a mapped feature without updating its entry's
+              Checked line is a minor finding.
 
             If you find no issues, say so explicitly. Do NOT summarize what you did
             or describe your process. Output only the review.
