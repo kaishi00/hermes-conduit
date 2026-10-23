@@ -17,7 +17,7 @@ import Foundation
 /// a report on what it saw in the chats, or the morning brief.
 struct PulseCard: Equatable, Identifiable {
     let id: Int
-    /// "followup", "report" or "brief".
+    /// "followup", "noticed" (one of a report's items), "report" or "brief".
     let kind: String
     /// The loudness it went out at: "push", "screen" or "brief".
     let level: String
@@ -38,6 +38,8 @@ struct PulseCard: Equatable, Identifiable {
     let briefedAt: Date?
     /// The promise or to-do a follow-up is about (memory's item).
     let itemID: Int?
+    /// What a report item is about ("date", "promise"…) on a "noticed" card.
+    let topic: String
     /// When it was marked done: by the user on the Pulse screen, or by
     /// Pulse after Do it, once the chat showed it got done.
     var doneAt: Date?
@@ -67,6 +69,7 @@ struct PulseCard: Equatable, Identifiable {
         seenAt = PulseJSON.date(object["seen_at"])
         briefedAt = PulseJSON.date(object["briefed_at"])
         itemID = PulseJSON.int(object["item_id"])
+        topic = object["topic"] as? String ?? ""
         doneAt = PulseJSON.date(object["done_at"])
         doneBy = object["done_by"] as? String ?? ""
         rating = object["rating"] as? String ?? ""
@@ -77,14 +80,24 @@ struct PulseCard: Equatable, Identifiable {
     /// Held for the morning brief and not in one yet.
     var isHeld: Bool { level == PulseLevel.brief.rawValue && briefedAt == nil }
 
-    /// Follow-ups take ratings; a report or a brief is Hermes' own reply.
-    var isRatable: Bool { kind == "followup" }
+    /// One of a report's items, on its own card.
+    var isNoticed: Bool { kind == "noticed" }
 
-    /// A follow-up can be marked done: its promise closes, without a rating.
-    var canBeDone: Bool { kind == "followup" && itemID != nil }
+    /// Follow-ups and report items take ratings; a whole report or a brief
+    /// is Hermes' own reply.
+    var isRatable: Bool { kind == "followup" || isNoticed }
 
-    /// A follow-up can be acted on in the chat it came from.
-    var isActionable: Bool { kind == "followup" && !chatID.isEmpty && !(news.isEmpty && title.isEmpty) }
+    /// A follow-up, or a report item drawn from something Pulse remembers,
+    /// can be marked done: that thing closes, without a rating.
+    var canBeDone: Bool { (kind == "followup" || isNoticed) && itemID != nil }
+
+    /// It can be acted on in the chat the remembered thing came from.
+    var isActionable: Bool {
+        (kind == "followup" || (isNoticed && itemID != nil)) && !chatID.isEmpty && !(news.isEmpty && title.isEmpty)
+    }
+
+    /// The card's heading: a report item's topic, else its kind.
+    var heading: String { isNoticed ? PulseCardKind.topic(topic) : PulseCardKind.title(kind) }
 
     /// What Do it leaves in that chat's composer: the reminder, and the ask
     /// to take care of it, for the user to send or change.
@@ -142,7 +155,24 @@ enum PulseCardKind {
         case "followup": return AppLocalization.string("Follow-ups")
         case "report": return AppLocalization.string("Reports")
         case "brief": return AppLocalization.string("Morning brief")
+        case "noticed": return AppLocalization.string("Noticed")
         default: return kind
+        }
+    }
+
+    /// A report item's topic (pulse_report.KINDS on the host).
+    static func topic(_ topic: String) -> String {
+        switch topic {
+        case "commitment": return AppLocalization.string("Commitment")
+        case "promise": return AppLocalization.string("Promise")
+        case "date": return AppLocalization.string("Date")
+        case "follow-up": return AppLocalization.string("Follow-up")
+        case "reminder": return AppLocalization.string("Reminder")
+        case "watch": return AppLocalization.string("Watching")
+        case "intention": return AppLocalization.string("Plan")
+        case "interest": return AppLocalization.string("Interest")
+        case "fact": return AppLocalization.string("Worth knowing")
+        default: return AppLocalization.string("Noticed")
         }
     }
 }

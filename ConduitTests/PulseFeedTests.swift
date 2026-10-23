@@ -186,4 +186,24 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(calls[1].body?["done"] as? Bool, false)
         XCTAssertEqual(calls[2].body?["card"] as? Int, 9)
     }
+
+    func testReportItemsAreTheirOwnRatableCards() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 1, "kind": "noticed", "topic": "promise", "item_id": 4, "level": "screen", "news": "Send the deck",
+           "chat_id": "work", "title": "Send the deck to Mara"},
+          {"id": 2, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse"},
+          {"id": 3, "kind": "report", "level": "screen", "news": "Here's your report."}
+        ]}
+        """)))
+        let owed = page.cards[0], date = page.cards[1], report = page.cards[2]
+        XCTAssertTrue(owed.isNoticed && owed.isRatable && owed.canBeDone && owed.isActionable)
+        XCTAssertEqual(owed.topic, "promise")
+        XCTAssertEqual(owed.heading, PulseCardKind.topic("promise"))
+        XCTAssertTrue(date.isRatable)
+        XCTAssertFalse(date.canBeDone || date.isActionable)  // nothing remembered behind it
+        XCTAssertFalse(report.isRatable)
+        XCTAssertEqual(report.heading, PulseCardKind.title("report"))
+        XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
+    }
 }
