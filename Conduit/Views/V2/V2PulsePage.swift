@@ -447,6 +447,9 @@ struct V2PulsePage: View {
                 Text(card.formattedNews)
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
+                if appState.pulseCardHasChat(card) {
+                    chatLink(card)
+                }
                 actionRow(card)
             }
         }
