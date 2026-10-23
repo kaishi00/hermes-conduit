@@ -279,7 +279,10 @@ struct V2PulsePage: View {
             if card.isActionable {
                 Button {
                     Haptics.selection()
-                    Task { _ = await appState.actOnPulseCard(card) }
+                    Task {
+                        let opened = await appState.actOnPulseCard(card)
+                        errorMessage = opened ? nil : AppLocalization.string("Couldn't open that chat. Try again.")
+                    }
                 } label: {
                     Label(AppLocalization.string("Do it"), systemImage: "arrow.right.circle.fill")
                         .font(.footnote.weight(.semibold))
