@@ -354,7 +354,8 @@ struct V2PulsePage: View {
     /// A morning brief and the cards it brought, as one block: open while
     /// anything in it is, else one row that opens it again.
     @ViewBuilder private func briefRows(_ brief: PulseLayout.Brief) -> some View {
-        if brief.isHandled, !expandedBriefs.contains(brief.id) {
+        // Open when a push pointed at one of its cards, even before focus() could expand it.
+        if brief.isHandled, !expandedBriefs.contains(brief.id), !brief.items.contains(where: { $0.id == focusedCard }) {
             handledBriefRow(brief)
                 .id(brief.card.id)
                 .pulseRow()
@@ -453,6 +454,12 @@ struct V2PulsePage: View {
         .padding(.top, 0)
         .padding(.bottom, last ? 12 : 4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // The card a push opened, marked as a standalone card's stroke would.
+        .overlay(alignment: .leading) {
+            if focusedCard == card.id {
+                Capsule().fill(Color.conduitAccent).frame(width: 3).padding(.vertical, 10).padding(.leading, 4)
+            }
+        }
         .background(briefBackground(top: false, bottom: last))
     }
 
