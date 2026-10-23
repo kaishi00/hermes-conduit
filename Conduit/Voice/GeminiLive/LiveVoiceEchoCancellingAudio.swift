@@ -448,7 +448,11 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     private func restartAfterConfigurationChange() {
         guard inputWanted || outputWanted, engine?.isRunning != true else { return }
         let unplayed = queuedBuffers
+        // The stream goes on, so an odd byte still waiting keeps its place:
+        // dropped, every later sample would pair the wrong bytes.
+        let pendingByte = remainder
         tearDownEngine()
+        remainder = pendingByte
         do {
             try coordinator.reassert()
             try ensureRunning()
