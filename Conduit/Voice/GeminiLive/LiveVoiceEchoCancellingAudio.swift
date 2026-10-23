@@ -453,8 +453,10 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             try coordinator.reassert()
             try ensureRunning()
             if let player, let playerFormat {
-                for buffer in unplayed where buffer.format == playerFormat {
-                    schedule(buffer, on: player)
+                let kept = unplayed.filter { $0.format == playerFormat }
+                kept.forEach { schedule($0, on: player) }
+                if kept.count < unplayed.count {
+                    echoCancellingAudioLogger.notice("Dropped \(unplayed.count - kept.count, privacy: .public) speech chunks in another format after a route change")
                 }
             }
         } catch {

@@ -46,6 +46,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Slack past the scheduled audio before a drain concludes the engine is
     /// dead. Internal so ConduitTests can shorten it.
     var drainWatchdogGrace: TimeInterval = 10
+    /// Audio a route change made play again on this stream (see
+    /// `resumeOnFreshEngine`): a drain already waiting allows for it too.
+    private var replayedSeconds: TimeInterval = 0
     /// Identity of the current playback lifetime. Bumped by every stop(), so
     /// completion callbacks from buffers of a stopped (or replaced) player —
     /// AVAudioPlayerNode fires them for unplayed buffers when stopped — can
@@ -200,7 +203,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // A conversation carries on from where it was, as it does when the
         // change is seen first (engineConfigurationChanged).
         if format != nil, !engine.isRunning,
-           !(Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: encodedPlayer == nil) && resumeOnFreshEngine()) {
+           !(Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming) && resumeOnFreshEngine()) {
             stop()
         }
         if format == nil {
@@ -315,6 +318,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         let budgetDuration = Duration.seconds(max(0, budget))
         let startedAt = ContinuousClock.now
         let pausedAtStart = pausedDuration()
+        let replayedAtStart = replayedSeconds
         let watchdog = Task { @MainActor [weak self] in
             var wait = budgetDuration
             while true {
@@ -329,8 +333,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                     continue
                 }
                 let played = (ContinuousClock.now - startedAt) - (self.pausedDuration() - pausedAtStart)
-                guard played < budgetDuration else { break }
-                wait = budgetDuration - played
+                let allowed = budgetDuration + .seconds(self.replayedSeconds - replayedAtStart)
+                guard played < allowed else { break }
+                wait = allowed - played
             }
             self?.stop()
         }
@@ -385,6 +390,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // Pause time only matters to this stream's drain watchdog, which
         // the generation bump above already retired.
         totalPausedDuration = .zero
+        replayedSeconds = 0
         teardownGraph()
         encodedPlayer?.stop()
         encodedPlayer = nil
@@ -526,12 +532,15 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             holdsLease: lease != nil,
             engineRunning: engine.isRunning
         ) else { return }
-        if Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: format != nil && encodedPlayer == nil),
+        if Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: isStreaming),
            resumeOnFreshEngine() {
             return
         }
         stop()
     }
+
+    /// A PCM stream is playing, not an encoded clip.
+    private var isStreaming: Bool { format != nil && encodedPlayer == nil }
 
     /// Internal for tests: whether a stopped engine's stream plays on
     /// instead of settling. Conversations only; encoded clips play on
@@ -559,6 +568,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         player.play()
         if isPaused { player.pause() }
         for buffer in unplayed { schedule(buffer) }
+        // At most the chunk that was playing is heard twice; allowing the
+        // whole queue keeps the drain watchdog from cutting a reply that a
+        // slow restart delayed.
+        replayedSeconds += scheduledSeconds
         if unplayed.isEmpty {
             isPlaying = false
             if isFinishing {
@@ -567,7 +580,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 settleDrainWaiters()
             }
         }
-        voicePlaybackLogger.notice("Conversation playback moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
+        if !unplayed.isEmpty {
+            voicePlaybackLogger.notice("Conversation playback moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
+        }
         return true
     }
 

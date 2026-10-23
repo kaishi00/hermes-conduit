@@ -226,7 +226,7 @@ final class VoiceAudioSessionCoordinator {
     /// here (every acquire and every route change's reassert did) flipped
     /// the call screen's Speaker button back off while the audio stayed on
     /// the loudspeaker.
-    private(set) var isNativeCallAudioActive = false
+    private var isNativeCallAudioActive = false
 
     enum Policy: Equatable {
         /// `.playAndRecord` + `.voiceChat`: Voice Conversation capture, and

@@ -832,6 +832,7 @@ final class HermesNativeCalls: NSObject {
         routeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
+            // On main: the block's assumeIsolated depends on it.
             queue: .main
         ) { note in
             let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
