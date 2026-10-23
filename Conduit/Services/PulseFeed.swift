@@ -36,6 +36,10 @@ struct PulseCard: Equatable, Identifiable {
     let createdAt: Date?
     let seenAt: Date?
     let briefedAt: Date?
+    /// The promise or to-do a follow-up is about (memory's item).
+    let itemID: Int?
+    /// When the user marked it done on the Pulse screen.
+    var doneAt: Date?
     /// "up", "down" or "".
     var rating: String
     var reason: String
@@ -59,6 +63,8 @@ struct PulseCard: Equatable, Identifiable {
         createdAt = PulseJSON.date(object["created_at"])
         seenAt = PulseJSON.date(object["seen_at"])
         briefedAt = PulseJSON.date(object["briefed_at"])
+        itemID = PulseJSON.int(object["item_id"])
+        doneAt = PulseJSON.date(object["done_at"])
         rating = object["rating"] as? String ?? ""
         reason = object["reason"] as? String ?? ""
         formattedNews = Self.formatted(news, markdown: kind != "followup")
@@ -69,6 +75,9 @@ struct PulseCard: Equatable, Identifiable {
 
     /// Follow-ups take ratings; a report or a brief is Hermes' own reply.
     var isRatable: Bool { kind == "followup" }
+
+    /// A follow-up can be marked done: its promise closes, without a rating.
+    var canBeDone: Bool { kind == "followup" && itemID != nil }
 
     /// A follow-up can be acted on in the chat it came from.
     var isActionable: Bool { kind == "followup" && !chatID.isEmpty && !(news.isEmpty && title.isEmpty) }
@@ -263,6 +272,14 @@ extension PulseClient {
         return (response["learned"] as? [Any] ?? []).compactMap(PulseLesson.init(json:))
     }
 
+    /// Marks a follow-up card done (its promise closes, no rating), or
+    /// takes the mark off; whether it changed.
+    @discardableResult
+    func markDone(card: Int, done: Bool) async throws -> Bool {
+        let response = try await request("\(Self.path)/done", "POST", ["card": card, "done": done])
+        return response["changed"] as? Bool ?? false
+    }
+
     func learned() async throws -> PulseLearned {
         let response = try await request("\(Self.path)/learned", "GET", nil)
         guard let learned = PulseLearned(json: response) else { throw HermesError.invalidResponse }
@@ -409,4 +426,6 @@ extension PulseClient {
     static let modelCapability = "pulse_model"
     /// Settings > Pulse sets how much Pulse nudges and its daily token budgets (0.63.0).
     static let nudgeCapability = "pulse_nudge"
+    /// Follow-up cards can be marked done (0.64.0).
+    static let doneCapability = "pulse_done"
 }
