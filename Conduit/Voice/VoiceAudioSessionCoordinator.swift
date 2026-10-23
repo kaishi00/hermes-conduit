@@ -221,6 +221,12 @@ final class VoiceAudioSessionCoordinator {
     private(set) var isInNativeCall = false
     /// The call's audio has had its one move to the loudspeaker.
     private var nativeCallSpeakerChosen = false
+    /// CallKit activated the call's audio and hasn't taken it back. The
+    /// session is then CallKit's to keep active: activating it again from
+    /// here (every acquire and every route change's reassert did) flipped
+    /// the call screen's Speaker button back off while the audio stayed on
+    /// the loudspeaker.
+    private(set) var isNativeCallAudioActive = false
 
     enum Policy: Equatable {
         /// `.playAndRecord` + `.voiceChat`: Voice Conversation capture, and
@@ -370,6 +376,7 @@ final class VoiceAudioSessionCoordinator {
     func configureForIncomingCall() {
         isInNativeCall = true
         nativeCallSpeakerChosen = false
+        isNativeCallAudioActive = false
         // Raised first: a conversation already holding the session must
         // move onto the call's policy even if this category change fails.
         needsReapply = true
@@ -389,7 +396,9 @@ final class VoiceAudioSessionCoordinator {
     /// answered on headphones, Bluetooth or in the car stays there (the
     /// override would take the loudspeaker and the phone's own microphone).
     func nativeCallAudioActivated() {
-        guard isInNativeCall, !nativeCallSpeakerChosen else { return }
+        guard isInNativeCall else { return }
+        isNativeCallAudioActive = true
+        guard !nativeCallSpeakerChosen else { return }
         guard session.isOutputOnBuiltInReceiver else {
             nativeCallSpeakerChosen = true
             return
@@ -404,11 +413,18 @@ final class VoiceAudioSessionCoordinator {
         }
     }
 
+    /// CallKit took the call's audio back (an interruption, the call
+    /// ending): the next acquire or reassert activates the session itself.
+    func nativeCallAudioDeactivated() {
+        isNativeCallAudioActive = false
+    }
+
     /// The last call from Hermes is gone: a conversation still holding the
     /// session goes back to its own policy now, speaker by default.
     func nativeCallEnded() {
         guard isInNativeCall else { return }
         isInNativeCall = false
+        isNativeCallAudioActive = false
         needsReapply = true
         guard !leases.isEmpty else { return }
         do {
@@ -506,7 +522,12 @@ final class VoiceAudioSessionCoordinator {
                 if changesCategory {
                     try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 }
-                try session.setActive(true, options: [])
+                // CallKit keeps the call's audio active (see
+                // isNativeCallAudioActive); before it has, or after it
+                // took it back, the conversation activates it as usual.
+                if !(isInNativeCall && isNativeCallAudioActive) {
+                    try session.setActive(true, options: [])
+                }
                 // Best effort: losing the speaker must not fail capture. And
                 // only if the change really took it: an override posts a
                 // route change of its own.

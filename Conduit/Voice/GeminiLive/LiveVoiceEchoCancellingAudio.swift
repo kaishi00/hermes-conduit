@@ -59,6 +59,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// dropped buffers don't count.
     private var playbackGeneration: UInt64 = 0
     private var pendingBuffers = 0
+    /// What's scheduled and not played yet, oldest first, so a route
+    /// change's restart plays it on the new engine.
+    private var queuedBuffers: [AVAudioPCMBuffer] = []
     /// An odd trailing byte, carried into the next chunk as
     /// AVSpeechPlaybackService does.
     private var remainder = Data()
@@ -216,12 +219,15 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
 
     private func schedule(_ buffer: AVAudioPCMBuffer, on player: AVAudioPlayerNode) {
         pendingBuffers += 1
+        queuedBuffers.append(buffer)
         extendDrainDeadline(by: Double(buffer.frameLength) / buffer.format.sampleRate)
         let generation = playbackGeneration
         player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.playbackGeneration == generation else { return }
                 self.pendingBuffers = max(0, self.pendingBuffers - 1)
+                // One player plays its buffers in order.
+                if !self.queuedBuffers.isEmpty { self.queuedBuffers.removeFirst() }
             }
         }
         if !player.isPlaying { player.play() }
@@ -238,6 +244,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     func interrupt() {
         playbackGeneration &+= 1
         pendingBuffers = 0
+        queuedBuffers.removeAll()
         remainder.removeAll(keepingCapacity: true)
         clearDrainWatchdog()
         player?.stop()
@@ -262,6 +269,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
                     // engine can't play it untracked later.
                     self.playbackGeneration &+= 1
                     self.pendingBuffers = 0
+                    self.queuedBuffers.removeAll()
                     self.player?.stop()
                 }
                 self.drainDeadline = nil
@@ -418,6 +426,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         tapGeneration &+= 1
         playbackGeneration &+= 1
         pendingBuffers = 0
+        queuedBuffers.removeAll()
         remainder.removeAll(keepingCapacity: true)
         clearDrainWatchdog()
         converter = nil
@@ -430,16 +439,24 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         player = nil
     }
 
-    /// A route change (speaker to AirPods and back) stops the engine:
-    /// rebuild the graph against the new hardware. Queued speech is
-    /// dropped. If it can't come back, the call hears about it like an
-    /// interruption.
+    /// A route change (speaker to AirPods and back, the call screen's
+    /// Speaker button) stops the engine: rebuild the graph against the new
+    /// hardware. Speech still queued plays on the new engine, from the
+    /// start of the chunk that was playing: dropping it cut the model off
+    /// mid-sentence. If it can't come back, the call hears about it like
+    /// an interruption.
     private func restartAfterConfigurationChange() {
         guard inputWanted || outputWanted, engine?.isRunning != true else { return }
+        let unplayed = queuedBuffers
         tearDownEngine()
         do {
             try coordinator.reassert()
             try ensureRunning()
+            if let player, let playerFormat {
+                for buffer in unplayed where buffer.format == playerFormat {
+                    schedule(buffer, on: player)
+                }
+            }
         } catch {
             echoCancellingAudioLogger.error("Echo-cancelling live audio restart failed: \(LogRedaction.describing(error), privacy: .public)")
             stopAfterInterruption()

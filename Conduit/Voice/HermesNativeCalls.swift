@@ -171,6 +171,10 @@ final class HermesNativeCalls: NSObject {
     /// store that call's session at the relay.
     private var ringTargets: [String: (target: ConduitNotificationTarget, ring: HermesRing, at: Date)] = [:]
     private var audioActive = false
+    /// Notes every route change of the call's audio in the call trace
+    /// while CallKit has it, so a Speaker button that disagrees with where
+    /// the sound comes out shows up in a copied trace.
+    private var routeObserver: NSObjectProtocol?
     private var audioWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// At launch, before it returns: a call that launched Conduit waits on
@@ -823,8 +827,32 @@ final class HermesNativeCalls: NSObject {
         }
     }
 
+    private func observeRoute() {
+        stopObservingRoute()
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
+                .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            MainActor.assumeIsolated {
+                HermesCallTrace.shared.note(
+                    "Audio route: \(HermesCallAudioRoute.describe(.sharedInstance())) (\(HermesCallAudioRoute.describe(reason)))"
+                )
+            }
+        }
+    }
+
+    private func stopObservingRoute() {
+        guard let routeObserver else { return }
+        NotificationCenter.default.removeObserver(routeObserver)
+        self.routeObserver = nil
+    }
+
     private func settle() {
         guard calls.isEmpty else { return }
+        stopObservingRoute()
         VoiceAudioSessionCoordinator.shared.nativeCallEnded()
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
     }
@@ -913,6 +941,8 @@ extension HermesNativeCalls: CXProviderDelegate {
             }
             self.calls = [:]
             self.audioActive = false
+            VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
+            self.stopObservingRoute()
             self.resumeAudioWaiters()
             for target in answered { self.endVoice(of: target) }
             self.settle()
@@ -942,7 +972,9 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
+            HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
             self.audioActive = true
+            self.observeRoute()
             self.resumeAudioWaiters()
         }
     }
@@ -950,11 +982,46 @@ extension HermesNativeCalls: CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio off")
+            VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.audioActive = false
+            self.stopObservingRoute()
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
         action.fail()
+    }
+}
+
+/// Where a call's audio goes, in a call trace's words.
+enum HermesCallAudioRoute {
+    static func describe(_ session: AVAudioSession) -> String {
+        let outputs = session.currentRoute.outputs.map { describe($0.portType) }
+        let speakerDefault = session.categoryOptions.contains(.defaultToSpeaker) ? ", speaker by default" : ""
+        return (outputs.isEmpty ? "no output" : outputs.joined(separator: " + ")) + speakerDefault
+    }
+
+    static func describe(_ port: AVAudioSession.Port) -> String {
+        switch port {
+        case .builtInSpeaker: return "Speaker"
+        case .builtInReceiver: return "Earpiece"
+        case .headphones: return "Headphones"
+        case .bluetoothHFP, .bluetoothA2DP, .bluetoothLE: return "Bluetooth"
+        case .carAudio: return "CarPlay"
+        default: return port.rawValue
+        }
+    }
+
+    static func describe(_ reason: AVAudioSession.RouteChangeReason?) -> String {
+        switch reason {
+        case .newDeviceAvailable?: return "device added"
+        case .oldDeviceUnavailable?: return "device removed"
+        case .categoryChange?: return "category"
+        case .override?: return "override"
+        case .wakeFromSleep?: return "wake"
+        case .noSuitableRouteForCategory?: return "no route"
+        case .routeConfigurationChange?: return "configuration"
+        default: return "other"
+        }
     }
 }

@@ -7,6 +7,8 @@ import AVFAudio
 import Foundation
 import os
 
+private let voicePlaybackLogger = Logger(subsystem: "com.milim.relay", category: "VoiceAudio")
+
 @MainActor
 final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Engine and player are rebuilt for every PCM stream (see
@@ -34,6 +36,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// hardware; production code mutates it only through scheduling,
     /// draining, and stop().
     var pendingBuffers = 0
+    /// What the current stream scheduled and hasn't played yet, oldest
+    /// first: a conversation whose engine a route change stopped plays it
+    /// again on a fresh one instead of losing the reply.
+    private var queuedBuffers: [AVAudioPCMBuffer] = []
     /// Total audio scheduled on the current stream: an upper bound on what is
     /// still left to render when a drain begins.
     private var scheduledSeconds: TimeInterval = 0
@@ -147,25 +153,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         lease = try coordinator.acquire(ownershipIntent)
         do {
             self.format = format
-            try VoiceAudioEngineRecovery.startFresh(
-                rebuild: { rebuildEngine() },
-                reassert: { try coordinator.reassert() },
-                start: {
-                    engineHasGraph = true
-                    if stretched {
-                        let timePitch = AVAudioUnitTimePitch()
-                        timePitch.rate = rate
-                        engine.attach(timePitch)
-                        engine.connect(player, to: timePitch, format: format)
-                        engine.connect(timePitch, to: engine.mainMixerNode, format: format)
-                        self.timePitch = timePitch
-                    } else {
-                        engine.connect(player, to: engine.mainMixerNode, format: format)
-                    }
-                    engine.prepare()
-                    try engine.start()
-                }
-            )
+            try startFreshGraph(format: format, stretchedTo: stretched ? rate : nil)
         } catch {
             // Full settle, not just ownership: a failed start must not leave
             // `format` set on a graph that never started, or later chunks
@@ -177,6 +165,30 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         isPlaying = true
     }
 
+    /// A fresh engine playing `format`, through the time stretch when given
+    /// a rate.
+    private func startFreshGraph(format: AVAudioFormat, stretchedTo rate: Float?) throws {
+        try VoiceAudioEngineRecovery.startFresh(
+            rebuild: { rebuildEngine() },
+            reassert: { try coordinator.reassert() },
+            start: {
+                engineHasGraph = true
+                if let rate {
+                    let timePitch = AVAudioUnitTimePitch()
+                    timePitch.rate = rate
+                    engine.attach(timePitch)
+                    engine.connect(player, to: timePitch, format: format)
+                    engine.connect(timePitch, to: engine.mainMixerNode, format: format)
+                    self.timePitch = timePitch
+                } else {
+                    engine.connect(player, to: engine.mainMixerNode, format: format)
+                }
+                engine.prepare()
+                try engine.start()
+            }
+        )
+    }
+
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int {
         // A configuration change stops the engine before its deferred
         // settle runs; buffers scheduled onto a stopped player never
@@ -185,7 +197,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // the case): the fresh player holds its place until resume().
         let holdPause = isPaused
         if interruptedStandaloneStream { throw CancellationError() }
-        if format != nil, !engine.isRunning { stop() }
+        // A conversation carries on from where it was, as it does when the
+        // change is seen first (engineConfigurationChanged).
+        if format != nil, !engine.isRunning,
+           !(Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: encodedPlayer == nil) && resumeOnFreshEngine()) {
+            stop()
+        }
         if format == nil {
             try start(sampleRate: sampleRate)
             if holdPause { _ = pause() }
@@ -209,22 +226,34 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         pcm.withUnsafeBytes { source in
             Self.convertPCM16(source, into: destination[0], frames: Int(frames))
         }
+        schedule(buffer)
+        return alignedBytes
+    }
+
+    private func schedule(_ buffer: AVAudioPCMBuffer) {
         pendingBuffers += 1
+        queuedBuffers.append(buffer)
         // A stream stays started across drains (Gemini Live keeps it open
         // for the whole conversation), so every scheduled chunk marks it
         // playing again, not just the one that started it.
         isPlaying = true
-        scheduledSeconds += Double(frames) / format.sampleRate
+        scheduledSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
         let generation = playbackGeneration
+        // Completions count only on the engine they were scheduled on: the
+        // player a route change replaced reports its unplayed buffers as it
+        // stops, and those play again on the new one.
+        let scheduledOn = engineGeneration
         player.scheduleBuffer(
             buffer,
             at: nil,
             options: [],
             completionCallbackType: .dataPlayedBack
         ) { [weak self] _ in
-            Task { @MainActor in self?.bufferDidDrain(generation: generation) }
+            Task { @MainActor in
+                guard let self, self.engineGeneration == scheduledOn else { return }
+                self.bufferDidDrain(generation: generation)
+            }
         }
-        return alignedBytes
     }
 
     func playEncodedAudioData(_ data: Data) throws {
@@ -363,6 +392,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         timePitch = nil
         remainder.removeAll(keepingCapacity: true)
         pendingBuffers = 0
+        queuedBuffers.removeAll()
         scheduledSeconds = 0
         isPlaying = false
         let waiters = drainWaiters
@@ -482,11 +512,13 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     /// A route change can stop the rendering engine under a live lease
-    /// (AirPods disconnect, dock/undock). Settle instead of leaving buffers
-    /// undrained and ownership claimed by audio that can never play. A
-    /// conversation drain self-heals: the next PCM buffer reacquires
-    /// ownership and restarts the engine on a fresh graph. Changes from
-    /// replaced engines are not this stream's.
+    /// (AirPods disconnect, dock/undock, the call screen's Speaker button).
+    /// A conversation's reply carries on from where it was on a fresh
+    /// engine: dropping it cut the assistant off mid-sentence, and Classic
+    /// voice took the empty queue for the end of its reply. Standalone
+    /// speech settles instead of leaving buffers undrained and ownership
+    /// claimed by audio that can never play. Changes from replaced engines
+    /// are not this stream's.
     private func engineConfigurationChanged(generation: UInt64) {
         guard Self.settlesOnConfigurationChange(
             from: generation,
@@ -494,7 +526,49 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             holdsLease: lease != nil,
             engineRunning: engine.isRunning
         ) else { return }
+        if Self.resumesOnConfigurationChange(intent: ownershipIntent, streaming: format != nil && encodedPlayer == nil),
+           resumeOnFreshEngine() {
+            return
+        }
         stop()
+    }
+
+    /// Internal for tests: whether a stopped engine's stream plays on
+    /// instead of settling. Conversations only; encoded clips play on
+    /// AVAudioPlayer, which follows the route by itself.
+    nonisolated static func resumesOnConfigurationChange(intent: VoiceAudioIntent, streaming: Bool) -> Bool {
+        intent == .conversationPlayback && streaming
+    }
+
+    /// Rebuilds the stream's graph and schedules what hadn't played yet,
+    /// keeping the lease, the drain waiters and a pause. The buffer that was
+    /// playing starts over: the stopped player can't say how far it got.
+    /// False when the new engine won't start.
+    private func resumeOnFreshEngine() -> Bool {
+        guard let format else { return false }
+        let unplayed = queuedBuffers
+        queuedBuffers.removeAll()
+        pendingBuffers = 0
+        scheduledSeconds = 0
+        do {
+            try startFreshGraph(format: format, stretchedTo: timePitch.map(\.rate))
+        } catch {
+            voicePlaybackLogger.error("Conversation playback couldn't come back after a route change: \(LogRedaction.describing(error), privacy: .public)")
+            return false
+        }
+        player.play()
+        if isPaused { player.pause() }
+        for buffer in unplayed { schedule(buffer) }
+        if unplayed.isEmpty {
+            isPlaying = false
+            if isFinishing {
+                stop()
+            } else {
+                settleDrainWaiters()
+            }
+        }
+        voicePlaybackLogger.notice("Conversation playback moved to a new route with \(unplayed.count, privacy: .public) chunks still to play")
+        return true
     }
 
     /// Internal for tests: whether a configuration change ends the stream.
@@ -511,6 +585,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func bufferDidDrain(generation: UInt64) {
         guard generation == playbackGeneration, pendingBuffers > 0 else { return }
         pendingBuffers -= 1
+        // One player plays its buffers in order.
+        if !queuedBuffers.isEmpty { queuedBuffers.removeFirst() }
         guard pendingBuffers == 0 else { return }
         if isFinishing {
             // Terminal: everything queued has rendered. stop() tears the
