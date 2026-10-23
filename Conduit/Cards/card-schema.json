@@ -12,11 +12,12 @@
     "A comparison keeps only its first recommended option.",
     "A media card needs a source and keeps only items whose url is https (dropped when none is left); artwork is kept only when it is https, and an image keeps no duration or artwork.",
     "A contact's phone is kept only when it holds 3 to 20 digits and nothing but digits, spaces and + - ( ) . characters; an email only when it is one address like name@example.com, with no spaces, quotes, brackets, commas, semicolons, colons or any of ? # % & =.",
+    "A person's message is kept only when their phone is.",
     "Only the first card in a set keeps a given live name."
   ],
   "card": {
     "type": "object",
-    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email. status: how something in progress is going, like a delivery, a flight, a match or a job.",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email, or someone to text with a message you wrote for the user to send. status: how something in progress is going, like a delivery, a flight, a match or a job.",
     "properties": {
       "type": {
         "type": "string",
@@ -303,6 +304,7 @@
             "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "Their website or profile page."},
             "address": {"type": "string", "maxLength": 200, "description": "Their address, when it matters."},
             "note": {"type": "string", "maxLength": 300, "description": "Your own short note: why you're showing them."},
+            "message": {"type": "string", "maxLength": 1000, "description": "A text message you wrote for the user to send them, only when the user asked you to text or message this person. Conduit shows it with a Send text button that opens Messages with it filled in, and the user taps Send there. Needs their phone. It isn't sent until the user taps Send, so never say it was sent."},
             "photo": {
               "type": "object",
               "description": "A photo of them you actually found: a direct image URL, with where it's from. Left out without a source; the phone uses the contact's own photo when it has one.",

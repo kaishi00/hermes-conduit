@@ -6,7 +6,9 @@
 //  photos open full screen, video in the system player, audio in a row
 //  with its own controls. A contact offers what its details allow (call,
 //  message, email, the website, add to Contacts) and says when it's
-//  someone the user shared with Hermes. A status shows where something
+//  someone the user shared with Hermes. A text Hermes wrote for them shows
+//  with Send text, which opens Messages filled in: the user taps Send
+//  there, so nothing is sent for them. A status shows where something
 //  stands, and Hermes replaces it as it changes (its live name).
 //
 
@@ -14,6 +16,7 @@ import AVKit
 import Combine
 import Contacts
 import ContactsUI
+import MessageUI
 import SwiftUI
 
 /// Card pictures share the bounded download and decode used by Markdown.
@@ -409,6 +412,9 @@ struct RichContactCard: View {
                 ForEach(Array(card.people.enumerated()), id: \.offset) { index, person in
                     if index > 0 { Divider() }
                     RichPersonRow(person: person, known: person.match(in: shared))
+                        // A live card shown again with someone or a text that
+                        // changed is a new row: Sent belongs to the old text.
+                        .id(person)
                 }
             }
         }
@@ -425,6 +431,10 @@ private struct RichPersonRow: View {
 
     @Environment(\.openURL) private var openURL
     @State private var addsContact = false
+    @State private var composesText = false
+    /// The user tapped Send in Messages (for this showing of the card).
+    @State private var textSent = false
+    @State private var textCopied = false
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 46
 
     var body: some View {
@@ -480,11 +490,45 @@ private struct RichPersonRow: View {
                     .font(.caption)
                     .italic()
             }
+            if let message = person.message {
+                Text(verbatim: message)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.conduitAccent.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityLabel(Text("Text to send"))
+                    .accessibilityValue(Text(verbatim: message))
+            }
             actions
         }
         .sheet(isPresented: $addsContact) {
             RichNewContactSheet(person: person)
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $composesText) {
+            if let dialable = person.dialable, let message = person.message {
+                RichTextComposeSheet(recipient: dialable, body: message) { result in
+                    guard result == .sent else { return }
+                    textSent = true
+                    UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Sent"))
+                }
+                .ignoresSafeArea()
+            }
+        }
+    }
+
+    /// Messages filled in with Hermes' text, for the user to send. Without
+    /// Messages here (an iPad with iMessage off), the text is copied and
+    /// Messages opened for them to paste it.
+    private func sendText(to dialable: String, message: String) {
+        if MFMessageComposeViewController.canSendText() {
+            composesText = true
+        } else {
+            UIPasteboard.general.string = message
+            textCopied = true
+            UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
+            if let url = URL(string: "sms:\(dialable)") { openURL(url) }
         }
     }
 
@@ -519,10 +563,16 @@ private struct RichPersonRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 if let dialable = person.dialable {
+                    if let message = person.message {
+                        RichPersonAction(title: textSent ? Text("Sent") : textCopied ? Text("Copied") : Text("Send text"),
+                                         symbol: textSent ? "checkmark" : "paperplane.fill", prominent: true) {
+                            sendText(to: dialable, message: message)
+                        }
+                    }
                     if let url = URL(string: "tel:\(dialable)") {
                         RichPersonAction(title: Text("Call"), symbol: "phone.fill") { openURL(url) }
                     }
-                    if let url = URL(string: "sms:\(dialable)") {
+                    if person.message == nil, let url = URL(string: "sms:\(dialable)") {
                         RichPersonAction(title: Text("Message"), symbol: "message.fill") { openURL(url) }
                     }
                 }
@@ -543,6 +593,7 @@ private struct RichPersonRow: View {
 private struct RichPersonAction: View {
     let title: Text
     let symbol: String
+    var prominent = false
     let action: () -> Void
 
     var body: some View {
@@ -557,10 +608,50 @@ private struct RichPersonAction: View {
             .labelStyle(RichCompactLabelStyle())
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .foregroundStyle(Color.conduitAccent)
-            .background(Color.conduitAccent.opacity(0.14), in: Capsule())
+            .foregroundStyle(prominent ? Color.conduitBackgroundColor : Color.conduitAccent)
+            .background(Color.conduitAccent.opacity(prominent ? 1 : 0.14), in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The system's Messages composer, filled in with the number and Hermes'
+/// text. Only the user's tap on Send sends it.
+private struct RichTextComposeSheet: UIViewControllerRepresentable {
+    let recipient: String
+    let body: String
+    let finished: (MessageComposeResult) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator { result in
+            finished(result)
+            dismiss()
+        }
+    }
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let controller = MFMessageComposeViewController()
+        controller.recipients = [recipient]
+        controller.body = body
+        controller.messageComposeDelegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: MFMessageComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let finish: (MessageComposeResult) -> Void
+
+        init(finish: @escaping (MessageComposeResult) -> Void) {
+            self.finish = finish
+        }
+
+        func messageComposeViewController(_ controller: MFMessageComposeViewController,
+                                          didFinishWith result: MessageComposeResult) {
+            finish(result)
+        }
     }
 }
 

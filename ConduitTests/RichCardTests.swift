@@ -166,6 +166,18 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
     }
 
+    func testAContactsTextToSendNeedsTheirPhone() throws {
+        let raw: [[String: Any]] = [["type": "contact", "people": [
+            ["name": "Mei", "detail": "Wife", "phone": "+86 139 6261 8677", "message": "Landed safe"],
+            ["name": "Bo", "email": "bo@example.com", "message": "Running late"],
+            ["name": "Cy", "phone": "+1 415 555 0100", "message": ""],
+        ]]]
+        let people = try XCTUnwrap(RichCard.cards(raw: raw).first).people
+        XCTAssertEqual(people.map(\.message), ["Landed safe", nil, nil], "a text needs a number to go to")
+        XCTAssertEqual(people[0].dialable, "+8613962618677")
+        XCTAssertNil(RichPerson(json: ["name": "Di", "message": "Hi"])?.message)
+    }
+
     func testAnEmailActionOnlyAddressesTheEmail() throws {
         XCTAssertEqual(RichPerson.mailtoURL("first.last+tag@example.co.uk")?.absoluteString,
                        "mailto:first.last+tag@example.co.uk")

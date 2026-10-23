@@ -205,8 +205,10 @@ final class PresentedScreensSync: ObservableObject {
     /// tool there too. "info-cards": it also draws stats, charts, forecasts,
     /// comparisons and steps (plugin 0.46+). "media-cards": photos, videos,
     /// audio and contacts; "live-cards": statuses and cards kept up to date
-    /// under a live name (plugin 0.47+).
-    static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards"]
+    /// under a live name (plugin 0.47+); "text-drafts": Send text for a
+    /// contact card's message (plugin 0.67+).
+    static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
+                           "text-drafts"]
     /// Card ids remembered as seen, so a card is shown at most once.
     private static let maxSeenCards = 200
     private static let resultsKey = "conduit.presentedScreens.results.v1"
