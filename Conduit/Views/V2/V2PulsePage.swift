@@ -319,7 +319,7 @@ struct V2PulsePage: View {
     private func cardView(_ card: PulseCard) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Text(verbatim: PulseCardKind.title(card.kind))
+                Text(verbatim: card.heading)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                 if card.isHeld {
@@ -508,7 +508,8 @@ struct V2PulsePage: View {
         let chosen = card.rating == (up ? "up" : "down")
         return Button {
             Haptics.selection()
-            if up { rate(card, up: true, reason: nil) } else { reasonCard = card }
+            // A report item has no ladder for a reason to move: its thumbs down is enough.
+            if up || card.isNoticed { rate(card, up: up, reason: nil) } else { reasonCard = card }
         } label: {
             Image(systemName: up ? (chosen ? "hand.thumbsup.fill" : "hand.thumbsup")
                                  : (chosen ? "hand.thumbsdown.fill" : "hand.thumbsdown"))
