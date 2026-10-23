@@ -187,8 +187,8 @@ struct PulseSettingsPage: View {
     }
 
     private func reportSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Shadow report"), symbol: "doc.text.magnifyingglass", tint: .conduitAccent) {
-            Toggle("Send shadow reports", isOn: Binding(
+        ConduitSettingsSection(title: AppLocalization.string("Reports"), symbol: "doc.text.magnifyingglass", tint: .conduitAccent) {
+            Toggle("Send reports", isOn: Binding(
                 get: { state.dailyReport },
                 set: { on in change(["daily_report": on]) { $0.dailyReport = on } }
             ))
@@ -233,7 +233,7 @@ struct PulseSettingsPage: View {
                 run { client in
                     try await client.sendReport()
                     if isShown(client) {
-                        notice = AppLocalization.string("Pulse will send a report to its chat shortly.")
+                        notice = AppLocalization.string("Pulse will report shortly. Anything it notices shows up as cards.")
                     }
                     return nil
                 }
@@ -241,7 +241,30 @@ struct PulseSettingsPage: View {
             .buttonStyle(.settings)
             .disabled(working)
             .accessibilityIdentifier("settings.pulse.report-now")
+            briefTime(state)
         }
+    }
+
+    /// The morning brief: when cards held for it arrive together, with one push.
+    @ViewBuilder
+    private func briefTime(_ state: PulseState) -> some View {
+        DatePicker(
+            AppLocalization.string("Morning brief"),
+            selection: Binding(
+                get: { PulseReportTime.date(state.briefTime) },
+                set: { date in
+                    let time = PulseReportTime.text(from: date)
+                    guard time != state.briefTime else { return }
+                    change(["brief_time": time]) { $0.briefTime = time }
+                }
+            ),
+            displayedComponents: .hourAndMinute
+        )
+        .disabled(working)
+        .accessibilityIdentifier("settings.pulse.brief-time")
+        Text("Cards Pulse holds back, because you asked for fewer pushes, arrive together at this time with one push. Nothing held, no brief.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder

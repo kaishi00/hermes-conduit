@@ -337151,6 +337151,252 @@
           }
         }
       }
+    },
+    "Send reports" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berichte senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar informes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyer des rapports"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim laporan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia report"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レポートを送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "리포트 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysyłaj raporty"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar relatórios"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправлять отчёты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rapor gönder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送报告"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送報告"
+          }
+        }
+      }
+    },
+    "Pulse will report shortly. Anything it notices shows up as cards." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse berichtet gleich. Alles, was es bemerkt, erscheint als Karten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse informará en breve. Lo que note aparecerá como tarjetas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse va faire son rapport. Ce qu’il remarque apparaît sous forme de cartes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse akan segera melapor. Apa pun yang diperhatikannya muncul sebagai kartu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse farà presto il report. Ciò che nota compare come schede."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse がまもなくレポートします。気づいたことはカードとして表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 곧 리포트합니다. 알아챈 내용은 카드로 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse wkrótce przygotuje raport. Wszystko, co zauważy, pojawi się jako karty."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse vai relatar em breve. O que ele notar aparece como cartões."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse скоро пришлёт отчёт. Всё, что он заметит, появится в виде карточек."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse birazdan rapor verecek. Fark ettiği her şey kart olarak görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 很快会报告。它注意到的内容会以卡片显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 很快會報告。它注意到的內容會以卡片顯示。"
+          }
+        }
+      }
+    },
+    "Cards Pulse holds back, because you asked for fewer pushes, arrive together at this time with one push. Nothing held, no brief." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karten, die Pulse zurückhält, weil du weniger Mitteilungen wolltest, kommen zu dieser Zeit gesammelt mit einer Mitteilung. Nichts zurückgehalten, kein Briefing."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las tarjetas que Pulse retiene, porque pediste menos avisos, llegan juntas a esta hora con un solo aviso. Si no hay nada retenido, no hay resumen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les cartes que Pulse garde de côté, parce que vous avez demandé moins de notifications, arrivent ensemble à cette heure avec une seule notification. Rien de gardé, pas de résumé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartu yang ditahan Pulse, karena Anda meminta lebih sedikit notifikasi, tiba bersamaan pada waktu ini dengan satu notifikasi. Tidak ada yang ditahan, tidak ada ringkasan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le schede che Pulse trattiene, perché hai chiesto meno notifiche, arrivano insieme a quest’ora con una sola notifica. Niente trattenuto, nessun riepilogo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知を減らすよう指定したため Pulse が保留したカードは、この時刻にまとめて 1 件の通知で届きます。保留がなければ、ブリーフはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림을 줄이도록 해서 Pulse가 보류한 카드는 이 시간에 한 번의 알림으로 함께 도착합니다. 보류된 것이 없으면 브리핑도 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karty, które Pulse wstrzymuje, bo prosiłeś o mniej powiadomień, przychodzą razem o tej godzinie z jednym powiadomieniem. Nic wstrzymanego, brak podsumowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os cartões que o Pulse segura, porque você pediu menos notificações, chegam juntos neste horário com uma única notificação. Nada retido, nenhum resumo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Карточки, которые Pulse откладывает, потому что вы просили меньше уведомлений, приходят вместе в это время с одним уведомлением. Ничего не отложено — сводки нет."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daha az bildirim istediğiniz için Pulse’un beklettiği kartlar bu saatte tek bir bildirimle birlikte gelir. Bekleyen bir şey yoksa özet de yoktur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "因为你要求减少推送而被 Pulse 暂存的卡片，会在这个时间一起送达，只推送一次。没有暂存，就没有简报。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "因為你要求減少推播而被 Pulse 暫存的卡片，會在這個時間一起送達，只推播一次。沒有暫存，就沒有簡報。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

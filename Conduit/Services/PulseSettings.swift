@@ -121,6 +121,8 @@ struct PulseState: Equatable {
     var dailyReport = false
     /// "HH:MM", in `timeZone`.
     var reportTimes: [String] = []
+    /// When the morning brief brings held cards together ("HH:MM").
+    var briefTime = "08:00"
     var timeZone = ""
     /// "" while Pulse uses the phone's or the host's zone.
     var timeZoneSet = ""
@@ -178,6 +180,7 @@ struct PulseState: Equatable {
         }
         dailyReport = PulseJSON.bool(json["daily_report"]) ?? false
         reportTimes = PulseJSON.strings(json["report_times"]).filter { PulseReportTime.minutes($0) != nil }
+        if let brief = json["brief_time"] as? String, PulseReportTime.minutes(brief) != nil { briefTime = brief }
         timeZone = json["time_zone"] as? String ?? ""
         timeZoneSet = json["time_zone_set"] as? String ?? ""
         nextReportAt = PulseJSON.date(json["next_report_at"])
