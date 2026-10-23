@@ -20303,13 +20303,11 @@ final class AppState: ObservableObject {
             roster: botRoster
         )
         let epoch = botRosterEpoch
+        let createParams = BotCreateRequest.params(slug: slug, description: description, soul: soul, draft: draft)
+        let modelPinned: Bool
         do {
-            try await client.createBotProfile(params: BotCreateRequest.params(
-                slug: slug,
-                description: description,
-                soul: soul,
-                draft: draft
-            ))
+            let created = try await client.createBotProfile(params: createParams)
+            modelPinned = BotCreateRequest.modelPinned(createParams, result: created)
         } catch {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
@@ -20355,6 +20353,9 @@ final class AppState: ObservableObject {
                 "The bot was created, but its picture or look was not saved. Edit the bot to try again."
             ))
         }
+        if !modelPinned {
+            warnings.append(AppLocalization.string("The model was not saved."))
+        }
         if needsModel {
             warnings.append(AppLocalization.string(
                 "No model is ready for this bot yet, so it skipped its introduction. Edit the bot and pick a model."
@@ -20376,8 +20377,15 @@ final class AppState: ObservableObject {
 
     /// Pins the bot's own model (`profiles.configure` model + provider).
     /// A guarded pick comes back as `.confirmModel` with the gateway's
-    /// message until it is resent `confirmed`.
-    func saveBotModel(_ bot: BotProfile, provider: String, model: String, confirmed: Bool) async -> BotSaveResult {
+    /// message until it is resent `confirmed`. `refreshesRoster` false
+    /// leaves the roster refresh to a caller that writes more.
+    func saveBotModel(
+        _ bot: BotProfile,
+        provider: String,
+        model: String,
+        confirmed: Bool,
+        refreshesRoster: Bool = true
+    ) async -> BotSaveResult {
         guard let client, isConnected else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
@@ -20389,7 +20397,7 @@ final class AppState: ObservableObject {
                 confirmed: confirmed
             )
             if let message = BotModelConfirmation.message(in: result) { return .confirmModel(message) }
-            await refreshBotRosterAfterWrite()
+            if refreshesRoster { await refreshBotRosterAfterWrite() }
             if !BotConfigureSections.failed(in: result, among: ["model"]).isEmpty {
                 return .saved(warning: AppLocalization.string("The model was not saved."))
             }
@@ -20522,7 +20530,13 @@ final class AppState: ObservableObject {
         if let loadedDetails,
            !draft.provider.isEmpty, !draft.model.isEmpty,
            draft.provider != loadedDetails.provider || draft.model != loadedDetails.model {
-            switch await saveBotModel(bot, provider: draft.provider, model: draft.model, confirmed: false) {
+            switch await saveBotModel(
+                bot,
+                provider: draft.provider,
+                model: draft.model,
+                confirmed: false,
+                refreshesRoster: false
+            ) {
             case .confirmModel(let message):
                 await refreshBotRosterAfterWrite()
                 // Another part already failed: report that rather than ask.

@@ -339,37 +339,38 @@ struct BotEditorSheet: View {
     }
 
     /// Desktop's Advanced disclosure. Creating: where the profile starts
-    /// from, its model, shared keys and bundled skills. Editing: its model.
+    /// from, its model, shared keys and bundled skills. Editing: its model,
+    /// once the bot's details have loaded.
     @ViewBuilder
     private var advancedSection: some View {
-        Section {
-            Button {
-                Haptics.light()
-                withAnimation { showsAdvanced.toggle() }
-            } label: {
-                HStack {
-                    Text(AppLocalization.string("Advanced"))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
-                        .accessibilityHidden(true)
-                }
-            }
-            .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
-            if showsAdvanced {
-                if isCreating {
-                    Picker(AppLocalization.string("Start From"), selection: $draft.cloneFrom) {
-                        Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
-                        ForEach(cloneSources, id: \.name) { bot in
-                            Text(verbatim: bot.displayLabel).tag(bot.name)
-                        }
-                        Text(AppLocalization.string("Fresh Profile")).tag("")
+        if isCreating || detailsState == .loaded {
+            Section {
+                Button {
+                    Haptics.light()
+                    withAnimation { showsAdvanced.toggle() }
+                } label: {
+                    HStack {
+                        Text(AppLocalization.string("Advanced"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
+                            .accessibilityHidden(true)
                     }
                 }
-                if isCreating || detailsState == .loaded {
+                .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
+                if showsAdvanced {
+                    if isCreating {
+                        Picker(AppLocalization.string("Start From"), selection: $draft.cloneFrom) {
+                            Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
+                            ForEach(cloneSources, id: \.name) { bot in
+                                Text(verbatim: bot.displayLabel).tag(bot.name)
+                            }
+                            Text(AppLocalization.string("Fresh Profile")).tag("")
+                        }
+                    }
                     NavigationLink {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
@@ -377,15 +378,15 @@ struct BotEditorSheet: View {
                             Text(verbatim: BotModelPicker.summary(model: draft.model, allowsInherit: isCreating))
                         }
                     }
+                    if isCreating {
+                        Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
+                        Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+                    }
                 }
-                if isCreating {
-                    Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
-                    Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+            } footer: {
+                if showsAdvanced, isCreating {
+                    Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
                 }
-            }
-        } footer: {
-            if showsAdvanced, isCreating {
-                Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
             }
         }
     }

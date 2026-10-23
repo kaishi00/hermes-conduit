@@ -491,6 +491,14 @@ enum BotCreateRequest {
         }
         return params
     }
+
+    /// Whether a model the create asked for was pinned. `profiles.create`
+    /// reports a failed pin only as `model_set: false`; an older gateway
+    /// that omits the key counts as pinned.
+    static func modelPinned(_ params: [String: Any], result: AnyCodable) -> Bool {
+        guard params["model"] != nil else { return true }
+        return result.objectValue?["model_set"]?.boolValue != false
+    }
 }
 
 /// `setup.runtime_check` for a new bot: can its profile reach a model?
@@ -508,7 +516,11 @@ enum BotModelConfirmation {
     static func message(in result: AnyCodable) -> String? {
         let object = result.objectValue ?? [:]
         guard object["confirm_required"]?.boolValue == true else { return nil }
-        let message = object["confirm_message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // `warning` is the older gateways' name for the same text.
+        let message = [object["confirm_message"], object["warning"]]
+            .lazy
+            .compactMap { $0?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
         return message.isEmpty ? AppLocalization.string("Hermes requires confirmation before using this model.") : message
     }
 }

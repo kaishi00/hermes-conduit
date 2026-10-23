@@ -230,6 +230,17 @@ extension BotModeTests {
         XCTAssertNil(half["model"], "the gateway pins only a provider and a model together")
     }
 
+    func testCreateReportsAModelPinOnlyTheGatewayRefused() {
+        let pinned: [String: Any] = ["name": "scout", "provider": "openrouter", "model": "anthropic/claude-sonnet"]
+        XCTAssertFalse(BotCreateRequest.modelPinned(pinned, result: .object(["ok": .bool(true), "model_set": .bool(false)])))
+        XCTAssertTrue(BotCreateRequest.modelPinned(pinned, result: .object(["ok": .bool(true), "model_set": .bool(true)])))
+        XCTAssertTrue(BotCreateRequest.modelPinned(pinned, result: .object(["ok": .bool(true)])), "an older gateway omits the key")
+        XCTAssertTrue(
+            BotCreateRequest.modelPinned(["name": "scout"], result: .object(["model_set": .bool(false)])),
+            "no pick asked for, so nothing failed"
+        )
+    }
+
     func testRuntimeCheckNeedsModelOnlyOnAnExplicitRefusal() {
         XCTAssertTrue(BotRuntimeCheck.needsModel(.object(["ok": .bool(false), "error": .string("No usable credentials")])))
         XCTAssertFalse(BotRuntimeCheck.needsModel(.object(["ok": .bool(true)])))
@@ -246,6 +257,14 @@ extension BotModeTests {
                 "confirm_message": .string("This model costs $15 per million tokens.")
             ])),
             "This model costs $15 per million tokens."
+        )
+        XCTAssertEqual(
+            BotModelConfirmation.message(in: .object([
+                "confirm_required": .bool(true),
+                "warning": .string("This model may train on your data.")
+            ])),
+            "This model may train on your data.",
+            "older gateways name the text `warning`"
         )
         XCTAssertNotNil(BotModelConfirmation.message(in: .object(["confirm_required": .bool(true)])))
         XCTAssertNil(BotModelConfirmation.message(in: .object(["ok": .bool(true), "applied": .object(["model": .bool(true)])])))

@@ -2000,8 +2000,9 @@ final class HermesClient: ObservableObject {
 
     /// `profiles.create` with `BotCreateRequest.params`. A cloning create
     /// copies the source's config, so it can take longer than a fresh one.
-    func createBotProfile(params: [String: Any]) async throws {
-        _ = try await rpc("profiles.create", params: params, timeout: 60, scoped: false)
+    @discardableResult
+    func createBotProfile(params: [String: Any]) async throws -> AnyCodable {
+        try await rpc("profiles.create", params: params, timeout: 60, scoped: false)
     }
 
     /// `setup.runtime_check` for one profile: whether its sessions can reach
