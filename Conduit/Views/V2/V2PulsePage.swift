@@ -536,8 +536,11 @@ struct V2PulsePage: View {
         Task {
             defer { finishingCards.remove(card.id) }
             do {
-                try await client.markDone(card: card.id, done: done)
+                let changed = try await client.markDone(card: card.id, done: done)
                 guard appState.activeDashboardID == dashboard else { return }
+                // The plugin had nothing to change (the card or its item is
+                // gone): show what it has instead.
+                guard changed else { return await load() }
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].doneAt = done ? Date() : nil
                     page?.cards[index].doneBy = done ? "user" : ""

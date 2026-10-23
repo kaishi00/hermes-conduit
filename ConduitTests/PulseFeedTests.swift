@@ -161,4 +161,29 @@ final class PulseFeedTests: XCTestCase {
         state.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "p", "cards": []}"#))))
         XCTAssertEqual(state.pulseHomeChatID, "p")
     }
+
+    func testDoneAndActedPostTheCardToThePlugin() async throws {
+        var calls: [(path: String, method: String, body: [String: Any]?)] = []
+        var answer: [String: Any] = ["ok": true, "changed": true]
+        let client = PulseClient { path, method, body in
+            calls.append((path, method, body))
+            return answer
+        }
+
+        let changed = try await client.markDone(card: 7, done: true)
+        XCTAssertTrue(changed)
+        answer = ["ok": true, "changed": false]
+        let unchanged = try await client.markDone(card: 7, done: false)
+        XCTAssertFalse(unchanged)
+        try await client.acted(card: 9)
+
+        XCTAssertEqual(calls.map(\.path), [
+            "\(PulseClient.path)/done", "\(PulseClient.path)/done", "\(PulseClient.path)/acted"
+        ])
+        XCTAssertEqual(calls.map(\.method), ["POST", "POST", "POST"])
+        XCTAssertEqual(calls[0].body?["card"] as? Int, 7)
+        XCTAssertEqual(calls[0].body?["done"] as? Bool, true)
+        XCTAssertEqual(calls[1].body?["done"] as? Bool, false)
+        XCTAssertEqual(calls[2].body?["card"] as? Int, 9)
+    }
 }
