@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Fail when docs/FEATURE_MAP.md names a file that isn't there, or an entry
+is missing a part.
+
+The feature map lists, for each feature with siblings, where each sibling's
+code lives, so a thread changing one finds the rest. A path that no longer
+exists sends that thread to the wrong place, so every path in backticks is
+checked: Conduit's in this checkout, and those starting notifier/ on
+hermes-conduit-notifier main. Every entry (a `## ` section) has its parts in
+one order, so each reads the same: Siblings, Code (naming at least one path),
+Rulings, Open gaps, and a dated Checked line.
+
+A notifier file missing on main fails. If GitHub can't be reached at all the
+check warns and passes, so an outage doesn't block every PR.
+"""
+
+import argparse
+import http.client
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+MAP = os.path.join("docs", "FEATURE_MAP.md")
+NOTIFIER_PREFIX = "notifier/"
+NOTIFIER_RAW = "https://raw.githubusercontent.com/kaishi00/hermes-conduit-notifier/main/"
+UNREACHABLE = (OSError, http.client.HTTPException)
+
+CODE_SPAN = re.compile(r"`([^`\n]+)`")
+# A file named without a directory: README.md, project.yml.
+FILE_NAME = re.compile(r"^[\w.+-]+\.(swift|py|md|mjs|js|json|ya?ml|xcstrings|sh|plist|txt|entitlements)$")
+# What every entry has, as the line each part starts with, in this order.
+PARTS = ["**Siblings:**", "**Code**", "**Rulings**", "**Open gaps**", "**Checked:**"]
+DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+class Unreachable(Exception):
+    """GitHub couldn't be asked."""
+
+
+def is_path(span):
+    """Whether a code span names a file or directory rather than a symbol, a
+    method or a route: `Conduit/Voice/VoiceTypes.swift`, `docs/` and
+    `notifier/events.py` are paths; `session.steer`, `answer_approval` and
+    `/voice-tools` are not."""
+    if any(char.isspace() for char in span) or "://" in span or span.startswith(("/", ".", "-")):
+        return False
+    return "/" in span or FILE_NAME.match(span) is not None
+
+
+def paths(text):
+    """[(line number, path)] for every path in a code span, outside fenced blocks."""
+    found = []
+    fenced = False
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced:
+            found += [(number, span) for span in CODE_SPAN.findall(line) if is_path(span)]
+    return found
+
+
+def entries(text):
+    """[(line number, name, [(line number, line)])] for each `## ` section."""
+    found = []
+    fenced = False
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        if not fenced and line.startswith("## "):
+            found.append((number, line[3:].strip(), []))
+        elif found:
+            found[-1][2].append((number, line))
+    return found
+
+
+def shape_problems(text):
+    """[(line number, problem)] for entries that miss a part, repeat or
+    reorder one, or repeat another entry's name."""
+    problems = []
+    found = entries(text)
+    if not found:
+        return [(1, "No entries: each feature is a `## ` section.")]
+    seen = {}
+    for number, name, lines in found:
+        if name.lower() in seen:
+            problems.append((number, f"Two entries are called {name!r} (the other is on line "
+                                     f"{seen[name.lower()]}): give each its own name, or merge them."))
+        seen.setdefault(name.lower(), number)
+        starts = {part: [n for n, line in lines if line.startswith(part)] for part in PARTS}
+        missing = [part.strip("*:") for part in PARTS if not starts[part]]
+        if missing:
+            problems.append((number, f"{name!r} has no {', '.join(missing)}: every entry has "
+                                     "Siblings, Code, Rulings, Open gaps and Checked, in that "
+                                     "order (write \"- None known.\" when there's nothing)."))
+            continue
+        repeated = [part.strip("*:") for part in PARTS if len(starts[part]) > 1]
+        if repeated:
+            problems.append((number, f"{name!r} has {', '.join(repeated)} more than once."))
+            continue
+        order = [starts[part][0] for part in PARTS]
+        if order != sorted(order):
+            problems.append((number, f"{name!r} has its parts out of order: Siblings, Code, "
+                                     "Rulings, Open gaps, Checked."))
+            continue
+        code = "\n".join(line for n, line in lines if order[1] <= n < order[2])
+        if not any(is_path(span) for span in CODE_SPAN.findall(code)):
+            problems.append((order[1], f"{name!r} names no path under Code: list where each "
+                                       "sibling's code lives, in backticks."))
+        checked = next(line for n, line in lines if n == order[4])
+        if not DATE.search(checked):
+            problems.append((order[4], f"{name!r}: the Checked line needs the date it was "
+                                       "checked against the code (YYYY-MM-DD) and the PR."))
+    return problems
+
+
+def on_notifier_main(path, attempts=3):
+    """Whether hermes-conduit-notifier main has this file."""
+    request = urllib.request.Request(NOTIFIER_RAW + urllib.parse.quote(path), method="HEAD")
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request, timeout=15):
+                return True
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return False
+            if attempt == attempts - 1:
+                raise Unreachable(error) from error
+        except UNREACHABLE as error:
+            if attempt == attempts - 1:
+                raise Unreachable(error) from error
+            print(f"fetch failed ({error}), retrying", file=sys.stderr)
+        time.sleep(2 ** attempt)
+    return False
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--notifier-root",
+                        help="check notifier/ paths in this checkout instead of on GitHub")
+    args = parser.parse_args(argv)
+
+    with open(os.path.join(args.repo_root, MAP), encoding="utf-8") as fh:
+        text = fh.read()
+    problems = shape_problems(text)
+    notifier = {}
+    found = paths(text)
+    for number, path in found:
+        if path.startswith(NOTIFIER_PREFIX):
+            notifier.setdefault(path[len(NOTIFIER_PREFIX):], number)
+            continue
+        local = os.path.join(args.repo_root, path)
+        if not (os.path.isdir(local) if path.endswith("/") else os.path.isfile(local)):
+            problems.append((number, f"{path} isn't in this repo. Point the entry at where "
+                                     "that code lives now."))
+
+    for path, number in notifier.items():
+        if not path or path.endswith("/"):
+            problems.append((number, f"notifier/{path}: name a file in hermes-conduit-notifier, "
+                                     "not a directory."))
+            continue
+        if args.notifier_root:
+            there = os.path.isfile(os.path.join(args.notifier_root, path))
+        else:
+            try:
+                there = on_notifier_main(path)
+            except Unreachable as error:
+                print(f"::warning::Couldn't reach hermes-conduit-notifier on GitHub ({error}); "
+                      "its paths in the feature map weren't checked.")
+                break
+        if not there:
+            problems.append((number, f"notifier/{path} isn't on hermes-conduit-notifier main. "
+                                     "Point the entry at where that code lives now, or merge "
+                                     "the notifier change first."))
+
+    for number, problem in sorted(problems):
+        print(f"::error file={MAP},line={number}::{problem}")
+    if problems:
+        return 1
+    print(f"{MAP}: {len(entries(text))} entries, {len(found)} paths, all there.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

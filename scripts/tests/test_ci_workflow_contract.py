@@ -162,6 +162,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("smoke-summary.py", plan)
         self.assertIn("check-l10n-coverage.py", plan)
         self.assertIn("check-plugin-version.py", plan)
+        self.assertIn("check-feature-map.py", plan)
 
     def test_smoke_job_builds_while_the_simulator_boots(self):
         """The smoke job builds its own products with the simulator booting in

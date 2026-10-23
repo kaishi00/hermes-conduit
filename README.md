@@ -198,6 +198,7 @@ Key places:
 - `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
 - `ConduitWatch/` - the Apple Watch app
 - `Shared/` - code shared with the extensions and the Watch
+- `docs/FEATURE_MAP.md` - features that must change together, such as one behavior across the voice modes, the Watch and CarPlay ([CONTRIBUTING.md](CONTRIBUTING.md) says how to use it)
 
 ## Privacy
 

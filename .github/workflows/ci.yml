@@ -117,6 +117,12 @@ jobs:
         # read one definition.
         run: python3 scripts/check-card-schema.py --repo-root .
 
+      - name: Feature map paths exist
+        # docs/FEATURE_MAP.md tells a change which siblings to update and
+        # where their code lives; a path that moved would send it to the
+        # wrong file. notifier/ paths are checked on the plugin's main.
+        run: python3 scripts/check-feature-map.py --repo-root .
+
       - name: Select the hosted smoke suite
         id: smoke
         run: |

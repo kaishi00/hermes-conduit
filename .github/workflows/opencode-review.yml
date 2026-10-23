@@ -175,6 +175,11 @@ jobs:
             - SwiftUI lifecycle bugs (onAppear side effects, state management, body re-renders)
             - Accessibility (missing labels, traits, dynamic type support)
             - Memory leaks and resource cleanup
+            - Connected features: docs/FEATURE_MAP.md lists what changes together.
+              If it has an entry for what this PR changes, check the PR's
+              Siblings section against that entry's siblings and rulings. A
+              sibling left out without a reason, or a change against a ruling,
+              is a major finding.
 
             If you find no issues, say so explicitly. Do NOT summarize what you did
             or describe your process. Output only the review.
