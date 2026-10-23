@@ -366,6 +366,14 @@ struct PulseSettingsPage: View {
                     }
                 )
                 .disabled(working)
+                // A drag cut off by another save never ends editing; without
+                // this, VoiceOver's steps would stop committing.
+                .onChange(of: working) { _, busy in
+                    if busy {
+                        nudgeEditing = false
+                        nudgeDraft = nil
+                    }
+                }
                 .accessibilityLabel(Text(AppLocalization.string("Nudging")))
                 .accessibilityValue(Text(verbatim: PulseNudge.title(level)))
                 .accessibilityIdentifier("settings.pulse.nudge")
@@ -419,7 +427,7 @@ struct PulseSettingsPage: View {
         guard let draft = nudgeDraft else { return }
         nudgeDraft = nil
         let picked = PulseNudge.levels[min(max(Int(draft.rounded()), 0), PulseNudge.levels.count - 1)]
-        guard picked != state?.nudge else { return }
+        guard picked != state?.nudge, !working else { return }
         Haptics.selection()
         change(["nudge": picked]) { $0.nudge = picked }
     }

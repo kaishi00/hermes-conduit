@@ -71,7 +71,7 @@ struct PulseCard: Equatable, Identifiable {
     var isRatable: Bool { kind == "followup" }
 
     /// A follow-up can be acted on in the chat it came from.
-    var isActionable: Bool { kind == "followup" && !chatID.isEmpty }
+    var isActionable: Bool { kind == "followup" && !chatID.isEmpty && !(news.isEmpty && title.isEmpty) }
 
     /// What Do it leaves in that chat's composer: the reminder, and the ask
     /// to take care of it, for the user to send or change.
