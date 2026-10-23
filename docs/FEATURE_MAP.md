@@ -13,10 +13,10 @@ left as a gap, and update the entry in the same PR.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
-has Siblings, Code, Rulings, Open gaps and a Checked line (the date and PR of
-the last check against the code). `scripts/check-feature-map.py` runs in CI:
-it checks that shape and that every path in backticks exists. A path that
-starts with notifier/ is in
+has Siblings, Code, Rulings, Open gaps and a Checked line (the date of the
+last check against the code, and the PR or commit it was checked at).
+`scripts/check-feature-map.py` runs in CI: it checks that shape and that
+every path in backticks exists. A path that starts with notifier/ is in
 [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier),
 checked against its main.
 
@@ -143,12 +143,12 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 | Watch | the relay's job news, at the next quiet moment |
 
 **Code**
-- All modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (takeNotice, outcomePrompt, showOnScreen)
+- All modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (takeNotice, outcomePrompt, showOnScreen, VoiceJobCallAnchor)
 - Gemini and Grok: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`
 - GPT-Live: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (userQuietInterval), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`
 - Local Live: `Conduit/Voice/LocalLive/LocalLiveNoticeRoute.swift`
 - Classic: `Conduit/Voice/VoiceConversationController.swift`
-- Call screen: `Conduit/Views/LiveVoiceCallJobs.swift` (VoiceJobCallAnchor), `Conduit/Services/AppState+PresentedScreens.swift` (cards Hermes shows)
+- Call screen: `Conduit/Views/LiveVoiceCallJobs.swift` (LiveVoiceJobCard, LiveVoiceCallTimeline), `Conduit/Services/AppState+PresentedScreens.swift` (cards Hermes shows)
 - Saved transcript: `Conduit/Services/AppState.swift` (voiceJobStartedNote), `Conduit/Voice/VoiceJobLinkNote.swift`, `Conduit/Views/VoiceJobLinkCard.swift`
 - Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift`, `ConduitWatch/WatchBridgeCallModel.swift`
 - Notifier (Watch relay jobs): `notifier/dashboard/plugin_api.py`
@@ -362,7 +362,7 @@ selection menus, and the same actions in the other chat surfaces.
 the selection menu · the long-press menu · VoiceOver labels · pinned replies
 
 **Code**
-- Reply row: `Conduit/Views/ChatView.swift` (MessageReactButton, AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu)
+- Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
 - Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Services/AppState+PinnedReplies.swift`

@@ -92,10 +92,22 @@ class CheckFeatureMapTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("out of order", out)
 
+    def test_siblings_are_listed_on_their_line(self):
+        code, out = self.run_check(ENTRY.replace("**Siblings:** chat card · Classic voice", "**Siblings:**"))
+        self.assertEqual(code, 1)
+        self.assertIn("line=5::'Hermes is waiting on you' names no siblings", out)
+
     def test_a_checked_line_needs_a_date(self):
         code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "#1"))
         self.assertEqual(code, 1)
         self.assertIn("the Checked line needs the date", out)
+
+    def test_a_checked_line_needs_a_pr_or_commit(self):
+        code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23"))
+        self.assertEqual(code, 1)
+        self.assertIn("and the PR or commit", out)
+        code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23, seeded from main at 64d53c3."))
+        self.assertEqual(code, 0, out)
 
     def test_code_names_at_least_one_path(self):
         code, out = self.run_check(ENTRY.replace("- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard)\n- Notifier: `notifier/clarify_loop.py`\n", "- Chat card: ApprovalCard\n"))
@@ -112,6 +124,14 @@ class CheckFeatureMapTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("No entries", out)
 
+    def test_a_missing_map_fails_with_an_annotation(self):
+        with tempfile.TemporaryDirectory() as repo:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = check.main(["--repo-root", repo, "--notifier-root", repo])
+        self.assertEqual(code, 1)
+        self.assertIn("::error::Couldn't read docs/FEATURE_MAP.md in", out.getvalue())
+
     def test_what_counts_as_a_path(self):
         for span in ("Conduit/Voice/VoiceTypes.swift", "docs/", "notifier/events.py", "README.md", "project.yml"):
             self.assertTrue(check.is_path(span), span)
@@ -121,6 +141,8 @@ class CheckFeatureMapTests(unittest.TestCase):
 
     def test_fenced_blocks_are_skipped(self):
         self.assertEqual(check.paths("```\n`Missing/File.swift`\n```\n`docs/`\n"), [(4, "docs/")])
+        example = "```\n## Not an entry\n**Code**\n**Checked:** someday\n```\n"
+        self.assertEqual(check.shape_problems(ENTRY.replace("**Rulings**", example + "**Rulings**")), [])
 
     def test_github_out_of_reach_warns_and_passes(self):
         with tempfile.TemporaryDirectory() as repo:
@@ -135,7 +157,7 @@ class CheckFeatureMapTests(unittest.TestCase):
                     contextlib.redirect_stdout(out):
                 code = check.main(["--repo-root", repo])
         self.assertEqual(code, 0)
-        self.assertIn("::warning::Couldn't reach hermes-conduit-notifier", out.getvalue())
+        self.assertIn("::warning::Couldn't check hermes-conduit-notifier", out.getvalue())
 
 
 if __name__ == "__main__":

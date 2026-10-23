@@ -7,8 +7,9 @@ code lives, so a thread changing one finds the rest. A path that no longer
 exists sends that thread to the wrong place, so every path in backticks is
 checked: Conduit's in this checkout, and those starting notifier/ on
 hermes-conduit-notifier main. Every entry (a `## ` section) has its parts in
-one order, so each reads the same: Siblings, Code (naming at least one path),
-Rulings, Open gaps, and a dated Checked line.
+one order, so each reads the same: Siblings (listed on that line), Code
+(naming at least one path), Rulings, Open gaps, and a Checked line with the
+date and the PR or commit it was checked at.
 
 A notifier file missing on main fails. If GitHub can't be reached at all the
 check warns and passes, so an outage doesn't block every PR.
@@ -35,6 +36,8 @@ FILE_NAME = re.compile(r"^[\w.+-]+\.(swift|py|md|mjs|js|json|ya?ml|xcstrings|sh|
 # What every entry has, as the line each part starts with, in this order.
 PARTS = ["**Siblings:**", "**Code**", "**Rulings**", "**Open gaps**", "**Checked:**"]
 DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+# A PR (#1167) or a commit (64d53c3).
+CHECKED_AT = re.compile(r"#\d+|\b[0-9a-f]{7,40}\b")
 
 
 class Unreachable(Exception):
@@ -70,7 +73,9 @@ def entries(text):
     for number, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith("```"):
             fenced = not fenced
-        if not fenced and line.startswith("## "):
+        elif fenced:
+            continue
+        elif line.startswith("## "):
             found.append((number, line[3:].strip(), []))
         elif found:
             found[-1][2].append((number, line))
@@ -106,14 +111,19 @@ def shape_problems(text):
             problems.append((number, f"{name!r} has its parts out of order: Siblings, Code, "
                                      "Rulings, Open gaps, Checked."))
             continue
+        siblings = next(line for n, line in lines if n == order[0])
+        if not siblings[len(PARTS[0]):].strip():
+            problems.append((order[0], f"{name!r} names no siblings: list them on the Siblings "
+                                       "line, after **Siblings:**."))
         code = "\n".join(line for n, line in lines if order[1] <= n < order[2])
         if not any(is_path(span) for span in CODE_SPAN.findall(code)):
             problems.append((order[1], f"{name!r} names no path under Code: list where each "
                                        "sibling's code lives, in backticks."))
         checked = next(line for n, line in lines if n == order[4])
-        if not DATE.search(checked):
+        if not (DATE.search(checked) and CHECKED_AT.search(checked)):
             problems.append((order[4], f"{name!r}: the Checked line needs the date it was "
-                                       "checked against the code (YYYY-MM-DD) and the PR."))
+                                       "checked against the code (YYYY-MM-DD) and the PR or "
+                                       "commit (#1167, 64d53c3)."))
     return problems
 
 
@@ -129,6 +139,7 @@ def on_notifier_main(path, attempts=3):
                 return False
             if attempt == attempts - 1:
                 raise Unreachable(error) from error
+            print(f"fetch failed ({error}), retrying", file=sys.stderr)
         except UNREACHABLE as error:
             if attempt == attempts - 1:
                 raise Unreachable(error) from error
@@ -144,8 +155,13 @@ def main(argv=None):
                         help="check notifier/ paths in this checkout instead of on GitHub")
     args = parser.parse_args(argv)
 
-    with open(os.path.join(args.repo_root, MAP), encoding="utf-8") as fh:
-        text = fh.read()
+    try:
+        with open(os.path.join(args.repo_root, MAP), encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as error:
+        print(f"::error::Couldn't read {MAP} in {os.path.abspath(args.repo_root)} "
+              f"({error.strerror}).")
+        return 1
     problems = shape_problems(text)
     notifier = {}
     found = paths(text)
@@ -169,7 +185,7 @@ def main(argv=None):
             try:
                 there = on_notifier_main(path)
             except Unreachable as error:
-                print(f"::warning::Couldn't reach hermes-conduit-notifier on GitHub ({error}); "
+                print(f"::warning::Couldn't check hermes-conduit-notifier on GitHub ({error}); "
                       "its paths in the feature map weren't checked.")
                 break
         if not there:

@@ -177,9 +177,12 @@ jobs:
             - Memory leaks and resource cleanup
             - Connected features: docs/FEATURE_MAP.md lists what changes together.
               If it has an entry for what this PR changes, check the PR's
-              Siblings section against that entry's siblings and rulings. A
-              sibling left out without a reason, or a change against a ruling,
-              is a major finding.
+              Siblings section against that entry's siblings and rulings. This
+              checkout is main's copy: when the diff updates the entry, use the
+              updated one. Each of these is a major finding: a sibling left out
+              without a reason; a change against a ruling; a ruling the PR
+              changes without naming the maintainer's decision; a sibling, code
+              path or gap the PR adds or moves that its entry doesn't record.
 
             If you find no issues, say so explicitly. Do NOT summarize what you did
             or describe your process. Output only the review.
