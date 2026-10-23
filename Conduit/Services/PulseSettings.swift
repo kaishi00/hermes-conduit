@@ -139,6 +139,14 @@ struct PulseState: Equatable {
     var ratings: [String: PulseRating] = [:]
     /// The model Pulse's turns run on (0.57.0); nil, the Pulse chat's own.
     var model: PulseModel?
+    /// How much Pulse nudges (0.63.0): one of PulseNudge.levels.
+    var nudge = PulseNudge.defaultLevel
+    /// Follow-ups on promises and to-dos are on.
+    var followups = false
+    var followupDailyTokens = 0
+    var followupTokensToday = 0
+    /// False while follow-ups' budget goes with the nudge level.
+    var followupDailyTokensSet = false
 
     init() {}
 
@@ -185,6 +193,11 @@ struct PulseState: Equatable {
         if let days = PulseJSON.int(json["backfill_days"]), (1...PulseBackfillEstimate.maxDays).contains(days) {
             backfillDays = days
         }
+        if let level = json["nudge"] as? String, PulseNudge.levels.contains(level) { nudge = level }
+        followups = PulseJSON.bool(json["followups"]) ?? false
+        followupDailyTokens = PulseJSON.int(json["followup_daily_tokens"]) ?? 0
+        followupTokensToday = PulseJSON.int(json["followup_tokens_today"]) ?? 0
+        followupDailyTokensSet = PulseJSON.bool(json["followup_daily_tokens_set"]) ?? false
         if let raw = json["model"] as? [String: Any], let name = raw["model"] as? String, !name.isEmpty {
             model = PulseModel(provider: raw["provider"] as? String ?? "", model: name)
         }
@@ -207,6 +220,41 @@ struct PulseModel: Equatable {
 
     /// PUT /pulse's "model".
     var setting: [String: Any] { ["provider": provider, "model": model] }
+}
+
+/// How much Pulse nudges: reminders a day, how soon promises are checked
+/// again, and how much its reports bring up (plugin's pulse_learning.NUDGES).
+enum PulseNudge {
+    static let levels = ["gentle", "balanced", "eager"]
+    static let defaultLevel = "balanced"
+
+    static func title(_ level: String) -> String {
+        switch level {
+        case "gentle": return AppLocalization.string("Gentle")
+        case "eager": return AppLocalization.string("Eager")
+        default: return AppLocalization.string("Balanced")
+        }
+    }
+
+    static func detail(_ level: String) -> String {
+        switch level {
+        case "gentle":
+            return AppLocalization.string("Only what's worth interrupting you for: one reminder a day, and promises checked less often.")
+        case "eager":
+            return AppLocalization.string("Small things too: six reminders a day, and promises checked sooner.")
+        default:
+            return AppLocalization.string("A heads-up on what's open or coming due: three reminders a day.")
+        }
+    }
+
+    /// Daily token budgets the pickers offer, with the current one added
+    /// when it's set to something else.
+    static func budgets(_ presets: [Int], current: Int) -> [Int] {
+        Array(Set(presets + (current > 0 ? [current] : []))).sorted()
+    }
+
+    static let memoryBudgets = [100_000, 200_000, 300_000, 500_000, 1_000_000, 2_000_000]
+    static let followupBudgets = [30_000, 60_000, 150_000, 300_000, 600_000, 1_000_000]
 }
 
 /// What reading back some days would cost (POST /pulse/backfill estimate).
@@ -414,8 +462,9 @@ struct PulseClient {
         return try Self.state(from: response)
     }
 
-    /// Any of enabled, memory, daily_report, report_profiles, report_times
-    /// and time_zone; answers with the new state.
+    /// Any of enabled, memory, daily_report, report_profiles, report_times,
+    /// time_zone, model, nudge, memory_daily_tokens and
+    /// followup_daily_tokens; answers with the new state.
     func update(_ changes: [String: Any]) async throws -> PulseState {
         let response = try await request(Self.path, "PUT", changes)
         return try Self.state(from: response)

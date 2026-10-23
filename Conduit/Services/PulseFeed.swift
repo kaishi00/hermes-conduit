@@ -70,6 +70,16 @@ struct PulseCard: Equatable, Identifiable {
     /// Follow-ups take ratings; a report or a brief is Hermes' own reply.
     var isRatable: Bool { kind == "followup" }
 
+    /// A follow-up can be acted on in the chat it came from.
+    var isActionable: Bool { kind == "followup" && !chatID.isEmpty }
+
+    /// What Do it leaves in that chat's composer: the reminder, and the ask
+    /// to take care of it, for the user to send or change.
+    var actionMessage: String {
+        let reminder = news.isEmpty ? title : news
+        return AppLocalization.string("Pulse reminded me: \(reminder)\n\nLet's take care of it now.")
+    }
+
     private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
         guard markdown else { return AttributedString(news) }
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
@@ -347,11 +357,28 @@ extension AppState {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
         openAppLink(.session(id: chatID, profile: Self.pulseHomeProfile))
+        guard await waitForOpenChat(chatID) else { return false }
+        // The chat is open: a send it refused waits in its composer.
+        let sent = await sendMessage(message)
+        if !sent { prefillComposer(message) }
+        return true
+    }
+
+    /// Do it on a follow-up card: opens the chat the promise or to-do came
+    /// from with the reminder in its composer, ready to send. False when the
+    /// chat didn't open.
+    func actOnPulseCard(_ card: PulseCard) async -> Bool {
+        guard card.isActionable else { return false }
+        openPulseCardChat(card)
+        guard await waitForOpenChat(card.chatID) else { return false }
+        prefillComposer(card.actionMessage)
+        return true
+    }
+
+    /// Waits up to ten seconds for `chatID` to be the open chat.
+    private func waitForOpenChat(_ chatID: String) async -> Bool {
         for _ in 0..<40 {
             if activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID {
-                // The chat is open: a send it refused waits in its composer.
-                let sent = await sendMessage(message)
-                if !sent { prefillComposer(message) }
                 return true
             }
             try? await Task.sleep(for: .milliseconds(250))
@@ -371,4 +398,6 @@ extension PulseClient {
     static let feedCapability = "pulse_feed"
     /// Settings > Pulse picks Pulse's model (0.57.0).
     static let modelCapability = "pulse_model"
+    /// Settings > Pulse sets how much Pulse nudges and its daily token budgets (0.63.0).
+    static let nudgeCapability = "pulse_nudge"
 }

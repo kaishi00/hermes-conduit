@@ -50,7 +50,12 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(held.seenAt)
         XCTAssertTrue(held.isHeld)
 
+        // A follow-up from a chat can be acted on there, with its news.
+        XCTAssertTrue(held.isActionable)
+        XCTAssertTrue(held.actionMessage.contains("Flight is on time"))
+
         let rated = page.cards[1]
+        XCTAssertFalse(rated.isActionable)  // no chat to act in
         XCTAssertNil(rated.messageID)
         XCTAssertFalse(rated.isHeld)
         XCTAssertEqual(rated.rating, "down")

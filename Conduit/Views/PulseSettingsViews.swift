@@ -31,6 +31,9 @@ struct PulseSettingsPage: View {
     @State private var timesSave: Task<Void, Never>?
     /// The models Hermes offers, for the Model picker.
     @State private var providers: [ProviderInfo] = []
+    /// The Nudging slider while it moves, sent once it's let go.
+    @State private var nudgeDraft: Double?
+    @State private var nudgeEditing = false
 
     private var client: PulseClient { appState.pulseClient }
     private var working: Bool { workingID != nil }
@@ -41,9 +44,11 @@ struct PulseSettingsPage: View {
                 overviewSection(state)
                 homeChatSection(state)
                 if state.enabled {
+                    let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
+                    if budgets { nudgeSection(state) }
                     if appState.notifierPlugin.reports(PulseClient.modelCapability) { modelSection(state) }
                     reportSection(state)
-                    memorySection(state)
+                    memorySection(state, budgets: budgets)
                     if state.memory || state.backfill.phase != .none {
                         backfillSection(state)
                     }
@@ -95,6 +100,8 @@ struct PulseSettingsPage: View {
             estimate = nil
             draftTimes = nil
             providers = []
+            nudgeDraft = nil
+            nudgeEditing = false
         }
     }
 
@@ -336,7 +343,88 @@ struct PulseSettingsPage: View {
         }
     }
 
-    private func memorySection(_ state: PulseState) -> some View {
+    private func nudgeSection(_ state: PulseState) -> some View {
+        let last = Double(PulseNudge.levels.count - 1)
+        let shown = nudgeDraft ?? Double(PulseNudge.levels.firstIndex(of: state.nudge) ?? 1)
+        let level = PulseNudge.levels[min(max(Int(shown.rounded()), 0), PulseNudge.levels.count - 1)]
+        return ConduitSettingsSection(title: AppLocalization.string("Nudging"), symbol: "bell.badge", tint: .conduitAccent) {
+            VStack(spacing: 4) {
+                Slider(
+                    value: Binding(
+                        get: { shown },
+                        set: { value in
+                            nudgeDraft = value
+                            // VoiceOver's adjust steps never begin editing.
+                            if !nudgeEditing { commitNudge() }
+                        }
+                    ),
+                    in: 0...last,
+                    step: 1,
+                    onEditingChanged: { editing in
+                        nudgeEditing = editing
+                        if !editing { commitNudge() }
+                    }
+                )
+                .disabled(working)
+                .accessibilityLabel(Text(AppLocalization.string("Nudging")))
+                .accessibilityValue(Text(verbatim: PulseNudge.title(level)))
+                .accessibilityIdentifier("settings.pulse.nudge")
+                HStack {
+                    ForEach(Array(PulseNudge.levels.enumerated()), id: \.offset) { index, name in
+                        Text(verbatim: PulseNudge.title(name))
+                            .font(.caption.weight(name == level ? .semibold : .regular))
+                            .foregroundStyle(name == level ? Color.primary : Color.secondary)
+                            .frame(maxWidth: .infinity, alignment: index == 0 ? .leading
+                                : index == PulseNudge.levels.count - 1 ? .trailing : .center)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+            Text(verbatim: PulseNudge.detail(level))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if state.followups || state.followupTokensToday > 0 {
+                ConduitMenuPicker(
+                    value: state.followupDailyTokensSet ? state.followupDailyTokens : 0,
+                    choices: Self.followupBudgetChoices(state),
+                    onSelect: { picked in
+                        Haptics.selection()
+                        change(["followup_daily_tokens": picked == 0 ? NSNull() as Any : picked as Any])
+                    }
+                ) {
+                    Text("Follow-up tokens a day").foregroundStyle(.secondary)
+                }
+                .disabled(working)
+                .accessibilityIdentifier("settings.pulse.followup-budget")
+                let used = state.followupTokensToday.formatted()
+                let cap = state.followupDailyTokens.formatted()
+                SettingsMetricRow(label: AppLocalization.string("Follow-up tokens today"),
+                                  value: AppLocalization.string("\(used) of \(cap)"))
+            }
+        }
+    }
+
+    /// 0 is the nudge level's budget, named with its amount while it's in use.
+    private static func followupBudgetChoices(_ state: PulseState) -> [(id: Int, title: String)] {
+        let set = state.followupDailyTokensSet
+        let byLevel = set ? AppLocalization.string("With nudging")
+            : AppLocalization.string("With nudging (\(state.followupDailyTokens.formatted()))")
+        let budgets = PulseNudge.budgets(PulseNudge.followupBudgets, current: set ? state.followupDailyTokens : 0)
+        return [(id: 0, title: byLevel)] + budgets.map { (id: $0, title: $0.formatted()) }
+    }
+
+    /// Sends the slider's level once it settles; a step that can't go now
+    /// (another is running) springs back to Pulse's own.
+    private func commitNudge() {
+        guard let draft = nudgeDraft else { return }
+        nudgeDraft = nil
+        let picked = PulseNudge.levels[min(max(Int(draft.rounded()), 0), PulseNudge.levels.count - 1)]
+        guard picked != state?.nudge else { return }
+        Haptics.selection()
+        change(["nudge": picked]) { $0.nudge = picked }
+    }
+
+    private func memorySection(_ state: PulseState, budgets: Bool) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Memory"), symbol: "brain.head.profile", tint: .conduitAccent) {
             Toggle("Memory", isOn: Binding(
                 get: { state.memory },
@@ -354,6 +442,21 @@ struct PulseSettingsPage: View {
                 let used = state.tokensToday.formatted()
                 let cap = state.dailyTokens.formatted()
                 SettingsMetricRow(label: AppLocalization.string("Tokens today"), value: AppLocalization.string("\(used) of \(cap)"))
+                if budgets {
+                    ConduitMenuPicker(
+                        value: state.dailyTokens,
+                        choices: PulseNudge.budgets(PulseNudge.memoryBudgets, current: state.dailyTokens)
+                            .map { (id: $0, title: $0.formatted()) },
+                        onSelect: { picked in
+                            Haptics.selection()
+                            change(["memory_daily_tokens": picked]) { $0.dailyTokens = picked }
+                        }
+                    ) {
+                        Text("Memory tokens a day").foregroundStyle(.secondary)
+                    }
+                    .disabled(working)
+                    .accessibilityIdentifier("settings.pulse.memory-budget")
+                }
             }
             NavigationLink {
                 PulseMemoryList()

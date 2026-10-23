@@ -276,6 +276,20 @@ struct V2PulsePage: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if card.isActionable {
+                Button {
+                    Haptics.selection()
+                    Task { _ = await appState.actOnPulseCard(card) }
+                } label: {
+                    Label(AppLocalization.string("Do it"), systemImage: "arrow.right.circle.fill")
+                        .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.conduitAccent)
+                .accessibilityHint(Text(AppLocalization.string("Opens the chat with this reminder ready to send")))
+                .accessibilityIdentifier("pulse.card.do-it")
+            }
             if !card.chatID.isEmpty {
                 Button {
                     appState.openPulseCardChat(card)

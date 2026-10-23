@@ -17,6 +17,24 @@ final class PulseSettingsTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
     }
 
+    func testStateDecodesTheNudgeLevelAndBudgets() throws {
+        let state = try XCTUnwrap(PulseState(json: json("""
+        {"enabled": true, "followups": true, "nudge": "eager", "followup_daily_tokens": 300000,
+         "followup_tokens_today": 4200, "followup_daily_tokens_set": false, "daily_tokens": 500000}
+        """)))
+        XCTAssertEqual(state.nudge, "eager")
+        XCTAssertTrue(state.followups)
+        XCTAssertEqual(state.followupDailyTokens, 300_000)
+        XCTAssertEqual(state.followupTokensToday, 4_200)
+        XCTAssertFalse(state.followupDailyTokensSet)
+        // An older plugin, or a level this build doesn't know, reads as the default.
+        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).nudge, PulseNudge.defaultLevel)
+        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "nudge": "loud"}"#))).nudge, "balanced")
+        // A budget set off the presets is offered too, in order.
+        XCTAssertEqual(PulseNudge.budgets([100, 300], current: 200), [100, 200, 300])
+        XCTAssertEqual(PulseNudge.budgets([100, 300], current: 0), [100, 300])
+    }
+
     func testStateDecodesThePluginsPayload() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
         {"ok": true, "enabled": true, "running": false, "stale_build": true,
