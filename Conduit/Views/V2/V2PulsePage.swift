@@ -120,17 +120,17 @@ struct V2PulsePage: View {
                 .accessibilityIdentifier("pulse.learned")
             }
         }
-        // Inside the call bar's inset, so it sits above the bar, not over it.
-        .overlay(alignment: .bottom) {
-            if let undo {
-                undoBar(undo)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            // Stacked on the call bar, so it never covers the call's controls.
+            VStack(spacing: 0) {
+                if let undo {
+                    undoBar(undo)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                MinimisedLiveVoiceBar()
+            }
         }
         .sheet(isPresented: $showsLearned) {
             PulseLearnedSheet {
@@ -225,10 +225,12 @@ struct V2PulsePage: View {
         let layout = PulseLayout(cards: page.cards, keeping: focusedCard.map { [$0] } ?? [])
         let fresh = layout.open.filter { newCards?.contains($0.id) == true }
         let earlier = layout.open.filter { newCards?.contains($0.id) != true }
+        // A brief's new cards count too, though they show in its block.
+        let freshInBriefs = layout.briefs.flatMap(\.items).filter { !$0.isCleared && newCards?.contains($0.id) == true }
         return ScrollViewReader { proxy in
             List {
                 Group {
-                    summary(layout, new: fresh.count).pulseRow()
+                    summary(layout, new: fresh.count + freshInBriefs.count).pulseRow()
                     if let learnedNote {
                         Label {
                             Text(verbatim: learnedNote)

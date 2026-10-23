@@ -129,6 +129,13 @@ struct PulseSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if state.homeChat != nil, !state.homeProblem.isEmpty {
+                // Something wrong with the Pulse chat, in the plugin's own
+                // words (English); kept out of Behind the scenes so it shows.
+                Text(verbatim: state.homeProblem)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .font(.caption)
@@ -291,12 +298,6 @@ struct PulseSettingsPage: View {
                     budgetRows(state, budgets: budgets)
                     if let chat = state.homeChat {
                         SettingsMetricRow(label: AppLocalization.string("Pulse chat"), value: chat.title, lineLimit: 1)
-                        if !state.homeProblem.isEmpty {
-                            // The plugin's own words, in English.
-                            Text(verbatim: state.homeProblem)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
                     }
                     if !state.recent.isEmpty {
                         recentChecks(state)
