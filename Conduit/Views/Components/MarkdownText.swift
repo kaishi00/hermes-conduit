@@ -3022,7 +3022,16 @@ enum MarkdownParser {
 
             if orderedItem(trimmed) != nil {
                 var items: [String] = []
-                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) { items.append(item); index += 1 }
+                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    items.append(item); index += 1
+                    // Blank lines between items make a loose list, not a
+                    // new one (#1163): the list goes on when the next line
+                    // after them is an item with the same indent and
+                    // delimiter, so it numbers 1, 2, 3 and not 1, 1, 1.
+                    var next = index
+                    while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: line) { index = next }
+                }
                 blocks.append(.orderedList(items))
                 continue
             }
@@ -3165,6 +3174,18 @@ enum MarkdownParser {
     private static func orderedItem(_ value: String) -> String? {
         guard let range = value.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) else { return nil }
         return String(value[range.upperBound...])
+    }
+    /// Whether `line` is an item of the ordered list `first` opened: the
+    /// same leading whitespace and the same "." or ")" after the number.
+    private static func continuesOrderedList(_ line: String, from first: String) -> Bool {
+        let indent = line.prefix { $0 == " " || $0 == "\t" }
+        guard indent == first.prefix(while: { $0 == " " || $0 == "\t" }) else { return false }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard orderedItem(trimmed) != nil else { return false }
+        return orderedDelimiter(trimmed) == orderedDelimiter(first.trimmingCharacters(in: .whitespaces))
+    }
+    private static func orderedDelimiter(_ value: String) -> Character? {
+        value.first { !$0.isNumber }
     }
     static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
         guard index + 1 < lines.count, lines[index].contains("|") else { return false }
