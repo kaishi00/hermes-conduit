@@ -53,6 +53,12 @@ extension MarkdownRichContentPolicyTests {
         }
     }
 
+    func testLooseOrderedListLeavesAMediaTagToTheMediaCard() {
+        let blocks = MarkdownParser.parse("1. first\n\n2. MEDIA: /tmp/photo.png", recognizesGatewayMedia: true)
+        XCTAssertEqual(blocks.first, .orderedList(["first"]))
+        XCTAssertTrue(blocks.contains { if case .image = $0 { return true }; return false }, "\(blocks)")
+    }
+
     func testLooseOrderedListEndsAtADifferentIndent() {
         let blocks = MarkdownParser.parse("1. first\n\n   1. nested")
         XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["nested"])])
