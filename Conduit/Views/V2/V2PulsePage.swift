@@ -322,6 +322,7 @@ struct V2PulsePage: View {
                 Text(verbatim: card.heading)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
+                    .accessibilityAddTraits(.isHeader)
                 if card.isHeld {
                     Text("For the morning brief")
                         .font(.caption)

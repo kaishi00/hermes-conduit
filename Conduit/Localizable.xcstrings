@@ -320469,7 +320469,7 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Do sprawdzenia"
+            "value" : "Kontynuacja"
           }
         },
         "pt-BR" : {
@@ -320481,7 +320481,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Напоминание о деле"
+            "value" : "Продолжение"
           }
         },
         "tr" : {
@@ -320903,13 +320903,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "值得知道"
+            "value" : "值得了解"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "值得知道"
+            "value" : "值得了解"
           }
         }
       }

@@ -204,5 +204,6 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(date.canBeDone || date.isActionable)  // nothing remembered behind it
         XCTAssertFalse(report.isRatable)
         XCTAssertEqual(report.heading, PulseCardKind.title("report"))
+        XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
 }
