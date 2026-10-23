@@ -281,10 +281,12 @@ struct V2PulsePage: View {
                 Button {
                     Haptics.selection()
                     let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+                    let dashboard = appState.activeDashboardID
                     actingCard = card.id
                     Task {
                         defer { actingCard = nil }
                         let opened = await appState.actOnPulseCard(card)
+                        guard appState.activeDashboardID == dashboard else { return }
                         if !opened {
                             errorMessage = failure
                         } else if errorMessage == failure {
