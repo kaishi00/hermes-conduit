@@ -302,7 +302,6 @@ struct V2PulsePage: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityValue(Text(verbatim: "\(count)"))
         .accessibilityHint(Text(AppLocalization.string("Shows the cards done more than a day ago")))
         .accessibilityAddTraits(showsOldDone ? .isSelected : [])
         .accessibilityIdentifier("pulse.done-cards")
@@ -435,7 +434,8 @@ struct V2PulsePage: View {
                 }
                 if errorMessage == failure { errorMessage = nil }
                 // Pulse reads the chat once Hermes has answered and marks the card done itself.
-                if appState.notifierPlugin.reports(PulseClient.actedCapability) {
+                // Only a card Pulse can mark done, with a Done button to fall back on.
+                if canMarkDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
                     do {
                         try await client.acted(card: card.id)
                         untoldCards.remove(card.id)
@@ -620,6 +620,9 @@ struct V2PulsePage: View {
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].doneAt = done ? Date() : nil
                     page?.cards[index].doneBy = done ? "user" : ""
+                }
+                if done {
+                    untoldCards.remove(card.id)
                 }
                 errorMessage = nil
             } catch {
