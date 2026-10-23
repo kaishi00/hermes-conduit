@@ -120,6 +120,15 @@ struct V2PulsePage: View {
                 .accessibilityIdentifier("pulse.learned")
             }
         }
+        // Inside the call bar's inset, so it sits above the bar, not over it.
+        .overlay(alignment: .bottom) {
+            if let undo {
+                undoBar(undo)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
@@ -149,14 +158,6 @@ struct V2PulsePage: View {
             while !Task.isCancelled {
                 await load()
                 try? await Task.sleep(for: .seconds(60))
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if let undo {
-                undoBar(undo)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .task(id: undo?.id) {
