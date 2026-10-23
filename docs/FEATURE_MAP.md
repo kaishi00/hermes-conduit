@@ -353,6 +353,38 @@ buttons
 
 **Checked:** 2026-10-23, seeded from main at 64d53c3.
 
+## Texting someone for the user
+
+Hermes writes a text for someone ("text my wife her flight landed") and
+puts it on a contact card; Send text opens Messages with the number and
+the text filled in, and the user taps Send there.
+
+**Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok and
+Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
+call transcript · group rooms · the Watch · CarPlay · an iPad without
+Messages · what conduit_show, conduit_contacts and the voice contacts tool
+tell models · Settings > Contacts' caption
+
+**Code**
+- Card and Send text: `Conduit/Cards/RichMediaCard.swift` (RichPerson.message), `Conduit/Cards/RichMediaCardViews.swift` (RichPersonRow, RichTextComposeSheet)
+- Schema: `Conduit/Cards/card-schema.json`, `Conduit/Cards/RichCardSchema.swift`; feature "text-drafts" in `Conduit/Services/PresentedScreens.swift`
+- Live models' show_on_screen text: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`
+- Notifier: `notifier/cards/card-schema.json` (people[].message), `notifier/card_schema.py`, `notifier/show_tool.py` (TEXT_DRAFTS_FEATURE), `notifier/phone_tool.py` (CONTACTS_SCHEMA, VOICE_CONTACTS_DESCRIPTION)
+
+**Rulings**
+- Nothing is sent for the user: Messages opens filled in and only their tap sends it, so models say it's ready, never that it was sent (2026-10-23, #1159).
+- A text needs the person's phone; one without is dropped (2026-10-23, #1159).
+- A Conduit that doesn't say "text-drafts" gets the card without the text, and Hermes hears to put the text in its reply (2026-10-23, #1159).
+
+**Open gaps**
+- No queued send for when the user isn't looking: CarPlay and the Watch show no card, and a locked phone waits for the user to open the chat (#1159).
+- GPT-Live can't put the card on the call screen itself; it asks Hermes (#366).
+- Group rooms draw no cards, so no Send text there.
+- Line breaks in the text become spaces, as in every card's text.
+- Hermes doesn't hear whether the user sent or cancelled it.
+
+**Checked:** 2026-10-23, at #1174.
+
 ## Message row actions
 
 The controls on a message: the row under a reply, its long-press and

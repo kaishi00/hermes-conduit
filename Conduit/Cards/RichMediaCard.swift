@@ -6,7 +6,8 @@
 //  cards RichCardSchema has normalized. Media is Hermes' links to files it
 //  found, with where they're from; a contact is what Hermes has on someone,
 //  checked against the people the user shared with Hermes (PhonePeople) to
-//  say when it's someone they know; a status is where something in
+//  say when it's someone they know, and maybe a text Hermes wrote for the
+//  user to send them; a status is where something in
 //  progress stands, which Hermes keeps up to date by showing it again
 //  under the same live name.
 //
@@ -52,6 +53,8 @@ struct RichPerson: Equatable, Hashable {
     let address: String?
     /// Hermes' own words about them.
     let note: String?
+    /// A text Hermes wrote for the user to send them, only with a phone.
+    let message: String?
     let photo: RichPlace.Photo?
 
     init?(json: [String: Any]) {
@@ -63,6 +66,7 @@ struct RichPerson: Equatable, Hashable {
         url = RichJSON.webURL(json["url"])
         address = json["address"] as? String
         note = json["note"] as? String
+        message = phone == nil ? nil : (json["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         if let photo = json["photo"] as? [String: Any], let url = RichJSON.webURL(photo["url"]),
            url.scheme?.lowercased() == "https", let source = photo["source"] as? String {
             self.photo = RichPlace.Photo(url: url, source: source, pageURL: RichJSON.webURL(photo["page_url"]))

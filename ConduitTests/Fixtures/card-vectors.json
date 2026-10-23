@@ -1972,6 +1972,52 @@
           ]
         }
       ]
+    },
+    {
+      "name": "A person's message is kept only with their phone",
+      "input": [
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Mei",
+              "detail": "Wife",
+              "phone": "+86 139 6261 8677",
+              "message": "Landed safe, see you soon 么么哒\nlove you"
+            },
+            {
+              "name": "Bo",
+              "email": "bo@example.com",
+              "message": "Running late"
+            },
+            {
+              "name": "Cy",
+              "phone": "tel:12",
+              "message": "Hi"
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "contact",
+          "people": [
+            {
+              "name": "Mei",
+              "detail": "Wife",
+              "phone": "+86 139 6261 8677",
+              "message": "Landed safe, see you soon 么么哒 love you"
+            },
+            {
+              "name": "Bo",
+              "email": "bo@example.com"
+            },
+            {
+              "name": "Cy"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
