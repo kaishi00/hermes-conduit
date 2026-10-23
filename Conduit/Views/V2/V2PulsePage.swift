@@ -856,11 +856,8 @@ struct V2PulsePage: View {
         guard let card = request.card else { return }
         focusedCard = card
         expandedWhy.insert(card)
-        // A card a folded brief brought: the brief opens to show it.
-        if let tag = page?.cards.first(where: { $0.id == card })?.brief, !tag.isEmpty,
-           let brief = page?.cards.first(where: { $0.kind == "brief" && $0.brief == tag }) {
-            expandedBriefs.insert(brief.id)
-        }
+        // A card a folded brief brought opens that brief while it's focused
+        // (briefRows), and the brief folds again once the card is handled.
     }
 
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
