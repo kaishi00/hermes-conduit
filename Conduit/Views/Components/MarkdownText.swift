@@ -3023,14 +3023,16 @@ enum MarkdownParser {
             if orderedItem(trimmed) != nil {
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    let itemLine = lines[index]
                     items.append(item); index += 1
                     // Blank lines between items make a loose list, not a
                     // new one (#1163): the list goes on when the next line
                     // after them is an item with the same indent and
-                    // delimiter, so it numbers 1, 2, 3 and not 1, 1, 1.
+                    // delimiter as the last one, so it numbers 1, 2, 3 and
+                    // not 1, 1, 1. A table still wins, as it does above.
                     var next = index
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
-                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: line) { index = next }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next) { index = next }
                 }
                 blocks.append(.orderedList(items))
                 continue
@@ -3175,8 +3177,8 @@ enum MarkdownParser {
         guard let range = value.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) else { return nil }
         return String(value[range.upperBound...])
     }
-    /// Whether `line` is an item of the ordered list `first` opened: the
-    /// same leading whitespace and the same "." or ")" after the number.
+    /// Whether `line` carries on the ordered list whose item is `first`:
+    /// the same leading whitespace and the same "." or ")" after the number.
     private static func continuesOrderedList(_ line: String, from first: String) -> Bool {
         let indent = line.prefix { $0 == " " || $0 == "\t" }
         guard indent == first.prefix(while: { $0 == " " || $0 == "\t" }) else { return false }

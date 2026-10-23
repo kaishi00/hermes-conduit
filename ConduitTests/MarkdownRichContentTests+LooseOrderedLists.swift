@@ -38,6 +38,21 @@ extension MarkdownRichContentPolicyTests {
         XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["second"])])
     }
 
+    func testLooseOrderedListComparesWithItsLastItem() {
+        // A tight "2)" already joined the list; the blank line then needs
+        // "3)" to go on, so "3." starts a new list.
+        let blocks = MarkdownParser.parse("1. a\n2) b\n\n3. c")
+        XCTAssertEqual(blocks, [.orderedList(["a", "b"]), .orderedList(["c"])])
+    }
+
+    func testLooseOrderedListLeavesATableToTheTable() {
+        let blocks = MarkdownParser.parse("1. first\n\n2. a | b\n|---|---|\n| c | d |")
+        XCTAssertEqual(blocks.first, .orderedList(["first"]))
+        guard blocks.count == 2, case .table = blocks[1] else {
+            return XCTFail("Expected the table to stay a table, got \(blocks)")
+        }
+    }
+
     func testLooseOrderedListEndsAtADifferentIndent() {
         let blocks = MarkdownParser.parse("1. first\n\n   1. nested")
         XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["nested"])])
