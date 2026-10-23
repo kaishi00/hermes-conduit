@@ -202,6 +202,7 @@ extension GatewayRestartTests {
     func testTheStableChannelOnlyAsksUpToTheStableVersion() {
         let floor = NotifierPluginStatus.recommendedVersion
         var status = NotifierPluginStatus()
+        status.archivedVersion = nil
         status.state = .reported(version: "1.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "1.0.0", restartNeeded: false, bootID: nil)
         status.latestVersion = "1.2.0"
@@ -233,6 +234,36 @@ extension GatewayRestartTests {
         status.stableVersion = "1.0.0"
         status.state = .reported(version: "1.0.0", capabilities: [])
         XCTAssertTrue(status.updateRecommended)
+    }
+
+    func testAnAppStoreBuildAsksUpToThePluginItWasArchivedWith() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "1.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "1.0.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "1.3.0"
+        status.followsMain = false
+        status.archivedVersion = "1.1.0"
+        status.stableVersion = "0.51.6"
+        // An old stable line doesn't hold back what the build was cut with.
+        XCTAssertEqual(status.noticeVersion, "1.1.0")
+        XCTAssertTrue(status.updateRecommended)
+
+        // channels.yaml can raise it between builds.
+        status.stableVersion = "1.2.0"
+        XCTAssertEqual(status.noticeVersion, "1.2.0")
+
+        // GitHub out of reach: the archived version still stands.
+        status.stableVersion = nil
+        status.latestVersion = nil
+        XCTAssertEqual(status.offeredVersion, "1.1.0")
+        XCTAssertEqual(status.noticeVersion, "1.1.0")
+        XCTAssertTrue(status.updateRecommended)
+
+        // Up to date with the archive: no notice.
+        status.stableVersion = nil
+        status.state = .reported(version: "1.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "1.1.0", restartNeeded: false, bootID: nil)
+        XCTAssertFalse(status.updateRecommended)
     }
 
     func testTheNoticeChannelFollowsWhereConduitCameFrom() {

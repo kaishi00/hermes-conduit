@@ -10,7 +10,8 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     case automatic
     /// Every plugin version on main.
     case everyVersion
-    /// Only the stable version (notifier main's channels.yaml).
+    /// Only the stable version: the plugin this build was archived with,
+    /// or channels.yaml's `stable:` when that is newer.
     case stableOnly
 
     static let key = "conduit.notifierPlugin.noticeChannel"

@@ -4,8 +4,10 @@ import Foundation
 /// which is what a one-tap update installs. TestFlight builds offer the
 /// update whenever the host is below it, so a plugin release reaches testers
 /// without waiting for a Conduit build. App Store builds only nag up to the
-/// stable version (`channels.yaml` on main), which the plugin's maintainer
-/// raises when App Store users should update; see NotifierPluginNoticeChannel.
+/// stable version: the plugin on main when the build was archived
+/// (`NotifierPluginStatus.archivedVersion`), or `stable:` in `channels.yaml`
+/// on main when the maintainer raises it between builds; see
+/// NotifierPluginNoticeChannel.
 /// `NotifierPluginStatus.recommendedVersion` stays the floor this build needs
 /// when GitHub can't be reached.
 enum NotifierPluginLatestVersion {

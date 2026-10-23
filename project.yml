@@ -88,6 +88,13 @@ targets:
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
+      # An archive records the plugin version on notifier main: the version
+      # App Store builds ask hosts to update to (NotifierPluginStatus).
+      - name: Stamp plugin version
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/stamp-plugin-version.py" \
+            --info-plist "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
   # The Apple Watch app: voice calls to Hermes, Gemini Live on the Watch
   # itself or GPT-Live through the host's audio bridge
   # (designs/apple-watch-voice-direct.md, apple-watch-gpt-live.md).

@@ -51,6 +51,12 @@ struct NotifierPluginStatus: Equatable {
     /// (`latestVersion`).
     static let recommendedVersion = "0.48.0"
 
+    /// The plugin version on notifier main when this build was archived
+    /// (scripts/stamp-plugin-version.py): the stable version an App Store
+    /// build asks for, so each build moves it forward. Nil for a Run or CI
+    /// build, or when GitHub couldn't be reached at archive time.
+    static let archivedVersion = Bundle.main.object(forInfoDictionaryKey: "ConduitArchivedPluginVersion") as? String
+
     /// Where Hermes installs it from (`hermes plugins install …`).
     static let repository = "kaishi00/hermes-conduit-notifier"
 
@@ -82,7 +88,10 @@ struct NotifierPluginStatus: Equatable {
     /// (NotifierPluginLatestVersion.swift).
     var latestVersion: String?
     /// The stable plugin version (notifier main's channels.yaml), when read.
+    /// It can raise the archived one between builds, never lower it.
     var stableVersion: String?
+    /// This build's archived plugin version (`Self.archivedVersion`).
+    var archivedVersion: String? = Self.archivedVersion
     /// The notice asks for every version on main; otherwise only up to the
     /// stable one (NotifierPluginNoticeChannel).
     var followsMain = true
@@ -170,21 +179,31 @@ struct NotifierPluginStatus: Equatable {
     }
 
     /// The version an update brings: the latest plugin, or this build's
-    /// recommended one when the latest isn't known or is older.
+    /// floor when the latest isn't known or is older.
     var offeredVersion: String {
         // Not older also means readable: an unreadable version counts as older.
-        guard let latestVersion, !Self.isOlder(latestVersion, than: Self.recommendedVersion) else {
-            return Self.recommendedVersion
+        guard let latestVersion, !Self.isOlder(latestVersion, than: floorVersion) else {
+            return floorVersion
         }
         return latestVersion
     }
 
+    /// The least an update brings: this build's recommended version, or the
+    /// plugin it was archived with, which main had then.
+    var floorVersion: String {
+        guard let archivedVersion, !Self.isOlder(archivedVersion, than: Self.recommendedVersion) else {
+            return Self.recommendedVersion
+        }
+        return archivedVersion
+    }
+
     /// The version below which the notice asks for an update: every
-    /// version on main, or on the stable channel the stable one (never
-    /// below this build's floor, never above what an update brings).
+    /// version on main, or on the stable channel the newer of the archived
+    /// and stable ones (never below this build's floor, never above what an
+    /// update brings).
     var noticeVersion: String {
         guard !followsMain else { return offeredVersion }
-        var target = Self.recommendedVersion
+        var target = floorVersion
         if let stableVersion, !Self.isOlder(stableVersion, than: target) {
             target = stableVersion
         }
