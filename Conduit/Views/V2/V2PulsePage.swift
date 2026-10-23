@@ -170,6 +170,9 @@ struct V2PulsePage: View {
         .onDisappear {
             isShown = false
             newCards = nil
+            // The card a push opened stays put while it's handled under
+            // your eyes; next visit it sits with the rest.
+            focusedCard = nil
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
