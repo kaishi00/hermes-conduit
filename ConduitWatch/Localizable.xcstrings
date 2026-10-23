@@ -6413,6 +6413,88 @@
         }
       }
     },
+    "The job's request changed. Answer it in Conduit on your iPhone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anfrage des Jobs hat sich geändert. Beantworte sie in Conduit auf deinem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La solicitud del trabajo cambió. Respóndela en Conduit en tu iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La demande du job a changé. Réponds-y dans Conduit sur ton iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permintaan pekerjaan berubah. Jawab di Conduit pada iPhone kamu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La richiesta del job è cambiata. Rispondi in Conduit sul tuo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブのリクエストが変わりました。iPhone の Conduit で回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업의 요청이 바뀌었어요. iPhone의 Conduit에서 답해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prośba zlecenia się zmieniła. Odpowiedz na nią w Conduit na iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O pedido do trabalho mudou. Responda no Conduit no seu iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос задания изменился. Ответьте на него в Conduit на iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İşin isteği değişti. Conduit'te iPhone'unuzdan yanıtlayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务的请求已更改。请在 iPhone 上的 Conduit 中回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作的要求已變更。請在 iPhone 上的 Conduit 中回答。"
+          }
+        }
+      }
+    },
     "The link to your iPhone isn't ready." : {
       "localizations" : {
         "de" : {
@@ -6901,6 +6983,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此通話無法透過中繼取得 Gemini 權杖。"
+          }
+        }
+      }
+    },
+    "This call can't reconnect to Hermes again. Start the call again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Anruf kann sich nicht mehr mit Hermes verbinden. Starte den Anruf neu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta llamada ya no puede volver a conectarse con Hermes. Inicia la llamada de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet appel ne peut plus se reconnecter à Hermes. Relancez l'appel."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan ini tidak dapat terhubung kembali ke Hermes. Mulai panggilan lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chiamata non può più riconnettersi a Hermes. Avvia di nuovo la chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通話はもう Hermes に再接続できません。通話をもう一度開始してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화는 더 이상 Hermes에 다시 연결할 수 없어요. 통화를 다시 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To połączenie nie może już ponownie połączyć się z Hermesem. Rozpocznij połączenie od nowa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta chamada não consegue mais se reconectar ao Hermes. Inicie a chamada novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот звонок больше не может переподключиться к Hermes. Начните звонок заново."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu arama artık Hermes'e yeniden bağlanamıyor. Aramayı yeniden başlat."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通话无法再重新连接 Hermes。请重新开始通话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通話無法再重新連線到 Hermes。請重新開始通話。"
           }
         }
       }

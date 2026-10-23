@@ -65,7 +65,7 @@ struct MarkupBlock: View {
             kind: kind,
             source: source,
             light: colorScheme == .light,
-            fontSize: kind == .math ? ChatTypography.font(for: .body, chatSize: chatTextSize).pointSize : 0
+            fontSize: kind == .math ? ChatTypography.font(for: .body, appearance: chatTextSize).pointSize : 0
         )
     }
 
@@ -201,7 +201,7 @@ struct MarkupBlock: View {
     private var sourcePreview: some View {
         SelectableTextView(
             text: source,
-            font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
+            font: ChatTypography.font(for: .sourceCode, appearance: chatTextSize),
             textColor: .label,
             maximumNumberOfLines: 5
         )
@@ -431,7 +431,7 @@ struct MarkupPreviewSheet: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     SelectableTextView(
                         text: document.source,
-                        font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
+                        font: ChatTypography.font(for: .sourceCode, appearance: chatTextSize),
                         textColor: .label,
                         wrapsLines: false
                     )

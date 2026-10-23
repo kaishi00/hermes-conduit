@@ -1755,13 +1755,9 @@ struct KanbanView: View {
 
     /// THE canonical visible-lane answer. Every consumer — the chip
     /// highlight, the card list, and the New Task button's initial status —
-    /// must ask this instead of reading raw `selectedLane`, which stays nil
-    /// until the user explicitly taps a chip even though a lane IS resolved
-    /// for display (first unlocked lane). See KanbanLanePolicy.
-    private var effectiveSelectedLane: String? {
-        KanbanLanePolicy.effectiveSelectedLane(selected: selectedLane, columns: visibleColumns)
-    }
-
+    /// must ask KanbanLanePolicy instead of reading raw `selectedLane`, which
+    /// stays nil until the user explicitly taps a chip even though a lane IS
+    /// resolved for display (first unlocked lane).
     private func resolvedLaneName(columns: [KanbanColumn]) -> String? {
         KanbanLanePolicy.effectiveSelectedLane(selected: selectedLane, columns: columns)
     }
@@ -1922,12 +1918,19 @@ struct KanbanView: View {
 
             Button {
                 // The global + creates relative to the lane the UI actually
-                // considers visible (effectiveSelectedLane), NOT the raw chip
-                // selection — selectedLane stays nil until a chip is tapped,
-                // and falling back to Todo then would ignore the resolved
-                // visible lane. Locked lanes collapse to the default unlocked
-                // landing status.
-                newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: effectiveSelectedLane)
+                // considers visible, NOT the raw chip selection — selectedLane
+                // stays nil until a chip is tapped, and falling back to Todo
+                // then would ignore the resolved visible lane. On the V2
+                // columns board that lane is the column it is scrolled to
+                // (KanbanLanePolicy.newTaskLane). Locked lanes collapse to
+                // the default unlocked landing status.
+                let lane = KanbanLanePolicy.newTaskLane(
+                    columnsLayout: columnsLayout,
+                    scrolledColumn: scrolledColumn,
+                    selected: selectedLane,
+                    columns: visibleColumns
+                )
+                newTaskStatus = KanbanLanePolicy.newTaskInitialStatus(effectiveLane: lane)
                 newTaskContext = store.loadedContextStamp
                 showNewTask = true
             } label: {

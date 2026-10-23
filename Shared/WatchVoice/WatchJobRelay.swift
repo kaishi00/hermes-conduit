@@ -60,7 +60,12 @@ enum WatchJobAnswer {
             let message = arguments["message"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             // Clipped as GPT-Live's words are, under the plugin's 3,000-byte cap.
             let words = WatchBridgeDelegation.clipped(message, bytes: WatchBridgeDelegation.maxRequestBytes)
-            return jobID.isEmpty || message.isEmpty ? nil : ["job_id": jobID, "message": words]
+            guard !jobID.isEmpty, !message.isEmpty else { return nil }
+            // add steers the job, change (or none) redirects it, as on the phone.
+            let kind = arguments["kind"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            var relayed: [String: Any] = ["job_id": jobID, "message": words]
+            if let kind, ["add", "change"].contains(kind) { relayed["kind"] = kind }
+            return relayed
         default:
             return nil
         }
@@ -196,6 +201,11 @@ enum WatchJobAnswer {
         var requestID: String
         var command: String
         var description: String
+        /// The host's name for the request as shown here, sent back with
+        /// the answer: without a request id Hermes answers its oldest
+        /// pending request, so the host checks it's still this one
+        /// (hermes-conduit-notifier#232). Empty from older plugins.
+        var fingerprint = ""
         /// The card offers Approve once. A Local Live call's request offers
         /// Deny only while more are pending or its command is cut.
         var canApproveOnce = true
@@ -220,6 +230,7 @@ enum WatchJobAnswer {
         struct OpenApproval: Equatable {
             var jobID: String
             var requestID: String
+            var fingerprint = ""
         }
 
         var items: [Item]
@@ -244,7 +255,8 @@ enum WatchJobAnswer {
                     title: title,
                     requestID: request["request_id"] as? String ?? "",
                     command: request["command"] as? String ?? "",
-                    description: request["description"] as? String ?? ""
+                    description: request["description"] as? String ?? "",
+                    fingerprint: request["fingerprint"] as? String ?? ""
                 )
             }
             return News.Item(
@@ -259,9 +271,32 @@ enum WatchJobAnswer {
         }
         let open = (body["approvals"] as? [[String: Any]] ?? []).compactMap { item -> News.OpenApproval? in
             guard let jobID = item["job_id"] as? String else { return nil }
-            return News.OpenApproval(jobID: jobID, requestID: item["request_id"] as? String ?? "")
+            return News.OpenApproval(jobID: jobID, requestID: item["request_id"] as? String ?? "",
+                                     fingerprint: item["fingerprint"] as? String ?? "")
         }
         return News(items: items, running: body["running"] as? Int ?? 0, more: body["more"] as? Bool ?? false, openApprovals: open)
+    }
+
+    /// A card's key in the host's list of open requests. The host gives
+    /// the same fingerprint in a request's news and in that list.
+    static func openKey(jobID: String, requestID: String, fingerprint: String) -> String {
+        [jobID, requestID, fingerprint].joined(separator: "\u{0}")
+    }
+
+    /// answer_approval's arguments for the card the user read.
+    static func answerArguments(_ approval: Approval, choice: String) -> [String: Any] {
+        var arguments: [String: Any] = ["job_id": approval.jobID, "request_id": approval.requestID, "choice": choice]
+        if !approval.fingerprint.isEmpty { arguments["fingerprint"] = approval.fingerprint }
+        return arguments
+    }
+
+    /// Hermes took the answer: not refused, failed, or held back because
+    /// the request changed after the card was shown (its new card follows
+    /// with the next news). "not_pending" counts as taken: the request was
+    /// settled elsewhere, so the card stays gone and the model doesn't ask
+    /// again.
+    static func answerTaken(_ result: [String: String]) -> Bool {
+        result["error"] == nil && result["status"] != "failed" && result["status"] != "changed"
     }
 
     /// What the model hears about a news item, as the iPhone's supervisor

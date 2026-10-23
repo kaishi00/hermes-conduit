@@ -63,6 +63,9 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     var agentSetup: (@MainActor () -> LocalLiveProtocol.AgentSetup?)?
     /// Whether the current connection runs in agent mode.
     private var isAgent = false
+    /// That mode, for the phone: what Hermes finds out mid-call (a finished
+    /// job) is news to this call's model, and is said on the call.
+    var runsAgentTurns: Bool { isAgent }
     /// Recent tool answers, by call id: one the plugin hands back as late
     /// is said as an update.
     private var toolAnswers: [String: (name: String, result: [String: String])] = [:]

@@ -102,6 +102,12 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// phone locked or Conduit in the background, like a live call. Nil is
     /// off.
     var keepListeningWhenLocked: Bool? = nil
+    /// Push to talk in Classic voice (#886): hold the main button to speak,
+    /// release to send. Silence never ends a held turn. Nil is off.
+    var pushToTalk: Bool? = nil
+    /// What the big button beside a chat's composer does on this profile
+    /// (`ChatVoiceButtonAction` raw value). Nil follows the app's choice.
+    var chatVoiceButton: String? = nil
     /// Spoken phrases that stop the current reply. Nil follows the app
     /// language's built-ins (`resolvedSpokenStopPhrases`); a list is the
     /// user's own. An empty list disables the category.
@@ -231,6 +237,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
         continuousConversation = try container.decodeIfPresent(Bool.self, forKey: .continuousConversation) ?? true
         continueWakeConversation = try container.decodeIfPresent(Bool.self, forKey: .continueWakeConversation) ?? false
         keepListeningWhenLocked = try? container.decodeIfPresent(Bool.self, forKey: .keepListeningWhenLocked)
+        pushToTalk = try? container.decodeIfPresent(Bool.self, forKey: .pushToTalk)
+        chatVoiceButton = try? container.decodeIfPresent(String.self, forKey: .chatVoiceButton)
         // A list that is still a built-in list as shipped follows the app
         // language now; a customized one is kept.
         spokenStopPhrases = try container.decodeIfPresent([String].self, forKey: .spokenStopPhrases)
@@ -492,6 +500,7 @@ struct GPTLiveVoice: Equatable, Identifiable {
     static let apiNames = [
         "marin", "cedar", "quartz", "ripple", "vesper", "willow", "stone",
         "gleam", "meridian", "bossa", "tempo", "beacon", "delta", "cinder",
+        "nuri", "juni", "flitz", "brise", "sillage", "nira", "harema", "shida", "noeul",
     ]
 
     /// The name as shown in the picker ("Cove · Composed").

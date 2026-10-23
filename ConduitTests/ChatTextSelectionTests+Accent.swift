@@ -10,7 +10,7 @@ extension ChatTextSelectionTests {
         for choice in ConduitAccentChoice.allCases {
             for dark in [false, true] {
                 let traits = UITraitCollection(mutations: { traits in
-                    traits.conduitAccent = choice
+                    traits.conduitAccent = .preset(choice)
                     traits.userInterfaceStyle = dark ? .dark : .light
                 })
                 XCTAssertTrue(
@@ -31,7 +31,7 @@ extension ChatTextSelectionTests {
     func testSentBubbleTextSelectsInTheContrastingTint() throws {
         let host = UIHostingController(rootView:
             MarkdownText(source: "Something I wrote", foregroundStyle: .white, usesAccentSurface: true)
-                .environment(\.conduitAccent, .amber)
+                .environment(\.conduitAccent, .preset(.amber))
                 .preferredColorScheme(.dark)
         )
         let window = Self.window(hosting: host)
@@ -66,7 +66,7 @@ extension ChatTextSelectionTests {
 
         XCTAssertTrue(Self.isClose(try Self.centerColor(of: host.view), ConduitAccentChoice.amber.color(dark: true), tolerance: 0.05))
         let swatch = try XCTUnwrap(Self.subviews(of: AccentProbeUIView.self, in: host.view).first)
-        XCTAssertEqual(swatch.traitCollection.conduitAccent, .amber)
+        XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.amber))
 
         model.choice = .blue
         Self.settle(host)
@@ -75,7 +75,7 @@ extension ChatTextSelectionTests {
             Self.isClose(try Self.centerColor(of: host.view), ConduitAccentChoice.blue.color(dark: true), tolerance: 0.05),
             "SwiftUI fills redraw in the new accent"
         )
-        XCTAssertEqual(swatch.traitCollection.conduitAccent, .blue, "UIKit views see the new accent too")
+        XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.blue), "UIKit views see the new accent too")
     }
 
     @MainActor
@@ -87,18 +87,18 @@ extension ChatTextSelectionTests {
         defer { Self.close(window) }
 
         let textView = try XCTUnwrap(Self.subviews(of: UITextView.self, in: host.view).first)
-        XCTAssertEqual(textView.traitCollection.conduitAccent, .pink)
+        XCTAssertEqual(textView.traitCollection.conduitAccent, .preset(.pink))
         XCTAssertTrue(Self.isClose(
             textView.tintColor.resolvedColor(with: textView.traitCollection),
-            ConduitAccentChoice.pink.selectionColorOnBubble
+            ConduitAccent.preset(.pink).selectionColorOnBubble
         ))
 
         model.choice = .purple
         Self.settle(host)
-        XCTAssertEqual(textView.traitCollection.conduitAccent, .purple)
+        XCTAssertEqual(textView.traitCollection.conduitAccent, .preset(.purple))
         XCTAssertTrue(Self.isClose(
             textView.tintColor.resolvedColor(with: textView.traitCollection),
-            ConduitAccentChoice.purple.selectionColorOnBubble
+            ConduitAccent.preset(.purple).selectionColorOnBubble
         ))
     }
 
@@ -149,8 +149,8 @@ extension ChatTextSelectionTests {
         Self.settle(host)
         defer { sheet.dismiss(animated: false) }
 
-        XCTAssertEqual(window.traitCollection.conduitAccent, .blue)
-        XCTAssertEqual(sheet.traitCollection.conduitAccent, .blue, "the sheet sees the pick")
+        XCTAssertEqual(window.traitCollection.conduitAccent, .preset(.blue))
+        XCTAssertEqual(sheet.traitCollection.conduitAccent, .preset(.blue), "the sheet sees the pick")
         XCTAssertTrue(Self.isClose(
             UIColor.conduitAccent.resolvedColor(with: sheet.traitCollection),
             ConduitAccentChoice.blue.color(dark: true)
@@ -158,7 +158,7 @@ extension ChatTextSelectionTests {
 
         model.choice = .green
         Self.settle(host)
-        XCTAssertEqual(sheet.traitCollection.conduitAccent, .green, "a new pick reaches an open sheet")
+        XCTAssertEqual(sheet.traitCollection.conduitAccent, .preset(.green), "a new pick reaches an open sheet")
     }
 
     func testCopyingASentMessageLeavesOutTheQuotedReply() {
@@ -272,7 +272,7 @@ private struct AccentProbeView: View {
             Rectangle().fill(Color.conduitAccent)
             AccentProbeRepresentable()
         }
-        .environment(\.conduitAccent, model.choice)
+        .environment(\.conduitAccent, .preset(model.choice))
     }
 }
 
@@ -281,7 +281,7 @@ private struct SentBubbleProbeView: View {
 
     var body: some View {
         MarkdownText(source: "Something I wrote", foregroundStyle: .white, usesAccentSurface: true)
-            .environment(\.conduitAccent, model.choice)
+            .environment(\.conduitAccent, .preset(model.choice))
     }
 }
 
@@ -289,7 +289,7 @@ private struct WindowTintProbeView: View {
     @ObservedObject var model: AccentProbeModel
 
     var body: some View {
-        Color.clear.background(WindowAccentTint(choice: model.choice))
+        Color.clear.background(WindowAccentTint(choice: .preset(model.choice)))
     }
 }
 

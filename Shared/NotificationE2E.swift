@@ -137,8 +137,7 @@ enum NotificationE2E {
         /// provisioned for (never the relay's routing stub).
         var routingPayload: [String: Any] {
             var payload = content
-            payload.removeValue(forKey: "title")
-            payload.removeValue(forKey: "body")
+            for banner in ["title", "body", "title_label", "session_title"] { payload.removeValue(forKey: banner) }
             payload["type"] = type
             payload["gateway_id"] = record.gatewayID
             if let dashboardID = record.dashboardID { payload["dashboard_id"] = dashboardID }
@@ -244,23 +243,6 @@ enum NotificationE2E {
         let box = try ChaChaPoly.seal(Data(answer.utf8), using: keys(secret: record.secret).answer, nonce: nonce, authenticating: aad)
         let nonceData = nonce.withUnsafeBytes { Data($0) }
         return "\(answerPrefix)\(record.kid).\(base64URL(nonceData)).\(base64URL(box.ciphertext + box.tag))"
-    }
-
-    // MARK: Generic copy
-
-    /// The private fallback for a notification Conduit can't verify. Kept
-    /// word for word with the relay's generic copy (English, like every
-    /// relay-written alert), so a push reads the same whether the relay or
-    /// the extension wrote it.
-    static func genericCopy(for type: String?) -> (title: String, body: String) {
-        switch type {
-        case "approval.needed": return ("Approval needed", "Hermes is waiting for your approval.")
-        case "input.needed": return ("Input needed", "Hermes needs your response before it can continue.")
-        case "turn.failed": return ("Turn failed", "A Hermes turn could not be completed.")
-        case "background_task.finished": return ("Background task finished", "A delegated task has finished.")
-        case "call.requested": return ("Hermes wants to talk", "Tap to talk to Hermes.")
-        default: return ("Response ready", "Hermes has finished responding.")
-        }
     }
 
     // MARK: Base64url
@@ -523,6 +505,15 @@ enum NotificationSharedSettings {
     static var showPreviews: Bool {
         get { defaults?.bool(forKey: showPreviewsKey) ?? false }
         set { defaults?.set(newValue, forKey: showPreviewsKey) }
+    }
+
+    private static let appLanguageKey = "conduit.notifications.appLanguage"
+
+    /// The App Language ("system" or a localization identifier), so the
+    /// extension writes a notification's words in it (#1144).
+    static var appLanguage: String? {
+        get { defaults?.string(forKey: appLanguageKey) }
+        set { defaults?.set(newValue, forKey: appLanguageKey) }
     }
 
     private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"

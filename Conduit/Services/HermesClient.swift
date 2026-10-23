@@ -509,6 +509,9 @@ struct SessionRuntimeSnapshot {
     /// `session.resume` (`open_requests`), oldest first. Upstream never puts
     /// `open_requests` in `session.info`, so a live snapshot parses none.
     let pendingInputPrompts: [InputPromptActivity]
+    /// The agent's plan (Hermes 0.21+ `todo_state`), worked out by the
+    /// gateway from the whole stored history; nil when the chat has none.
+    let todoState: AgentPlan?
 
     /// `session.resume` may include an in-flight or queued projection that is
     /// newer than the persisted database transcript. Keep that projection for
@@ -573,6 +576,7 @@ struct SessionRuntimeSnapshot {
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
+        todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
         self.inflight = inflight
         self.queued = queued
     }
@@ -600,6 +604,90 @@ struct SessionResumeResult {
 ///   gateway's bounded wait expired while the host is still compressing;
 /// - a concurrent compression already holding the lock:
 ///   `lock_held: true` with a human-readable `message` and no `status`.
+/// The user turns `/undo` and `/retry` can rewind to, oldest first, and the
+/// session fences the rewind presents.
+struct SessionRewindSnapshot: Equatable {
+    struct Turn: Equatable {
+        /// The durable `messages.id` a rewind names.
+        let rowID: Int
+        /// The turn's text; nil when it held more than text (a picture or
+        /// a file), which `/retry` can't send again as typed.
+        let text: String?
+    }
+
+    let turns: [Turn]
+    let revision: Int?
+    let generation: Int?
+
+    init(turns: [Turn], revision: Int?, generation: Int?) {
+        self.turns = turns
+        self.revision = revision
+        self.generation = generation
+    }
+
+    init(resume object: [String: AnyCodable]) {
+        turns = (object["messages"]?.arrayValue ?? []).compactMap { Self.userTurn($0.objectValue ?? [:]) }
+        revision = HermesClient.exactIntValue(object["revision"])
+        generation = HermesClient.exactIntValue(object["execution_generation"])
+    }
+
+    /// Hermes' `_user_turns`: a live user row with a durable id, typed by a
+    /// person (a /steer counts), never a compaction carrier or a row a
+    /// compression archived.
+    private static func userTurn(_ row: [String: AnyCodable]) -> Turn? {
+        guard row["role"]?.stringValue == "user",
+              let rowID = HermesClient.exactIntValue(row["row_id"]),
+              row["archived"]?.boolValue != true,
+              row["_compressed_summary"]?.boolValue != true else { return nil }
+        switch row["display_kind"] {
+        case nil, .null?, .string("")?, .string("steer")?: break
+        default: return nil
+        }
+        return Turn(rowID: rowID, text: text(of: row["content"]))
+    }
+
+    /// A text turn's words; nil when a part isn't text.
+    static func text(of content: AnyCodable?) -> String? {
+        switch content {
+        case .string(let text)?:
+            return text
+        case .array(let parts)? where !parts.isEmpty:
+            var words: [String] = []
+            for part in parts {
+                guard let object = part.objectValue,
+                      object["type"]?.stringValue == "text",
+                      let text = object["text"]?.stringValue else { return nil }
+                words.append(text)
+            }
+            return words.joined(separator: "\n")
+        default:
+            return nil
+        }
+    }
+}
+
+/// Hermes' answer to a rewind: how many rows it took back, and the user
+/// turn it rewound to.
+struct SessionRewindReceipt: Equatable {
+    let rewoundCount: Int
+    /// The rewound turn's text; nil when it held more than text.
+    let text: String?
+
+    init(rewoundCount: Int, text: String?) {
+        self.rewoundCount = rewoundCount
+        self.text = text
+    }
+
+    init(result: AnyCodable) {
+        let object = result.objectValue ?? [:]
+        // Only `nothing` means nothing was taken back; an applied rewind
+        // without its count still took back the target.
+        let nothing = object["status"]?.stringValue == "nothing"
+        rewoundCount = nothing ? 0 : (HermesClient.exactIntValue(object["rewound_count"]) ?? 1)
+        text = SessionRewindSnapshot.text(of: object["target_message"]?.objectValue?["content"])
+    }
+}
+
 struct SessionCompressResult {
     enum Status: Equatable {
         case compressed
@@ -2081,6 +2169,16 @@ final class HermesClient: ObservableObject {
         omitMessages: Bool,
         profile: String? = nil
     ) async throws -> SessionResumeResult {
+        let object = try await resumeSessionObject(sessionId, omitMessages: omitMessages, profile: profile)
+        return resumeResult(from: object, sessionId: sessionId)
+    }
+
+    /// The `session.resume` response, with its open requests taken in.
+    private func resumeSessionObject(
+        _ sessionId: String,
+        omitMessages: Bool,
+        profile: String? = nil
+    ) async throws -> [String: AnyCodable] {
         var params: [String: Any] = [
             "session_id": sessionId,
             "cols": 96,
@@ -2106,46 +2204,6 @@ final class HermesClient: ObservableObject {
             timeout: Self.resumeTimeout(omitMessages: omitMessages)
         )
         let object = result.objectValue ?? [:]
-        let resolvedId = object["session_id"]?.stringValue ?? sessionId
-        // The durable stored key is parsed separately from the runtime id and
-        // stays nil when the gateway omits it (legacy gateways). Callers must
-        // not treat the runtime `session_id` as durable identity evidence.
-        let storedId = ["stored_session_id", "storedSessionId", "session_key"]
-            .compactMap { object[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-        let messages = MessageNormalizer.normalizeMessages(
-            object["messages"]?.arrayValue ?? []
-        )
-        var snapshotObject = object["info"]?.objectValue ?? [:]
-        // The resume response owns the liveness fields. Keep `info` for the
-        // rest of the runtime metadata, but let top-level values win.
-        for key in ["running", "status"] {
-            if let value = object[key] {
-                snapshotObject[key] = value
-            }
-        }
-        // Pending decisions ride the resume response top level. Hoist both so
-        // the snapshot parser sees the same contract as session.info.
-        for key in ["pending_clarify", "pending_approval"] {
-            if let value = object[key] {
-                snapshotObject[key] = value
-            }
-        }
-        // Current Hermes no longer sends `pending_clarify`: an unanswered
-        // clarify is a server→client request, re-announced in
-        // `open_requests` under its original id. Feed it through the same
-        // authoritative restore path (locked batch answers ride `answers`).
-        let openClarifies = Self.openClarifyPayloads(in: object["open_requests"])
-        // The oldest rides `pending_clarify` only when the resume did not
-        // already carry one; every other open clarify rides `open_clarifies`.
-        if snapshotObject["pending_clarify"] == nil, let oldest = openClarifies.first {
-            snapshotObject["pending_clarify"] = .object(oldest)
-            if openClarifies.count > 1 {
-                snapshotObject["open_clarifies"] = .array(openClarifies.dropFirst().map { .object($0) })
-            }
-        } else if !openClarifies.isEmpty {
-            snapshotObject["open_clarifies"] = .array(openClarifies.map { .object($0) })
-        }
         for id in Self.openRequestIDs(in: object["open_requests"]) {
             openServerRequestIDs.insert(id)
         }
@@ -2175,6 +2233,51 @@ final class HermesClient: ObservableObject {
                   let id = request["id"]?.stringValue,
                   let session = request["params"]?.objectValue?["session_id"]?.stringValue else { continue }
             clarifySessions[id] = session
+        }
+        return object
+    }
+
+    private func resumeResult(from object: [String: AnyCodable], sessionId: String) -> SessionResumeResult {
+        let resolvedId = object["session_id"]?.stringValue ?? sessionId
+        // The durable stored key is parsed separately from the runtime id and
+        // stays nil when the gateway omits it (legacy gateways). Callers must
+        // not treat the runtime `session_id` as durable identity evidence.
+        let storedId = ["stored_session_id", "storedSessionId", "session_key"]
+            .compactMap { object[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        let messages = MessageNormalizer.normalizeMessages(
+            object["messages"]?.arrayValue ?? []
+        )
+        var snapshotObject = object["info"]?.objectValue ?? [:]
+        // The resume response owns the liveness fields. Keep `info` for the
+        // rest of the runtime metadata, but let top-level values win.
+        for key in ["running", "status"] {
+            if let value = object[key] {
+                snapshotObject[key] = value
+            }
+        }
+        // Pending decisions and the plan ride the resume response top level.
+        // Hoist them so the snapshot parser sees the same contract as
+        // session.info.
+        for key in ["pending_clarify", "pending_approval", "todo_state"] {
+            if let value = object[key] {
+                snapshotObject[key] = value
+            }
+        }
+        // Current Hermes no longer sends `pending_clarify`: an unanswered
+        // clarify is a server→client request, re-announced in
+        // `open_requests` under its original id. Feed it through the same
+        // authoritative restore path (locked batch answers ride `answers`).
+        let openClarifies = Self.openClarifyPayloads(in: object["open_requests"])
+        // The oldest rides `pending_clarify` only when the resume did not
+        // already carry one; every other open clarify rides `open_clarifies`.
+        if snapshotObject["pending_clarify"] == nil, let oldest = openClarifies.first {
+            snapshotObject["pending_clarify"] = .object(oldest)
+            if openClarifies.count > 1 {
+                snapshotObject["open_clarifies"] = .array(openClarifies.dropFirst().map { .object($0) })
+            }
+        } else if !openClarifies.isEmpty {
+            snapshotObject["open_clarifies"] = .array(openClarifies.map { .object($0) })
         }
         if let openRequests = object["open_requests"] {
             snapshotObject["open_requests"] = openRequests
@@ -2401,10 +2504,18 @@ final class HermesClient: ObservableObject {
     /// Set once this gateway refused `prompt.submit`'s `queued` key.
     private var gatewayRefusesQueued = false
 
+    /// This gateway is known to refuse Queue.
+    var refusesQueuedPrompts: Bool { gatewayRefusesQueued }
+
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {
         var errorDescription: String? {
             AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.")
+        }
+
+        /// Attachments have no steer or interrupt to fall back on.
+        static var attachmentsMessage: String {
+            AppLocalization.string("This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished.")
         }
     }
 
@@ -2745,6 +2856,14 @@ final class HermesClient: ObservableObject {
         return (model, provider, providers)
     }
 
+    /// Settings > Usage's quota (#813): `model.options` rows carry each
+    /// signed-in provider's subscription windows and rate limit from Hermes'
+    /// cache, and asking starts Hermes' background refresh of that cache.
+    func providerQuotas() async throws -> [ProviderQuota] {
+        let result = try await rpc("model.options", params: ["explicit_only": true])
+        return ProviderQuota.list(from: result.anyValue as? [String: Any] ?? [:])
+    }
+
     /// The gateway can answer without switching: a guarded pick (expensive
     /// model, data-training tier, or a switch that abandons a large cached
     /// context) comes back as `confirm_required` and nothing is applied until
@@ -2827,6 +2946,40 @@ final class HermesClient: ObservableObject {
     func stopProcesses(sessionId: String) async throws -> Int {
         let result = try await rpc("process.stop", params: ["session_id": sessionId])
         return result.objectValue?["killed"]?.intValue ?? 0
+    }
+
+    /// What `/undo` and `/retry` rewind from: the session's user turns and
+    /// the fences a rewind must present, read from one `session.resume`
+    /// like Hermes' own clients do. `profile` opens a bot chat's store, as
+    /// for any resume.
+    func rewindSnapshot(sessionId: String, profile: String? = nil) async throws -> SessionRewindSnapshot {
+        let object = try await resumeSessionObject(sessionId, omitMessages: false, profile: profile)
+        return SessionRewindSnapshot(resume: object)
+    }
+
+    /// Hermes' `session.mutate` rewind: archives the user turn
+    /// `targetMessageID` and everything after it. The gateway refuses a
+    /// running session (`session_busy`) and a moved one
+    /// (`revision_conflict`, `stale_generation`).
+    func rewindSession(
+        sessionId: String,
+        targetMessageID: Int,
+        snapshot: SessionRewindSnapshot,
+        profile: String? = nil
+    ) async throws -> SessionRewindReceipt {
+        var params: [String: Any] = [
+            "session_id": sessionId,
+            "request_id": UUID().uuidString.lowercased(),
+            "operation": "rewind",
+            "payload": ["target_message_id": targetMessageID]
+        ]
+        if let revision = snapshot.revision { params["expected_revision"] = revision }
+        if let generation = snapshot.generation { params["expected_generation"] = generation }
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            params["profile"] = profile
+        }
+        let result = try await rpc("session.mutate", params: params)
+        return SessionRewindReceipt(result: result)
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
@@ -2927,6 +3080,15 @@ final class HermesClient: ObservableObject {
             "filename": filename
         ])
         return result.objectValue?["path"]?.stringValue
+    }
+
+    /// Takes back an image staged with `attachImage` before any prompt
+    /// used it.
+    func detachImage(_ sessionId: String, path: String) async throws {
+        _ = try await rpc("image.detach", params: [
+            "session_id": sessionId,
+            "path": path
+        ])
     }
 
     /// Stages any non-image file (PDFs included) in the session's
@@ -3557,6 +3719,9 @@ enum MessageNormalizer {
                 readWatermark: obj["last_read_at"]?.doubleValue,
                 isPinned: obj["pinned"]?.boolValue,
                 lineageRootId: obj["_lineage_root_id"]?.stringValue,
+                // SQLite's 0/1: Hermes turns only `archived` and `pinned` into booleans.
+                isAutoArchived: obj["auto_archived"].flatMap { $0.boolValue ?? $0.intValue.map { $0 != 0 } },
+                endReason: obj["end_reason"]?.stringValue,
                 preview: Self.sessionListPreview(in: obj)
             )
         }
@@ -3873,6 +4038,12 @@ enum MessageNormalizer {
                 }
                 if let match {
                     var updated = match
+                    // A `tool_call` wrapper whose envelope didn't say which
+                    // tool it ran takes the name its result was saved under.
+                    if !callId.isEmpty, ToolSearchBridge.isWrapper(match.tool?.name),
+                       ToolSearchBridge.isConcrete(name), let name {
+                        updated.tool?.name = name
+                    }
                     updated.tool?.output = content.isEmpty ? (match.tool?.output ?? "") : content
                     updated.tool?.status = .complete
                     updated.tool?.duration = toolDuration(in: obj)
@@ -3887,12 +4058,17 @@ enum MessageNormalizer {
                     // Preserve that as input instead of mislabeling it as an
                     // output after a reload.
                     let preview = content.isEmpty ? extractToolContext(obj) : nil
+                    // Its compact row names Tool Search's wrapper, with the
+                    // wrapper's envelope as `args`.
+                    let shownName = ToolSearchBridge.isWrapper(name)
+                        ? ToolSearchBridge.underlyingCall((obj["args"] ?? obj["arguments"])?.anyValue)?.name ?? name
+                        : name
                     let m = ChatMessage(
                         id: id, role: .tool, content: "", timestamp: extractTimestamp(obj),
                         author: extractAuthor(obj), reasoning: nil,
                         tool: ToolActivity(
                             id: callId.isEmpty ? nil : callId,
-                            name: name,
+                            name: shownName,
                             input: preview,
                             output: content.isEmpty ? nil : content,
                             status: .complete
@@ -4910,16 +5086,21 @@ enum MessageNormalizer {
             let fn = cobj["function"]?.objectValue ?? cobj
             let input = cobj["input"]?.objectValue ?? [:]
             let output = extractToolOutput(cobj)
+            let name = firstNonEmptyString([
+                cobj["name"], cobj["tool_name"], fn["name"], input["name"]
+            ]) ?? AppLocalization.string("Tool")
+            let arguments: String? = {
+                let raw = fn["arguments"] ?? cobj["input"] ?? cobj["arguments"] ?? cobj["args"] ?? cobj["command"] ?? cobj["code"] ?? .null
+                let s = raw.descriptiveStringValue ?? extractContent(raw)
+                return s.isEmpty ? nil : s
+            }()
+            // A deferred tool's call is saved as Tool Search's `tool_call`
+            // wrapper: show the tool it ran, as the live events do.
+            let bridged = ToolSearchBridge.isWrapper(name) ? ToolSearchBridge.underlyingCall(arguments) : nil
             return ToolActivity(
                 id: firstNonEmptyString([cobj["id"], cobj["tool_call_id"], cobj["call_id"]]),
-                name: firstNonEmptyString([
-                    cobj["name"], cobj["tool_name"], fn["name"], input["name"]
-                ]) ?? AppLocalization.string("Tool"),
-                input: {
-                    let raw = fn["arguments"] ?? cobj["input"] ?? cobj["arguments"] ?? cobj["args"] ?? cobj["command"] ?? cobj["code"] ?? .null
-                    let s = raw.descriptiveStringValue ?? extractContent(raw)
-                    return s.isEmpty ? nil : s
-                }(),
+                name: bridged?.name ?? name,
+                input: bridged == nil ? arguments : bridged?.arguments,
                 output: output.isEmpty ? nil : output,
                 status: .complete
             )

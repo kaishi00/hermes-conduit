@@ -325,6 +325,13 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(GPTLiveVoice.all.first { $0.name == "cove" }?.label.hasPrefix("Cove · "), true)
     }
 
+    func testGPTLiveAPIVoicesIncludeTheOtherLanguageVoices() {
+        XCTAssertEqual(Set(GPTLiveVoice.apiNames).count, GPTLiveVoice.apiNames.count)
+        for name in ["marin", "cedar", "nuri", "juni", "flitz", "brise", "sillage", "nira", "harema", "shida", "noeul"] {
+            XCTAssertTrue(GPTLiveVoice.apiNames.contains(name), "\(name) is pickable on the API key")
+        }
+    }
+
     func testGPTLiveKeepsTheCallThroughABriefNetworkDropButNotALongOne() async throws {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient(), reconnectGrace: .milliseconds(80))
         session.start()
@@ -582,6 +589,42 @@ extension HermesVoiceGatewayTimeoutTests {
                     userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
         await settle()
         XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
+    }
+
+    /// #1145: in a call from Hermes CallKit takes the audio away and gives
+    /// it back with no interruption end, and off screen (answered on
+    /// CarPlay, locked) the app never becomes active: CallKit's own
+    /// deactivate and activate pause and resume the call.
+    func testGPTLiveAudioLinkFollowsCallKitsCallAudio() async {
+        let audio = FakeGPTLiveAudio()
+        let center = NotificationCenter()
+        let link = GPTLiveAudioLink(audio: audio, center: center)
+        var paused: [Bool] = []
+        link.onPausedChanged = { paused.append($0) }
+        XCTAssertNoThrow(try link.start())
+
+        center.post(name: .hermesCallAudioDeactivated, object: nil)
+        await settle(until: { link.isInterrupted })
+        XCTAssertTrue(link.isInterrupted)
+        XCTAssertEqual(audio.events.last, "disable")
+
+        center.post(name: .hermesCallAudioActivated, object: nil)
+        await settle(until: { !link.isInterrupted })
+        XCTAssertFalse(link.isInterrupted)
+        XCTAssertEqual(Array(audio.events.suffix(2)), ["reassert", "enable"])
+        XCTAssertEqual(paused, [true, false])
+
+        // CallKit's audio came on after the call started on a session
+        // Conduit activated: WebRTC's audio restarts on CallKit's.
+        let before = audio.events.count
+        link.callAudioActivated()
+        XCTAssertEqual(Array(audio.events.dropFirst(before)), ["reassert", "disable", "enable"])
+        XCTAssertEqual(paused, [true, false], "A restart isn't a pause")
+
+        link.stop()
+        let afterStop = audio.events.count
+        link.callAudioActivated()
+        XCTAssertEqual(audio.events.count, afterStop, "Nothing after stop")
     }
 
     func testGPTLiveAudioPauseKeepsTheSession() async {
@@ -1219,6 +1262,7 @@ extension VoiceConversationControllerTests {
         typealias C = GPTLiveConversationController
         XCTAssertTrue(C.isConduitMarkerDelegation("Look up: weather in Boston"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Job 2: what's the status"))
+        XCTAssertTrue(C.isConduitMarkerDelegation("Add to job 2: also ask for a quiet table"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Send: the draft"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Mode: ask first"))
         XCTAssertFalse(C.isConduitMarkerDelegation("check whether the build passed"))
@@ -1731,6 +1775,9 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2 make it Alex"), "the number needs its separator")
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2:30 appointment reminder"), "a time is new work")
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job 2.5 things to check"))
+        XCTAssertEqual(GPTLiveDelegationBridge.addToJobMarker(in: "Add to job 2: also ask for a quiet table")?.number, 2)
+        XCTAssertEqual(GPTLiveDelegationBridge.addToJobMarker(in: "add to job #3, include Sam")?.rest, "include Sam")
+        XCTAssertNil(GPTLiveDelegationBridge.addToJobMarker(in: "Job 2: also ask for a quiet table"), "the established marker remains a change")
     }
 
     func testGPTLiveJobMarkerPutsTheUsersOwnWordsIntoThatRunningJob() async {
@@ -1767,6 +1814,21 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(late)")
         }
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    func testGPTLiveAddToJobMarkerSteersAndTheEstablishedMarkerStillRedirects() async throws {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam")
+
+        _ = await bridge.handleDelegation(id: "del_2", request: "Add to job 1: also ask for a quiet table", userWords: "also ask for a quiet table")
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+
+        _ = await bridge.handleDelegation(id: "del_3", request: "Job 1: make it Alex", userWords: "make it Alex")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"])
+        XCTAssertEqual(supervisor.jobs.count, 1)
     }
 
     func testGPTLiveDelegationNamingNoKnownJobIsNewWork() async {

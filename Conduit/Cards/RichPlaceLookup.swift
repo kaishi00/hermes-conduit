@@ -143,7 +143,10 @@ enum RichPlaceLookup {
         if let given {
             let target = CLLocation(latitude: given.latitude, longitude: given.longitude)
             let nearest = items
-                .map { ($0, CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude).distance(from: target)) }
+                .map { item -> (MKMapItem, CLLocationDistance) in
+                    let found = MapDatum.fromMap(item.placemark.coordinate)
+                    return (item, CLLocation(latitude: found.latitude, longitude: found.longitude).distance(from: target))
+                }
                 .filter { $0.1 <= matchRadius }
                 .min { $0.1 < $1.1 }?.0
             if let nearest { return RichPlaceMatch(item: nearest, fallbackName: place.name, isVerified: true) }
@@ -156,7 +159,7 @@ enum RichPlaceLookup {
     /// A pin where Hermes said the place is, with no Apple details.
     private static func unverified(_ place: RichPlace) -> RichPlaceMatch? {
         guard let given = place.givenCoordinate, CLLocationCoordinate2DIsValid(given) else { return nil }
-        return RichPlaceMatch(item: MapsKit.item(at: given, name: place.name), fallbackName: place.name, isVerified: false)
+        return RichPlaceMatch(item: MapsKit.item(at: MapDatum.toMap(given), name: place.name), fallbackName: place.name, isVerified: false)
     }
 
     // MARK: Travel

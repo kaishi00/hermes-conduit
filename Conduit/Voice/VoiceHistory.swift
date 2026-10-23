@@ -171,6 +171,7 @@ final class VoiceHistoryClient {
     static let sessionsPath = "/api/plugins/conduit_push/voice/sessions"
     static let tagsPath = "/api/plugins/conduit_push/voice/tags"
     static let summaryPath = "/api/plugins/conduit_push/voice/summary"
+    static let archivePath = "/api/plugins/conduit_push/voice/archive"
     static let chatCallsPath = "/api/plugins/conduit_push/voice/chat-calls"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
@@ -259,6 +260,13 @@ final class VoiceHistoryClient {
         if let parentID, !parentID.isEmpty { body["parent_id"] = parentID }
         if let parentTitle, !parentTitle.isEmpty { body["parent_title"] = parentTitle }
         _ = try await send(Self.tagsPath, profile: profile, method: "POST", body: body)
+    }
+
+    /// Archives a Classic voice chat its call started, now the call is over
+    /// (#1124). True when the host archived it.
+    func archiveClassicChat(sessionID: String, profile: String) async throws -> Bool {
+        let response = try await send(Self.archivePath, profile: profile, method: "POST", body: ["session_id": sessionID])
+        return response["archived"] as? Bool == true
     }
 
     /// The calls kept with a chat, oldest first.

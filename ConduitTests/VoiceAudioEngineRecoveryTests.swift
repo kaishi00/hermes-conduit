@@ -644,6 +644,96 @@ extension VoiceAudioSessionCoordinatorTests {
         _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
         XCTAssertTrue(service.isPlaying, "the next reply's audio is playing")
     }
+
+    // MARK: - Playback across route changes
+
+    /// The call screen's Speaker button (or AirPods) stops the engine: a
+    /// conversation's reply plays on from a fresh engine instead of being
+    /// cut off.
+    func testConversationReplyCarriesOnAfterARouteChangeStopsTheEngine() async throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        service.ownershipIntent = .conversationPlayback
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<3 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        let built = engines.count
+        let generation = service.playbackGeneration
+        let stopped = try XCTUnwrap(engines.last)
+
+        stopped.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
+        let moved = await waitForCondition { engines.count == built + 1 }
+
+        XCTAssertTrue(moved, "the reply moved to a new engine")
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
+        XCTAssertEqual(service.pendingBuffers, 3, "nothing queued was dropped")
+        XCTAssertTrue(service.isPlaying)
+        XCTAssertEqual(service.playbackGeneration, generation, "the same stream, so its drain waiters still wait")
+    }
+
+    /// The next chunk can arrive before the change is seen: it joins the
+    /// reply on the new engine rather than starting a new one.
+    func testChunkOnAStoppedEngineKeepsTheConversationReply() throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        service.ownershipIntent = .conversationPlayback
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        let generation = service.playbackGeneration
+
+        try XCTUnwrap(engines.last).stop()
+        _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
+
+        XCTAssertEqual(service.pendingBuffers, 3)
+        XCTAssertEqual(service.playbackGeneration, generation)
+        XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
+    }
+
+    func testStandaloneSpeechStillSettlesOnARouteChange() throws {
+        var engines: [AVAudioEngine] = []
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: {
+                let engine = OfflineRenderingEngine.make()
+                engines.append(engine)
+                return engine
+            }
+        )
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        for _ in 0..<2 { _ = try service.enqueuePCM16(chunk, sampleRate: 24_000) }
+        let generation = service.playbackGeneration
+
+        try XCTUnwrap(engines.last).stop()
+        _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
+
+        XCTAssertEqual(service.pendingBuffers, 1, "Read Aloud starts over as before")
+        XCTAssertNotEqual(service.playbackGeneration, generation)
+    }
+
+    func testOnlyConversationStreamsPlayOnAfterARouteChange() {
+        typealias Service = AVSpeechPlaybackService
+        XCTAssertTrue(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: true))
+        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .conversationPlayback, streaming: false),
+                       "an encoded clip's player follows the route by itself")
+        XCTAssertFalse(Service.resumesOnConfigurationChange(intent: .standalonePlayback, streaming: true))
+    }
 }
 
 @MainActor

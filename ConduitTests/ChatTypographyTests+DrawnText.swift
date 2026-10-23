@@ -144,6 +144,12 @@ extension ChatTypographyTests {
             CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
         ).width)
         XCTAssertEqual(natural.width, textViewWidth, accuracy: 1)
+        // A mounted text view (a group room's bubble, or any bubble under
+        // VoiceOver) gives the same unbroken size, so its bubble never
+        // collapses to nothing.
+        let mounted = SelectableTextView.naturalSize(of: plain.mountedTextView)
+        XCTAssertEqual(mounted.width, natural.width, accuracy: 1)
+        XCTAssertEqual(mounted.height, natural.height, accuracy: 1)
         XCTAssertEqual(drawn.canvas?.height(atWidth: natural.width), natural.height, "fits on one line")
 
         let widths = try ["Goodbye.", String(repeating: "A sent message long enough to wrap. ", count: 4)].map { text in

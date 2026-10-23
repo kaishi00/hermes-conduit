@@ -30,6 +30,22 @@ struct V2ProjectPage: View {
         return path
     }
 
+    /// Home (chats in no project) has no folder: its new chat is a plain
+    /// one, which lands in Home. Other folderless projects offer none,
+    /// since the chat wouldn't show up in them.
+    private var startsPlainChat: Bool { newConversationPath == nil && project.isHome }
+
+    private var canStartConversation: Bool { newConversationPath != nil || startsPlainChat }
+
+    private var newConversationDisabled: Bool {
+        if startsPlainChat { return !appState.canTapNewChat }
+        return appState.turnState == .synchronizing || appState.offlineChatPresentation != nil
+    }
+
+    private var newConversationLabel: String {
+        startsPlainChat ? AppLocalization.string("New Chat") : AppLocalization.string("New conversation in \(project.title)")
+    }
+
     private var allSessions: [SessionSummary] {
         detail?.lanes.flatMap(\.sessions) ?? []
     }
@@ -54,9 +70,10 @@ struct V2ProjectPage: View {
                     } description: {
                         Text("This project does not have any conversations yet.")
                     } actions: {
-                        if newConversationPath != nil {
+                        if canStartConversation {
                             Button("New conversation", action: startNewConversation)
                                 .buttonStyle(.borderedProminent)
+                                .disabled(newConversationDisabled)
                         }
                     }
                     .listRowBackground(Color.clear)
@@ -95,13 +112,14 @@ struct V2ProjectPage: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     V2VoiceButton(context: .project(project), style: .toolbar)
                 }
-            } else if newConversationPath != nil {
+            } else if canStartConversation {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: startNewConversation) {
                         Image(systemName: "square.and.pencil")
                     }
-                    .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
-                    .accessibilityLabel(AppLocalization.string("New conversation in \(project.title)"))
+                    .disabled(newConversationDisabled)
+                    .accessibilityLabel(newConversationLabel)
+                    .macTooltip(newConversationLabel)
                 }
             }
         }
@@ -296,6 +314,11 @@ struct V2ProjectPage: View {
     /// Starts a session in the project's folder; the conversation pushes
     /// over this page, so Back returns here.
     private func startNewConversation() {
+        if startsPlainChat {
+            Haptics.medium()
+            appState.startNewChat()
+            return
+        }
         guard let path = newConversationPath else { return }
         Haptics.medium()
         appState.dismissSidebarDrawer()

@@ -1,0 +1,88 @@
+//
+//  ChatVoiceButtonTests.swift
+//  ConduitTests
+//
+//  What the big button beside a chat's composer does (Chat voice button).
+//  An extension of an existing class, so CI plans no new test class.
+//
+
+import XCTest
+@testable import Conduit
+
+extension ComposerFullEditorTests {
+    func testChatVoiceButtonDefaultsToALiveCall() {
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: nil, app: nil), .liveCall)
+    }
+
+    func testChatVoiceButtonProfileChoiceWinsOverTheApps() {
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: nil, app: "dictation"), .dictation)
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: "live_call", app: "dictation"), .liveCall)
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: "dictation", app: "live_call"), .dictation)
+    }
+
+    func testChatVoiceButtonSkipsChoicesThisBuildCantDo() {
+        // A newer build's value reads as the next choice down.
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: "telepathy", app: "dictation"), .dictation)
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: "telepathy", app: "telepathy"), .liveCall)
+        XCTAssertEqual(ChatVoiceButtonAction.resolved(profile: "voice_message", app: nil), .voiceMessage)
+        XCTAssertNil(ChatVoiceButtonAction.offeredChoice("telepathy"))
+        XCTAssertNil(ChatVoiceButtonAction.offeredChoice(nil))
+        XCTAssertEqual(ChatVoiceButtonAction.offeredChoice("dictation"), .dictation)
+        XCTAssertEqual(ChatVoiceButtonAction.offered, [.liveCall, .voiceMessage, .dictation])
+    }
+
+    func testVoiceMessagePromptCarriesItsLengthAndWords() {
+        XCTAssertEqual(
+            VoiceMessage.promptText(duration: 14.4, transcript: "  Pick up milk  "),
+            "[Voice message, 0:14. Transcript:]\nPick up milk"
+        )
+        XCTAssertEqual(
+            VoiceMessage.promptText(duration: 61, transcript: ""),
+            "[Voice message, 1:01. No transcript: listen to the attached audio file if you can.]"
+        )
+        XCTAssertEqual(VoiceMessage.durationLabel(3_723), "1:02:03")
+    }
+
+    func testVoiceMessageBubbleReadsBackItsPrompt() throws {
+        let sent = VoiceMessage.promptText(duration: 14, transcript: "Pick up milk\nand eggs")
+        let parsed = try XCTUnwrap(VoiceMessage.parse(sent))
+        XCTAssertEqual(parsed.duration, "0:14")
+        XCTAssertEqual(parsed.transcript, "Pick up milk\nand eggs")
+        let silent = try XCTUnwrap(VoiceMessage.parse(VoiceMessage.promptText(duration: 3, transcript: "")))
+        XCTAssertEqual(silent.transcript, "")
+        // Typed text that merely mentions one is not a voice message.
+        XCTAssertNil(VoiceMessage.parse("I sent a [Voice message, 0:14] earlier"))
+        XCTAssertNil(VoiceMessage.parse("Hello"))
+    }
+
+    func testVoiceMessageFilesAreKnownByTheirName() {
+        XCTAssertTrue(VoiceMessage.isVoiceMessageFile("voice-message-20261022-211500.m4a"))
+        XCTAssertTrue(VoiceMessage.isVoiceMessageFile("/tmp/ABC-voice-message-20261022-211500.m4a"))
+        XCTAssertFalse(VoiceMessage.isVoiceMessageFile("podcast.m4a"))
+    }
+
+    func testVoiceMessageCopiesWhatWasSaid() {
+        let message = ChatMessage(
+            id: "1",
+            role: .user,
+            content: VoiceMessage.promptText(duration: 5, transcript: "Call Mona"),
+            timestamp: "ts-1"
+        )
+        XCTAssertEqual(UserMessageCopyButton.copyText(for: message), "Call Mona")
+    }
+
+    func testRestingComposerHidesItsMicWhenTheBigButtonDictates() {
+        XCTAssertTrue(ComposerBar.showsRestingDictateButton(chatVoiceButton: .liveCall))
+        XCTAssertFalse(ComposerBar.showsRestingDictateButton(chatVoiceButton: .dictation))
+    }
+
+    func testProfileVoicePreferencesKeepTheChatVoiceButton() throws {
+        var preferences = VoiceProfilePreferences()
+        preferences.chatVoiceButton = "dictation"
+        let data = try JSONEncoder().encode(preferences)
+        XCTAssertEqual(try JSONDecoder().decode(VoiceProfilePreferences.self, from: data).chatVoiceButton, "dictation")
+        // Older blobs have no choice: the app's applies.
+        let old = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data("{}".utf8))
+        XCTAssertNil(old.chatVoiceButton)
+    }
+}

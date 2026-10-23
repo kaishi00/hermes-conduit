@@ -147,7 +147,7 @@ extension ChatTextSelectionTests {
         XCTAssertTrue(menu.children[2] === lookUp)
 
         // Without a standard edit group, Quote leads.
-        let elements = SelectableTextView.Coordinator.editMenuElements([lookUp], adding: copy)
+        let elements = SelectableTextView.Coordinator.editMenuElements([lookUp], adding: [copy])
         XCTAssertTrue(elements.first === copy)
     }
 

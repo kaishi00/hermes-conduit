@@ -648,11 +648,11 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertEqual(selection["unit_csv"].split(","), selection["unit"])
         self.assertEqual(selection["ui_csv"].split(","), selection["ui"])
         self.assertEqual(selection["unit_csv"].count(",") + 1, len(selection["unit"]))
-        # Size is policy, not taste (docs/CI.md): seven unit classes is exactly
-        # one 7-class invocation, and one test-host launch costs ~12 minutes on a
-        # hosted runner, so an eighth class silently buys a whole invocation.
+        # Size is policy, not taste (docs/CI.md): one curated class per risk
+        # area. The source contracts and the change's own classes (within
+        # changed_budget_s) ride in the same single invocation.
         self.assertEqual(
-            len(selection["unit"]), 7,
+            len(selection["curated_unit"]), 7,
             "the hosted selection is one class per risk area - growing it adds a "
             "whole xcodebuild invocation, not just one class")
         self.assertEqual(len(selection["ui"]), 2)

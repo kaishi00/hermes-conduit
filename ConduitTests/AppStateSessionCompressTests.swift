@@ -1752,6 +1752,94 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(submitted, "A refused /steer send goes back to the composer like any other send")
     }
 
+    private static let rewindTurns = SessionRewindSnapshot(
+        turns: [
+            .init(rowID: 11, text: "first ask"),
+            .init(rowID: 14, text: nil),
+            .init(rowID: 17, text: "latest ask")
+        ],
+        revision: 5,
+        generation: 2
+    )
+
+    private func rewindHarness(
+        rewound: @escaping (Int, SessionRewindSnapshot) -> Void
+    ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in throw URLError(.networkConnectionLost) }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, target, snapshot in
+            rewound(target, snapshot)
+            return SessionRewindReceipt(rewoundCount: 4, text: target == 11 ? "first ask" : nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        return harness
+    }
+
+    func testUndoRewindsToTheNthNewestTurnAndPutsItBack() async throws {
+        var rewinds: [(Int, Int?, Int?)] = []
+        let harness = rewindHarness { target, snapshot in rewinds.append((target, snapshot.revision, snapshot.generation)) }
+
+        _ = await harness.appState.submitComposer(text: "/undo 3")
+
+        XCTAssertEqual(rewinds.map { $0.0 }, [11], "/undo 3 takes back the third newest user turn and everything after it")
+        XCTAssertEqual(rewinds.first?.1, 5)
+        XCTAssertEqual(rewinds.first?.2, 2)
+        XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer.",
+            "the harness's reopen fails, so the note says the chat on screen is stale"
+        )
+    }
+
+    func testUndoBeyondTheTranscriptRewindsNothing() async throws {
+        var rewinds: [Int] = []
+        let harness = rewindHarness { target, _ in rewinds.append(target) }
+
+        _ = await harness.appState.submitComposer(text: "/undo 4")
+
+        XCTAssertEqual(rewinds, [])
+        XCTAssertEqual(harness.appState.messages.last?.content, "There's no message to undo.")
+    }
+
+    func testUndoWithAWordShowsUsage() async throws {
+        var rewinds: [Int] = []
+        let harness = rewindHarness { target, _ in rewinds.append(target) }
+
+        _ = await harness.appState.submitComposer(text: "/undo all")
+
+        XCTAssertEqual(rewinds, [])
+        XCTAssertTrue(harness.appState.messages.last?.content.hasPrefix("Usage: /undo [N].") ?? false)
+    }
+
+    func testRetryOfAPictureTurnTakesNothingBack() async throws {
+        var rewinds: [Int] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.rewindSnapshot = { _, _ in
+            SessionRewindSnapshot(turns: [.init(rowID: 11, text: "first ask"), .init(rowID: 14, text: nil)], revision: 1, generation: 1)
+        }
+        operations.rewindSession = { _, _, target, _ in
+            rewinds.append(target)
+            return SessionRewindReceipt(rewoundCount: 2, text: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/retry")
+
+        XCTAssertEqual(rewinds, [], "Refused before anything is archived, as Hermes does")
+        XCTAssertEqual(harness.appState.messages.last?.content, "/retry can only send a text message again.")
+    }
+
     func testSteerSendsASlashMessageAsTyped() async throws {
         let recorder = SlashCallRecorder()
         var sent: [String] = []

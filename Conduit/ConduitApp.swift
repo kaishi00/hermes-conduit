@@ -42,6 +42,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if location.settings.isOn || location.configUnreadable {
                 AppStateRuntimeRegistry.shared.appState.activateLocationSharing()
             }
+            // Without background sharing the location monitor has no token
+            // to report: say so, so a token the relay still holds is cleared
+            // (notifier #287). An unreadable config says nothing yet.
+            if !location.settings.background, !location.configUnreadable {
+                PushNotificationService.shared.updateLocationToken(nil)
+            }
             // Calendar, reminders and phone status: a background refresh, and
             // the calendar changing while Conduit runs.
             AppState.registerPhoneSyncTask()
@@ -212,7 +218,7 @@ struct ConduitApp: App {
     @ObservedObject private var pendingVoiceIntents = PendingVoiceIntentStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     /// The accent picked in Settings > Appearance (#697).
-    @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
+    @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     /// A chat another app asked to open (`conduit://session/<id>`), held
     /// until Hermes is connected: a cold launch opens it once connecting
     /// finishes instead of failing against an empty session list.
@@ -259,6 +265,8 @@ struct ConduitApp: App {
                 // cannot refresh them.
                 appState.appLanguageDidChange()
                 appState.publishWidgetLanguage()
+                // The Notification Service Extension writes banners in it.
+                NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
                 HermesCallNotifications.registerCategory()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
@@ -269,8 +277,12 @@ struct ConduitApp: App {
             .background(WindowAccentTint(choice: accentChoice))
             // Notes touches app-wide so the backdrop can rest when idle.
             .background(InteractionIdleTouchProbe())
-            // The Watch app draws in the same accent.
-            .onChange(of: accentChoice) { _, _ in appState.shareWatchCallVoices() }
+            // The Watch app draws in the same accent. Shared once a pick
+            // settles: dragging in the colour picker changes it many times.
+            .task(id: accentChoice) {
+                guard (try? await Task.sleep(for: .milliseconds(600))) != nil else { return }
+                appState.shareWatchCallVoices()
+            }
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
             .modifier(ScreenshotCallFixtureModifier(appState: appState))

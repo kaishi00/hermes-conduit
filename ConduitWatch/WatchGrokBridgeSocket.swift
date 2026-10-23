@@ -100,6 +100,8 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     /// Local Live: Hermes' approval requests, which the host sends beside
     /// the call's events. They never reach the session.
     var onApproval: ((WatchAudioBridgeWire.ApprovalFrame) -> Void)?
+    /// The host refused the stream: the grant has none left for this call.
+    var onStreamsSpent: (() -> Void)?
 
     private let socket: WatchBridgeSocket?
     private var stream: WatchAudioBridgeStream?
@@ -123,6 +125,8 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
         guard stream != nil else {
             socket = nil
             failure = Failure.unsealable
+            // A refusal, so the session gives up instead of retrying.
+            refusal = GeminiLiveServerClose(code: 4403, reason: WatchCallEnd.streamsSpent)
             return
         }
         let socket = WatchBridgeSocket(url: bridge.url, watchKey: bridge.watchKey)
@@ -341,6 +345,9 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             case "unreachable", "failed":
                 // Worth another try: the engine or the host dropped.
                 break
+            case WatchAudioBridgeWire.streamsSpent:
+                refusal = GeminiLiveServerClose(code: 4403, reason: WatchCallEnd.streamsSpent)
+                onStreamsSpent?()
             default:
                 // The host or the engine refused what a retry would send again.
                 refusal = GeminiLiveServerClose(code: 4403, reason: message)

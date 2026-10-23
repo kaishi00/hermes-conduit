@@ -3,8 +3,10 @@ import UserNotifications
 /// Decrypts end-to-end encrypted Conduit notifications on the iPhone (#431).
 ///
 /// The relay sends encrypted pushes with the generic copy for their type and
-/// `mutable-content`, so iOS hands them here first. A push that verifies gets
-/// its real title and body (when Show previews is on). Anything that doesn't
+/// `mutable-content`, so iOS hands them here first. Every encrypted push is
+/// rewritten in the App Language (#1144): a push that verifies gets its real
+/// title and body when Show previews is on (NotificationCopy), and the
+/// generic copy for its type otherwise. Anything that doesn't
 /// verify, is a replay, or is plaintext for a pairing that has a key shows
 /// only the generic copy and loses its routing data, so tapping it routes
 /// nowhere. Conduit itself re-verifies the envelope on tap; nothing this
@@ -18,6 +20,7 @@ final class NotificationService: UNNotificationServiceExtension {
 
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         lock.withLock { self.contentHandler = contentHandler }
+        AppLocalization.adopt(appLanguage: NotificationSharedSettings.appLanguage)
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
             deliver(request.content)
             return
@@ -43,9 +46,14 @@ final class NotificationService: UNNotificationServiceExtension {
                 deliver(Self.generic(content, type: verified.type))
                 return
             }
+            let generic = NotificationCopy.generic(for: verified.type)
+            content.title = generic.title
+            content.subtitle = ""
+            content.body = generic.body
             if NotificationSharedSettings.showPreviews {
-                if let title = verified.content["title"] as? String, !title.isEmpty { content.title = title }
-                if let body = verified.content["body"] as? String, !body.isEmpty { content.body = body }
+                let preview = NotificationCopy.preview(verified.content)
+                if let title = preview.title { content.title = title }
+                if let body = preview.body { content.body = body }
             }
             deliver(content)
         }
@@ -65,7 +73,7 @@ final class NotificationService: UNNotificationServiceExtension {
 
     /// Generic copy, and no routing data or envelope left to act on.
     private static func generic(_ content: UNMutableNotificationContent, type: String?) -> UNMutableNotificationContent {
-        let copy = NotificationE2E.genericCopy(for: type)
+        let copy = NotificationCopy.generic(for: type)
         content.title = copy.title
         content.subtitle = ""
         content.body = copy.body

@@ -84,9 +84,14 @@ struct ShortcutSendBackend {
     var createChat: @MainActor (_ profile: String, _ title: String) async throws -> VoiceThreadTarget
     /// The runtime the chat's next turn runs on, resuming it when it isn't live.
     var resumeChat: @MainActor (_ chat: VoiceThreadTarget) async throws -> String
+    /// The chat resumed from its saved history, never from the open chat's
+    /// runtime: for when Hermes no longer has the runtime `resumeChat` gave.
+    var reopenChat: @MainActor (_ chat: VoiceThreadTarget) async throws -> String
     var submit: @MainActor (_ chat: VoiceThreadTarget, _ runtimeID: String, _ text: String) async throws -> PromptSubmissionOutcome
     var liveSessions: @MainActor (_ profile: String) async throws -> [LiveSessionStatus]
     var latestReply: @MainActor (_ chat: VoiceThreadTarget) async -> ShortcutReply?
+    /// The send after a reopen went in: clears what the failed try left.
+    var retryLanded: @MainActor () -> Void = {}
     var sleep: (_ seconds: Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     var now: () -> Date = Date.init
 }
@@ -203,7 +208,24 @@ struct ShortcutSender {
         // A reused chat already has replies: only a new one answers this run.
         var earlier: ShortcutReply?
         if reused && request.waitsForAnswer { earlier = await backend.latestReply(chat) }
-        switch try await backend.submit(chat, runtimeID, text) {
+        let outcome: PromptSubmissionOutcome
+        do {
+            outcome = try await backend.submit(chat, runtimeID, text)
+        } catch let error where HermesClient.isSessionNotFoundError(error) {
+            // Hermes no longer has that runtime, so nothing was sent, and the
+            // reply read before the first try still marks what came before.
+            // Right after a cold launch the open chat's id is the one from
+            // before, until the chat's own resume: reopen the chat and send
+            // once more.
+            runtimeID = try await backend.reopenChat(chat)
+            try Task.checkCancellation()
+            chat.runtimeSessionID = runtimeID
+            if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
+            guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
+            outcome = try await backend.submit(chat, runtimeID, text)
+            backend.retryLanded()
+        }
+        switch outcome {
         case .accepted: break
         case .queued: return .queued
         case .steered, .redirected: return .joinedRunningReply

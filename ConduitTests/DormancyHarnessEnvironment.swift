@@ -48,7 +48,7 @@ enum DormancyHarnessEnvironment {
     ) -> some View {
         view
             .environment(\.sizeCategory, sizeCategory)
-            .environment(\.chatTextSize, chatTextSize)
+            .environment(\.chatTextSize, ChatTextAppearance(size: chatTextSize))
             .environment(\.scenePhase, .active)
     }
 }

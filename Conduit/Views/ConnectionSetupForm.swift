@@ -48,13 +48,7 @@ struct ConnectionSetupForm: View {
             }
             .onChange(of: flow.step) { _, _ in focusedField = nil }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focusedField = nil }
-                    .accessibilityIdentifier("setup.keyboard-done")
-            }
-        }
+        .keyboardDoneButton(identifier: "setup.keyboard-done") { focusedField = nil }
     }
 
     @ViewBuilder

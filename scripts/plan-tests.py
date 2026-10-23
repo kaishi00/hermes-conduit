@@ -45,6 +45,7 @@ import math
 import os
 import plistlib
 import re
+import subprocess
 import sys
 
 SCHEMA_VERSION = 2  # 2: unit lanes carry sequential execution batches
@@ -1046,6 +1047,127 @@ def load_smoke_suite(path: str) -> tuple:
     return list(data["unit"]), list(data["ui"])
 
 
+def load_smoke_extras(path: str) -> tuple:
+    """Read the smoke suite's optional additions to the unit invocation.
+    Returns (source_contracts, changed_budget_s, changed_max_classes).
+
+    `source_contracts` are the static source scans (an accessibility audit,
+    log redaction, the privacy manifest): seconds to run, and the classes a
+    PR outside their area breaks without touching them. `changed_budget_s`
+    caps how much baseline test time the PR's own test classes may add, and
+    `changed_max_classes` how many, so the one invocation stays within the
+    nightly batch size.
+    """
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    contracts = data.get("source_contracts", [])
+    if not isinstance(contracts, list):
+        raise ValueError("smoke suite 'source_contracts' must be a list")
+    for name in contracts:
+        if not isinstance(name, str) or not _CLASS_NAME_RE.match(name):
+            raise ValueError(
+                "smoke suite 'source_contracts' names an invalid class: {0!r}".format(name))
+    budget = data.get("changed_budget_s", 0)
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget < 0:
+        raise ValueError("smoke suite 'changed_budget_s' must be a non-negative number")
+    most = data.get("changed_max_classes", 0)
+    if isinstance(most, bool) or not isinstance(most, int) or most < 0:
+        raise ValueError("smoke suite 'changed_max_classes' must be a non-negative integer")
+    return list(contracts), float(budget), most
+
+
+# A class with no baseline (about half of them, usually sub-second, or one
+# the PR adds) is charged this much of the changed-class budget.
+_UNKNOWN_CLASS_COST_S = 3.0
+_EXTENSION_RE = re.compile(
+    r"^\s*(?:(?:@\w+(?:\([^)]*\))?|package|private|fileprivate|internal|public|open)\s+)*"
+    r"extension\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+
+
+def changed_files_since(repo_root: str, ref: str) -> list:
+    """Files that differ between `ref` and HEAD, repo-relative. A ref that is
+    missing (a shallow clone, a first commit) yields no files, never an
+    error: the extra classes are a bonus on top of the curated set."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_root, "diff", "--name-only", ref, "HEAD"],
+            capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        warn(f"changed files unavailable ({exc}); smoke runs the curated set only")
+        return []
+    if proc.returncode != 0:
+        warn(f"git diff {ref} HEAD failed; smoke runs the curated set only: "
+             f"{proc.stderr.strip()}")
+        return []
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
+def unit_classes_for_changes(repo_root: str, changed: list, unit_entries: list) -> list:
+    """Unit classes a change touches, in a stable order: classes declared or
+    extended in a changed ConduitTests file, and `<Stem>Tests` for a changed
+    app source file `<Stem>.swift`. These classes otherwise run only at
+    night, so a PR that adds or edits them would first see them fail there."""
+    by_name = {e["name"] for e in unit_entries}
+    by_file = {}
+    for e in unit_entries:
+        by_file.setdefault(e["file"], []).append(e["name"])
+    picked = []
+
+    def add(name):
+        if name in by_name and name not in picked:
+            picked.append(name)
+
+    for rel in changed:
+        if not rel.endswith(".swift"):
+            continue
+        if rel.startswith(UNIT_TARGET + "/"):
+            for name in by_file.get(rel, []):
+                add(name)
+            path = os.path.join(repo_root, rel)
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        m = _EXTENSION_RE.match(line)
+                        if m:
+                            add(m.group(1))
+        elif not rel.startswith(UI_TARGET + "/"):
+            stem = os.path.splitext(os.path.basename(rel))[0].split("+")[0]
+            add(stem + "Tests")
+    return picked
+
+
+def _resolve_in_repo(repo_root: str, path: str) -> str:
+    """A relative path is read against --repo-root when it exists there, as
+    `_load_history_or_baseline` does, so smoke behaves the same from any
+    working directory."""
+    if path and not os.path.isabs(path):
+        joined = os.path.join(repo_root, path)
+        if os.path.exists(joined):
+            return joined
+    return path
+
+
+def _baseline_seconds(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    classes = data.get("classes") if isinstance(data, dict) else None
+    return classes if isinstance(classes, dict) else {}
+
+
+def _nightly_only(path: str):
+    """The nightly-only timing families, or None when the hosted suite
+    cannot be read (the caller then adds no changed classes at all)."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            names = json.load(fh).get("nightly_only_unit")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return set(names) if isinstance(names, list) else None
+
+
 def cmd_smoke(args) -> int:
     """Validate the curated smoke selection against the discovered inventory.
 
@@ -1067,7 +1189,9 @@ def cmd_smoke(args) -> int:
     unit_inventory = {entry["name"] for entry in discovery["unit"]}
     ui_inventory = {entry["name"] for entry in discovery["ui"]}
     try:
-        unit, ui = load_smoke_suite(args.suite)
+        suite_path = _resolve_in_repo(args.repo_root, args.suite)
+        unit, ui = load_smoke_suite(suite_path)
+        contracts, changed_budget, changed_max = load_smoke_extras(suite_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"::error::smoke suite unreadable: {exc}")
         return 1
@@ -1090,6 +1214,13 @@ def cmd_smoke(args) -> int:
                     f"{target} test class")
     for name in sorted(set(unit) & set(ui)):
         problems.append(f"smoke suite lists {name!r} in both unit and ui")
+    for name in contracts:
+        if name not in unit_inventory:
+            problems.append(
+                f"smoke suite lists {name!r} in source_contracts, but it is not "
+                f"a unit test class")
+        elif name in unit:
+            problems.append(f"smoke suite lists {name!r} in both unit and source_contracts")
     # Report failures before the split: the delegated counts are only
     # meaningful once every curated name has been validated.
     for e in problems:
@@ -1097,6 +1228,75 @@ def cmd_smoke(args) -> int:
     if problems:
         print("smoke selection FAILED")
         return 1
+
+    curated_unit = list(unit)
+    unit = curated_unit + [c for c in contracts if c not in curated_unit]
+
+    # The change's own unit classes join the same invocation (no extra
+    # fixed cost), cheapest first within the budget. Timing families stay
+    # nightly-only whatever changed.
+    changed_unit, changed_skipped = [], []
+    changed = []
+    if args.changed_files:
+        try:
+            with open(_resolve_in_repo(args.repo_root, args.changed_files),
+                      encoding="utf-8") as fh:
+                changed = [line.strip() for line in fh if line.strip()]
+        except OSError as exc:
+            warn(f"changed files unreadable ({exc}); smoke runs the curated set only")
+    elif args.changed_from:
+        changed = changed_files_since(args.repo_root, args.changed_from)
+    nightly_only = None
+    if changed:
+        nightly_only = _nightly_only(_resolve_in_repo(args.repo_root, args.hosted_suite))
+        if nightly_only is None:
+            # Fail closed: without the list a touched timing family would
+            # join every PR's run.
+            warn(f"hosted suite {args.hosted_suite} unreadable; no changed "
+                 f"classes added to smoke")
+            changed = []
+    if changed:
+        baseline = _baseline_seconds(_resolve_in_repo(args.repo_root, args.baseline))
+        candidates = [c for c in unit_classes_for_changes(
+                          args.repo_root, changed, discovery["unit"])
+                      if c not in unit and c not in nightly_only]
+
+        def cost(name):
+            # Same rules as load_estimates: only a finite positive number
+            # is a timing.
+            value = baseline.get(name)
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value <= 0):
+                return _UNKNOWN_CLASS_COST_S
+            return float(value)
+
+        spent = 0.0
+        for name in sorted(candidates, key=lambda n: (cost(n), n)):
+            if spent + cost(name) <= changed_budget and len(changed_unit) < changed_max:
+                changed_unit.append(name)
+                spent += cost(name)
+            else:
+                changed_skipped.append(name)
+        # The change's only heavy class still runs once: a slow new suite
+        # is exactly what would otherwise first fail at night.
+        if not changed_unit and changed_skipped and changed_max > 0:
+            cheapest = min(changed_skipped, key=lambda n: (cost(n), n))
+            changed_skipped.remove(cheapest)
+            changed_unit.append(cheapest)
+            spent = cost(cheapest)
+            print(f"::notice title=changed class over the smoke budget::"
+                  f"{cheapest} (~{spent:.0f}s) runs anyway: nothing else of the "
+                  f"change fit")
+        changed_unit.sort()
+        changed_skipped.sort()
+        unit = unit + changed_unit
+        if changed_unit:
+            print(f"changed unit classes added: {', '.join(changed_unit)} "
+                  f"(~{spent:.0f}s of {changed_budget:.0f}s)")
+        if changed_skipped:
+            print(f"::notice title=changed classes left to nightly::"
+                  f"{', '.join(changed_skipped)} exceed the smoke budget "
+                  f"({changed_budget:.0f}s, {changed_max} classes)")
 
     delegated_unit = len(discovery["unit"]) - len(unit)
     delegated_ui = len(discovery["ui"]) - len(ui)
@@ -1109,6 +1309,10 @@ def cmd_smoke(args) -> int:
         payload = {
             "schema_version": 1,
             "unit": unit,
+            "curated_unit": curated_unit,
+            "source_contracts": [c for c in contracts if c not in curated_unit],
+            "changed_unit": changed_unit,
+            "changed_skipped": changed_skipped,
             "ui": ui,
             "unit_csv": ",".join(unit),
             "ui_csv": ",".join(ui),
@@ -1291,6 +1495,12 @@ def main(argv=None) -> int:
     p.add_argument("--repo-root", default=".")
     p.add_argument("--suite", default=os.path.join("scripts", "smoke-suite.json"))
     p.add_argument("--out", default="")
+    p.add_argument("--changed-from", default="",
+                   help="git ref; unit classes the diff to HEAD touches join the smoke run")
+    p.add_argument("--changed-files", default="",
+                   help="file listing changed paths, one per line (instead of --changed-from)")
+    p.add_argument("--hosted-suite", default=os.path.join("scripts", "hosted-suite.json"))
+    p.add_argument("--baseline", default=os.path.join("scripts", "test-timings.json"))
 
     p = sub.add_parser("hosted")
     p.add_argument("--repo-root", default=".")

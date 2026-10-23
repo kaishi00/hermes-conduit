@@ -47,6 +47,10 @@ extension AppState {
         }, install: install, renewSignIn: { [weak self] in
             guard let self, let dashboardID, self.activeDashboardID == dashboardID else { return false }
             return await self.renewDashboardSignIn(dashboardID: dashboardID)
+        }, onHost: notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability),
+           profile: activeProfile, report: { [weak self] json in
+            guard let self, self.activeDashboardID == dashboardID else { return }
+            self.applyNotifierPluginReport(json)
         })
         notifierPluginUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in
@@ -68,6 +72,13 @@ extension AppState {
             // The dashboard restart drops the chat connection.
             if !self.isConnected { await self.reconnect() }
             await self.refreshNotifierPluginStatus()
+            // A read that failed right after the restart keeps the old
+            // plugin's "restart to finish": ask once more (#299).
+            if case .updated = outcome, self.notifierPlugin.restartPending, self.activeDashboardID == dashboardID {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                await self.refreshNotifierPluginStatus()
+            }
         }
     }
 
@@ -192,11 +203,22 @@ extension AppState {
             return
         }
         // Reconnected or switched meanwhile: the next refresh checks again.
-        guard bridge === dashboardTicketBridge, activeProfile == profile else {
+        guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID, activeProfile == profile else {
             automaticPairingAttempts.remove(attempt)
             return
         }
-        guard PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
+        let pairing = PushNotificationService.profilePairing(status: status, installationID: installationID)
+        if pairing == .thisDevice, let gatewayID = status["gateway_id"] as? String {
+            // Pushes through this pairing come from the host on screen, even
+            // when it was paired from another saved entry for it.
+            recordRelayGatewayID(gatewayID, for: dashboardID, profile: profile)
+        } else if pairing != .thisDevice {
+            // This host no longer pairs the profile with this iPhone: the id
+            // recorded for it no longer counts. A status without the id says
+            // nothing either way.
+            forgetRelayGatewayID(for: dashboardID, profile: profile)
+        }
+        guard pairing == .unpaired else { return }
         do {
             try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
         } catch DashboardTicketBridgeError.notReady {
@@ -217,7 +239,7 @@ extension AppState {
     }
 
     private func pairProfile(_ profile: String, bridge: DashboardTicketBridge, dashboardID: UUID) async throws {
-        try await PushNotificationService.shared.pairProfile(profile, dashboardID: dashboardID) { [weak self] path, method, body in
+        let gatewayID = try await PushNotificationService.shared.pairProfile(profile, dashboardID: dashboardID) { [weak self] path, method, body in
             // A dashboard switch mid-run stops it: the pairing would belong
             // to the old dashboard's host.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {
@@ -225,6 +247,10 @@ extension AppState {
             }
             return try await bridge.requestJSON(path: path, method: method, body: body,
                                                 timeoutMilliseconds: PushNotificationService.pairTimeoutMilliseconds)
+        }
+        // Still the host it was paired on: a switch or move meanwhile isn't.
+        if let gatewayID, bridge === dashboardTicketBridge, activeDashboardID == dashboardID {
+            recordRelayGatewayID(gatewayID, for: dashboardID, profile: profile)
         }
         // The new pairing gets its key right away, before its first push.
         await provisionNotificationEncryption(bridge: bridge)
@@ -241,7 +267,7 @@ extension NotifierPluginStatus {
             // restart, whatever an update would offer.
             guard case .reported = state else { return false }
             return !updateAvailable && !restartPending
-        case .failed:
+        case .failed, .runningOnHost:
             guard !restartPending, let running = runtime?.loadedVersion else { return false }
             return !Self.isOlder(running, than: offeredVersion)
         default:

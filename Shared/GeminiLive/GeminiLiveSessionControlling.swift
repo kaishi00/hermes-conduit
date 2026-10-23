@@ -18,6 +18,11 @@ protocol GeminiLiveSessionControlling: AnyObject {
     /// model lost the conversation (see `GeminiLiveSession.onFreshSession`).
     var onFreshSession: (@MainActor (_ heardDropout: Bool) -> Void)? { get set }
     var isReady: Bool { get }
+    /// True when this connection runs a provider's own agent (Live > Local):
+    /// the model on the front decides and Hermes works behind it, so what
+    /// Hermes finds out later is news to the call. False when Hermes answers
+    /// each utterance itself.
+    var runsAgentTurns: Bool { get }
     /// Changes whenever a new connection takes over; calls made before
     /// the change can't be answered after it.
     var connectionGeneration: Int { get }
@@ -44,6 +49,9 @@ extension GeminiLiveSessionControlling {
     }
     var stateDescription: String { "" }
     var transcribesWholeUtterances: Bool { false }
+    /// Only Local Live has a mode of its own; every other session here is
+    /// the live model itself.
+    var runsAgentTurns: Bool { false }
     func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)

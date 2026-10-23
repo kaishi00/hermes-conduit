@@ -4,10 +4,12 @@
 //
 //  Central authority for transcript-content typography (issue #85).
 //
-//  The chat text-size preference is a local, device-only presentation
-//  setting backed by UserDefaults via @AppStorage (the same pattern as
-//  ComposerReturnKey). It is never synchronized to Hermes, profiles, the
-//  gateway, or any backend configuration.
+//  The chat text-size and text-style preferences are presentation settings
+//  backed by UserDefaults via @AppStorage (the same pattern as
+//  ComposerReturnKey). They stay on the device unless Settings > Sync
+//  across devices shares them through the Conduit plugin
+//  (AppState+SyncedPreferences); they never reach Hermes's own profile or
+//  gateway configuration.
 //
 //  The selected size is a FIRST-CLASS rendering input that AUGMENTS — never
 //  replaces — iOS Dynamic Type: every transcript font resolves as
@@ -74,12 +76,75 @@ enum ChatTextSize: Int, CaseIterable, Equatable {
     var cacheIdentity: String { String(rawValue) }
 }
 
+/// The chat text style preference: the typeface message text is set in.
+/// Each is one of Apple's own system designs, so every language Conduit
+/// ships and every Dynamic Type size is covered, as the default is. Only
+/// transcript prose takes it: code stays monospaced and chrome stays SF.
+enum ChatFontStyle: String, CaseIterable, Equatable {
+    case standard
+    case rounded
+    case serif
+    case mono
+
+    var displayName: String {
+        switch self {
+        case .standard: AppLocalization.string("Default")
+        case .rounded: AppLocalization.string("Rounded")
+        case .serif: AppLocalization.string("Serif")
+        case .mono: AppLocalization.string("Mono")
+        }
+    }
+
+    /// The same design for SwiftUI text: list markers and the Settings
+    /// preview.
+    var fontDesign: Font.Design {
+        switch self {
+        case .standard: .default
+        case .rounded: .rounded
+        case .serif: .serif
+        case .mono: .monospaced
+        }
+    }
+
+    var design: UIFontDescriptor.SystemDesign {
+        switch self {
+        case .standard: .default
+        case .rounded: .rounded
+        case .serif: .serif
+        case .mono: .monospaced
+        }
+    }
+}
+
+/// Everything transcript text renders with: the size step and the
+/// typeface. Gate inputs and render caches compare and key on the whole
+/// value, so neither a size nor a style change can be served stale output.
+struct ChatTextAppearance: Hashable {
+    var size: ChatTextSize
+    var style: ChatFontStyle = .standard
+
+    /// Each size in the default typeface.
+    static let smallest = ChatTextAppearance(size: .smallest)
+    static let smaller = ChatTextAppearance(size: .smaller)
+    static let `default` = ChatTextAppearance(size: .default)
+    static let larger = ChatTextAppearance(size: .larger)
+    static let largest = ChatTextAppearance(size: .largest)
+
+    var scale: CGFloat { size.scale }
+
+    /// The size's identity, plus the style when it isn't the default, so
+    /// default-style keys stay what they were.
+    var cacheIdentity: String {
+        style == .standard ? size.cacheIdentity : "\(size.cacheIdentity)-\(style.rawValue)"
+    }
+}
+
 /// Sole authority for transcript-content font resolution. Both UIKit
 /// (UIFont-returning) and SwiftUI (point-size/CGFloat-returning) consumers
 /// resolve through here so settled Markdown, streaming Markdown, tables,
 /// code, large documents, and source cards agree at the selected size.
 enum ChatTypography {
-    /// Local, device-only preference key. Namespaced like ComposerReturnKey.
+    /// The size's preference key. Namespaced like ComposerReturnKey.
     static let preferenceKey = "conduit.chatTextSize"
 
     /// Initial/fallback value: existing users keep today's appearance.
@@ -98,6 +163,15 @@ enum ChatTypography {
     /// uses), so the app and tests agree on one resolution path.
     static func stored(in defaults: UserDefaults = .standard) -> ChatTextSize {
         resolve(rawValue: defaults.object(forKey: preferenceKey) as? Int)
+    }
+
+    /// The chat text style's preference key, beside the size's.
+    static let fontStylePreferenceKey = "conduit.chatFontStyle"
+
+    /// A missing or unknown stored style (a newer app's) reads as the
+    /// default.
+    static func resolveStyle(rawValue: String?) -> ChatFontStyle {
+        rawValue.flatMap(ChatFontStyle.init(rawValue:)) ?? .standard
     }
 
     // MARK: Semantic roles
@@ -124,6 +198,14 @@ enum ChatTypography {
         /// Source text shown around rich Markdown previews (Mermaid/LaTeX
         /// render cards, guarded oversized sources) — monospaced caption.
         case sourceCode
+
+        /// Code, which is set monospaced in every chat text style.
+        var isCode: Bool {
+            switch self {
+            case .blockCode, .sourceCode: true
+            default: false
+            }
+        }
     }
 
     // MARK: Scale
@@ -144,6 +226,10 @@ enum ChatTypography {
         value * chatSize.scale
     }
 
+    static func dimension(_ value: CGFloat, appearance: ChatTextAppearance) -> CGFloat {
+        dimension(value, chatSize: appearance.size)
+    }
+
     // MARK: Font resolution
 
     /// Resolves a role's font at the selected chat size. The optional trait
@@ -156,6 +242,24 @@ enum ChatTypography {
         compatibleWith traits: UITraitCollection? = nil
     ) -> UIFont {
         scaledFont(baseFont(for: role, compatibleWith: traits), chatSize: chatSize)
+    }
+
+    /// Resolves a role's font at the selected size, in the selected
+    /// typeface. What every transcript view draws with.
+    static func font(
+        for role: Role,
+        appearance: ChatTextAppearance,
+        compatibleWith traits: UITraitCollection? = nil
+    ) -> UIFont {
+        styled(font(for: role, chatSize: appearance.size, compatibleWith: traits), role: role, style: appearance.style)
+    }
+
+    /// `font` in `style`'s design, its size and bold or italic kept. Code
+    /// roles stay monospaced whatever the style.
+    static func styled(_ font: UIFont, role: Role, style: ChatFontStyle) -> UIFont {
+        guard style != .standard, !role.isCode,
+              let descriptor = font.fontDescriptor.withDesign(style.design) else { return font }
+        return UIFont(descriptor: descriptor, size: font.pointSize)
     }
 
     /// The unscaled (Dynamic Type only) base font for a role. Kept separate
@@ -211,13 +315,14 @@ enum ChatTypography {
 /// Kanban, previews, tests) keep rendering exactly as before, which is what
 /// keeps this a chat-only preference rather than an app-wide one.
 private struct ChatTextSizeEnvironmentKey: EnvironmentKey {
-    static let defaultValue: ChatTextSize = .default
+    static let defaultValue: ChatTextAppearance = .default
 }
 
 extension EnvironmentValues {
-    /// The transcript typography this subtree renders content with. Injected
-    /// at the chat root; read by MarkdownText and friends.
-    var chatTextSize: ChatTextSize {
+    /// The transcript typography this subtree renders content with, size
+    /// and typeface (the name predates the typeface). Injected at the chat
+    /// root; read by MarkdownText and friends.
+    var chatTextSize: ChatTextAppearance {
         get { self[ChatTextSizeEnvironmentKey.self] }
         set { self[ChatTextSizeEnvironmentKey.self] = newValue }
     }

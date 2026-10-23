@@ -23,7 +23,7 @@ import XCTest
 /// Drives the chat-size environment for mounted-view tests so a test can
 /// flip the preference after mount (exactly what the Settings slider does).
 private final class ChatSizeEmitter: ObservableObject {
-    @Published var chatSize: ChatTextSize = .default
+    @Published var chatSize: ChatTextAppearance = .default
 }
 
 private struct ChatSizeInjector<Content: View>: View {
@@ -247,7 +247,7 @@ final class ChatTypographyTests: XCTestCase {
         // Stable chunks (isStreaming: false) and the live tail
         // (isStreaming: true) resolve through the same ChatTypography value,
         // so a mid-stream preference change moves BOTH pieces together.
-        func firstFontSize(isStreaming: Bool, chatTextSize: ChatTextSize) throws -> CGFloat {
+        func firstFontSize(isStreaming: Bool, chatTextSize: ChatTextAppearance) throws -> CGFloat {
             let rendering = MarkdownRenderCache.rendering(
                 source: cacheFixtureSource,
                 recognizesGatewayMedia: false,
@@ -280,7 +280,7 @@ final class ChatTypographyTests: XCTestCase {
                 foregroundStyle: .primary,
                 usesAccentSurface: false,
                 newestCharacterOpacities: [],
-                chatTextSize: size
+                chatTextSize: ChatTextAppearance(size: size)
             ))
             var sizes: [CGFloat] = []
             attributed.enumerateAttribute(.font, in: NSRange(location: 0, length: attributed.length), options: []) { value, _, _ in
@@ -435,7 +435,7 @@ final class ChatTypographyTests: XCTestCase {
         for size in ChatTextSize.allCases where size != .default {
             XCTAssertNotEqual(
                 base,
-                LargeCodeSliceIdentity.identity(source: "let x = 1", sizeCategory: category, chatTextSize: size),
+                LargeCodeSliceIdentity.identity(source: "let x = 1", sizeCategory: category, chatTextSize: ChatTextAppearance(size: size)),
                 "a chat-size change must invalidate the slice's highlight pass"
             )
         }
@@ -738,7 +738,7 @@ final class ChatTypographyTests: XCTestCase {
     /// site inside the view.
     @MainActor
     func testOrdinaryTableViewWiresChatSizeIntoColumnWidths() throws {
-        func mountedTextViewWidths(chatTextSize: ChatTextSize) throws -> [CGFloat] {
+        func mountedTextViewWidths(chatTextSize: ChatTextAppearance) throws -> [CGFloat] {
             let table = MarkdownTable(
                 headers: ["Column One", "Column Two"],
                 alignments: [.leading, .leading],

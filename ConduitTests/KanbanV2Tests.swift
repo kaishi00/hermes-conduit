@@ -23,6 +23,34 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanLanePolicy.newTaskInitialStatus(effectiveLane: lane), "triage")
     }
 
+    func testColumnsBoardCreatesInTheScrolledColumn() {
+        // The V2 sideways board never sets the chip selection: New task
+        // follows the column it is scrolled to, else its leading column.
+        let board = columns(["triage", "todo", "ready", "running"])
+        XCTAssertEqual(
+            KanbanLanePolicy.newTaskLane(columnsLayout: true, scrolledColumn: "ready", selected: nil, columns: board),
+            "ready"
+        )
+        XCTAssertEqual(
+            KanbanLanePolicy.newTaskLane(columnsLayout: true, scrolledColumn: nil, selected: nil, columns: board),
+            "triage"
+        )
+        // A scrolled lane that left the snapshot falls back to the leading one.
+        XCTAssertEqual(
+            KanbanLanePolicy.newTaskLane(columnsLayout: true, scrolledColumn: "gone", selected: nil, columns: board),
+            "triage"
+        )
+        // Scrolled to a locked lane: creation still collapses to Todo.
+        let locked = KanbanLanePolicy.newTaskLane(columnsLayout: true, scrolledColumn: "running", selected: nil, columns: board)
+        XCTAssertEqual(KanbanLanePolicy.newTaskInitialStatus(effectiveLane: locked), "todo")
+        // The chip board ignores the scroll position.
+        XCTAssertEqual(
+            KanbanLanePolicy.newTaskLane(columnsLayout: false, scrolledColumn: "ready", selected: "todo", columns: board),
+            "todo"
+        )
+        XCTAssertNil(KanbanLanePolicy.newTaskLane(columnsLayout: true, scrolledColumn: "ready", selected: nil, columns: []))
+    }
+
     func testExplicitSelectionWinsAndLockedSelectionCollapsesToTodo() {
         let board = columns(["triage", "todo", "running"])
         XCTAssertEqual(

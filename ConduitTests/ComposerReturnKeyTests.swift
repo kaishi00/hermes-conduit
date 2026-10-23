@@ -5,7 +5,7 @@
 //  Covers the optional hardware-keyboard Return shortcut in the chat
 //  composer: the pure decision policy, the composer-action gate, the
 //  UIKit text-view branch that consumes (or forwards) the Return press,
-//  and the default-off persistence of the preference. UIPress/UIKey have
+//  and the preference's default (on for a Mac) and persistence. UIPress/UIKey have
 //  no public initializers, so the pressesBegan branch is exercised through
 //  the extracted handleReturnKeyPress(shiftPressed:) entry point, with the
 //  modifier classification pinned directly and consumption additionally
@@ -254,14 +254,22 @@ final class ComposerReturnKeyTests: XCTestCase {
 
     // MARK: - Preference default and persistence
 
-    func testPreferenceDefaultsToOffWithNoStoredValue() {
+    func testPreferenceHasNoStoredValueUntilChosen() {
         UserDefaults.standard.removeObject(forKey: ComposerReturnKey.preferenceKey)
 
-        // @AppStorage in ComposerBar and the Chat settings row reads through
-        // UserDefaults; a missing key must resolve to the `false` default so
-        // existing users never gain send-on-Return after updating.
+        // @AppStorage in ComposerBar and the Chat settings row falls back to
+        // `sendsByDefault` only while nothing is stored, so a choice someone
+        // already made is kept on every device.
         XCTAssertNil(UserDefaults.standard.object(forKey: ComposerReturnKey.preferenceKey))
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: ComposerReturnKey.preferenceKey))
+    }
+
+    func testReturnSendsByDefaultOnlyOnAMac() {
+        XCTAssertTrue(ComposerReturnKey.sendsByDefault(onMac: true))
+        XCTAssertFalse(ComposerReturnKey.sendsByDefault(onMac: false))
+        XCTAssertEqual(
+            ComposerReturnKey.sendsByDefault,
+            ProcessInfo.processInfo.isiOSAppOnMac
+        )
     }
 
     func testPreferenceRestoresStoredValue() {

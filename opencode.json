@@ -31,6 +31,14 @@
   "permission": {
     "edit": "deny",
     "bash": "deny",
-    "webfetch": "deny"
+    "webfetch": "deny",
+    "external_directory": "deny",
+    "doom_loop": "deny",
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    }
   }
 }

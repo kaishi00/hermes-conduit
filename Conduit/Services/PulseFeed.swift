@@ -339,7 +339,8 @@ extension AppState {
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
     func isPulseHomeChat(_ session: SessionSummary) -> Bool {
-        guard let home = pulseHomeChatID, showsPulseScreen, profilesMatch(activeProfile, Self.pulseHomeProfile) else {
+        // By the row's own profile: in All a row can be another profile's.
+        guard let home = pulseHomeChatID, showsPulseScreen, profilesMatch(rowProfile(session), Self.pulseHomeProfile) else {
             return false
         }
         return session.nestingIDs.contains(home)

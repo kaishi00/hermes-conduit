@@ -352,3 +352,165 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertNil(service.relayGatewayID(forRequestID: "anything"))
     }
 }
+
+// MARK: - The active dashboard's own relay gateways
+
+/// A push whose relay gateway the active dashboard's host reported belongs
+/// to that dashboard, even when its pairing was bound to another saved
+/// entry (or one since removed). Switching away tore down the working
+/// connection and left the other entry asking to sign in, so a Hermes call
+/// answered in the background ended at "dashboard check".
+extension NotificationDashboardOwnershipTests {
+
+    private func resolve(
+        _ target: UUID?,
+        gateway: String?,
+        known: Set<String>,
+        malformed: Bool = false,
+        active: UUID?,
+        saved: [UUID]
+    ) -> NotificationDashboardOwnership.Outcome {
+        NotificationDashboardOwnership.resolve(
+            targetDashboardID: target,
+            hasMalformedDashboardID: malformed,
+            activeDashboardID: active,
+            savedDashboardIDs: saved,
+            targetGatewayID: gateway,
+            activeDashboardGatewayIDs: known
+        )
+    }
+
+    func testPushFromActiveHostsGatewayRoutesWhateverDashboardItWasBoundTo() {
+        // Bound to another saved entry for the same host.
+        XCTAssertEqual(
+            resolve(dashboardB, gateway: "gw-1", known: ["gw-1"], active: dashboardA, saved: [dashboardA, dashboardB]),
+            .route
+        )
+        // Bound to an entry since removed.
+        XCTAssertEqual(
+            resolve(UUID(), gateway: "gw-1", known: ["gw-1"], active: dashboardA, saved: [dashboardA]),
+            .route
+        )
+        // Paired before dashboard scoping, with two saved.
+        XCTAssertEqual(
+            resolve(nil, gateway: "gw-1", known: ["gw-1"], active: dashboardA, saved: [dashboardA, dashboardB]),
+            .route
+        )
+    }
+
+    func testPushFromAnotherGatewayKeepsTheOwnershipRule() {
+        XCTAssertEqual(
+            resolve(dashboardB, gateway: "gw-2", known: ["gw-1"], active: dashboardA, saved: [dashboardA, dashboardB]),
+            .switchFirst(dashboardID: dashboardB)
+        )
+        XCTAssertEqual(
+            resolve(dashboardB, gateway: nil, known: ["gw-1"], active: dashboardA, saved: [dashboardA, dashboardB]),
+            .switchFirst(dashboardID: dashboardB)
+        )
+        // A malformed binding still fails closed, and with nothing active
+        // there is no host that reported anything.
+        XCTAssertEqual(
+            resolve(nil, gateway: "gw-1", known: ["gw-1"], malformed: true, active: dashboardA, saved: [dashboardA]),
+            .failClosed(.unrecognizedDashboard)
+        )
+        XCTAssertEqual(
+            resolve(dashboardB, gateway: "gw-1", known: ["gw-1"], active: nil, saved: [dashboardA, dashboardB]),
+            .switchFirst(dashboardID: dashboardB)
+        )
+    }
+
+    func testOpenFromActiveHostsGatewayStaysOnTheActiveDashboard() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "VPS (old)", normalizedURL: "http://100.64.0.7:9119")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        let target = ConduitNotificationTarget(
+            profile: "default",
+            sessionId: "runtime-1",
+            dashboardID: dashboardB,
+            relayGatewayID: "gw-1",
+            type: "call.requested"
+        )
+
+        let outcome = await appState.openNotificationTargetOutcome(target)
+
+        // Routed here: only the connection isn't up in this test. A switch
+        // to the other entry would end `.failed` on its sign-in, with an
+        // error (testSwitchThatNeedsSignInIsFinal).
+        XCTAssertEqual(outcome, .retry)
+        XCTAssertEqual(appState.activeDashboardID, dashboardA)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testRelayGatewayIDsAreKeptPerDashboardAndForgottenWithIt() {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID(" gw-2 ", for: dashboardA, profile: "work")
+        appState.recordRelayGatewayID("", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-3", for: dashboardB, profile: "default")
+
+        XCTAssertEqual(appState.activeDashboardRelayGatewayIDs, ["gw-1", "gw-2"])
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardB), ["gw-3"])
+
+        // A profile paired again (or a new host at the address) replaces
+        // its old gateway rather than adding to it.
+        appState.recordRelayGatewayID("gw-4", for: dashboardA, profile: "default")
+        XCTAssertEqual(appState.activeDashboardRelayGatewayIDs, ["gw-4", "gw-2"])
+
+        // A profile the host no longer pairs with this iPhone drops its id.
+        appState.forgetRelayGatewayID(for: dashboardA, profile: "work")
+        XCTAssertEqual(appState.activeDashboardRelayGatewayIDs, ["gw-4"])
+
+        appState.removeDashboard(dashboardB)
+        XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-4"])
+    }
+
+    func testSettingsListsTheActiveHostsPairingAsThisDashboards() {
+        let pairing = RelayMetaInfo.Gateway(
+            id: "gw-1", name: "VPS", pluginVersion: "0.53.1", pluginCapabilities: [],
+            lastEventAt: nil, dashboardID: dashboardB.uuidString
+        )
+        let pairings = NotificationDashboardPairings(
+            gateways: [pairing],
+            activeDashboardID: dashboardA,
+            savedDashboardIDs: [dashboardA, dashboardB],
+            activeDashboardGatewayIDs: ["gw-1"]
+        )
+        XCTAssertEqual(pairings.thisDashboard.map(\.id), ["gw-1"])
+        XCTAssertEqual(pairings.otherDashboardsCount, 0)
+    }
+}
+
+extension NotificationDashboardOwnershipTests {
+    func testRelayGatewayIDsAreForgottenWhenTheDashboardMoves() {
+        var moving = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        moving.pendingURL = "https://other.tailnet.ts.net"
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [moving]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+
+        appState.settlePendingDashboardMove(dashboardA)
+
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: dashboardA)?.normalizedURL, "https://other.tailnet.ts.net")
+        XCTAssertTrue(appState.relayGatewayIDs(of: dashboardA).isEmpty)
+    }
+}
+
+extension NotificationDashboardOwnershipTests {
+    func testRelayGatewayIDsAreForgottenOnSignOut() {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+
+        appState.signOutDashboard(dashboardB)
+
+        XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
+    }
+}

@@ -175,6 +175,25 @@ extension AppState {
             read: { self.keepVoiceListeningWhenLocked },
             write: { _ = self.setKeepVoiceListeningWhenLocked($0) }
         ))
+        catalog.append(boolDescriptor(
+            key: "voice.push_to_talk", section: "Conversation", title: "Push to talk",
+            description: "In Classic voice, the user holds the voice screen's main button to speak and releases it to send, instead of a pause ending the turn. CarPlay and calls from Hermes stay hands-free.",
+            tier: .ask, displayTitle: { AppLocalization.string("Push to talk") },
+            read: { self.voicePushToTalkEnabled },
+            write: { _ = self.setVoicePushToTalk($0) }
+        ))
+        catalog.append(choiceDescriptor(
+            key: "voice.chat_button", section: "Conversation", title: "Chat voice button",
+            description: "What the round button beside a chat's message box does on this profile. app: follow the app-wide choice in Settings > Appearance. live_call: start a live voice call in the chat. voice_message: record an audio message (sent with its transcript). dictation: type what the user says into the message. A live call stays in the chat's top bar either way.",
+            tier: .small, displayTitle: { AppLocalization.string("Chat voice button") },
+            choices: [(value: "app", title: "App setting")]
+                + ChatVoiceButtonAction.offered.map { (value: $0.rawValue, title: $0.title) },
+            display: { value in
+                ChatVoiceButtonAction.offeredChoice(value)?.title ?? AppLocalization.string("App setting")
+            },
+            read: { ChatVoiceButtonAction.offeredChoice(self.chatVoiceButtonOverride)?.rawValue ?? "app" },
+            write: { _ = self.setChatVoiceButtonOverride(ChatVoiceButtonAction.offeredChoice($0)) }
+        ))
         return catalog
     }
 

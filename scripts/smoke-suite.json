@@ -23,7 +23,22 @@
     "    SettledMessageIsolationTests, MarkdownRichContentHostedTests) - they",
     "    run with repeats at night and must not re-litigate on every PR;",
     "  - every name here must exist in the right target: scripts/plan-tests.py",
-    "    smoke fails otherwise, so a rename cannot silently shrink PR coverage."
+    "    smoke fails otherwise, so a rename cannot silently shrink PR coverage.",
+    "",
+    "Two additions join the same unit invocation (no extra fixed cost):",
+    "  - source_contracts: static source scans that a PR breaks without",
+    "    touching them (a new unlabelled icon button, a logger on the wrong",
+    "    subsystem). They take seconds; before 2026-10-22 they failed only at",
+    "    night, after the PR had merged.",
+    "  - the PR's own unit classes: plan-tests.py smoke --changed-from adds",
+    "    every unit class declared or extended in a changed ConduitTests file,",
+    "    and <Stem>Tests for a changed app file <Stem>.swift, cheapest first",
+    "    within changed_budget_s of baseline time (scripts/test-timings.json;",
+    "    a class with no baseline counts 3 s). Most red nightly runs",
+    "    2026-10-19..22 were tests a PR added or edited that never ran before",
+    "    merge. Timing families are never added.",
+    "  changed_max_classes keeps the invocation within nightly's batch of 45",
+    "  (7 curated + 3 contracts + 35)."
   ],
   "schema_version": 1,
   "unit": [
@@ -35,6 +50,13 @@
     "MarkdownLargeDocumentTests",
     "NotificationDashboardOwnershipTests"
   ],
+  "source_contracts": [
+    "AccessibilityLabelAuditTests",
+    "LogRedactionTests",
+    "PrivacyManifestTests"
+  ],
+  "changed_budget_s": 120,
+  "changed_max_classes": 35,
   "ui": [
     "ConnectionSetupUITests",
     "ProfilePickerUITests"

@@ -504,7 +504,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, location, phone, screenQuestion, about
+    case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -712,6 +712,7 @@ struct SettingsView: View {
                 VoiceSettingsRoute(
                     bridge: bridge,
                     profile: snapshot.profile,
+                    profileName: appState.profileDisplayName(snapshot.profile),
                     conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
                         runASRTest: { await appState.runVoiceASRTest() },
@@ -864,6 +865,19 @@ struct SettingsView: View {
                         enabled: appState.keepVoiceListeningWhenLocked,
                         setEnabled: { appState.setKeepVoiceListeningWhenLocked($0) }
                     ),
+                    pushToTalk: VoicePushToTalkSettingsModel(
+                        enabled: appState.voicePushToTalkEnabled,
+                        setEnabled: { appState.setVoicePushToTalk($0) }
+                    ),
+                    // Only V2 has the big button beside a chat.
+                    chatVoiceButton: V2ShellPreference.isOn ? ChatVoiceButtonSettingsModel(
+                        choice: ChatVoiceButtonAction.offeredChoice(appState.chatVoiceButtonOverride),
+                        appChoice: ChatVoiceButtonAction.resolved(
+                            profile: nil,
+                            app: UserDefaults.standard.string(forKey: ChatVoiceButtonAction.key)
+                        ),
+                        setChoice: { appState.setChatVoiceButtonOverride($0) }
+                    ) : nil,
                     speakerTalkOver: VoiceSpeakerTalkOverSettingsModel(
                         enabled: appState.liveVoiceSpeakerBargeInEnabled,
                         setEnabled: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
@@ -923,6 +937,8 @@ struct SettingsView: View {
                 sections: Self.advancedSections,
                 loadSchema: { await appState.loadProfileConfigSchema() }
             )
+        case .usage:
+            UsageSettingsDetail()
         case .capabilities:
             CapabilitiesView()
         case .pulse:
@@ -937,6 +953,8 @@ struct SettingsView: View {
             AppearanceSettingsDetail(theme: appState.themePreference, saveTheme: saveTheme)
         case .notifications:
             NotificationsSettingsDetail()
+        case .syncedPreferences:
+            SyncedPreferencesSettingsDetail(controller: appState.syncedPreferences)
         case .hermesCalls:
             HermesCallsSettingsPage(
                 model: HermesCallSettingsModel(
@@ -1125,6 +1143,7 @@ private struct SettingsHome: View {
                     }
                     homeSection("Hermes", tint: .conduitAura) {
                         settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
+                        settingsLink(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
                         settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
                         if appState.supportsHermesCalls {
@@ -1143,6 +1162,7 @@ private struct SettingsHome: View {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
                         settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
+                        settingsLink(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
                         settingsActionRow(
                             icon: "checkmark.circle",
                             title: AppLocalization.string("Connection Setup"),
@@ -1168,7 +1188,7 @@ private struct SettingsHome: View {
                         settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
                     }
                     }
-                    Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device.")
+                    Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device unless you turn on Sync across devices.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1273,6 +1293,12 @@ private struct SettingsHome: View {
         )
     }
 
+    private var syncedPreferencesDetail: String {
+        appState.syncedPreferences.isEnabled
+            ? AppLocalization.string("On: shared with your other devices")
+            : AppLocalization.string("Share preferences with your other devices")
+    }
+
     /// V2's grouping: the selected profile (its connection, approvals and
     /// profile page), then Voice, Hermes, and App, each one card of rows
     /// with hairlines between them, as in the Scheduled list. Every page the
@@ -1300,6 +1326,7 @@ private struct SettingsHome: View {
         }
         v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
+            v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
             v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
@@ -1321,6 +1348,7 @@ private struct SettingsHome: View {
             }
             v2Link(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
             v2Link(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+            v2Link(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
             v2Link(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
         }
         if appState.showsHealthSettings || appState.showsLocationSettings || appState.showsPhoneSettings {
@@ -1617,6 +1645,7 @@ struct ChatSettingsDetail: View {
             trailingSection: AnyView(
                 VStack(spacing: 24) {
                     ChatTextSizeSettings()
+                    ChatFontStyleSettings()
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
@@ -1643,10 +1672,10 @@ struct ChatSettingsDetail: View {
     }
 }
 
-/// Local, device-only chat text-size preference (issue #85). Stored in
-/// UserDefaults via @AppStorage with the same lifetime as
-/// ComposerReturnKey — never part of the Hermes profile configuration and
-/// never synchronized anywhere. A five-position stepped slider: the change
+/// Chat text-size preference (issue #85). Stored in UserDefaults via
+/// @AppStorage with the same lifetime as ComposerReturnKey — never part of
+/// the Hermes profile configuration, and shared only by Sync across
+/// devices. A five-position stepped slider: the change
 /// is live (the visible transcript re-renders as the slider moves), there
 /// is no Save button, and `Default` keeps today's appearance.
 private struct ChatTextSizeSettings: View {
@@ -1701,11 +1730,50 @@ private struct ChatTextSizeSettings: View {
     }
 }
 
+/// The typeface of conversation text: Apple's system designs, so Dynamic
+/// Type and every language keep working. Code stays monospaced and the
+/// interface stays in the system font.
+private struct ChatFontStyleSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var styleRaw = ChatFontStyle.standard.rawValue
+
+    private var selected: ChatFontStyle {
+        ChatTypography.resolveStyle(rawValue: styleRaw)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Chat text style"),
+            symbol: "textformat",
+            tint: .conduitAura
+        ) {
+            Text("The typeface of messages in a chat. Code stays monospaced, and the rest of the interface keeps the system font.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("Chat text style", selection: Binding(get: { selected }, set: {
+                Haptics.selection()
+                styleRaw = $0.rawValue
+            })) {
+                ForEach(ChatFontStyle.allCases, id: \.self) { style in
+                    Text(verbatim: style.displayName).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text("Hermes replies like this.")
+                .font(.body)
+                .fontDesign(selected.fontDesign)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .conduitGlassSurface(cornerRadius: 14, tint: .clear)
+        }
+    }
+}
+
 /// Local, device-only composer input preference. Stored in UserDefaults via
 /// @AppStorage; never part of the Hermes profile configuration.
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
 
     var body: some View {
         ConduitSettingsSection(
@@ -3012,8 +3080,9 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
-    @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
+    @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
     init(theme: ThemePreference, saveTheme: @escaping (ThemePreference) -> Void) { self.theme = theme; self.saveTheme = saveTheme; _selected = State(initialValue: theme) }
@@ -3129,6 +3198,27 @@ private struct AppearanceSettingsDetail: View {
                     .pickerStyle(.segmented)
                 }
 
+                // The big button beside a chat's composer. A profile can
+                // choose its own in Settings > Voice.
+                ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
+                    Text("Choose what the round button beside a chat's message box does. A live call stays in the chat's top bar and in the button's touch-and-hold menu. Each profile can choose its own in Voice settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Chat voice button", selection: Binding(
+                        get: { ChatVoiceButtonAction.resolved(profile: nil, app: chatVoiceButton) },
+                        set: {
+                            Haptics.selection()
+                            chatVoiceButton = $0.rawValue
+                        }
+                    )) {
+                        ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
+                            Text(action.title).tag(action)
+                        }
+                    }
+                    // Three choices whose names run long in some languages.
+                    .pickerStyle(.menu)
+                }
+
                 // A project's chats otherwise show only on its page.
                 ConduitSettingsSection(title: AppLocalization.string("Project chats"), symbol: "folder", tint: .conduitAccent) {
                     Text("Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday.")
@@ -3159,44 +3249,151 @@ private struct AppearanceSettingsDetail: View {
     }
 }
 
-/// One swatch per preset accent (#697); the pick redraws the app in place.
+/// One swatch per preset accent (#697), then a colour of the user's own;
+/// the pick redraws the app in place.
 private struct AccentColorPicker: View {
-    @Binding var selection: ConduitAccentChoice
+    @Binding var selection: ConduitAccent
     @Environment(\.colorScheme) private var colorScheme
+    /// The last colour of the user's own, kept while a preset is picked so
+    /// the custom swatch reopens on it.
+    @AppStorage(CustomAccentColor.lastPickKey) private var lastCustomHex = CustomAccentColor.firstPick.hex
+
+    private var isCustom: Bool {
+        if case .custom = selection { return true }
+        return false
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(ConduitAccentChoice.allCases) { choice in
-                let isSelected = choice == selection
-                Button {
-                    guard !isSelected else { return }
-                    Haptics.selection()
-                    selection = choice
-                } label: {
-                    Circle()
-                        .fill(Color(uiColor: choice.color(dark: colorScheme == .dark)))
-                        .frame(width: 32, height: 32)
-                        .overlay {
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.footnote.weight(.bold))
-                                    .foregroundStyle(Color(uiColor: ConduitAccentChoice.markColor(on: choice.color(dark: colorScheme == .dark))))
-                            }
-                        }
-                        .padding(4)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(isSelected ? Color.primary.opacity(0.55) : .clear, lineWidth: 2)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 0) {
+                ForEach(ConduitAccentChoice.allCases) { choice in
+                    presetSwatch(choice)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(choice.title)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                customSwatch
+            }
+            .conduitFixedGlyph()
+            if isCustom {
+                Text("Your color is adjusted where needed so text stays readable in light and dark mode.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                AccentPreview()
             }
         }
-        .conduitFixedGlyph()
+        // A custom colour that arrives from another device is the one the
+        // custom swatch reopens on too.
+        .onChange(of: selection) { _, newSelection in
+            if case .custom(let custom) = newSelection { lastCustomHex = custom.hex }
+        }
+    }
+
+    private func presetSwatch(_ choice: ConduitAccentChoice) -> some View {
+        let isSelected = selection == .preset(choice)
+        let fill = choice.color(dark: colorScheme == .dark)
+        return Button {
+            guard !isSelected else { return }
+            Haptics.selection()
+            selection = .preset(choice)
+        } label: {
+            Circle()
+                .fill(Color(uiColor: fill))
+                .frame(width: 32, height: 32)
+                .overlay {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Color(uiColor: ConduitAccentChoice.markColor(on: fill)))
+                    }
+                }
+                .modifier(AccentSwatchFrame(isSelected: isSelected))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(choice.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The system colour picker, its well in the swatch row. Picking in it
+    /// selects the custom accent; tapping the well again reopens the pick.
+    private var customSwatch: some View {
+        ColorPicker(selection: customColor, supportsOpacity: false) {
+            Text("Custom color")
+        }
+        .labelsHidden()
+        .frame(width: 32, height: 32)
+        .modifier(AccentSwatchFrame(isSelected: isCustom))
+        .accessibilityAddTraits(isCustom ? .isSelected : [])
+    }
+
+    private var customColor: Binding<Color> {
+        Binding(
+            get: {
+                let pick: CustomAccentColor
+                if case .custom(let custom) = selection {
+                    pick = custom
+                } else {
+                    pick = CustomAccentColor(hex: lastCustomHex) ?? CustomAccentColor.firstPick
+                }
+                return Color(uiColor: UIColor(pick.picked))
+            },
+            set: { color in
+                var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+                guard UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return }
+                // The picker can hand back Display P3; stored components are sRGB.
+                let srgb = CGColorSpace(name: CGColorSpace.sRGB).flatMap {
+                    UIColor(color).cgColor.converted(to: $0, intent: .defaultIntent, options: nil)
+                }
+                if let components = srgb?.components, components.count >= 3 {
+                    (red, green, blue) = (components[0], components[1], components[2])
+                }
+                let pick = CustomAccentColor(red: red, green: green, blue: blue)
+                guard selection != .custom(pick) else { return }
+                if !isCustom { Haptics.selection() }
+                lastCustomHex = pick.hex
+                selection = .custom(pick)
+            }
+        )
+    }
+}
+
+/// A swatch's ring when picked, and its full-width 44 pt hit region.
+private struct AccentSwatchFrame: ViewModifier {
+    let isSelected: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(4)
+            .overlay {
+                Circle()
+                    .strokeBorder(isSelected ? Color.primary.opacity(0.55) : .clear, lineWidth: 2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A sent message and accent text, drawn as the app will draw them, so a
+/// colour of the user's own shows its adjusted shades.
+private struct AccentPreview: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("Highlights", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+            Spacer(minLength: 8)
+            Text("Your messages")
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [.conduitUserBubble, .conduitUserBubbleShade],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -3371,7 +3568,8 @@ private struct NotificationsSettingsDetail: View {
                         let pairings = NotificationDashboardPairings(
                             gateways: meta.gateways,
                             activeDashboardID: appState.activeDashboardID,
-                            savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id)
+                            savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id),
+                            activeDashboardGatewayIDs: appState.activeDashboardRelayGatewayIDs
                         )
                         // Without a selected dashboard there is nothing to
                         // pair yet (and `pairings` is empty); the pairing

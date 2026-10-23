@@ -108,7 +108,12 @@ extension DashboardTicketBridge {
         }
         // invalidate() doesn't cancel this request: an answer that lands
         // after a dashboard switch is the old dashboard's, as on the page.
-        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        guard !isInvalidated else {
+            if let http = result.response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                throw DashboardTicketBridgeError.answeredAfterSwitch
+            }
+            throw DashboardTicketBridgeError.notReady
+        }
         let (data, response, oversized) = result
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")

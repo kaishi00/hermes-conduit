@@ -111,7 +111,7 @@ struct MarkdownText: View {
                         to: baseText,
                         baseColor: usesAccentSurface ? .white : UIColor(foregroundStyle)
                     ),
-                    font: ChatTypography.font(for: .body, chatSize: chatTextSize),
+                    font: ChatTypography.font(for: .body, appearance: chatTextSize),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
                     linkColor: usesAccentSurface ? .white : .link
@@ -354,7 +354,7 @@ final class MarkdownRendering {
         for run: Range<Int>,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        chatTextSize: ChatTextSize
+        chatTextSize: ChatTextAppearance
     ) -> NSAttributedString {
         if let text = proseRunTexts[run] { return text }
         let text = MarkdownProseRun.attributedText(
@@ -391,7 +391,7 @@ enum MarkdownRenderCache {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         isStreaming: Bool,
-        chatTextSize: ChatTextSize
+        chatTextSize: ChatTextAppearance
     ) -> MarkdownRendering {
         // `foregroundStyle` is deliberately absent from the key: only two
         // values are ever passed (.primary / .white), each uniquely tied to
@@ -535,14 +535,14 @@ enum MarkdownSelectionFormatter {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         newestCharacterOpacities: [Double],
-        chatTextSize: ChatTextSize = .default
+        chatTextSize: ChatTextAppearance = .default
     ) -> NSAttributedString? {
         guard !blocks.isEmpty, blocks.allSatisfy(\.isSelectableFlowBlock) else { return nil }
 
         // All fonts resolve through ChatTypography (issue #85): the selected
         // chat size scales ON TOP of the current Dynamic Type size, and
         // `.default` reproduces the historical fonts exactly.
-        let bodyFont = ChatTypography.font(for: .body, chatSize: chatTextSize)
+        let bodyFont = ChatTypography.font(for: .body, appearance: chatTextSize)
         let textColor = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
         let linkColor = usesAccentSurface ? UIColor.white : UIColor.link
         let result = NSMutableAttributedString()
@@ -585,7 +585,7 @@ enum MarkdownSelectionFormatter {
         linkColor: UIColor,
         usesAccentSurface: Bool,
         foregroundStyle: Color,
-        chatTextSize: ChatTextSize
+        chatTextSize: ChatTextAppearance
     ) -> NSAttributedString? {
         switch block {
         case .heading(let level, let text):
@@ -629,7 +629,7 @@ enum MarkdownSelectionFormatter {
             let quoteColor = usesAccentSurface
                 ? UIColor.white.withAlphaComponent(0.90)
                 : UIColor(foregroundStyle).withAlphaComponent(0.90)
-            let quoteFont = ChatTypography.font(for: .quote, chatSize: chatTextSize)
+            let quoteFont = ChatTypography.font(for: .quote, appearance: chatTextSize)
 
             for (index, line) in lines.enumerated() {
                 if index > 0 {
@@ -660,7 +660,7 @@ enum MarkdownSelectionFormatter {
         textColor: UIColor,
         linkColor: UIColor,
         markerColor: UIColor,
-        chatTextSize: ChatTextSize
+        chatTextSize: ChatTextAppearance
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let markerFont = bodyFont.withTraits(.traitBold)
@@ -709,7 +709,7 @@ enum MarkdownSelectionFormatter {
         return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
     }
 
-    private static func headingFont(_ level: Int, chatTextSize: ChatTextSize) -> UIFont {
+    private static func headingFont(_ level: Int, chatTextSize: ChatTextAppearance) -> UIFont {
         MarkdownHeading.font(for: level, chatTextSize: chatTextSize)
     }
 
@@ -794,8 +794,8 @@ enum MarkdownHeading {
     /// Heading font at the selected chat text size. The style mapping and
     /// bold trait live in ChatTypography so the SwiftUI block renderer and
     /// the attributed-string formatter can never diverge.
-    static func font(for level: Int, chatTextSize: ChatTextSize) -> UIFont {
-        ChatTypography.font(for: .heading(level: level), chatSize: chatTextSize)
+    static func font(for level: Int, chatTextSize: ChatTextAppearance) -> UIFont {
+        ChatTypography.font(for: .heading(level: level), appearance: chatTextSize)
     }
 
     /// Historical entry point: today's typography at the default chat size.
@@ -1247,7 +1247,7 @@ private struct InlineMarkdown: View {
     @Environment(\.chatTextSize) private var chatTextSize
 
     private var effectiveFont: UIFont {
-        font ?? ChatTypography.font(for: .body, chatSize: chatTextSize)
+        font ?? ChatTypography.font(for: .body, appearance: chatTextSize)
     }
 
     private var attributed: NSAttributedString {
@@ -1295,7 +1295,7 @@ private struct MarkdownList: View {
     private var markerFont: UIFont {
         ChatTypography.font(
             for: .body,
-            chatSize: chatTextSize,
+            appearance: chatTextSize,
             compatibleWith: UITraitCollection(
                 preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
             )
@@ -1317,13 +1317,13 @@ private struct MarkdownList: View {
                             .foregroundStyle(task.complete
                                              ? (usesAccentSurface ? Color.white : Color.conduitAccent)
                                              : (usesAccentSurface ? Color.white.opacity(0.82) : Color.secondary))
-                            .frame(width: ChatTypography.dimension(16, chatSize: chatTextSize), alignment: .trailing)
+                            .frame(width: ChatTypography.dimension(16, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
                     } else {
                         Text(ordered ? "\(index + 1)." : "•")
-                            .font(.system(size: markerFont.pointSize, weight: .semibold))
+                            .font(.system(size: markerFont.pointSize, weight: .semibold, design: chatTextSize.style.fontDesign))
                             .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.92) : Color.conduitAccent)
-                            .frame(width: ChatTypography.dimension(ordered ? 24 : 12, chatSize: chatTextSize), alignment: .trailing)
+                            .frame(width: ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
                     }
                     InlineMarkdown(
@@ -1384,7 +1384,7 @@ private struct MarkdownQuote: View {
                             source: line.text,
                             foregroundStyle: foregroundStyle.opacity(0.90),
                             usesAccentSurface: usesAccentSurface,
-                            font: ChatTypography.font(for: .quote, chatSize: chatTextSize),
+                            font: ChatTypography.font(for: .quote, appearance: chatTextSize),
                             lineSpacing: 3,
                             selectionCoordinator: selectionCoordinator,
                             selectionSegment: selectionSegments.indices.contains(index) ? selectionSegments[index] : nil,
@@ -1519,7 +1519,7 @@ enum MarkdownTableLayout {
         rows: [[String]],
         availableWidth: CGFloat,
         references: MarkdownReferenceContext = .empty,
-        chatTextSize: ChatTextSize = .default
+        chatTextSize: ChatTextAppearance = .default
     ) -> [CGFloat] {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return [] }
@@ -1544,8 +1544,8 @@ enum MarkdownTableLayout {
 
         if let cached = cache.object(forKey: key) as? [CGFloat] { return cached }
 
-        let headerFont = ChatTypography.font(for: .tableHeader, chatSize: chatTextSize)
-        let bodyFont = ChatTypography.font(for: .tableBody, chatSize: chatTextSize)
+        let headerFont = ChatTypography.font(for: .tableHeader, appearance: chatTextSize)
+        let bodyFont = ChatTypography.font(for: .tableBody, appearance: chatTextSize)
 
         var ideals = [CGFloat](repeating: 0, count: columnCount)
         for (index, header) in headers.enumerated() {
@@ -1791,7 +1791,7 @@ struct MarkdownTableRowView: View {
                 let alignment = alignments.indices.contains(index) ? alignments[index] : .leading
                 let font = ChatTypography.font(
                     for: isHeader ? .tableHeader : .tableBody,
-                    chatSize: chatTextSize
+                    appearance: chatTextSize
                 )
                 Group {
                     if selectsText {
@@ -2094,7 +2094,7 @@ struct GuardedSourceCard: View {
             }
             SelectableTextView(
                 text: String(source.prefix(2_000)),
-                font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
+                font: ChatTypography.font(for: .sourceCode, appearance: chatTextSize),
                 textColor: .label,
                 maximumNumberOfLines: 5
             )
@@ -2728,7 +2728,7 @@ struct ChatCodeBlock: View {
     /// Code content scales with the chat text size (issue #85); the
     /// language label and Copy button above stay interface chrome.
     private var codeFont: UIFont {
-        ChatTypography.font(for: .blockCode, chatSize: chatTextSize)
+        ChatTypography.font(for: .blockCode, appearance: chatTextSize)
     }
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }

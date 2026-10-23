@@ -83,6 +83,15 @@ final class GPTLiveAudioLink {
             center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.appBecameActive() }
             },
+            // In a call from Hermes, CallKit owns the session: it takes the
+            // audio away and gives it back, often with no interruption end,
+            // and off screen no app activation follows either (#1145).
+            center.addObserver(forName: .hermesCallAudioDeactivated, object: nil, queue: nil) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.interruptionBegan() }
+            },
+            center.addObserver(forName: .hermesCallAudioActivated, object: nil, queue: nil) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.callAudioActivated() }
+            },
         ]
     }
 
@@ -118,6 +127,31 @@ final class GPTLiveAudioLink {
         if !resume() { scheduleResume(after: Self.resumeRetryDelays) }
     }
 
+    /// CallKit activated a call's audio. Paused, the call resumes. Running,
+    /// the call started before CallKit's audio was on (answered in the car,
+    /// it can come after the call's wait for it): WebRTC's audio restarts
+    /// on the session CallKit activated, as Apple has CallKit apps start
+    /// their audio in `didActivate`.
+    func callAudioActivated() {
+        guard isRunning else { return }
+        if isInterrupted {
+            if !resume() { scheduleResume(after: Self.resumeRetryDelays) }
+            return
+        }
+        // The call's policy on CallKit's session first, as a resume does.
+        do {
+            try audio.reassert()
+        } catch {
+            gptLiveAudioLogger.error("GPT-Live audio couldn't reapply on the call's audio: \(LogRedaction.describing(error), privacy: .public)")
+            pause()
+            scheduleResume(after: Self.resumeRetryDelays)
+            return
+        }
+        audio.disableWebRTCAudio()
+        audio.enableWebRTCAudio()
+        HermesCallTrace.shared.note("GPT-Live audio restarted on the call's audio")
+    }
+
     /// The system may have torn the session down with the old route (a
     /// Bluetooth headset dropping) even when its category looks unchanged,
     /// so every route change reasserts the lease, as the classic capture
@@ -145,6 +179,9 @@ final class GPTLiveAudioLink {
     private func pause() {
         isInterrupted = true
         audio.disableWebRTCAudio()
+        // A call from Hermes paused off screen was silent with no sign
+        // why (#1145): its trace says so.
+        HermesCallTrace.shared.note("GPT-Live audio paused")
         onPausedChanged?(true)
     }
 
@@ -162,6 +199,7 @@ final class GPTLiveAudioLink {
         resumeTask = nil
         isInterrupted = false
         audio.enableWebRTCAudio()
+        HermesCallTrace.shared.note("GPT-Live audio back")
         onPausedChanged?(false)
         return true
     }
@@ -189,7 +227,12 @@ final class SystemGPTLiveAudioSession: GPTLiveAudioSessionControlling {
     }
 
     func acquire() throws {
-        let configuration = VoiceAudioSessionConfiguration.capture
+        // In a call from Hermes, the call's policy: WebRTC applies this one
+        // itself, and `.defaultToSpeaker` there would take the speaker off
+        // the call screen's Speaker button (see `nativeCall`).
+        let configuration = coordinator.isInNativeCall
+            ? VoiceAudioSessionConfiguration.nativeCall
+            : VoiceAudioSessionConfiguration.capture
         let webRTC = RTCAudioSessionConfiguration.webRTC()
         webRTC.category = configuration.category.rawValue
         webRTC.mode = configuration.mode.rawValue

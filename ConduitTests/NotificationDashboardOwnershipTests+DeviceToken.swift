@@ -101,6 +101,57 @@ extension NotificationDashboardOwnershipTests {
         try await waitUntil { self.savedDeviceToken() == "abcd" && service.lastError == nil }
     }
 
+    func testALaunchThatHasntHeardFromTheRelayKeepsItsLocationToken() async throws {
+        // The relay holds the location push token from the last launch.
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "deviceToken": "abcd",
+            "locationToken": "10ca",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        let service = PushNotificationService(retryDelay: .zero)
+
+        var bodies: [[String: Any]] = []
+        service.sendRegistrationUpdate = { request in
+            bodies.append(try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]))
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (Data(#"{"installation":{}}"#.utf8), response)
+        }
+        defer { service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) } }
+
+        // Before the relay's metadata arrives, background sharing hands over
+        // the token and a new push token goes: the location token is left
+        // out (kept), never cleared (notifier #287).
+        service.updateLocationToken("10ca")
+        service.didReceiveDeviceToken(Data([0x12, 0x34]))
+        try await waitUntil { self.savedDeviceToken() == "1234" }
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertFalse(bodies[0].keys.contains("location_token"))
+    }
+
+    func testTheLocationTokenChangesOnlyOnceTheRelayIsKnown() {
+        func change(_ registered: String?, _ current: String?, reported: Bool = true, relay: Bool?) -> VoIPTokenChange {
+            PushNotificationService.locationTokenChange(registered: registered, current: current, reported: reported,
+                                                        relaySendsLocates: relay)
+        }
+        // The relay not heard from yet.
+        XCTAssertEqual(change("a", nil, relay: nil), .keep)
+        XCTAssertEqual(change(nil, "a", relay: nil), .keep)
+        // The location monitor not heard from yet: its nil isn't "none".
+        XCTAssertEqual(change("a", nil, reported: false, relay: true), .keep)
+        XCTAssertEqual(change(nil, "a", relay: true), .set("a"))
+        XCTAssertEqual(change("a", "a", relay: true), .keep)
+        XCTAssertEqual(change("a", "b", relay: true), .set("b"))
+        XCTAssertEqual(change("a", nil, relay: true), .clear)
+        // A relay that doesn't send locates loses the token either way.
+        XCTAssertEqual(change("a", "a", relay: false), .clear)
+        XCTAssertEqual(change("a", nil, reported: false, relay: false), .clear)
+        XCTAssertEqual(change(nil, "a", relay: false), .keep)
+    }
+
     private func savedDeviceToken() -> String? {
         guard let saved = KeychainHelper.loadPushRegistration(),
               let json = try? JSONSerialization.jsonObject(with: saved) as? [String: Any] else { return nil }

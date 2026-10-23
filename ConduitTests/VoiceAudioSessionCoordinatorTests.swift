@@ -555,7 +555,7 @@ extension VoiceAudioSessionCoordinatorTests {
 
         XCTAssertEqual(session.categoryCalls.count, categoryChanges, "the call's category is already in place")
         XCTAssertEqual(session.speakerOverrides, overrides, "no new override, so no new route change to loop on")
-        XCTAssertEqual(session.activationCount, 2, "the session is still reactivated")
+        XCTAssertEqual(session.activationCount, 0, "CallKit keeps the call's audio active")
     }
 
     func testReapplyThatLeavesTheSpeakerOnDoesNotOverrideAgain() throws {
@@ -609,6 +609,46 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertFalse(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? true)
     }
 
+    /// Activating CallKit's session again (every acquire, every route
+    /// change's reassert) flipped the call screen's Speaker button off
+    /// while the sound stayed on the loudspeaker.
+    func testActiveCallAudioIsLeftToCallKit() throws {
+        session.reportsCurrentCategory = true
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationCapture)
+        _ = try coordinator.acquire(.conversationPlayback)
+        try coordinator.reassert()
+
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+    }
+
+    func testConversationActivatesBeforeCallKitHas() throws {
+        coordinator.configureForIncomingCall()
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.activationCount, 1, "call audio that isn't ready yet must not leave capture silent")
+    }
+
+    func testConversationActivatesAgainOnceCallKitTookTheAudioBack() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        coordinator.nativeCallAudioDeactivated()
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationPlayback)
+
+        XCTAssertEqual(session.activationCount, 1, "the next acquire activates, even with its policy already applied")
+    }
+
     func testCallEndingUnderALiveConversationRestoresItsOwnPolicy() throws {
         coordinator.configureForIncomingCall()
         _ = try coordinator.acquire(.conversationCapture)
@@ -628,6 +668,42 @@ extension VoiceAudioSessionCoordinatorTests {
 
         XCTAssertTrue(session.categoryCalls.isEmpty)
         XCTAssertTrue(session.activationCalls.isEmpty)
+    }
+
+    /// Classic voice holds nothing while Hermes thinks: the call's session
+    /// stays up, so the Speaker button's choice survives to the reply.
+    func testLastOwnerLeavingInANativeCallKeepsTheSessionAndTheSpeaker() throws {
+        session.reportsCurrentCategory = true
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        let capture = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        coordinator.release(capture)
+
+        XCTAssertEqual(session.deactivationCount, 0, "CallKit deactivates the call's session, not Conduit")
+        XCTAssertNil(coordinator.appliedPolicy)
+
+        _ = try coordinator.acquire(.conversationPlayback)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "a category change would clear the speaker override")
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+        XCTAssertEqual(session.activationCount, 0, "CallKit keeps the call's audio active")
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+    }
+
+    func testLastOwnerLeavingAfterTheCallEndedDeactivates() throws {
+        coordinator.configureForIncomingCall()
+        let capture = try coordinator.acquire(.conversationCapture)
+        coordinator.nativeCallEnded()
+        session.resetRecordings()
+
+        coordinator.release(capture)
+
+        XCTAssertEqual(session.deactivationCount, 1)
+        XCTAssertEqual(session.lastDeactivationOptions, .notifyOthersOnDeactivation)
+        XCTAssertNil(coordinator.appliedPolicy)
     }
 
     func testFailedCallCategoryStillReappliesOnTheNextTransition() throws {

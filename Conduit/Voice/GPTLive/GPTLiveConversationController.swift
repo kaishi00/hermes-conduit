@@ -92,7 +92,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// tells the model what the user tapped.
     static let watchApprovals = "Never approve, deny, or answer anything on a job's behalf. When a job asks for approval, it's on the user's Watch screen with Approve and Deny: tell them in a sentence, and Conduit tells you what they tapped. If a job needs any other input, tell the user to open it in Conduit on their iPhone."
 
-    static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation."
+    static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. When the user only adds to the running job without changing it, start the delegation \"Add to job 2:\" with its number instead, like \"Add to job 2: also ask for a quiet table\": Conduit steers the addition into the job."
 
     static let watchFollowUps = jobFollowUps + " A delegation without that start is new work."
 
@@ -870,6 +870,7 @@ final class GPTLiveConversationController: ObservableObject {
         typealias Bridge = GPTLiveDelegationBridge
         return Bridge.lookUpMarker(in: own) != nil
             || Bridge.jobMarker(in: own) != nil
+            || Bridge.addToJobMarker(in: own) != nil
             || Bridge.findChatMarker(in: own) != nil
             || Bridge.openChatMarker(in: own) != nil
             || Bridge.readChatMarker(in: own) != nil

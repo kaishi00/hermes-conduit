@@ -263,10 +263,14 @@ enum WatchAudioBridgeWire {
         /// an error message, otherwise the engine's or the host's reason.
         case ended(reason: String?)
         /// A start the host refused or a session that failed: bad_request,
-        /// busy, unavailable, rate_limited, refused, unreachable, failed or
-        /// version, with a message for the user.
+        /// busy, unavailable, rate_limited, refused, unreachable, failed,
+        /// version or streams_spent, with a message for the user.
         case error(code: String?, message: String)
     }
+
+    /// The host's refusal of a hello past the grant's streams: the call
+    /// can't reconnect on this grant, so it ends rather than retrying.
+    static let streamsSpent = "streams_spent"
 
     static func control(_ plain: Data) -> Control? {
         guard let object = try? JSONSerialization.jsonObject(with: plain) as? [String: Any],

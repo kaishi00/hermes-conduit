@@ -69,8 +69,8 @@ class CheckHermesSlashParityTests(unittest.TestCase):
         with open(os.path.join(ROOT, check.MODEL_PICKER), encoding="utf-8") as fh:
             picker = fh.read()
         native = check.parse_native_routes(app_state)
-        self.assertTrue({"steer", "queue", "stop", "new", "compress"} <= native)
-        self.assertIn("undo", check.parse_swift_string_set(app_state, "slashCommandsWithoutConduitRoute"))
+        self.assertTrue({"steer", "queue", "stop", "new", "compress", "undo", "retry"} <= native)
+        self.assertIn("save", check.parse_swift_string_set(app_state, "slashCommandsWithoutConduitRoute"))
         self.assertEqual(check.parse_swift_enum_raw_values(picker, "ModelSpeed"), {"normal", "fast", "ultrafast"})
         self.assertIn("none", check.parse_swift_enum_raw_values(picker, "ReasoningEffortLevel"))
 

@@ -190,6 +190,8 @@ final class WatchDirectCallModel: ObservableObject {
     private var linkGaveUp = false
     /// Grok's bridge streams opened on the call's grant, which takes 32.
     private var grokStreams = 0
+    /// The bridge has no streams left for this call: a rejoin can't help.
+    private var streamsSpent = false
     /// Local Live: the Hermes chat the host runs the call's turns in, which
     /// a fresh connection carries on in.
     private var localLiveChatID: String?
@@ -818,9 +820,11 @@ final class WatchDirectCallModel: ObservableObject {
                     stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
                 } else {
                     stream = nil
+                    self?.streamsSpent = true
                 }
                 let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
+                socket.onStreamsSpent = { [weak self] in self?.streamsSpent = true }
                 return socket
             }
         )
@@ -886,9 +890,11 @@ final class WatchDirectCallModel: ObservableObject {
                     stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
                 } else {
                     stream = nil
+                    self?.streamsSpent = true
                 }
                 let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
+                socket.onStreamsSpent = { [weak self] in self?.streamsSpent = true }
                 socket.onStarted = { [weak self] info in
                     if let chat = info.sessionID { self?.localLiveChatID = chat }
                 }
@@ -1118,7 +1124,9 @@ final class WatchDirectCallModel: ObservableObject {
             // Once the call has been live, a fresh session carries it on;
             // not on the bridge once its grant is over, which its bridge was.
             let grantOver = engine.usesBridge && (toolRelay.map { $0.isGone || $0.expires(within: Self.grantEndMargin) } ?? true)
-            if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
+            if streamsSpent {
+                finish(endRequestedAt == nil ? WatchCallEnd.streamsSpent : WatchCallEnd.byUser)
+            } else if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
                 waitToRejoin(message)
             } else {
                 finish(message)
@@ -2145,8 +2153,8 @@ final class WatchDirectCallModel: ObservableObject {
         jobNewsItems += news.items.count
         // Requests no longer open (answered elsewhere, timed out) leave the
         // screen.
-        let open = Set(news.openApprovals.map { "\($0.jobID)\n\($0.requestID)" })
-        approvals.removeAll { $0.grantID == relay.grantID && !open.contains("\($0.jobID)\n\($0.requestID)") }
+        let open = Set(news.openApprovals.map { WatchJobAnswer.openKey(jobID: $0.jobID, requestID: $0.requestID, fingerprint: $0.fingerprint) })
+        approvals.removeAll { $0.grantID == relay.grantID && !open.contains(WatchJobAnswer.openKey(jobID: $0.jobID, requestID: $0.requestID, fingerprint: $0.fingerprint)) }
         var shown = 0
         for item in news.items {
             jobLog.heard(jobID: item.jobID, title: item.title, sessionID: item.sessionID)
@@ -2191,7 +2199,7 @@ final class WatchDirectCallModel: ObservableObject {
         }
         let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
         resolveApproval(approval, choice: choice, byVoice: false) { [weak self] result in
-            guard let self, result["error"] == nil, result["status"] != "failed" else { return }
+            guard let self, WatchJobAnswer.answerTaken(result) else { return }
             // The model hears it without replying, so it doesn't ask again.
             let what = approve ? "approved" : "denied"
             self.quietQueue.append(.contextWhenIdle("[On their Watch, the user \(what) the command background job \"\(approval.title)\" asked to run.]"))
@@ -2311,11 +2319,8 @@ final class WatchDirectCallModel: ObservableObject {
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.answerApproval, arguments: [
-                "job_id": approval.jobID,
-                "request_id": approval.requestID,
-                "choice": choice,
-            ])
+            let outcome = await relay.run(name: WatchJobAnswer.answerApproval,
+                                          arguments: WatchJobAnswer.answerArguments(approval, choice: choice))
             guard let self else { return Self.approvalAbandoned(choice: choice, byVoice: byVoice, outcome: outcome, callEnded: true) }
             guard self.callID == id, self.isActive else {
                 return Self.approvalAbandoned(choice: choice, byVoice: byVoice, outcome: outcome, callEnded: !self.isActive)
@@ -2324,13 +2329,15 @@ final class WatchDirectCallModel: ObservableObject {
             let result: [String: String]
             var taken = false
             // Hermes answered, and turned it down (already handled, or
-            // expired): asking again can't change that.
+            // expired), or the plugin held it back because the request
+            // changed (its new card comes with news): asking again can't
+            // change that.
             var refused = false
             switch outcome {
             case .answered(let body):
                 result = WatchJobAnswer.result(body: body)
                 fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
-                taken = result["error"] == nil && result["status"] != "failed"
+                taken = WatchJobAnswer.answerTaken(result)
                 refused = !taken
             case .timedOut:
                 fields["status"] = "timedOut"
@@ -3101,6 +3108,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func reset() {
         grokStreams = 0
+        streamsSpent = false
         localLiveChatID = nil
         localLiveGreeted = false
         ring = nil

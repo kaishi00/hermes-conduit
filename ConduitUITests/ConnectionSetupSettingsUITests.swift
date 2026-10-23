@@ -229,7 +229,9 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
     /// scroll positions). Scroll until the whole row is above the bar.
     private func openConnectionSetup(_ app: XCUIApplication) {
         let row = app.buttons[Identity.settingsRow]
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        // A shard's first launch on a fresh simulator took 98 s to go idle
+        // and Settings missed 5 s (branch Nightly 2026-10-22).
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "Connection Setup row did not appear. Tree:\n\(app.debugDescription)")
         let settingsTab = app.buttons["Settings"].firstMatch
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 5), "Tab bar did not appear. Tree:\n\(app.debugDescription)")
         let barTop = settingsTab.frame.minY

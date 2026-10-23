@@ -80,7 +80,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// The background job with this number in spoken job lists.
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome
+    func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome
     /// Whether the call holds new requests for the user's OK (#451).
     var asksBeforeSending: Bool { get }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool)
@@ -113,7 +113,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
 extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome { .finished(title: "") }
+    func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome { .finished(title: "") }
     var asksBeforeSending: Bool { false }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool) {}
     func readBackText() async -> String? { await lastThreadReply() }
@@ -312,6 +312,11 @@ final class GeminiLiveToolBridge {
                         "type": "STRING",
                         "description": "The request for Hermes, in the user's words plus any context it needs.",
                     ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "For a follow-up to running chat work: add when the user only adds to it; change when they correct, pause, or cancel it. Omit when uncertain.",
+                    ],
                 ],
                 "required": ["request"],
             ],
@@ -424,6 +429,11 @@ final class GeminiLiveToolBridge {
                         "type": "STRING",
                         "description": "Only when the user asks for the job to run on another of their Hermes profiles or bots: that profile or bot name, as the user said it. Omit it otherwise.",
                     ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "For a follow-up routed to running work in this call's attached chat: add when the user only adds to it; change when they correct, pause, or cancel it. Omit when uncertain.",
+                    ],
                 ],
                 "required": ["instructions"],
             ],
@@ -462,6 +472,11 @@ final class GeminiLiveToolBridge {
                     "message": [
                         "type": "STRING",
                         "description": "The user's words about the job, as they said them.",
+                    ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "add when the user adds to the work without changing it; change when they correct, pause, or cancel it. Omit when uncertain.",
                     ],
                 ],
                 "required": ["job_id", "message"],
@@ -528,6 +543,9 @@ final class GeminiLiveToolBridge {
         let request: String
         let profile: String
         let toChat: Bool
+        /// The original follow-up intent must survive send_request so an
+        /// approved add steers rather than redirects running chat work.
+        let kind: String?
         /// The user's last words when it was held: the request's own.
         let heardUntil: Date?
     }
@@ -579,7 +597,7 @@ final class GeminiLiveToolBridge {
     private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, confirmed: Bool = false) async -> [Outgoing] {
         guard !isEnding else { return [] }
         if let target = supervisor.threadFollowUpTarget() {
-            let outcome = await supervisor.followUp(jobID: target, words: request)
+            let outcome = await supervisor.followUp(jobID: target, words: request, kind: call.arguments["kind"])
             guard !isEnding else { return [] }
             // Finished meanwhile: it is the chat's next turn after all.
             if !outcome.foundRequestFinished {
@@ -698,10 +716,15 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user hasn't answered yet. Wait for their OK, then call send_request."], scheduling: .silent)]
             }
             draft = nil
+            let approved = GeminiLiveProtocol.FunctionCall(
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments.merging(waiting.kind.map { ["kind": $0] } ?? [:]) { _, kind in kind }
+            )
             if waiting.toChat {
-                return await sendToThread(call, request: waiting.request, confirmed: true)
+                return await sendToThread(approved, request: waiting.request, confirmed: true)
             }
-            return await startBackgroundJob(call, instructions: waiting.request, profile: waiting.profile)
+            return await startBackgroundJob(approved, instructions: waiting.request, profile: waiting.profile)
         case .setAskFirst:
             let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
             guard mode == "on" || mode == "off" else {
@@ -785,7 +808,7 @@ final class GeminiLiveToolBridge {
             guard !words.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "message is required"], scheduling: .whenIdle)]
             }
-            let outcome = await supervisor.followUp(jobID: id, words: words)
+            let outcome = await supervisor.followUp(jobID: id, words: words, kind: call.arguments["kind"])
             guard !isEnding else { return [] }
             return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
         case .webSearch:
@@ -937,7 +960,7 @@ final class GeminiLiveToolBridge {
             draft = nil
             return nil
         }
-        draft = Draft(request: request, profile: profile, toChat: toChat, heardUntil: lastUserSpeechAt())
+        draft = Draft(request: request, profile: profile, toChat: toChat, kind: call.arguments["kind"], heardUntil: lastUserSpeechAt())
         // Not UI copy, so not localized.
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "waiting_for_ok",

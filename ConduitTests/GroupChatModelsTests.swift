@@ -621,6 +621,142 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomMentions.classify(token: "example.com", members: members))
     }
 
+    func testRoomMentionsLinkForMarkdownOutsideCode() {
+        let researcher = GroupDecoders.member(any([
+            "member_id": "researcher", "profile": "researcher",
+            "handle": "research-buddy", "display_name": "Research Buddy",
+        ]))!
+        let members = [researcher]
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("ask @research-buddy and @all, not @nobody", members: members),
+            "ask [@research-buddy](conduit-mention://agent) and [@all](conduit-mention://broadcast), not @nobody"
+        )
+        // Inline code and fenced blocks keep their tags as written.
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("run `@all` then @user", members: members),
+            "run `@all` then [@user](conduit-mention://human)"
+        )
+        let fenced = "```\n@all\n```\n@all"
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown(fenced, members: members),
+            "```\n@all\n```\n[@all](conduit-mention://broadcast)"
+        )
+        // A link's label can't hold another link, and a quoted fence is a fence.
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("see [the @all notes](https://example.com) @all", members: members),
+            "see [the @all notes](https://example.com) [@all](conduit-mention://broadcast)"
+        )
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("> ```\n> @all\n> ```\n@user", members: members),
+            "> ```\n> @all\n> ```\n[@user](conduit-mention://human)"
+        )
+        XCTAssertEqual(
+            GroupRoomMentions.kind(ofLink: URL(string: "conduit-mention://agent")!), .agent
+        )
+        XCTAssertNil(GroupRoomMentions.kind(ofLink: URL(string: "https://agent")!))
+    }
+
+    func testAgentMentionLinksCarryTheBotsColor() throws {
+        let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
+        let tint = CustomAccentColor(red: 0.2, green: 0.4, blue: 0.8)
+        let linked = GroupRoomMentions.linkingMarkdown("hi @scout and @all", members: [scout], tints: ["scout": tint])
+        XCTAssertEqual(
+            linked,
+            "hi [@scout](conduit-mention://agent?c=\(tint.hex.dropFirst())) and [@all](conduit-mention://broadcast)"
+        )
+        let url = try XCTUnwrap(URL(string: "conduit-mention://agent?c=\(tint.hex.dropFirst())"))
+        XCTAssertEqual(GroupRoomMentions.kind(ofLink: url), .agent)
+        XCTAssertEqual(GroupRoomMentions.tint(ofLink: url), tint)
+        XCTAssertNil(GroupRoomMentions.tint(ofLink: URL(string: "conduit-mention://broadcast")!))
+    }
+
+    func testRoomMembersTakeTheirBotsCurrentNames() {
+        let furina = GroupDecoders.member(any([
+            "member_id": "m1", "profile": "furina", "handle": "furina", "display_name": "Furina",
+        ]))!
+        let peer = GroupDecoders.member(any([
+            "member_id": "m2", "profile": "furina", "handle": "remote", "display_name": "Remote Furina",
+            "target": ["kind": "peer"],
+        ]))!
+        let stranger = GroupDecoders.member(any(["member_id": "m3", "profile": "zhongli", "display_name": "zhongli"]))!
+        var bot = BotProfile(
+            name: "furina", botTitle: "Focalors", displayName: "Furina", profileDescription: "",
+            model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+            appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        bot.previousNames = []
+        let named = GroupRoomTurns.members([furina, peer, stranger], namedBy: [bot])
+        XCTAssertEqual(named.map(GroupRoomTurns.displayName(of:)), ["Focalors", "Remote Furina", "zhongli"])
+        // Identity and routing are untouched; the old name stays known.
+        XCTAssertEqual(named[0].identityKey, furina.identityKey)
+        XCTAssertEqual(named[0].handle, "furina")
+        XCTAssertEqual(named[0].previousNames, ["Furina"])
+        XCTAssertEqual(GroupRoomTurns.members([furina], namedBy: []), [furina])
+    }
+
+    func testRecipientsLeadTheMessageOnce() {
+        let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
+        let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!
+        let members = [scout, atlas]
+        XCTAssertEqual(
+            GroupRoomRecipients.addressing("what now?", to: ["atlas", "scout"], members: members),
+            "@atlas @scout what now?"
+        )
+        // A tag already typed isn't repeated; nothing picked leaves the text.
+        XCTAssertEqual(
+            GroupRoomRecipients.addressing("@scout what now?", to: ["scout", "atlas", "ATLAS"], members: members),
+            "@atlas @scout what now?"
+        )
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: [], members: members), "hi")
+        // Files sent alone still go only to the picked bots.
+        XCTAssertEqual(GroupRoomRecipients.addressing("", to: ["scout"], members: members), "@scout")
+        // A bot that left since it was picked is dropped, not tagged.
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: ["gone", "atlas"], members: members), "@atlas hi")
+        XCTAssertEqual(GroupRoomRecipients.addressing("hi", to: ["gone"], members: members), "hi")
+        let routed = GroupRoomTurns.resolveMentions(
+            in: [GroupRoomRecipients.addressing("hi", to: ["atlas"], members: members)],
+            members: members,
+            defaultAll: true
+        )
+        XCTAssertEqual(routed, [atlas])
+        // Members without a tag, or reusing a reserved one, can't be picked.
+        let untagged = GroupDecoders.member(any(["member_id": "x", "profile": "x"]))!
+        let reserved = GroupDecoders.member(any(["member_id": "y", "profile": "y", "handle": "all"]))!
+        XCTAssertEqual(GroupRoomRecipients.pickable([scout, untagged, reserved, atlas]), [scout, atlas])
+    }
+
+    func testDefangedTagsNoLongerRoute() {
+        let researcher = GroupDecoders.member(any([
+            "member_id": "researcher", "profile": "researcher", "handle": "scout",
+        ]))!
+        let defanged = GroupRoomMentions.defanged("@scout and @all, mail a@b.c")
+        XCTAssertEqual(GroupRoomTurns.resolveMentions(in: [defanged], members: [researcher], defaultAll: false), [])
+        XCTAssertEqual(GroupRoomMentions.refanged(defanged), "@scout and @all, mail a@b.c")
+    }
+
+    func testRoomReplyQuoteRoundTripsWithoutAddressingTheQuote() {
+        let scout = GroupDecoders.member(any([
+            "member_id": "scout", "profile": "scout", "handle": "scout",
+        ]))!
+        let atlas = GroupDecoders.member(any([
+            "member_id": "atlas", "profile": "atlas", "handle": "atlas",
+        ]))!
+        let sent = GroupRoomReplyQuote.outboundText(
+            quoting: "I think @atlas knows.\nSecond line",
+            author: "Scout",
+            message: "@scout why?"
+        )
+        XCTAssertTrue(sent.hasPrefix("[Replying to Scout]\n> I think @"))
+        // Only the user's own words address anyone.
+        XCTAssertEqual(GroupRoomTurns.resolveMentions(in: [sent], members: [scout, atlas], defaultAll: false), [scout])
+        let parsed = GroupRoomReplyQuote.parse(sent)
+        XCTAssertEqual(parsed?.author, "Scout")
+        XCTAssertEqual(parsed?.quote, "I think @atlas knows.\nSecond line")
+        XCTAssertEqual(parsed?.message, "@scout why?")
+        XCTAssertNil(GroupRoomReplyQuote.parse("[Replying to Scout] no quote"))
+        XCTAssertNil(GroupRoomReplyQuote.parse("plain message"))
+    }
+
     func testRoomMentionScanNeedsALeadingBoundary() throws {
         let regex = try XCTUnwrap(GroupRoomMentions.mentionScanRegex)
         func tokens(_ text: String) -> [String] {

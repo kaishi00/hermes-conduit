@@ -636,6 +636,39 @@ extension HermesVoiceGatewayTimeoutTests {
                        WatchJobAnswer.News(items: [], running: 0, more: false, openApprovals: []))
     }
 
+    /// hermes-conduit-notifier#232 (N7-3): the card sends back the host's
+    /// fingerprint of what it showed, and an answer the host held back
+    /// because the request changed isn't taken.
+    func testWatchApprovalAnswersNameTheCommandTheCardShowed() throws {
+        let body: [String: Any] = [
+            "ok": true,
+            "news": [["job_id": "watch-1", "title": "Clean", "status": "needs_approval",
+                      "approval": ["request_id": "", "command": "ls build", "description": "List", "fingerprint": "fp-1"]]],
+            "running": 1,
+            "approvals": [["job_id": "watch-1", "request_id": "", "fingerprint": "fp-2"]],
+        ]
+        let news = try XCTUnwrap(WatchJobAnswer.news(from: body, grantID: "G1"))
+        let approval = try XCTUnwrap(news.items.first?.approval)
+        XCTAssertEqual(approval.fingerprint, "fp-1")
+        XCTAssertEqual(news.openApprovals, [.init(jobID: "watch-1", requestID: "", fingerprint: "fp-2")])
+        // A card for a request the host has replaced isn't open any more.
+        XCTAssertNotEqual(WatchJobAnswer.openKey(jobID: approval.jobID, requestID: approval.requestID, fingerprint: approval.fingerprint),
+                          WatchJobAnswer.openKey(jobID: "watch-1", requestID: "", fingerprint: "fp-2"))
+
+        let arguments = WatchJobAnswer.answerArguments(approval, choice: "once")
+        XCTAssertEqual(arguments as? [String: String], ["job_id": "watch-1", "request_id": "", "choice": "once", "fingerprint": "fp-1"])
+        // An older plugin's card has none, and none is sent.
+        var older = approval
+        older.fingerprint = ""
+        XCTAssertNil(WatchJobAnswer.answerArguments(older, choice: "deny")["fingerprint"])
+
+        XCTAssertTrue(WatchJobAnswer.answerTaken(["status": "approved"]))
+        XCTAssertTrue(WatchJobAnswer.answerTaken(["status": "not_pending"]))
+        XCTAssertFalse(WatchJobAnswer.answerTaken(["status": "changed"]))
+        XCTAssertFalse(WatchJobAnswer.answerTaken(["status": "failed"]))
+        XCTAssertFalse(WatchJobAnswer.answerTaken(["error": "Update Conduit"]))
+    }
+
     func testWatchVoiceApprovalIsDeclaredAsOnceOrDenyOnly() throws {
         let declaration = WatchJobAnswer.answerApprovalDeclaration
         XCTAssertEqual(declaration.name, "answer_approval")

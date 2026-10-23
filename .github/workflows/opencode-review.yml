@@ -132,7 +132,12 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
             | jq '{action: "opened", number, pull_request: ., repository: .base.repo, sender: .user}' > "$event"
           echo "path=$event" >> "$GITHUB_OUTPUT"
+      # A reviewer waiting on a permission prompt nobody can answer used to
+      # hold the job for the 6-hour default; opencode.json now denies every
+      # prompt it would ask, and this bounds whatever else can stall a run.
+      # The slowest reviews that finished took about 26 minutes.
       - name: Run opencode review
+        timeout-minutes: 40
         run: GITHUB_EVENT_PATH=${DISPATCH_EVENT_PATH:-$GITHUB_EVENT_PATH} GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
           DISPATCH_EVENT_PATH: ${{ steps.dispatch_event.outputs.path }}

@@ -35,6 +35,9 @@ struct ChatRowState: Equatable {
     /// The open chat's messages that have a Pulse card, by Hermes' message
     /// id (PulseFeed.swift): they show a Pulse mark that opens it.
     var pulseCards: [Int: Int] = [:]
+    /// Replies can be pinned here (#918), and the rows that are.
+    var canPinReplies = false
+    var pinnedMessageIDs: Set<String> = []
 
     init() {}
 
@@ -55,6 +58,8 @@ struct ChatRowState: Equatable {
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = RichCard.latestLiveRows(appState.messages)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
+        canPinReplies = appState.canPinReplies
+        pinnedMessageIDs = appState.openChatPinnedMessageIDs
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

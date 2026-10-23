@@ -20,6 +20,10 @@ private final class FakeHermes {
     var resumeFails = false
     var submitted: [(runtimeID: String, text: String)] = []
     var submitOutcome: PromptSubmissionOutcome = .accepted
+    /// Runtimes Hermes no longer has: a send to one answers "session not found".
+    var goneRuntimes: Set<String> = []
+    var reopened: [VoiceThreadTarget] = []
+    var retriesLanded = 0
     /// One list per poll; the last one repeats.
     var polls: [[LiveSessionStatus]] = []
     var replies: [ShortcutReply?] = []
@@ -42,7 +46,14 @@ private final class FakeHermes {
                 if self.resumeFails { throw HermesError.invalidResponse }
                 return "resumed-\(self.resumed.count)"
             },
+            reopenChat: { chat in
+                self.reopened.append(chat)
+                return "reopened-\(self.reopened.count)"
+            },
             submit: { _, runtimeID, text in
+                if self.goneRuntimes.contains(runtimeID) {
+                    throw RpcError(code: 4001, message: "session not found")
+                }
                 self.submitted.append((runtimeID, text))
                 return self.submitOutcome
             },
@@ -56,6 +67,7 @@ private final class FakeHermes {
                 guard !self.replies.isEmpty else { return nil }
                 return self.replies.count > 1 ? self.replies.removeFirst() : self.replies[0]
             },
+            retryLanded: { self.retriesLanded += 1 },
             sleep: { seconds in
                 if self.cancelsSleep { throw CancellationError() }
                 self.now = self.now.addingTimeInterval(seconds)
@@ -134,6 +146,60 @@ extension ScreenQuestionTests {
         XCTAssertEqual(hermes.created.count, 2)
         XCTAssertEqual(hermes.resumed.map(\.storedSessionID), ["stored-1", "stored-2"])
         XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["run-1", "run-2", "resumed-2"])
+    }
+
+    @MainActor
+    func testARuntimeHermesNoLongerHasIsReopenedAndTheTextSentOnce() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        // A cold launch: the chat's runtime is the one from before.
+        hermes.goneRuntimes = ["resumed-1"]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+        _ = try await sender(hermes, chats).send(shortcutRequest("three", chat: "Drop box"), deadline: deadline)
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.created.count, 1)
+        XCTAssertEqual(hermes.reopened.map(\.storedSessionID), ["stored-1"])
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one", "two", "three"])
+        XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["run-1", "reopened-1", "resumed-2"])
+        XCTAssertEqual(hermes.retriesLanded, 1, "only the retried send clears a failed try")
+        XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.storedSessionID, "stored-1")
+    }
+
+    @MainActor
+    func testARunEndedWhileTheChatReopensSendsNothing() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        hermes.goneRuntimes = ["resumed-1"]
+        var backend = hermes.backend()
+        backend.reopenChat = { _ in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return "reopened-1"
+        }
+        do {
+            _ = try await ShortcutSender(backend: backend, chats: chats)
+                .send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should end")
+        } catch is CancellationError {}
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
+    }
+
+    @MainActor
+    func testOtherSendFailuresAreNotRetried() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        var failing = hermes.backend()
+        failing.submit = { _, _, _ in throw HermesError.invalidResponse }
+        do {
+            _ = try await ShortcutSender(backend: failing, chats: chats)
+                .send(shortcutRequest("one", chat: "Drop box"), deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("the send should fail")
+        } catch {}
+        XCTAssertTrue(hermes.reopened.isEmpty)
     }
 
     @MainActor
@@ -321,4 +387,110 @@ extension ScreenQuestionTests {
         let title = ShortcutSender.title(for: String(repeating: "a", count: 100))
         XCTAssertEqual(title, "Shortcut: " + String(repeating: "a", count: 59) + "…")
     }
+
+    // MARK: - The named chat is the chat on screen
+
+    /// A cold launch with the named chat on screen: the app still has the
+    /// runtime id from before, which Hermes no longer has.
+    @MainActor
+    private func openChatAfterColdLaunch(probeFails: Bool = false) -> (AppState, ShortcutChatStore, OpenChatHermes) {
+        let suite = "ShortcutSendOpenChatTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let hermes = OpenChatHermes()
+        hermes.probeFails = probeFails
+        var operations = ChatResumeLifecycleOperations()
+        operations.openSession = { _, id, _ in
+            hermes.resumed.append(id)
+            return SessionResumeResult(sessionId: "fresh", storedSessionId: "stored-1", messages: [],
+                                       snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+        }
+        let row = SessionSummary(
+            id: "dead", storedSessionId: "stored-1", alternateIds: ["stored-1"], title: "Drop box", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        // The composer's own recovery reloads the chat list after a failed send.
+        operations.loadCatalog = { _, _ in [row] }
+        operations.refreshContext = { _, _ in }
+        operations.probeActiveSessions = { _ in
+            // A gateway without the live-session list, or a failed read.
+            if hermes.probeFails { throw HermesError.invalidResponse }
+            return hermes.resumed.isEmpty ? [] : [LiveSessionStatus(runtimeSessionId: "fresh", storedSessionId: "stored-1", status: "idle")]
+        }
+        operations.sendPrompt = { _, sessionID, text in
+            if sessionID == "dead" { throw RpcError(code: 4001, message: "session not found") }
+            hermes.sent.append((sessionID, text))
+            return .accepted
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [row]
+        appState.activeSessionId = "dead"
+        let chats = shortcutChats()
+        chats.save(VoiceThreadTarget(runtimeSessionID: "dead", storedSessionID: "stored-1", title: "Drop box", profile: "default"),
+                   named: "Drop box", profile: "default")
+        return (appState, chats, hermes)
+    }
+
+    @MainActor
+    func testReopeningTheChatOnScreenMovesTheScreenToTheNewRuntime() async throws {
+        let (appState, _, _) = openChatAfterColdLaunch()
+        let chat = VoiceThreadTarget(runtimeSessionID: "dead", storedSessionID: "stored-1", title: "Drop box")
+
+        let runtimeID = try await appState.makeShortcutSendBackend().reopenChat(chat)
+
+        XCTAssertEqual(runtimeID, "fresh")
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+        XCTAssertTrue(appState.isOpenChat(VoiceThreadTarget(runtimeSessionID: "fresh", storedSessionID: "stored-1", title: "Drop box")))
+    }
+
+    @MainActor
+    func testARunIntoTheChatOnScreenWithAGoneRuntimeLeavesNoFailedSend() async throws {
+        let (appState, chats, hermes) = openChatAfterColdLaunch()
+        var backend = appState.makeShortcutSendBackend()
+        backend.connect = { _ in true }
+
+        let outcome = try await ShortcutSender(backend: backend, chats: chats)
+            .send(ShortcutSendRequest(text: "No more mayo", chatName: "Drop box", profile: nil, waitsForAnswer: false),
+                  deadline: Date().addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.resumed, ["stored-1"])
+        XCTAssertEqual(hermes.sent.map(\.sessionID), ["fresh"], "the dead runtime never gets the text")
+        XCTAssertEqual(hermes.sent.map(\.text), ["No more mayo"])
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+        XCTAssertEqual(chats.chat(named: "Drop box", profile: "default")?.runtimeSessionID, "fresh")
+    }
+
+    @MainActor
+    func testWhenTheRuntimeCheckCantReadTheFailedTryLeavesNoErrorOnceTheRetryLands() async throws {
+        let (appState, chats, hermes) = openChatAfterColdLaunch(probeFails: true)
+        var backend = appState.makeShortcutSendBackend()
+        backend.connect = { _ in true }
+
+        let outcome = try await ShortcutSender(backend: backend, chats: chats)
+            .send(ShortcutSendRequest(text: "No more mayo", chatName: "Drop box", profile: nil, waitsForAnswer: false),
+                  deadline: Date().addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.sent.filter { $0.text == "No more mayo" }.map(\.sessionID), ["fresh"], "sent once, to the live runtime")
+        XCTAssertNil(appState.errorMessage, "the composer's failed try doesn't stay on screen")
+        XCTAssertEqual(appState.activeSessionId, "fresh")
+    }
+}
+
+/// What the open-chat tests' Hermes was asked.
+private final class OpenChatHermes {
+    var probeFails = false
+    var resumed: [String] = []
+    var sent: [(sessionID: String, text: String)] = []
 }

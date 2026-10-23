@@ -1681,8 +1681,8 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     // still take the user's corrections (#451).
     func threadFollowUpTarget() -> UUID? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { base.backgroundJob(numbered: number) }
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
-        await base.followUp(jobID: jobID, words: words)
+    func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome {
+        await base.followUp(jobID: jobID, words: words, kind: kind)
     }
 
     // Chats are found and read as on the phone, for a call whose grant

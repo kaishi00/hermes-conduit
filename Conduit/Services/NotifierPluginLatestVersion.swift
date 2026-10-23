@@ -11,6 +11,8 @@ import Foundation
 enum NotifierPluginLatestVersion {
     static let url = mainFile("plugin.yaml")
     static let channelsURL = mainFile("channels.yaml")
+    /// What each version brings (NotifierPluginChangelog).
+    static let changelogURL = mainFile("CHANGELOG.md")
 
     private static func mainFile(_ name: String) -> URL {
         guard let url = URL(string: "https://raw.githubusercontent.com/\(NotifierPluginStatus.repository)/main/\(name)") else {
@@ -25,6 +27,8 @@ enum NotifierPluginLatestVersion {
         var latest: String?
         /// The version App Store builds offer.
         var stable: String?
+        /// CHANGELOG.md, when it answered and reads.
+        var changelog: NotifierPluginChangelog?
     }
 
     static let versionKey = "conduit.notifierPlugin.latestVersion"
@@ -84,9 +88,12 @@ enum NotifierPluginLatestVersion {
         defaults.set(now, forKey: checkedKey)
         let latest = await text(at: url, fetch: fetch).flatMap(version(fromPluginYAML:))
         let stable = await text(at: channelsURL, fetch: fetch).flatMap(stableVersion(fromChannelsYAML:))
+        let changelogText = await text(at: changelogURL, fetch: fetch)
+        let changelog = changelogText.flatMap(NotifierPluginChangelog.init(markdown:))
         if let latest { defaults.set(latest, forKey: versionKey) }
         if let stable { defaults.set(stable, forKey: stableKey) }
-        return Answer(latest: latest, stable: stable)
+        if changelog != nil { defaults.set(changelogText, forKey: NotifierPluginChangelog.cacheKey) }
+        return Answer(latest: latest, stable: stable, changelog: changelog)
     }
 
     private static func text(at url: URL, fetch: (URL) async throws -> (Data, URLResponse)) async -> String? {

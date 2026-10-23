@@ -1069,6 +1069,83 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         return false
     }
 
+    /// On a Mac the app's own New Chat opens ready to type, connected or
+    /// waiting for the connection; elsewhere the keyboard stays down.
+    func testInAppNewChatFocusesItsComposerOnlyOnAMac() async throws {
+        for focuses in [true, false] {
+            let suite = "AppStateWidgetLaunchTests.new-chat-focus.\(focuses).\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c4")
+            let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+            appState.newChatFocusesComposer = focuses
+            appState.widgetSessionCreatorOverride = { _, _ in ("queued-new", "queued-new", "default") }
+            _ = appState.handleScenePhase(.active)
+            appState.showLogin = false
+            let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+            appState.connection = connection
+            appState.client = HermesClient(connection: connection, profile: "default")
+            appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+            appState.isConnecting = true
+
+            appState.startNewChat()
+            appState.isConnecting = false
+            appState.isConnected = true
+            guard await waitForLaunchCompletion(appState) else { return }
+
+            XCTAssertEqual(appState.activeSessionId, "queued-new")
+            XCTAssertEqual(appState.composerFocusRequest?.sessionID, focuses ? "queued-new" : nil)
+
+            appState.composerFocusRequest = nil
+            appState.widgetSessionCreatorOverride = { _, _ in ("direct-new", "direct-new", "default") }
+            appState.startNewChat()
+            guard await waitForNewChatStart(appState) else { return }
+
+            XCTAssertEqual(appState.activeSessionId, "direct-new")
+            XCTAssertEqual(appState.composerFocusRequest?.sessionID, focuses ? "direct-new" : nil)
+        }
+    }
+
+    /// A chat that came on screen while New Chat was being created (a
+    /// notification, a list tap) isn't the new chat, and keeps its keyboard
+    /// down even though the open chat changed.
+    func testNewChatDoesNotFocusAChatOpenedWhileItWasCreated() async throws {
+        struct CreateRefused: Error {}
+        let suite = "AppStateWidgetLaunchTests.new-chat-focus-race.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c5")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.newChatFocusesComposer = true
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.activeSessionId = "earlier-new"
+        appState.newChatOpenedSessionID = "earlier-new"
+        appState.widgetSessionCreatorOverride = { [weak appState] _, _ in
+            appState?.activeSessionId = "opened-meanwhile"
+            throw CreateRefused()
+        }
+
+        appState.startNewChat()
+        guard await waitForNewChatStart(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "opened-meanwhile")
+        XCTAssertNil(appState.composerFocusRequest)
+    }
+
+    private func waitForNewChatStart(_ appState: AppState) async -> Bool {
+        for _ in 0..<10_000 {
+            if !appState.isStartingNewChat { return true }
+            await Task.yield()
+        }
+        XCTFail("New Chat did not finish before the deterministic wait budget ended")
+        return false
+    }
+
     private func waitForLaunchCompletion(_ appState: AppState) async -> Bool {
         for _ in 0..<10_000 {
             if !appState.widgetLaunchCoordinator.hasPendingRequest { return true }

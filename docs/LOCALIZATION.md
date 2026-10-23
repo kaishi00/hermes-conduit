@@ -119,6 +119,19 @@ Wrap the literal where it is written, and compare enum cases or other
 language-independent values, never displayed text (`if case .ready =
 availability`, not `availability.title == "Ready"`).
 
+## Notifications
+
+The Notification Service Extension writes every encrypted push's words in
+the App Language (#1144), from the app's catalog (`NotificationCopy`,
+`ConduitNotificationService/NotificationLocalization.swift`). The app
+mirrors its App Language into the notifications App Group for it. The
+phone writes the chrome and the host sends the content: the title comes
+from the event type, or from the `title_label` the notifier plugin sends,
+joined with the chat's `session_title`; the body is the host's own text
+when Show previews is on, else the generic copy for the type. A plaintext
+push from a pairing without encryption still shows the relay's English
+copy.
+
 ## What CI checks
 
 `check-l10n-coverage.py` runs in the `Plan & validate` job:

@@ -106,6 +106,7 @@ struct ConnectionTimeline: Equatable {
         case let error as DashboardTicketBridgeError:
             switch error {
             case .notReady: return "dashboard page not ready"
+            case .answeredAfterSwitch: return "answered after a dashboard switch"
             case .signInRequired: return "sign-in required"
             case .requestFailed: return "request failed"
             case .http(let status, _): return "HTTP \(status)"

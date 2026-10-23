@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Conduit
 
 /// Read-only offline chat copy (#99): what is stored, how it is protected,
@@ -1652,6 +1653,90 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.streamingText, "Partial answer")
         XCTAssertEqual(appState.turnState, .running)
         XCTAssertNil(appState.pendingComposerSend, "Nothing waits on the phone")
+    }
+
+    /// #1146: a photo sent while Hermes replies goes up and is queued as
+    /// the next turn, whatever the chat's busy mode.
+    func testAttachmentsWhileRunningGoAsQueue() async throws {
+        let plain = SentPrompts()
+        let queued = SentPrompts()
+        let uploads = SentPrompts()
+        let steers = SentPrompts()
+        var operations = ChatResumeLifecycleOperations(
+            sendPrompt: { _, sessionID, text in
+                plain.prompts.append((sessionID, text))
+                return .accepted
+            },
+            steer: { _, sessionID, text in steers.prompts.append((sessionID, text)) }
+        )
+        operations.sendQueuedPrompt = { _, sessionID, text in
+            queued.prompts.append((sessionID, text))
+            return .queued
+        }
+        operations.uploadAttachment = { _, sessionID, attachment in
+            uploads.prompts.append((sessionID, attachment.name))
+            return nil
+        }
+        let (appState, _, _) = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: true))
+        let photo = Attachment(
+            id: UUID().uuidString,
+            name: "photo.jpg",
+            uri: "file:///tmp/photo.jpg",
+            mimeType: "image/jpeg",
+            kind: .image
+        )
+
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: true), .queue)
+        let sent = await appState.submitComposer(text: "What is this?", attachments: [photo])
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(uploads.prompts.map { $0.text }, ["photo.jpg"])
+        XCTAssertEqual(queued.prompts.map { $0.text }, ["What is this?"])
+        XCTAssertTrue(steers.prompts.isEmpty, "Steer takes text alone")
+        XCTAssertTrue(plain.prompts.isEmpty, "Never a plain send, which would steer or interrupt")
+        XCTAssertEqual(appState.messages.last?.attachments?.map(\.name), ["photo.jpg"])
+        XCTAssertEqual(appState.turnState, .running)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// A Hermes without Queue can't take the files mid-reply, and has no
+    /// steer or interrupt to point at for them.
+    func testAttachmentsWhileRunningOnAHermesWithoutQueueSayWhy() async throws {
+        var operations = ChatResumeLifecycleOperations(sendPrompt: { _, _, _ in .accepted })
+        operations.sendQueuedPrompt = { _, _, _ in throw HermesClient.QueueUnsupportedError() }
+        operations.uploadAttachment = { _, _, _ in nil }
+        let (appState, _, _) = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: true))
+        let photo = Attachment(
+            id: UUID().uuidString,
+            name: "photo.jpg",
+            uri: "file:///tmp/photo.jpg",
+            mimeType: "image/jpeg",
+            kind: .image
+        )
+
+        // The chat re-sync after the refusal may post its own error later.
+        var shown: [String?] = []
+        let subscription = appState.$errorMessage.dropFirst().sink { shown.append($0) }
+        defer { subscription.cancel() }
+
+        let sent = await appState.submitComposer(text: "", attachments: [photo])
+
+        XCTAssertFalse(sent, "The composer keeps the files")
+        XCTAssertTrue(shown.contains(HermesClient.QueueUnsupportedError.attachmentsMessage), "\(shown)")
     }
 
     /// A message an earlier run left waiting comes back as a draft at

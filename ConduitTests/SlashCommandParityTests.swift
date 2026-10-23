@@ -39,8 +39,8 @@ extension ComposerDraftStoreTests {
 
     func testCatalogLeavesOutCommandsHermesRefusesForConduit() {
         let names = Set(AppState.normalizedSlashCatalog(Self.catalog).map(\.name))
-        XCTAssertTrue(names.isSuperset(of: ["steer", "goal", "fast", "stop", "queue"]))
-        XCTAssertTrue(names.isDisjoint(with: ["undo", "save", "skin", "agents", "rollback", "tools", "retry"]))
+        XCTAssertTrue(names.isSuperset(of: ["steer", "goal", "fast", "stop", "queue", "undo"]))
+        XCTAssertTrue(names.isDisjoint(with: ["save", "skin", "agents", "rollback", "tools"]))
         XCTAssertEqual(
             AppState.normalizedSlashCatalog(Self.catalog).first { $0.name == "steer" }?.aliases,
             ["s"]
@@ -110,6 +110,70 @@ extension ComposerDraftStoreTests {
         )
         XCTAssertEqual(
             AppState.slashFailureNote(command: "status", error: RpcError(code: 4009, message: "session busy")),
+            "⚠️ Command failed: session busy"
+        )
+    }
+
+    func testRewindSnapshotKeepsOnlyTurnsAPersonTyped() {
+        let resume: [String: AnyCodable] = [
+            "revision": .number(9),
+            "execution_generation": .number(3),
+            "messages": .array([
+                .object(["role": .string("user"), "row_id": .number(1), "content": .string("hello")]),
+                .object(["role": .string("assistant"), "row_id": .number(2), "content": .string("hi")]),
+                .object(["role": .string("user"), "row_id": .number(3), "content": .string("old"), "archived": .bool(true)]),
+                .object(["role": .string("user"), "row_id": .number(4), "content": .string("ping"), "display_kind": .string("process_complete")]),
+                .object(["role": .string("user"), "row_id": .number(5), "content": .string("go left"), "display_kind": .string("steer")]),
+                .object(["role": .string("user"), "content": .string("not saved yet")]),
+                .object(["role": .string("user"), "row_id": .number(6), "content": .array([
+                    .object(["type": .string("text"), "text": .string("look")]),
+                    .object(["type": .string("image_url"), "image_url": .object([:])])
+                ])]),
+                .object(["role": .string("user"), "row_id": .number(7), "content": .string("summary"), "_compressed_summary": .bool(true)])
+            ])
+        ]
+        let snapshot = SessionRewindSnapshot(resume: resume)
+        XCTAssertEqual(snapshot.turns.map(\.rowID), [1, 5, 6])
+        XCTAssertEqual(snapshot.turns.map(\.text), ["hello", "go left", nil])
+        XCTAssertEqual(snapshot.revision, 9)
+        XCTAssertEqual(snapshot.generation, 3)
+    }
+
+    func testRewindReceiptReadsTheRewoundTurn() {
+        let receipt = SessionRewindReceipt(result: .object([
+            "status": .string("applied"),
+            "rewound_count": .number(4),
+            "target_message": .object(["content": .array([.object(["type": .string("text"), "text": .string("redo this")])])])
+        ]))
+        XCTAssertEqual(receipt, SessionRewindReceipt(rewoundCount: 4, text: "redo this"))
+        XCTAssertEqual(
+            SessionRewindReceipt(result: .object(["status": .string("nothing"), "rewound_count": .number(0)])).rewoundCount,
+            0
+        )
+        XCTAssertEqual(
+            SessionRewindReceipt(result: .object(["status": .string("applied")])).rewoundCount,
+            1,
+            "An applied rewind without its count still took the target back"
+        )
+        XCTAssertNil(SessionRewindSnapshot.text(of: .array([])), "No parts is not a text turn")
+    }
+
+    func testRewindRefusalsReadAsWords() {
+        XCTAssertEqual(
+            AppState.rewindFailureNote(command: "undo", error: RpcError(code: 4009, message: "session_busy", reason: "session_busy")),
+            "Wait for the reply to finish, or /stop it, then try again."
+        )
+        XCTAssertEqual(
+            AppState.rewindFailureNote(command: "undo", error: RpcError(
+                code: 4002,
+                message: "invalid_params",
+                reason: "invalid_params",
+                detail: "compacted: target user message was summarized when the session was compressed"
+            )),
+            "That message was summarized when the chat was compressed, so it can't be taken back."
+        )
+        XCTAssertEqual(
+            AppState.rewindFailureNote(command: "retry", error: RpcError(code: 4009, message: "session busy")),
             "⚠️ Command failed: session busy"
         )
     }

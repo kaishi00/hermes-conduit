@@ -123,8 +123,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
+          # HEAD^1 is the base (a PR's merge commit) or the previous main
+          # commit (a push; main takes squash merges, one commit each): the
+          # unit classes this change touches join the curated ones, so a
+          # PR's new or edited tests run before merge.
           python3 scripts/plan-tests.py smoke --repo-root . \
-            --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json
+            --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json \
+            --changed-from HEAD^1
           echo "unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
           echo "ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
 
@@ -283,7 +288,9 @@ jobs:
 
       - name: Run the curated unit smoke classes
         # One representative class per risk area (scripts/smoke-suite.json),
-        # as ONE xcodebuild invocation on the booted simulator: each
+        # plus the static source contracts and the change's own unit classes
+        # (within a time budget), as ONE xcodebuild invocation on the booted
+        # simulator: each
         # invocation has a fixed 40-100 s hosted cost before its first test
         # (2026-10-15). Every other unit class runs in the nightly unit shards
         # (nightly.yml).

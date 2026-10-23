@@ -152,6 +152,9 @@ struct SessionContentSearchHit: Identifiable, Equatable {
     let snippet: SessionSearchSnippet
     let lastActive: TimeInterval?
     let isArchived: Bool
+    /// The profile it was found in, when a search went to more than the
+    /// one in use (the Chats list's All view).
+    var profile: String? = nil
 
     var id: String { sessionID }
 
@@ -169,7 +172,9 @@ struct SessionContentSearchRow: Identifiable, Equatable {
     let hit: SessionContentSearchHit
     let session: SessionSummary?
 
-    var id: String { session?.id ?? hit.sessionID }
+    /// Another profile's match carries its profile, as All's list rows do:
+    /// two profiles can hold the same chat id.
+    var id: String { (hit.profile.map { $0.lowercased() + "\u{1F}" } ?? "") + openID }
     /// The id that opens it: the listed chat's, else Hermes' tip.
     var openID: String { session?.id ?? hit.sessionID }
 
@@ -232,24 +237,40 @@ enum SessionContentSearch {
     /// as is an archived chat the list leaves out. `known` is every chat
     /// Conduit has for the profile, for titles; `allowed`, when set, keeps
     /// only matches among those chats (an active filter).
+    ///
+    /// In All, `owner` names each chat's profile and a hit's profile is its
+    /// tag (else `activeProfile`), so a chat id two profiles share matches
+    /// only within its own profile.
     static func rows(
         hits: [SessionContentSearchHit],
         listed: [SessionSummary],
         known: [SessionSummary],
-        allowed: [SessionSummary]? = nil
+        allowed: [SessionSummary]? = nil,
+        activeProfile: String = "",
+        owner: (SessionSummary) -> String = { _ in "" }
     ) -> [SessionContentSearchRow] {
-        let listedIDs = Set(listed.flatMap(identities))
+        func scoped(_ profile: String, _ ids: [String]) -> [String] {
+            let prefix = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "\u{1F}"
+            return ids.map { prefix + $0 }
+        }
+        func keys(_ session: SessionSummary) -> [String] { scoped(owner(session), identities(of: session)) }
+        let listedIDs = Set(listed.flatMap(keys))
         var knownByID: [String: SessionSummary] = [:]
         for session in known {
-            for id in identities(of: session) where knownByID[id] == nil { knownByID[id] = session }
+            for id in keys(session) where knownByID[id] == nil { knownByID[id] = session }
         }
-        let allowedIDs = allowed.map { Set($0.flatMap(identities)) }
+        let allowedIDs = allowed.map { Set($0.flatMap(keys)) }
         var shown = Set<String>()
         return hits.compactMap { hit -> SessionContentSearchRow? in
-            guard !hit.isArchived, hit.identities.isDisjoint(with: listedIDs) else { return nil }
-            if let allowedIDs, hit.identities.isDisjoint(with: allowedIDs) { return nil }
-            let session = knownByID[hit.sessionID] ?? hit.lineageRootID.flatMap { knownByID[$0] }
-            if session?.isArchived == true { return nil }
+            let profile = hit.profile ?? activeProfile
+            let hitIDs = Set(scoped(profile, Array(hit.identities)))
+            guard hitIDs.isDisjoint(with: listedIDs) else { return nil }
+            if let allowedIDs, hitIDs.isDisjoint(with: allowedIDs) { return nil }
+            let session = scoped(profile, [hit.sessionID] + (hit.lineageRootID.map { [$0] } ?? []))
+                .lazy.compactMap { knownByID[$0] }.first
+            // A call Hermes archived at its end is still a listed row here
+            // (#1124); a chat Conduit knows as archived stays out, as before.
+            if session?.isArchived ?? hit.isArchived { return nil }
             let row = SessionContentSearchRow(hit: hit, session: session)
             guard shown.insert(row.id).inserted else { return nil }
             return row
@@ -305,6 +326,9 @@ final class SessionContentSearchModel: ObservableObject {
     struct Context {
         let scope: AnyObject
         let profile: String
+        /// More profiles to search with it (the Chats list's All view),
+        /// one request each, their hits after the profile in use's.
+        var otherProfiles: [String] = []
         let request: Requester
     }
 
@@ -325,6 +349,7 @@ final class SessionContentSearchModel: ObservableObject {
     private struct Key: Equatable {
         let query: String
         let profile: String
+        let otherProfiles: [String]
         let scope: ObjectIdentifier
     }
 
@@ -351,7 +376,12 @@ final class SessionContentSearchModel: ObservableObject {
             reset()
             return
         }
-        let key = Key(query: query, profile: context.profile, scope: ObjectIdentifier(context.scope))
+        let key = Key(
+            query: query,
+            profile: context.profile,
+            otherProfiles: context.otherProfiles,
+            scope: ObjectIdentifier(context.scope)
+        )
         guard key != currentKey else { return }
         reset()
         currentKey = key
@@ -361,6 +391,7 @@ final class SessionContentSearchModel: ObservableObject {
         generation += 1
         let generation = generation
         let path = SessionContentSearch.path(query: query, profile: context.profile)
+        let others = context.otherProfiles.map { (profile: $0, path: SessionContentSearch.path(query: query, profile: $0)) }
         let scope = context.scope
         let request = context.request
         let debounce = debounce
@@ -373,16 +404,31 @@ final class SessionContentSearchModel: ObservableObject {
             // The bridge doesn't stop a request it already sent: an answer
             // for a query the field has moved past is dropped here.
             guard self.generation == generation else { return }
-            self.isSearching = false
             switch outcome {
             case .success(let response):
-                guard let hits = SessionContentSearch.hits(from: response, query: query) else {
+                guard var hits = SessionContentSearch.hits(from: response, query: query) else {
+                    self.isSearching = false
                     self.support.markUnsupported(scope)
                     return
                 }
+                // The other profiles' hits follow; one that fails is left
+                // out, as the list's own matches still show.
+                for other in others {
+                    guard let response = try? await request(other.path) else { continue }
+                    guard self.generation == generation else { return }
+                    let found = SessionContentSearch.hits(from: response, query: query) ?? []
+                    hits += found.map { hit in
+                        var hit = hit
+                        hit.profile = other.profile
+                        return hit
+                    }
+                }
+                guard self.generation == generation else { return }
+                self.isSearching = false
                 self.hits = hits
                 self.resultsQuery = query
             case .failure(let error):
+                self.isSearching = false
                 if SessionContentSearch.isUnsupported(error) {
                     self.support.markUnsupported(scope)
                 } else {
@@ -416,8 +462,14 @@ extension AppState {
     /// connected: its bridge, the profile in use, and the bridge's
     /// `requestJSON`, as the other dashboard routes are asked.
     var sessionContentSearchContext: SessionContentSearchModel.Context? {
+        sessionContentSearchContext(acrossAllProfiles: false)
+    }
+
+    /// The same, and in All every other included profile too.
+    func sessionContentSearchContext(acrossAllProfiles: Bool) -> SessionContentSearchModel.Context? {
         guard isConnected, let bridge = dashboardTicketBridge else { return nil }
-        return SessionContentSearchModel.Context(scope: bridge, profile: activeProfile) { [weak bridge] path in
+        let others = acrossAllProfiles ? allProfilesIncluded.filter { !AppState.profilesMatch($0, activeProfile) } : []
+        return SessionContentSearchModel.Context(scope: bridge, profile: activeProfile, otherProfiles: others) { [weak bridge] path in
             guard let bridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path)
         }

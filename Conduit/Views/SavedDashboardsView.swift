@@ -23,13 +23,6 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var pendingRemoval: SavedDashboardRowModel?
     @State private var showsAddDashboard = false
 
-    struct SavedDashboardRowModel: Identifiable {
-        let dashboard: SavedDashboard
-        let isActive: Bool
-        let hasReusableAuth: Bool
-        var id: UUID { dashboard.id }
-    }
-
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(
@@ -97,39 +90,12 @@ struct SavedDashboardsSettingsDetail: View {
                 switchTo(row)
             }
         } label: {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(statusColor(row))
-                    .frame(width: 9, height: 9)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: row.dashboard.label)
-                        .font(.subheadline.weight(.semibold))
-                    Text(verbatim: row.dashboard.normalizedURL)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text(statusText(row))
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(statusColor(row))
-                }
-                Spacer(minLength: 8)
-                if row.isActive {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.conduitAccent)
-                        .accessibilityLabel(AppLocalization.string("Active dashboard"))
-                } else if isSwitchingTo == row.dashboard.id {
-                    ProgressView()
-                } else {
-                    Text(actionText(row))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.conduitAccent)
-                }
-            }
-            .padding(.vertical, 5)
+            SavedDashboardRowLabel(row: row, isSwitching: isSwitchingTo == row.dashboard.id)
+                .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(row.isActive)
+        .disabled(row.isActive || isSwitchingTo != nil)
         .accessibilityIdentifier("settings.dashboard.row")
         .contextMenu {
             Button {
@@ -146,49 +112,13 @@ struct SavedDashboardsSettingsDetail: View {
         }
     }
 
-    private func statusText(_ row: SavedDashboardRowModel) -> String {
-        if row.isActive {
-            if isSwitchingTo == row.dashboard.id || appState.isConnecting { return AppLocalization.string("Connecting…") }
-            return appState.isConnected
-                ? AppLocalization.string("Connected")
-                : AppLocalization.string("Disconnected")
-        }
-        return row.hasReusableAuth
-            ? AppLocalization.string("Saved")
-            : AppLocalization.string("Sign In required")
-    }
-
-    private func actionText(_ row: SavedDashboardRowModel) -> String {
-        row.hasReusableAuth
-            ? AppLocalization.string("Switch")
-            : AppLocalization.string("Sign In")
-    }
-
-    private func statusColor(_ row: SavedDashboardRowModel) -> Color {
-        if row.isActive {
-            if isSwitchingTo == row.dashboard.id || appState.isConnecting { return .orange }
-            return appState.isConnected ? .green : .red
-        }
-        return row.hasReusableAuth ? .secondary : .orange
-    }
-
     // MARK: - Actions
 
     /// Rebuilds the row models. Keychain reads stay off the render path —
     /// this runs on task and registry/connection changes, mirroring the
     /// SettingsHome seeding pattern.
     private func rebuildRows() {
-        rows = appState.savedDashboardRegistry.dashboards.map { dashboard in
-            let id = dashboard.id
-            let hasAuth = id == appState.activeDashboardID
-                || KeychainHelper.loadCredentials(dashboardID: id) != nil
-                || KeychainHelper.loadConnection(dashboardID: id) != nil
-            return SavedDashboardRowModel(
-                dashboard: dashboard,
-                isActive: id == appState.activeDashboardID,
-                hasReusableAuth: hasAuth
-            )
-        }
+        rows = SavedDashboardRowModel.rows(appState)
     }
 
     private func switchTo(_ row: SavedDashboardRowModel) {
@@ -219,5 +149,99 @@ struct SavedDashboardsSettingsDetail: View {
         appState.removeDashboard(row.dashboard.id)
         rebuildRows()
         if wasActive { close() }
+    }
+}
+
+/// One saved dashboard as the switch lists show it (Settings > Saved
+/// Dashboards and the Profiles sheet, #288 in the notifier repo).
+struct SavedDashboardRowModel: Identifiable {
+    let dashboard: SavedDashboard
+    let isActive: Bool
+    let hasReusableAuth: Bool
+    var id: UUID { dashboard.id }
+
+    /// Reads the Keychain: build these on task and on registry/connection
+    /// changes, not while rendering.
+    @MainActor
+    static func rows(_ appState: AppState) -> [SavedDashboardRowModel] {
+        appState.savedDashboardRegistry.dashboards.map { dashboard in
+            let id = dashboard.id
+            let hasAuth = id == appState.activeDashboardID
+                || KeychainHelper.loadCredentials(dashboardID: id) != nil
+                || KeychainHelper.loadConnection(dashboardID: id) != nil
+                || KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil
+            return SavedDashboardRowModel(
+                dashboard: dashboard,
+                isActive: id == appState.activeDashboardID,
+                hasReusableAuth: hasAuth
+            )
+        }
+    }
+}
+
+/// A saved dashboard row's contents: status dot, name, address, status
+/// line, then a checkmark (active), a spinner (switching there) or the
+/// action it takes (Switch / Sign In).
+struct SavedDashboardRowLabel: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    let row: SavedDashboardRowModel
+    let isSwitching: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: row.dashboard.label)
+                    .font(.subheadline.weight(.semibold))
+                Text(verbatim: row.dashboard.normalizedURL)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(statusText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(statusColor)
+            }
+            Spacer(minLength: 8)
+            if row.isActive {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.conduitAccent)
+                    .accessibilityLabel(AppLocalization.string("Active dashboard"))
+            } else if isSwitching {
+                ProgressView()
+            } else {
+                Text(actionText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.conduitAccent)
+            }
+        }
+    }
+
+    private var statusText: String {
+        if row.isActive {
+            if isSwitching || appState.isConnecting { return AppLocalization.string("Connecting…") }
+            return appState.isConnected
+                ? AppLocalization.string("Connected")
+                : AppLocalization.string("Disconnected")
+        }
+        return row.hasReusableAuth
+            ? AppLocalization.string("Saved")
+            : AppLocalization.string("Sign In required")
+    }
+
+    private var actionText: String {
+        row.hasReusableAuth
+            ? AppLocalization.string("Switch")
+            : AppLocalization.string("Sign In")
+    }
+
+    private var statusColor: Color {
+        if row.isActive {
+            if isSwitching || appState.isConnecting { return .orange }
+            return appState.isConnected ? .green : .red
+        }
+        return row.hasReusableAuth ? .secondary : .orange
     }
 }

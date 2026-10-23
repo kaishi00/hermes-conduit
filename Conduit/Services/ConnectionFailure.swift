@@ -128,7 +128,7 @@ enum ConnectionFailureClassifier {
             return .loginRequired
         case .http(let status, _):
             return classifyHTTPStatus(status, stage: .ticketMint)
-        case .notReady, .requestFailed, .oversizedResponse:
+        case .notReady, .answeredAfterSwitch, .requestFailed, .oversizedResponse:
             return .unexpectedServerResponse
         }
     }

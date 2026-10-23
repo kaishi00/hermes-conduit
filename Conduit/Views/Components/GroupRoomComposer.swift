@@ -22,6 +22,12 @@ struct GroupRoomComposer: View {
     let members: [GroupMember]
 
     @State private var draft = ""
+    /// A whole room message quoted with the next one (its Quote button).
+    @State private var replyReference: ComposerReplyReference?
+    /// The bots picked in the "To" row, by tag, in the order picked. The
+    /// next message is addressed to them; none picked, it goes to every bot.
+    @State private var recipients: [String] = []
+    @Environment(\.groupMemberTints) private var tints
     @State private var attachments: [Attachment] = []
     @FocusState private var isFocused: Bool
     @State private var isUploading = false
@@ -71,7 +77,7 @@ struct GroupRoomComposer: View {
     /// progress opens the controls row under the field.
     private var rests: Bool {
         !isFocused && !hasText && attachments.isEmpty && !isDictationActive && !isUploading
-            && composerError == nil
+            && composerError == nil && replyReference == nil && recipients.isEmpty
     }
 
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
@@ -101,6 +107,16 @@ struct GroupRoomComposer: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if !rests, !pickableMembers.isEmpty {
+                recipientRow
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if let replyReference {
+                replyReferenceChip(replyReference)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
             }
             if !attachments.isEmpty {
                 attachmentStrip
@@ -134,7 +150,22 @@ struct GroupRoomComposer: View {
         .padding(.bottom, 10)
         // The view is keyed by room, so appear/change bracket exactly one
         // room: the draft comes back on reopen and is kept as it changes.
-        .onAppear { draft = appState.activeRoomDraft() }
+        .onAppear {
+            draft = appState.activeRoomDraft()
+            applyQuoteRequest(appState.roomQuoteRequest)
+            applyRecipientRequest(appState.roomRecipientRequest)
+        }
+        .onChange(of: appState.roomQuoteRequest) { _, request in
+            applyQuoteRequest(request)
+        }
+        .onChange(of: appState.roomRecipientRequest) { _, request in
+            applyRecipientRequest(request)
+        }
+        // A picked bot that leaves drops off the To row, so the row shows
+        // who the next message actually goes to.
+        .onChange(of: pickableHandles) { _, handles in
+            recipients.removeAll { !handles.contains($0.lowercased()) }
+        }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
             composerError = nil
@@ -443,11 +474,27 @@ struct GroupRoomComposer: View {
 
     private func send() {
         guard canSend else { return }
-        let text = draft
+        let typed = draft
+        let reply = replyReference
+        let picked = recipients
+        // The picked bots' tags lead the user's own words, so they show in
+        // the sent bubble too. Files sent alone still carry the tags, or
+        // every bot would answer them.
+        let addressed = GroupRoomRecipients.addressing(typed, to: picked, members: members)
+        // The quoted message goes ahead of that; with nothing typed, the
+        // chip waits for the next message.
+        let quoted = reply.flatMap { reply in
+            hasText ? GroupRoomReplyQuote.outboundText(quoting: reply.text, author: reply.authorName, message: addressed) : nil
+        }
+        let text = quoted ?? addressed
+        let sendsReply = quoted != nil
+        let sendsRecipients = !picked.isEmpty
         let files = attachments
         dictation.stop()
         Haptics.light()
         isShowingFullEditor = false
+        if sendsReply { replyReference = nil }
+        if sendsRecipients { recipients = [] }
         if files.isEmpty {
             draft = ""
             Task {
@@ -457,7 +504,8 @@ struct GroupRoomComposer: View {
                 let registered = await appState.sendGroupRoomMessage(text)
                 if !registered {
                     // Anything typed since goes after the text handed back.
-                    draft = draft.isEmpty ? text : text + "\n" + draft
+                    draft = draft.isEmpty ? typed : typed + "\n" + draft
+                    restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
                 }
             }
             return
@@ -476,6 +524,7 @@ struct GroupRoomComposer: View {
                 }
                 composerError = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 Haptics.error()
+                restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
                 return
             }
             // Left for another room while the files went up: they never go
@@ -490,19 +539,180 @@ struct GroupRoomComposer: View {
             // second tap can't send them twice.
             // Typed on after it while the files went up: only the sent
             // text leaves the draft.
-            let handedOver = !text.isEmpty && draft.hasPrefix(text)
+            let handedOver = !typed.isEmpty && draft.hasPrefix(typed)
             if handedOver {
-                draft = String(draft.dropFirst(text.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                draft = String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
             let registered = await appState.sendGroupRoomMessage(message)
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {
-                if handedOver, !text.isEmpty { draft = draft.isEmpty ? text : text + "\n" + draft }
+                if handedOver, !typed.isEmpty { draft = draft.isEmpty ? typed : typed + "\n" + draft }
                 attachments = files + attachments
+                restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
             }
         }
+    }
+
+    // MARK: - Recipients
+
+    private var pickableMembers: [GroupMember] { GroupRoomRecipients.pickable(members) }
+
+    private var pickableHandles: Set<String> {
+        Set(pickableMembers.compactMap { $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+    }
+
+    /// "To" and a chip per bot: tap to address the next message to it.
+    private var recipientRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Text(AppLocalization.string("To"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                ForEach(pickableMembers, id: \.identityKey) { member in
+                    recipientChip(member)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AppLocalization.string("To"))
+        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer."))
+    }
+
+    private func recipientChip(_ member: GroupMember) -> some View {
+        let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = GroupRoomTurns.displayName(of: member)
+        let picked = recipients.contains { $0.caseInsensitiveCompare(handle) == .orderedSame }
+        let tint = tints[member.identityKey].map { Color(uiColor: $0.readableColor) } ?? Color.conduitAccent
+        return Button {
+            Haptics.selection()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                if picked {
+                    recipients.removeAll { $0.caseInsensitiveCompare(handle) == .orderedSame }
+                } else {
+                    recipients.append(handle)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                GroupMemberAvatar(member: member, name: name, size: 20)
+                Text(name)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .padding(.leading, 3)
+            .padding(.trailing, 10)
+            .padding(.vertical, 3)
+            .foregroundStyle(picked ? tint : Color.secondary)
+            .background(
+                Capsule().fill(picked ? tint.opacity(0.16) : Color.primary.opacity(0.05))
+            )
+            .overlay {
+                Capsule().strokeBorder(picked ? tint.opacity(0.55) : Color.clear, lineWidth: 1)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(name))
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+
+    private func applyRecipientRequest(_ request: RoomRecipientRequest?) {
+        guard let request else { return }
+        appState.consumeRoomRecipientRequest(request.id)
+        guard let member = pickableMembers.first(where: {
+            $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(request.handle.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+        }), let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        if !recipients.contains(where: { $0.caseInsensitiveCompare(handle) == .orderedSame }) {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                recipients.append(handle)
+            }
+        }
+        Haptics.selection()
+        isFocused = true
+    }
+
+    /// A send that didn't go through hands back its reply chip and picks,
+    /// unless new ones were chosen meanwhile.
+    private func restoreAfterDecline(reply: ComposerReplyReference?, recipients picked: [String]) {
+        if let reply, replyReference == nil { replyReference = reply }
+        if !picked.isEmpty, recipients.isEmpty { recipients = picked }
+    }
+
+    // MARK: - Quotes
+
+    /// A quote from the room (#385 in a chat): selected text joins the draft
+    /// as a `>` quote; a message's Quote button attaches the whole message
+    /// as the "Replying to…" chip. Either way the composer takes focus.
+    private func applyQuoteRequest(_ request: ComposerQuoteRequest?) {
+        guard let request else { return }
+        appState.consumeRoomQuoteRequest(request.id)
+        let announcement: String
+        switch request.content {
+        case .text(let quote):
+            dictation.yieldToTyping()
+            draft = ChatQuote.inserting(quote, into: draft)
+            announcement = AppLocalization.string("Quoted in your message")
+        case .reply(let reference):
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                replyReference = reference
+            }
+            announcement = AppLocalization.string("Replying to \(reference.authorName)")
+        }
+        Haptics.selection()
+        isFocused = true
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: NSAttributedString(
+                string: announcement,
+                attributes: [.accessibilitySpeechQueueAnnouncement: true]
+            )
+        )
+    }
+
+    private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "quote.bubble")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppLocalization.string("Replying to \(reference.authorName)"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(reference.excerpt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(AppLocalization.string("Sent with your next message"))
+            Spacer(minLength: 0)
+            Button {
+                Haptics.selection()
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                    replyReference = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(AppLocalization.string("Remove quoted reply"))
+            .accessibilityIdentifier("room.composer.reply-reference.remove")
+        }
+        .padding(.leading, 12)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     // MARK: - Dictation

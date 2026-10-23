@@ -897,6 +897,17 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         publishIfVisibleSelectionChanged(from: before)
     }
 
+    /// The reply's pin action, from any of its mounted blocks: a selection
+    /// across blocks pins its passage from the pill (#1147).
+    var pinReplyAction: ChatPinReplyAction? {
+        for id in orderedSegmentIDs {
+            if let action = (recordsByID[id]?.textView?.delegate as? SelectableTextView.Coordinator)?.pinReplyAction {
+                return action
+            }
+        }
+        return nil
+    }
+
     func copiedAttributedTextForActiveSelection() -> NSAttributedString {
         guard let activeSelectionState else { return NSAttributedString(string: "") }
         return copiedAttributedText(from: activeSelectionState.anchor, to: activeSelectionState.focus)

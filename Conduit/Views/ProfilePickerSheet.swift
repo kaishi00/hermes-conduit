@@ -10,6 +10,10 @@ struct ProfilePickerSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var isReordering = false
+    /// Saved dashboards, read on task and on registry/connection changes
+    /// (Keychain reads stay off the render path).
+    @State private var dashboardRows: [SavedDashboardRowModel] = []
+    @State private var switchingToDashboard: UUID?
 
     private var visibleProfiles: [String] {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
@@ -29,6 +33,13 @@ struct ProfilePickerSheet: View {
                 ConduitBackdrop(glowTint: appState.profileGlowTint(appState.activeProfile))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        // With two or more saved dashboards, they lead the
+                        // sheet: one tap moves to another Hermes (#288 in
+                        // the notifier repo), where it was a trip through
+                        // Settings > Saved Dashboards.
+                        if dashboardRows.count > 1 && !isReordering {
+                            dashboardsSection
+                        }
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
                                  ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
@@ -52,6 +63,7 @@ struct ProfilePickerSheet: View {
                             ProfilePickerRow(
                                 profile: profile,
                                 isReordering: isReordering,
+                                isDashboardSwitching: switchingToDashboard != nil,
                                 canMoveEarlier: index > 0,
                                 canMoveLater: index < visibleProfiles.count - 1,
                                 moveEarlier: {
@@ -74,10 +86,56 @@ struct ProfilePickerSheet: View {
             // Photos are Hermes pictures: re-read them, since Desktop or
             // another device may have changed one.
             .task { await appState.reloadBotRoster() }
+            .task { dashboardRows = SavedDashboardRowModel.rows(appState) }
+            .onChange(of: appState.savedDashboardRegistry) { _, _ in dashboardRows = SavedDashboardRowModel.rows(appState) }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
             }
+        }
+    }
+}
+
+extension ProfilePickerSheet {
+    private var dashboardsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Saved Dashboards")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 0) {
+                ForEach(dashboardRows) { row in
+                    Button {
+                        switchDashboard(to: row)
+                    } label: {
+                        SavedDashboardRowLabel(row: row, isSwitching: switchingToDashboard == row.id)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(row.isActive || switchingToDashboard != nil)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(row.isActive ? .isSelected : [])
+                    .accessibilityIdentifier("profiles.dashboard.row")
+                }
+            }
+            .conduitGlassSurface(cornerRadius: 20, tint: .clear)
+        }
+    }
+
+    private func switchDashboard(to row: SavedDashboardRowModel) {
+        guard !row.isActive, switchingToDashboard == nil else { return }
+        Haptics.medium()
+        switchingToDashboard = row.id
+        Task {
+            await appState.switchDashboard(to: row.id)
+            switchingToDashboard = nil
+            // The sheet belongs to the outgoing dashboard's bar; a switch
+            // that ends at sign-in shows the login behind it.
+            dismiss()
         }
     }
 }
@@ -96,6 +154,9 @@ private struct ProfilePickerRow: View {
     @EnvironmentObject private var appState: AppState
     let profile: String
     let isReordering: Bool
+    /// A dashboard switch from this sheet is under way: its profiles are
+    /// on their way out.
+    let isDashboardSwitching: Bool
     let canMoveEarlier: Bool
     let canMoveLater: Bool
     let moveEarlier: () -> Void
@@ -110,7 +171,7 @@ private struct ProfilePickerRow: View {
     /// card-sized selection surface behind the row must agree on when a
     /// profile can be selected.
     private var canSelect: Bool {
-        !isCurrent && !appState.isProfileSwitching && !isReordering
+        !isCurrent && !appState.isProfileSwitching && !isReordering && !isDashboardSwitching
     }
 
     var body: some View {

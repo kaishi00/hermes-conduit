@@ -578,9 +578,14 @@ enum GroupRoomMentions {
     /// name, their slug/collapsed reductions, the title's FIRST WORD
     /// ("Research Buddy" → @research), and `previous_names` gap-fill.
     static func classify(token: String, members: [GroupMember]) -> Kind? {
+        resolve(token: token, members: members)?.kind
+    }
+
+    /// `classify`, plus which member an agent mention names.
+    static func resolve(token: String, members: [GroupMember]) -> (kind: Kind, member: GroupMember?)? {
         let handle = token.lowercased()
-        if handle == "user" { return .human }
-        if handle == "all" || handle == "everyone" { return .broadcast }
+        if handle == "user" { return (.human, nil) }
+        if handle == "all" || handle == "everyone" { return (.broadcast, nil) }
         let collapsed = handle
             .replacingOccurrences(of: ".", with: "")
             .replacingOccurrences(of: "-", with: "")
@@ -590,16 +595,120 @@ enum GroupRoomMentions {
                 .compactMap { $0 } + member.previousNames
             for candidate in candidates {
                 let lowered = candidate.lowercased()
-                if lowered == handle || lowered == collapsed { return .agent }
-                if BotMentions.mentionNameForms(candidate).contains(handle) { return .agent }
+                if lowered == handle || lowered == collapsed { return (.agent, member) }
+                if BotMentions.mentionNameForms(candidate).contains(handle) { return (.agent, member) }
                 // Upstream styles the title's first word too.
                 if let firstWord = lowered.split(separator: " ").first,
-                   String(firstWord) == handle { return .agent }
+                   String(firstWord) == handle { return (.agent, member) }
             }
             let stripped = candidateCollapsedForm(candidates)
-            if !stripped.isEmpty, stripped == collapsed { return .agent }
+            if !stripped.isEmpty, stripped == collapsed { return (.agent, member) }
         }
         return nil
+    }
+
+    /// The URL scheme a recognized mention is linked with for Markdown
+    /// rendering; the host is its kind. Never opened: the text bridge
+    /// styles these links as mentions instead (see `SelectableTextView`).
+    static let linkScheme = "conduit-mention"
+
+    /// The kind a mention link names, or nil for any other URL.
+    static func kind(ofLink url: URL) -> Kind? {
+        guard url.scheme == linkScheme else { return nil }
+        switch url.host {
+        case "agent": return .agent
+        case "broadcast": return .broadcast
+        case "human": return .human
+        default: return nil
+        }
+    }
+
+    /// The color an agent mention link carries: the named bot's own, as
+    /// "#RRGGBB", so the tag matches who it names.
+    static func tint(ofLink url: URL) -> CustomAccentColor? {
+        guard kind(ofLink: url) == .agent,
+              let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "c" })?.value else { return nil }
+        return CustomAccentColor(hex: "#" + value)
+    }
+
+    /// `text` with every recognized mention turned into a mention link, so
+    /// the full Markdown renderer can style them. Code (fenced blocks and
+    /// inline spans) is left alone: a tag there is code, not a mention.
+    /// `tints` are the members' colors by `identityKey`.
+    static func linkingMarkdown(
+        _ text: String,
+        members: [GroupMember],
+        tints: [String: CustomAccentColor] = [:]
+    ) -> String {
+        guard let regex = mentionScanRegex, text.contains("@") else { return text }
+        var fence: String?
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            // A fence inside a quote is a fence too.
+            let trimmed = line
+                .replacingOccurrences(of: "^\\s*(?:>\\s?)*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            if let open = fence {
+                if trimmed.hasPrefix(open), trimmed.drop(while: { $0 == open.first }).isEmpty { fence = nil }
+                return line
+            }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fence = String(trimmed.prefix(3))
+                return line
+            }
+            guard line.contains("@") else { return line }
+            // Code spans keep their tags, and so do links' labels: a link
+            // can't hold another.
+            return HermesSessionReference.outsideInlineCode(line) { segment in
+                HermesSessionReference.outsideLinks(segment) { prose in
+                    linking(prose, regex: regex, members: members, tints: tints)
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func linking(
+        _ prose: String,
+        regex: NSRegularExpression,
+        members: [GroupMember],
+        tints: [String: CustomAccentColor]
+    ) -> String {
+        var result = prose
+        let range = NSRange(prose.startIndex..., in: prose)
+        for match in regex.matches(in: prose, range: range).reversed() {
+            guard let tokenRange = Range(match.range(at: 1), in: prose),
+                  let fullRange = Range(match.range, in: result) else { continue }
+            let token = String(prose[tokenRange])
+            guard let resolved = resolve(token: token, members: members) else { continue }
+            var target: String
+            switch resolved.kind {
+            case .agent: target = "agent"
+            case .broadcast: target = "broadcast"
+            case .human: target = "human"
+            }
+            if let key = resolved.member?.identityKey, let tint = tints[key] {
+                target += "?c=" + String(tint.hex.dropFirst())
+            }
+            result.replaceSubrange(fullRange, with: "[@\(token)](\(linkScheme)://\(target))")
+        }
+        return result
+    }
+
+    /// A word joiner after each `@` that starts a tag: the text reads the
+    /// same, but the gateway no longer routes it. Quoted text goes out like
+    /// this, so quoting a message that names a bot doesn't wake that bot.
+    static func defanged(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: "@(?=[A-Za-z0-9])",
+            with: "@\u{2060}",
+            options: .regularExpression
+        )
+    }
+
+    /// `text` without the word joiners `defanged` added, for display.
+    static func refanged(_ text: String) -> String {
+        text.replacingOccurrences(of: "@\u{2060}", with: "@")
     }
 
     /// The separator-stripped form of the member's most identity-bearing
@@ -614,6 +723,94 @@ enum GroupRoomMentions {
             if !stripped.isEmpty { return stripped }
         }
         return ""
+    }
+}
+
+// MARK: - Room recipients
+
+/// The bots picked in the room composer's "To" row, as tags ahead of the
+/// message: the gateway routes on tags in the text, and a message with none
+/// goes to every member.
+enum GroupRoomRecipients {
+    /// `text` addressed to `handles` as well: each one the text doesn't
+    /// already tag goes in front, in the order picked.
+    static func addressing(_ text: String, to handles: [String], members: [GroupMember]) -> String {
+        let tagged = Set(
+            GroupRoomTurns.resolveMentions(in: [text], members: members, defaultAll: false)
+                .compactMap { $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        )
+        // A pick for a bot that has since left the room would leave no
+        // routable tag, and an untagged message reaches every member.
+        let routable = Set(pickable(members).compactMap {
+            $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
+        var seen = Set<String>()
+        let missing = handles.filter { handle in
+            let key = handle.lowercased()
+            return routable.contains(key) && !tagged.contains(key) && seen.insert(key).inserted
+        }
+        guard !missing.isEmpty else { return text }
+        let tags = missing.map { "@" + $0 }.joined(separator: " ")
+        return text.isEmpty ? tags : tags + " " + text
+    }
+
+    /// The members the "To" row offers: those with a handle the gateway
+    /// can route, each once.
+    static func pickable(_ members: [GroupMember]) -> [GroupMember] {
+        var seen: Set<String> = ["all", "everyone", "user"]
+        return members.filter { member in
+            guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !handle.isEmpty else { return false }
+            return seen.insert(handle.lowercased()).inserted
+        }
+    }
+}
+
+/// One bot on its way to the room composer's "To" row. Each request has
+/// its own id, so picking the same bot again still lands.
+struct RoomRecipientRequest: Equatable {
+    let id = UUID()
+    let handle: String
+}
+
+// MARK: - Room replies
+
+/// A whole room message quoted into the next one, like a chat's reply
+/// envelope (`ReplyQuoteEnvelope`) but naming whose message it was, since a
+/// room has several speakers. The quote and the name are defanged, so only
+/// the user's own words address anyone:
+///
+///     [Replying to Atlas]
+///     > the earlier message
+///
+///     the user's message
+enum GroupRoomReplyQuote {
+    private static let prefix = "[Replying to "
+
+    static func outboundText(quoting text: String, author: String, message: String) -> String {
+        let quote = ChatQuote.blockquote(GroupRoomMentions.defanged(text))
+        guard !quote.isEmpty else { return message }
+        let name = GroupRoomMentions.defanged(
+            author.replacingOccurrences(of: "]", with: ")").replacingOccurrences(of: "\n", with: " ")
+        )
+        return "\(prefix)\(name)]\n\(quote)\n\n\(message)"
+    }
+
+    /// Splits a sent message back into whose message it quoted, the quote
+    /// and the user's own words, or nil when it is not a room reply.
+    static func parse(_ content: String) -> (author: String, quote: String, message: String)? {
+        guard content.hasPrefix(prefix),
+              let lineEnd = content.firstIndex(of: "\n") else { return nil }
+        let header = content[..<lineEnd]
+        guard header.hasSuffix("]") else { return nil }
+        let author = String(header.dropFirst(prefix.count).dropLast())
+        guard !author.isEmpty,
+              let body = ReplyQuoteEnvelope.parse(ReplyQuoteEnvelope.marker + String(content[lineEnd...])) else { return nil }
+        return (
+            GroupRoomMentions.refanged(author),
+            GroupRoomMentions.refanged(body.quote),
+            body.message
+        )
     }
 }
 
@@ -685,6 +882,39 @@ enum GroupRoomTurns {
     static func member(for event: GroupEvent, members: [GroupMember]) -> GroupMember? {
         guard let id = event.payload["member_id"]?.stringValue else { return nil }
         return member(withID: id, in: members)
+    }
+
+    /// The members as this gateway's own bots are named now. A room keeps
+    /// the name each bot had when it joined, so a bot renamed since (from a
+    /// long press in Conduit, or in Desktop) would keep its old name there.
+    /// Only a local member's profile is looked up; another gateway's bot
+    /// keeps the room's name. The old name stays a known name for tags.
+    static func members(_ members: [GroupMember], namedBy roster: [BotProfile]) -> [GroupMember] {
+        guard !roster.isEmpty else { return members }
+        return members.map { member in
+            let kind = member.target?["kind"]?.stringValue
+            guard kind == nil || kind == "local" else { return member }
+            guard let profile = member.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+                  let bot = roster.first(where: { $0.name.caseInsensitiveCompare(profile) == .orderedSame })
+            else { return member }
+            let label = bot.displayLabel
+            let old = member.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard label != old else { return member }
+            var renamed = GroupMember(
+                memberID: member.memberID,
+                profile: member.profile,
+                handle: member.handle,
+                displayName: label,
+                target: member.target,
+                extra: member.extra
+            )
+            // The room's name for it and the bot's own rename history.
+            renamed.previousNames = member.previousNames
+            for name in [old] + bot.previousNames where !name.isEmpty && !renamed.previousNames.contains(name) {
+                renamed.previousNames.append(name)
+            }
+            return renamed
+        }
     }
 
     /// The member's name for captions, never empty: a member with no name

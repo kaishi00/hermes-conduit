@@ -37,15 +37,21 @@ struct VoiceSettingsRoute: View {
     let voiceReplies: VoiceReplyModelSettingsModel?
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
+    let pushToTalk: VoicePushToTalkSettingsModel?
+    let chatVoiceButton: ChatVoiceButtonSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
     /// Set when the host lets Hermes change settings: shows the choice and
     /// shares a new one.
     let agentSettingsChanged: (() -> Void)?
+    /// The profile's name as the rest of the app shows it. This sheet has
+    /// no AppState, so the host resolves it.
+    let profileName: String?
 
     init(
         bridge: DashboardTicketBridge,
         profile: String,
+        profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
         voiceEnabled: Bool,
@@ -71,10 +77,13 @@ struct VoiceSettingsRoute: View {
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        pushToTalk: VoicePushToTalkSettingsModel? = nil,
+        chatVoiceButton: ChatVoiceButtonSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
     ) {
+        self.profileName = profileName
         self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
         self.gptLive = gptLive
@@ -85,6 +94,8 @@ struct VoiceSettingsRoute: View {
         self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
+        self.pushToTalk = pushToTalk
+        self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
@@ -109,6 +120,7 @@ struct VoiceSettingsRoute: View {
     var body: some View {
         VoiceSettingsView(
             service: service,
+            profileName: profileName,
             conversationController: conversationController,
             actions: actions,
             voiceEnabled: voiceEnabled,
@@ -134,6 +146,8 @@ struct VoiceSettingsRoute: View {
             voiceReplies: voiceReplies,
             wake: wake,
             lockedListening: lockedListening,
+            pushToTalk: pushToTalk,
+            chatVoiceButton: chatVoiceButton,
             speakerTalkOver: speakerTalkOver,
             callSaves: callSaves,
             agentSettingsChanged: agentSettingsChanged
@@ -218,10 +232,18 @@ struct VoiceSettingsView: View {
     var voiceReplies: VoiceReplyModelSettingsModel?
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
+    var pushToTalk: VoicePushToTalkSettingsModel?
+    var chatVoiceButton: ChatVoiceButtonSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
     var agentSettingsChanged: (() -> Void)?
+    /// The host's resolved profile name; nil falls back to the id.
+    var profileName: String?
     @State private var keepListeningWhenLocked: Bool
+    @State private var pushToTalkEnabled: Bool
+    /// The profile's own choice for the chat's big button; nil follows
+    /// the app's.
+    @State private var chatVoiceButtonOverride: ChatVoiceButtonAction?
     @State private var speakerTalkOverEnabled: Bool
     /// The phrase lists as last saved from this page. AppState doesn't
     /// publish a phrase save, so the page keeps its own copy for the
@@ -237,6 +259,7 @@ struct VoiceSettingsView: View {
 
     init(
         service: HermesVoiceConfigurationService,
+        profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions = VoiceSettingsActions(),
         voiceEnabled: Bool = false,
@@ -262,6 +285,8 @@ struct VoiceSettingsView: View {
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        pushToTalk: VoicePushToTalkSettingsModel? = nil,
+        chatVoiceButton: ChatVoiceButtonSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
@@ -276,9 +301,14 @@ struct VoiceSettingsView: View {
         self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
+        self.pushToTalk = pushToTalk
+        self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
+        self.profileName = profileName
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
+        _pushToTalkEnabled = State(initialValue: pushToTalk?.enabled ?? false)
+        _chatVoiceButtonOverride = State(initialValue: chatVoiceButton?.choice)
         _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -327,6 +357,9 @@ struct VoiceSettingsView: View {
                         voiceModeSection
                         liveModeSettings
                         conversationSection
+                        if let chatVoiceButton {
+                            chatVoiceButtonSection(chatVoiceButton)
+                        }
                         if let agentSettingsChanged {
                             AgentSettingsModeSection(onChange: agentSettingsChanged)
                         }
@@ -1152,8 +1185,51 @@ struct VoiceSettingsView: View {
 
     // MARK: Conversation
 
+    /// The big button beside this profile's chats, or the app's choice.
+    private func chatVoiceButtonSection(_ model: ChatVoiceButtonSettingsModel) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
+            Picker("Chat voice button", selection: Binding(
+                get: { chatVoiceButtonOverride },
+                set: { requested in
+                    let previous = chatVoiceButtonOverride
+                    chatVoiceButtonOverride = requested
+                    if !model.setChoice(requested) {
+                        chatVoiceButtonOverride = previous
+                    }
+                }
+            )) {
+                Text(AppLocalization.string("App setting (\(model.appChoice.title))"))
+                    .tag(ChatVoiceButtonAction?.none)
+                ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
+                    Text(action.title).tag(Optional(action))
+                }
+            }
+            .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
+            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var conversationSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Conversation"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
+            if let pushToTalk {
+                Toggle("Push to talk", isOn: Binding(
+                    get: { pushToTalkEnabled },
+                    set: { requested in
+                        let previous = pushToTalkEnabled
+                        pushToTalkEnabled = requested
+                        if !pushToTalk.setEnabled(requested) {
+                            pushToTalkEnabled = previous
+                        }
+                    }
+                ))
+                .onChange(of: pushToTalk.enabled) { _, newValue in pushToTalkEnabled = newValue }
+                .accessibilityHint("In Classic voice, hold the microphone button to speak and let go to send.")
+                Text("Classic voice: hold the microphone button while you speak and let go to send, so pauses never end your turn. Slide away before letting go to cancel. Pressing while Hermes speaks stops the reply. CarPlay, calls from Hermes and a locked phone stay hands-free.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Continuous Conversation", isOn: Binding(
                 get: { continuousConversation },
                 set: { requested in
@@ -1167,7 +1243,11 @@ struct VoiceSettingsView: View {
                 }
             ))
             .accessibilityHint("Automatically listens again after each response and keeps listening through silence. Turn off to start each listening turn manually.")
-            Text("When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
+            // With push to talk every turn starts on a press.
+            .disabled(pushToTalk != nil && pushToTalkEnabled)
+            Text(pushToTalk != nil && pushToTalkEnabled
+                ? AppLocalization.string("Not used while push to talk is on: each turn starts when you hold the button.")
+                : AppLocalization.string("When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let lockedListening {
@@ -1532,7 +1612,8 @@ struct VoiceSettingsView: View {
     }
 
     private var profileDisplayName: String {
-        service.profile == "default" ? AppLocalization.string("Default profile") : service.profile.replacingOccurrences(of: "_", with: " ").capitalized
+        if let profileName, !profileName.isEmpty { return profileName }
+        return service.profile == "default" ? AppLocalization.string("Default profile") : service.profile.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func selectedProvider(_ kind: VoiceProviderDescriptor.Kind) -> String {
@@ -2047,6 +2128,23 @@ private struct VoiceProviderFieldEditor: View {
         guard !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
     }
+}
+
+/// The big button beside this profile's chats (Chat voice button).
+struct ChatVoiceButtonSettingsModel {
+    /// The profile's own choice; nil follows the app's.
+    var choice: ChatVoiceButtonAction?
+    /// The app's choice, named on the "App setting" row.
+    var appChoice: ChatVoiceButtonAction
+    /// Returns false when the change couldn't be saved (disconnected).
+    var setChoice: (ChatVoiceButtonAction?) -> Bool
+}
+
+/// Push to talk in Classic voice (#886) on this profile.
+struct VoicePushToTalkSettingsModel {
+    var enabled: Bool
+    /// Returns false when the change couldn't be saved (disconnected).
+    var setEnabled: (Bool) -> Bool
 }
 
 /// "Keep listening when locked" for classic Voice on this profile.

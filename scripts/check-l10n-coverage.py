@@ -1125,6 +1125,8 @@ SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
 # The share extension's sources, which resolve through the app's catalog.
 SHARE_EXTENSION_DIRECTORY = "ConduitShareExtension"
+# The Notification Service Extension's sources, which do too.
+NOTIFICATION_SERVICE_DIRECTORY = "ConduitNotificationService"
 # The Apple Watch app's sources and its own Localizable catalog.
 WATCH_DIRECTORY = "ConduitWatch"
 # Each Info.plist with the InfoPlist catalog iOS reads its permission
@@ -1371,6 +1373,9 @@ def check(repo_root: str):
     share_extension = os.path.join(repo_root, SHARE_EXTENSION_DIRECTORY)
     if os.path.exists(share_extension):
         checked += scan_sites(share_extension, catalog_keys, repo_root, missing, key_problems)
+    notification_service = os.path.join(repo_root, NOTIFICATION_SERVICE_DIRECTORY)
+    if os.path.exists(notification_service):
+        checked += scan_sites(notification_service, catalog_keys, repo_root, missing, key_problems)
 
     # The Apple Watch app has its own catalog, in the same languages.
     watch = os.path.join(repo_root, WATCH_DIRECTORY)

@@ -50,9 +50,11 @@ enum LocationTiming {
 final class LocationSharingController: ObservableObject {
     static let shared = LocationSharingController()
     /// The plugin keeps location (`location-sync`); it can also ask the
-    /// phone for a fresh fix (`location-locate`). Never gated on a version.
+    /// phone for a fresh fix (`location-locate`), and let the host's other
+    /// profiles read it (`location-profiles`). Never gated on a version.
     static let capability = "location-sync"
     static let locateCapability = "location-locate"
+    static let profilesCapability = "location-profiles"
     static let maxPlaces = LocationSavedPlace.maxCount
 
     @Published private(set) var config: LocationSharedConfig
@@ -511,7 +513,7 @@ final class LocationSharingController: ObservableObject {
     /// Turns a layer on for `destination`: asks iOS for permission (When In
     /// Use, then Always for the background), binds sharing to the dashboard
     /// and profile in use when nothing is on yet, and tells the host.
-    func turnOn(_ layer: Layer, destination: LocationBinding) async throws {
+    func turnOn(_ layer: Layer, destination: LocationBinding, otherProfiles: Bool) async throws {
         guard readConfigIfNeeded() else { throw LocationSharingError.unreadable }
         let status: CLAuthorizationStatus
         switch layer {
@@ -523,9 +525,15 @@ final class LocationSharingController: ObservableObject {
         guard status == .authorizedWhenInUse || status == .authorizedAlways else {
             throw LocationSharingError.permissionDenied
         }
+        let sharesWithOtherProfiles = Self.otherProfiles(turningOn: settings, bound: config.binding, to: destination,
+                                                         offered: otherProfiles)
         if config.binding == nil || (!settings.isOn && config.binding != destination) {
             if config.binding != destination { engine.forgetHost() }
-            save { $0.binding = destination }
+            save {
+                // A choice about one host's profiles isn't another's.
+                if $0.binding != destination { $0.settings.otherProfilesChosen = false }
+                $0.binding = destination
+            }
             // Precise Location off is kept only once there's a binding.
             refreshAuthorization()
         }
@@ -534,6 +542,7 @@ final class LocationSharingController: ObservableObject {
             case .talking: config.settings.talking = true
             case .background: config.settings.background = true
             }
+            config.settings.otherProfiles = sharesWithOtherProfiles
         }
         reconfigureMonitors()
         await flush(settingsOnly: true)
@@ -572,6 +581,26 @@ final class LocationSharingController: ObservableObject {
     func setMapsHost(_ allowed: Bool) async {
         guard settings.mapsHost != allowed else { return }
         save { $0.settings.mapsHost = allowed }
+        await flush(settingsOnly: true)
+    }
+
+    /// Whether the host's other profiles read the location once a layer goes
+    /// on: the consent sheet for the first layer said so (`offered`), unless
+    /// the user already chose in Settings; a second layer keeps what the
+    /// user has. Binding to another host asks afresh.
+    static func otherProfiles(turningOn settings: LocationSharingSettings, bound: LocationBinding?,
+                              to destination: LocationBinding?, offered: Bool) -> Bool {
+        if settings.isOn { return settings.otherProfiles }
+        return (settings.otherProfilesChosen && bound == destination) ? settings.otherProfiles : offered
+    }
+
+    /// "Share with this host's other profiles".
+    func setOtherProfiles(_ allowed: Bool) async {
+        guard settings.otherProfiles != allowed else { return }
+        save {
+            $0.settings.otherProfiles = allowed
+            $0.settings.otherProfilesChosen = true
+        }
         await flush(settingsOnly: true)
     }
 

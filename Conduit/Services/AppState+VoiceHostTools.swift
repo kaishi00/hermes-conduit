@@ -67,18 +67,36 @@ extension AppState {
         if keys.contains("health"), !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
         if keys.contains("location") { Task { await LocationSharingController.shared.prepareVoiceReads() } }
         if phoneAllowed, !phoneSync.isSyncing { Task { await runPhoneSync(reason: .voiceCall) } }
+        // This iPhone's id in each store: a call reads this iPhone alone, so
+        // the host offers only what this iPhone shares.
+        var devices: [String: String] = [:]
+        if keys.contains("health"), healthSync.readStateIfNeeded() { devices["health_device"] = healthSync.state.deviceID }
+        if keys.contains("location") { devices["location_device"] = LocationSharingController.shared.config.deviceID }
+        if phoneAllowed, phoneSync.readStateIfNeeded() { devices["phone_device"] = phoneSync.state.deviceID }
         do {
             let response = try await bridge.requestJSON(
-                path: DashboardPath.withProfile(Self.voiceToolsPath, profile: activeProfile),
+                path: Self.voiceToolsListPath(profile: activeProfile, devices: devices),
                 method: "GET", body: nil, timeoutMilliseconds: 5_000)
+            // A store whose id can't be read can't be read by voice either.
             let host = VoiceHostTool.tools(from: response).filter { tool in
-                keys.contains(tool.key) || (tool.key == "phone" && phoneAllowed)
+                devices["\(tool.key)_device"] != nil && (keys.contains(tool.key) || (tool.key == "phone" && phoneAllowed))
             }
             return (host, local)
         } catch {
             Self.voiceToolsLog.info("Voice tools unavailable: \(LogRedaction.redactingURLs(HealthSyncEngine.describe(error)), privacy: .public)")
             return (nil, local)
         }
+    }
+
+    /// GET /voice-tools for `profile`, naming this iPhone's device in each
+    /// store it shares from (older plugins ignore the names).
+    static func voiceToolsListPath(profile: String, devices: [String: String]) -> String {
+        var path = DashboardPath.withProfile(voiceToolsPath, profile: profile)
+        for (name, id) in devices.sorted(by: { $0.key < $1.key }) {
+            guard !id.isEmpty, let encoded = DashboardPath.encodedQueryComponent(id) else { continue }
+            path += "\(path.contains("?") ? "&" : "?")\(name)=\(encoded)"
+        }
+        return path
     }
 
     /// The briefing line for a call on `mode` that the user hasn't let use

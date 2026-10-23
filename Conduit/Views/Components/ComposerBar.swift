@@ -63,10 +63,16 @@ struct ComposerBar: View, Equatable {
     /// Round 6: non-nil presents the Repair Connection wizard seeded from
     /// the failed connection.
     @State private var repairContext: ConnectionRepairContext?
-    /// Local, device-only input preference. Defaults to off so existing
-    /// users keep Return inserting a newline after updating.
-    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+    /// Local, device-only input preference. Until it is set, Return sends
+    /// on a Mac and inserts a newline on iPhone and iPad
+    /// (`ComposerReturnKey.sendsByDefault`).
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
+    /// The app's choice for the big button beside the chat (V2); the
+    /// profile's own, if any, is in `updates.inputs`.
+    @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
+    /// A voice message recorded from the chat's big button (V2).
+    @ObservedObject private var voiceMessages = VoiceMessageRecorder.shared
     @Namespace private var glassNamespace
     /// The dictate button types into the draft (#290, #335).
     @StateObject private var dictation = ComposerDictationService()
@@ -306,7 +312,10 @@ struct ComposerBar: View, Equatable {
         // A slash command runs on Hermes, so it waits for the chat itself
         // rather than being sent later.
         if appState.composerWaitsForChat, Self.slashPrefix(in: text) != nil { return .unavailable }
-        return appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || pendingScreenshot != nil)
+        // A waiting screenshot rides on the next new turn only, so while
+        // Hermes replies it doesn't turn the typed message into a Queue.
+        let screenshotCounts = pendingScreenshot != nil && !appState.turnState.isRunning
+        return appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || screenshotCounts)
     }
 
     /// A screenshot from Ask Hermes About Screen waiting on this chat. It
@@ -381,7 +390,8 @@ struct ComposerBar: View, Equatable {
         }
         // Resting, the voice button keeps its spot on the trailing side.
         .padding(.leading, rests ? 16 : (restsWhenIdle ? 12 : 14))
-        .padding(.trailing, rests ? 84 : (restsWhenIdle ? 12 : 14))
+        // A voice message recorded while the button is held keeps it too.
+        .padding(.trailing, rests || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
         .padding(.top, 8)
         .padding(.bottom, 10)
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
@@ -424,6 +434,22 @@ struct ComposerBar: View, Equatable {
         }
         .onChange(of: updates.inputs.focusRequest) { _, request in
             applyFocusRequest(request)
+        }
+        .onChange(of: updates.inputs.dictationRequest) { _, request in
+            applyDictationRequest(request)
+        }
+        .onChange(of: updates.inputs.activeSessionId) { _, sessionID in
+            // Another chat: a voice message for the last one is dropped.
+            if voiceMessages.isActive, !voiceMessages.isSending, voiceMessages.sessionID != sessionID {
+                voiceMessages.cancel()
+            }
+        }
+        .onChange(of: voiceMessages.errorMessage) { _, message in
+            // A recording that couldn't start or save has no bar to show
+            // its reason in; the composer's own error line does.
+            guard let message, !voiceMessages.isActive else { return }
+            appState.errorMessage = message
+            voiceMessages.errorMessage = nil
         }
         .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
@@ -484,6 +510,7 @@ struct ComposerBar: View, Equatable {
         }
         .onDisappear {
             dictation.cancel()
+            if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil
             // Dependable second hook: whether this view leaves for a room,
@@ -575,29 +602,50 @@ struct ComposerBar: View, Equatable {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // The field spans the card; every control sits in the row
-            // below it, so a long draft wraps across the full width (#335).
-            // Resting (V2), attach sits beside the field and the row waits.
-            HStack(spacing: 2) {
-                if rests {
-                    attachmentButton
-                        .padding(.leading, 6)
-                        .transition(.opacity)
+            // A voice message being recorded or previewed takes the field's
+            // place; the draft waits underneath.
+            if showsVoiceMessage {
+                VoiceMessageBar(recorder: voiceMessages) {
+                    Task { await appState.sendRecordedVoiceMessage() }
                 }
-                composerField
-                if rests && stopOnly {
-                    trailingSlot
-                        .padding(.trailing, 4)
-                        .transition(.opacity)
+                    .transition(.opacity)
+            } else {
+                // The field spans the card; every control sits in the row
+                // below it, so a long draft wraps across the full width (#335).
+                // Resting (V2), attach and dictate sit beside the field and the
+                // row waits.
+                HStack(spacing: 2) {
+                    if rests {
+                        attachmentButton
+                            .padding(.leading, 6)
+                            .transition(.opacity)
+                    }
+                    composerField
+                    // Resting, the plain mic stays in reach: dictating needs no
+                    // tap on the field first. Starting it expands the composer,
+                    // whose controls row has the same button.
+                    if rests && showsRestingDictateButton {
+                        // Spaced like the controls row, so its widened hit
+                        // shape stays clear of the field and Stop.
+                        dictateButton
+                            .padding(.leading, 6)
+                            .padding(.trailing, stopOnly ? 6 : 4)
+                            .transition(.opacity)
+                    }
+                    if rests && stopOnly {
+                        trailingSlot
+                            .padding(.trailing, 4)
+                            .transition(.opacity)
+                    }
                 }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, rests ? 6 : 0)
-            .padding(.top, rests ? 0 : 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, rests ? 6 : 0)
+                .padding(.top, rests ? 0 : 6)
 
-            if !rests {
-                controlsRow
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                if !rests {
+                    controlsRow
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .background(composerFoundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
@@ -747,7 +795,12 @@ struct ComposerBar: View, Equatable {
             || appState.activeChatTakeover != nil || composerErrorMessage != nil
         let pickerUp = showAttachmentMenu || showDocumentPicker || showCamera
         let sheetUp = appState.showModelPicker || appState.showContextSheet || appState.showAgentsSheet
-        return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp
+        return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp || showsVoiceMessage
+    }
+
+    /// This chat's voice message, recording or ready to send.
+    private var showsVoiceMessage: Bool {
+        voiceMessages.isActive && voiceMessages.sessionID == updates.inputs.activeSessionId
     }
 
     /// Steer and interrupt live in the controls row. Stop does too in the
@@ -1132,7 +1185,8 @@ struct ComposerBar: View, Equatable {
                 .contentShape(Self.controlHitShape)
         }
         .accessibilityLabel(Text("Attach"))
-        .disabled(!appState.composerIsEnabled || appState.isBusy)
+        // Open while Hermes replies: the files go as Queue (#1146).
+        .disabled(!appState.composerIsEnabled)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")
@@ -1654,6 +1708,7 @@ struct ComposerBar: View, Equatable {
             }
         }
         .accessibilityLabel(dictateTitle(isCapturing: isCapturing))
+        .accessibilityIdentifier("composer.dictate")
         .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
             : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
@@ -1803,6 +1858,41 @@ struct ComposerBar: View, Equatable {
         Task { @MainActor in
             isFocused = true
         }
+    }
+
+    /// The chat's big button asked to dictate: start, as the mic does.
+    private func applyDictationRequest(_ request: ComposerDictationRequest?) {
+        guard let request else { return }
+        appState.consumeComposerDictationRequest(request.id)
+        // Left for another chat before it applied: dropped.
+        guard request.sessionID == appState.activeSessionId else { return }
+        switch ComposerDictation.tap(
+            isCapturing: dictation.isCapturing,
+            isStarting: dictation.isStarting,
+            canDictate: canDictateFromComposer,
+            isTranscribing: dictation.isTranscribing
+        ) {
+        case .start: beginDictation()
+        // Already dictating: the button's second tap stops it.
+        case .stop: dictation.stop()
+        case .cancelStart: dictation.cancel()
+        case .nothing: break
+        }
+    }
+
+    /// The resting bar's mic, unless the big button beside the composer
+    /// already dictates.
+    private var showsRestingDictateButton: Bool {
+        Self.showsRestingDictateButton(
+            chatVoiceButton: ChatVoiceButtonAction.resolved(
+                profile: updates.inputs.chatVoiceButtonOverride,
+                app: appChatVoiceButton
+            )
+        )
+    }
+
+    static func showsRestingDictateButton(chatVoiceButton: ChatVoiceButtonAction) -> Bool {
+        chatVoiceButton != .dictation
     }
 
     /// A quote from the transcript (#385): selected text joins the draft as

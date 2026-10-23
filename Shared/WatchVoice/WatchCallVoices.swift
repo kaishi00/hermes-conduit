@@ -70,8 +70,9 @@ struct WatchPhoneContext: Codable, Equatable {
     /// The iPhone's active dashboard: whose main profile a call names when
     /// its push names no dashboard, as the iPhone does.
     var activeDashboardID: String? = nil
-    /// The accent picked in Settings > Appearance (ConduitAccentChoice raw
-    /// value), which the Watch app draws in. Nil from an older iPhone app.
+    /// The accent picked in Settings > Appearance (ConduitAccent raw value:
+    /// a preset's name or a custom "#RRGGBB"), which the Watch app draws in.
+    /// Nil from an older iPhone app.
     var accent: String? = nil
 
     static let key = "phoneContext"

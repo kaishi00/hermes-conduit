@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -9408,5 +9409,96 @@ private final class LifecycleFakeTransport: HermesWebSocketTransport {
         } else {
             earlyOpenRequests.insert(key)
         }
+    }
+}
+
+// MARK: - Quick app switches (notifier #296)
+
+extension AppStateForegroundLifecycleTests {
+    private func installFakeGrace(
+        into appState: AppState,
+        ended: @escaping (UIBackgroundTaskIdentifier) -> Void = { _ in }
+    ) {
+        appState.backgroundConnectionGrace = BackgroundConnectionGrace(
+            window: 25,
+            beginTask: { _ in UIBackgroundTaskIdentifier(rawValue: 7) },
+            endTask: ended,
+            sleep: { _ in
+                while !Task.isCancelled { try? await Task.sleep(nanoseconds: 50_000_000) }
+            }
+        )
+    }
+
+    func testLeavingWithAnOpenSocketHoldsItUntilTheAppIsBack() async {
+        var ended: [UIBackgroundTaskIdentifier] = []
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            refreshContext: { _, _ in },
+            verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [] }
+        ))
+        installFakeGrace(into: harness.appState) { ended.append($0) }
+        _ = await installConnectedClient(into: harness)
+
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.backgroundConnectionGrace.isHolding)
+        XCTAssertFalse(harness.appState.isReturningQuietly)
+
+        // Read before the foreground refresh runs: the quiet window is
+        // only a few seconds long.
+        let activation = harness.appState.handleScenePhase(.active)
+        XCTAssertFalse(harness.appState.backgroundConnectionGrace.isHolding)
+        XCTAssertEqual(ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
+        // Back from the background: a reconnect starting now stays quiet
+        // for a moment.
+        XCTAssertTrue(harness.appState.isReturningQuietly)
+        harness.appState.isConnecting = true
+        XCTAssertTrue(harness.appState.hidesBriefReconnect)
+        harness.appState.isConnecting = false
+        // The refresh itself isn't under test: an overlay dip stops it.
+        harness.appState.handleScenePhase(.inactive)
+        await activation?.value
+    }
+
+    func testAnOverlayDipIsNotAQuietReturn() async {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            refreshContext: { _, _ in },
+            verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [] }
+        ))
+        installFakeGrace(into: harness.appState)
+        _ = await installConnectedClient(into: harness)
+
+        harness.appState.handleScenePhase(.inactive)
+        XCTAssertFalse(harness.appState.backgroundConnectionGrace.isHolding)
+        let activation = harness.appState.handleScenePhase(.active)
+        XCTAssertFalse(harness.appState.isReturningQuietly)
+        harness.appState.isConnecting = true
+        XCTAssertFalse(harness.appState.hidesBriefReconnect)
+        harness.appState.isConnecting = false
+        harness.appState.handleScenePhase(.inactive)
+        await activation?.value
+    }
+
+    func testLeavingWithoutAnOpenSocketHoldsNothing() {
+        let harness = makeHarness()
+        installFakeGrace(into: harness.appState)
+        installDisconnectedClient(into: harness)
+
+        harness.appState.handleScenePhase(.background)
+        XCTAssertFalse(harness.appState.backgroundConnectionGrace.isHolding)
+    }
+
+    func testTheSocketDroppingOffScreenEndsTheHold() async {
+        var ended: [UIBackgroundTaskIdentifier] = []
+        let harness = makeHarness()
+        installFakeGrace(into: harness.appState) { ended.append($0) }
+        _ = await installConnectedClient(into: harness)
+        harness.appState.isConnected = true
+
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.appState.backgroundConnectionGrace.isHolding)
+        harness.appState.isConnected = false
+        XCTAssertFalse(harness.appState.backgroundConnectionGrace.isHolding)
+        XCTAssertEqual(ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
     }
 }

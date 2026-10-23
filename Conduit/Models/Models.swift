@@ -856,6 +856,12 @@ struct SessionSummary: Identifiable, Equatable, Codable {
     /// `session.list` RPC, hosts older than the flag).
     var isPinned: Bool? = nil
     var lineageRootId: String?
+    /// Hermes' `auto_archived` stamp: the row was archived by a sweep, not
+    /// by someone, and comes back by itself once it's used again. Nil when
+    /// the listing didn't carry it.
+    var isAutoArchived: Bool? = nil
+    /// Hermes' `end_reason` for an ended row, when the listing carried one.
+    var endReason: String? = nil
     /// The listing's one-line `preview` (the opening message), when the row
     /// carried one apart from its title. The V2 session list's second line.
     var preview: String? = nil
@@ -1036,8 +1042,10 @@ enum TurnState: Equatable {
         case .idle:
             return hasText || hasAttachments ? .send : .unavailable
         case .running:
-            // Attachments do not have steering semantics. With no typed text,
-            // keep Stop available even if an attachment was drafted earlier.
+            // Attachments go only as Queue (#1146): Hermes' steer takes
+            // text alone, and a busy prompt.submit carrying staged images
+            // always queues them as their own turn, whatever the mode.
+            if hasAttachments { return .queue }
             guard hasText else { return .stop }
             return busyInputMode.composerAction
         }
@@ -1105,8 +1113,9 @@ enum ComposerSendChoice: String, CaseIterable, Identifiable {
 
     /// The other ways to send a typed message, in menu order. While Hermes
     /// works: the busy modes the tap doesn't use, then the side agents.
-    /// While idle: the side agents. None for attachments (no busy mode or
-    /// side agent takes them) or a slash command (it runs as typed).
+    /// While idle: the side agents. None for attachments (only Queue takes
+    /// them, and the tap already does) or a slash command (it runs as
+    /// typed).
     static func choices(for action: ComposerAction, hasAttachments: Bool, isSlashCommand: Bool) -> [ComposerSendChoice] {
         guard !hasAttachments, !isSlashCommand else { return [] }
         switch action {

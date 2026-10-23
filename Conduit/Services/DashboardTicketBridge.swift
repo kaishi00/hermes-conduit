@@ -382,10 +382,14 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// a known-oversized history response without retrying the same giant
     /// transcript over another transport.
     case oversizedResponse(limit: Int)
+    /// The old dashboard accepted the request, but the answer landed after a
+    /// dashboard switch: it is not applied to the dashboard now showing.
+    /// Only what the phone keeps for the old dashboard may follow it.
+    case answeredAfterSwitch
 
     var errorDescription: String? {
         switch self {
-        case .notReady:
+        case .notReady, .answeredAfterSwitch:
             return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
         case .signInRequired:
             return AppLocalization.string("Dashboard sign-in has expired. Sign in again to continue.")
@@ -582,9 +586,9 @@ final class DashboardTicketBridgePendingRequests {
         storage.removeValue(forKey: id)
     }
 
-    func rejectAll(with error: Error) {
-        let pending = storage
-        storage.removeAll()
+    func rejectAll(with error: Error, except kept: Set<Int> = []) {
+        let pending = storage.filter { !kept.contains($0.key) }
+        storage = storage.filter { kept.contains($0.key) }
         pending.values.forEach { $0.resume(throwing: error) }
     }
 }
@@ -701,6 +705,10 @@ final class DashboardTicketBridge: NSObject {
     /// deadlines resumes the continuation — without them a single lost
     /// response hangs ticket minting, and therefore reconnecting, forever.
     private var requestDeadlines: [Int: Task<Void, Never>] = [:]
+    /// Page requests that change something on the dashboard. A switch
+    /// leaves them waiting for their answer (or deadline), so the caller
+    /// learns whether the old dashboard accepted the change.
+    private var pendingWriteIDs: Set<Int> = []
     private let readinessPollAttempts: Int
     private let readinessPollInterval: Duration
     /// Number of times `reload()` re-attempted the dashboard page load, from
@@ -856,7 +864,7 @@ final class DashboardTicketBridge: NSObject {
         // login verdict would surface .signInRequired (with its session
         // recovery) from an invalidated instance.
         didLandOnLogin = false
-        rejectPending(with: DashboardTicketBridgeError.notReady)
+        rejectPending(with: DashboardTicketBridgeError.notReady, keepingWrites: true)
     }
 
     func reload() {
@@ -1055,158 +1063,168 @@ final class DashboardTicketBridge: NSObject {
         let bodyLiteral = try body.map(javaScriptLiteral) ?? "null"
         let timeout = max(1_000, timeoutMilliseconds)
         let responseLimit = max(1_024, maxResponseBytes)
+        if method.uppercased() != "GET" { pendingWriteIDs.insert(id) }
+        defer { pendingWriteIDs.remove(id) }
 
-        let response: [String: Any] = try await withTaskCancellationHandler(operation: {
-            try await withCheckedThrowingContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume(throwing: CancellationError())
-                    return
-                }
+        let response: [String: Any]
+        do {
+            response = try await withTaskCancellationHandler(operation: {
+                try await withCheckedThrowingContinuation { continuation in
+                    guard !Task.isCancelled else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
 
-                pendingRequests.insert(continuation, for: id)
-                // Swift-side deadline: the JavaScript AbortController above
-                // only runs inside a live web view. If the content process
-                // is gone or a response message is dropped, this is the only
-                // thing that resumes the continuation — convert the silent
-                // hang into a failure the reconnect loop can retry through
-                // the reload path.
-                // A live page answers before this fires (its own 12s abort
-                // posts a response message), so expiry means the view is
-                // stalled and the request marks it for reload below.
-                let deadlineDelayMilliseconds = deadlineDelay(afterMilliseconds: timeout)
-                requestDeadlines[id] = Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(deadlineDelayMilliseconds))
-                    guard !Task.isCancelled else { return }
-                    // .notReady (not .requestFailed) so the failure funnels
-                    // into mintTicket's internal reload-retry instead of
-                    // surfacing past it — a timed-out JavaScript response is
-                    // almost always a dead or stalled web view, i.e. exactly
-                    // the state reloading revives.
-                    self?.failPendingRequest(
-                        id: id,
-                        with: DashboardTicketBridgeError.notReady,
-                        markingWebViewStalled: true
-                    )
-                }
-                let script = """
-                (async function() {
-                    let redirectedTo = null;
-                    try {
-                        const requestBody = \(bodyLiteral);
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), \(timeout));
-                        const send = (options) => fetch(\(pathLiteral), Object.assign({
-                            method: \(methodLiteral),
-                            credentials: 'include',
-                            headers: requestBody === null
-                                ? { Accept: 'application/json' }
-                                : { Accept: 'application/json', 'Content-Type': 'application/json' },
-                            body: requestBody === null ? undefined : JSON.stringify(requestBody),
-                            signal: controller.signal
-                        }, options));
-                        // Redirects are followed only within the dashboard's
-                        // origin: the browser refuses a hop to another origin
-                        // (an auth proxy's sign-in host) before sending
-                        // anything there, and fails it like a network error.
-                        // So a failure is probed once, side-effect free (GET,
-                        // no body, redirect not followed): an opaque redirect
-                        // means the request was sent off the dashboard, which
-                        // is sign-in. Anything else keeps the first error.
-                        let response;
+                    pendingRequests.insert(continuation, for: id)
+                    // Swift-side deadline: the JavaScript AbortController above
+                    // only runs inside a live web view. If the content process
+                    // is gone or a response message is dropped, this is the only
+                    // thing that resumes the continuation — convert the silent
+                    // hang into a failure the reconnect loop can retry through
+                    // the reload path.
+                    // A live page answers before this fires (its own 12s abort
+                    // posts a response message), so expiry means the view is
+                    // stalled and the request marks it for reload below.
+                    let deadlineDelayMilliseconds = deadlineDelay(afterMilliseconds: timeout)
+                    requestDeadlines[id] = Task { [weak self] in
+                        try? await Task.sleep(for: .milliseconds(deadlineDelayMilliseconds))
+                        guard !Task.isCancelled else { return }
+                        // .notReady (not .requestFailed) so the failure funnels
+                        // into mintTicket's internal reload-retry instead of
+                        // surfacing past it — a timed-out JavaScript response is
+                        // almost always a dead or stalled web view, i.e. exactly
+                        // the state reloading revives.
+                        self?.failPendingRequest(
+                            id: id,
+                            with: DashboardTicketBridgeError.notReady,
+                            markingWebViewStalled: true
+                        )
+                    }
+                    let script = """
+                    (async function() {
+                        let redirectedTo = null;
                         try {
-                            response = await send({ redirect: 'follow', mode: 'same-origin' });
-                        } catch (error) {
-                            if (controller.signal.aborted) throw error;
-                            let probe = null;
+                            const requestBody = \(bodyLiteral);
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), \(timeout));
+                            const send = (options) => fetch(\(pathLiteral), Object.assign({
+                                method: \(methodLiteral),
+                                credentials: 'include',
+                                headers: requestBody === null
+                                    ? { Accept: 'application/json' }
+                                    : { Accept: 'application/json', 'Content-Type': 'application/json' },
+                                body: requestBody === null ? undefined : JSON.stringify(requestBody),
+                                signal: controller.signal
+                            }, options));
+                            // Redirects are followed only within the dashboard's
+                            // origin: the browser refuses a hop to another origin
+                            // (an auth proxy's sign-in host) before sending
+                            // anything there, and fails it like a network error.
+                            // So a failure is probed once, side-effect free (GET,
+                            // no body, redirect not followed): an opaque redirect
+                            // means the request was sent off the dashboard, which
+                            // is sign-in. Anything else keeps the first error.
+                            let response;
                             try {
-                                probe = await send({
-                                    method: 'GET', body: undefined,
-                                    headers: { Accept: 'application/json' },
-                                    redirect: 'manual', cache: 'no-store'
-                                });
-                            } catch (_) {}
-                            if (!probe || probe.type !== 'opaqueredirect') throw error;
+                                response = await send({ redirect: 'follow', mode: 'same-origin' });
+                            } catch (error) {
+                                if (controller.signal.aborted) throw error;
+                                let probe = null;
+                                try {
+                                    probe = await send({
+                                        method: 'GET', body: undefined,
+                                        headers: { Accept: 'application/json' },
+                                        redirect: 'manual', cache: 'no-store'
+                                    });
+                                } catch (_) {}
+                                if (!probe || probe.type !== 'opaqueredirect') throw error;
+                                clearTimeout(timeout);
+                                window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
+                                    type: 'dashboard-response', id: \(id), ok: false, status: 0,
+                                    signInRedirect: true, error: String(error)
+                                }));
+                                return;
+                            }
+                            if (response.redirected) redirectedTo = response.url;
+                            const declaredLength = Number(response.headers.get('content-length') || 0);
+                            if (declaredLength > \(responseLimit)) throw new Error('response_too_large');
+                            const text = await (async function() {
+                                if (!response.body || typeof response.body.getReader !== 'function') {
+                                    if (!Number.isFinite(declaredLength) || declaredLength <= 0) throw new Error('bounded_response_unavailable');
+                                    return response.text();
+                                }
+                                const reader = response.body.getReader();
+                                const decoder = new TextDecoder();
+                                let totalBytes = 0;
+                                let result = '';
+                                while (true) {
+                                    const chunk = await reader.read();
+                                    if (chunk.done) {
+                                        result += decoder.decode();
+                                        return result;
+                                    }
+                                    totalBytes += chunk.value.byteLength;
+                                    if (totalBytes > \(responseLimit)) {
+                                        await reader.cancel();
+                                        throw new Error('response_too_large');
+                                    }
+                                    result += decoder.decode(chunk.value, { stream: true });
+                                }
+                            })();
                             clearTimeout(timeout);
+                            let body = null;
+                            try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+                            const normalizedBody = Array.isArray(body) ? { _array: body } : (body && typeof body === 'object' ? body : { value: body });
+                            window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
+                                type: 'dashboard-response', id: \(id), ok: response.ok,
+                                status: response.status, body: normalizedBody, redirectedTo: redirectedTo,
+                                error: !response.ok && body && typeof body === 'object'
+                                    ? (body.error || body.message || body.detail) : null
+                            }));
+                        } catch (error) {
                             window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
                                 type: 'dashboard-response', id: \(id), ok: false, status: 0,
-                                signInRedirect: true, error: String(error)
+                                redirectedTo: redirectedTo, error: String(error)
                             }));
-                            return;
                         }
-                        if (response.redirected) redirectedTo = response.url;
-                        const declaredLength = Number(response.headers.get('content-length') || 0);
-                        if (declaredLength > \(responseLimit)) throw new Error('response_too_large');
-                        const text = await (async function() {
-                            if (!response.body || typeof response.body.getReader !== 'function') {
-                                if (!Number.isFinite(declaredLength) || declaredLength <= 0) throw new Error('bounded_response_unavailable');
-                                return response.text();
-                            }
-                            const reader = response.body.getReader();
-                            const decoder = new TextDecoder();
-                            let totalBytes = 0;
-                            let result = '';
-                            while (true) {
-                                const chunk = await reader.read();
-                                if (chunk.done) {
-                                    result += decoder.decode();
-                                    return result;
-                                }
-                                totalBytes += chunk.value.byteLength;
-                                if (totalBytes > \(responseLimit)) {
-                                    await reader.cancel();
-                                    throw new Error('response_too_large');
-                                }
-                                result += decoder.decode(chunk.value, { stream: true });
-                            }
-                        })();
-                        clearTimeout(timeout);
-                        let body = null;
-                        try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
-                        const normalizedBody = Array.isArray(body) ? { _array: body } : (body && typeof body === 'object' ? body : { value: body });
-                        window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
-                            type: 'dashboard-response', id: \(id), ok: response.ok,
-                            status: response.status, body: normalizedBody, redirectedTo: redirectedTo,
-                            error: !response.ok && body && typeof body === 'object'
-                                ? (body.error || body.message || body.detail) : null
-                        }));
-                    } catch (error) {
-                        window.webkit.messageHandlers['dashboard-response'].postMessage(JSON.stringify({
-                            type: 'dashboard-response', id: \(id), ok: false, status: 0,
-                            redirectedTo: redirectedTo, error: String(error)
-                        }));
+                    })();
+                    true;
+                    """
+                    // Runs in the isolated world, where the header scripts
+                    // attach the proxy headers to this fetch.
+                    webView.evaluateJavaScript(script, in: nil, in: DashboardScriptWorld.world) { [weak self] result in
+                        guard let self else { return }
+                        guard case .failure = result else { return }
+                        // The injected IIFE funnels every JS-level failure into
+                        // the message channel, so a completion error means the
+                        // engine never ran the script — a dead or stalled view.
+                        // Always route it onto the typed stall path (which
+                        // reloads the page and flushes sibling requests) instead
+                        // of letting an untyped NSError escape past mintTicket's
+                        // retry funnel. A request whose continuation was already
+                        // resumed (e.g. by reload) no-ops here.
+                        self.failPendingRequest(
+                            id: id,
+                            with: DashboardTicketBridgeError.notReady,
+                            markingWebViewStalled: true
+                        )
                     }
-                })();
-                true;
-                """
-                // Runs in the isolated world, where the header scripts
-                // attach the proxy headers to this fetch.
-                webView.evaluateJavaScript(script, in: nil, in: DashboardScriptWorld.world) { [weak self] result in
-                    guard let self else { return }
-                    guard case .failure = result else { return }
-                    // The injected IIFE funnels every JS-level failure into
-                    // the message channel, so a completion error means the
-                    // engine never ran the script — a dead or stalled view.
-                    // Always route it onto the typed stall path (which
-                    // reloads the page and flushes sibling requests) instead
-                    // of letting an untyped NSError escape past mintTicket's
-                    // retry funnel. A request whose continuation was already
-                    // resumed (e.g. by reload) no-ops here.
-                    self.failPendingRequest(
-                        id: id,
-                        with: DashboardTicketBridgeError.notReady,
-                        markingWebViewStalled: true
-                    )
                 }
-            }
-        }, onCancel: {
-            Task { @MainActor [weak self] in
-                self?.cancelPendingRequest(id: id)
-            }
-        })
+            }, onCancel: {
+                Task { @MainActor [weak self] in
+                    self?.cancelPendingRequest(id: id)
+                }
+            })
+        } catch where isInvalidated && !(error is CancellationError) {
+            // A write's failure (or deadline) after a switch: nothing the old
+            // dashboard did reaches the dashboard now showing.
+            throw DashboardTicketBridgeError.notReady
+        }
         // An answer already on its way when the bridge was invalidated (a
         // dashboard switch) is the old dashboard's: its caller would apply
-        // it to the dashboard now showing.
-        guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
+        // it to the dashboard now showing. The request only returns when
+        // the dashboard accepted it.
+        guard !isInvalidated else { throw DashboardTicketBridgeError.answeredAfterSwitch }
         return response
     }
 
@@ -1304,10 +1322,13 @@ final class DashboardTicketBridge: NSObject {
         onPageEvent?("Dashboard page loading")
     }
 
-    private func rejectPending(with error: Error) {
-        for deadline in requestDeadlines.values { deadline.cancel() }
-        requestDeadlines.removeAll()
-        pendingRequests.rejectAll(with: error)
+    private func rejectPending(with error: Error, keepingWrites: Bool = false) {
+        let kept = keepingWrites ? pendingWriteIDs : []
+        for (id, deadline) in requestDeadlines where !kept.contains(id) {
+            deadline.cancel()
+            requestDeadlines.removeValue(forKey: id)
+        }
+        pendingRequests.rejectAll(with: error, except: kept)
     }
 }
 

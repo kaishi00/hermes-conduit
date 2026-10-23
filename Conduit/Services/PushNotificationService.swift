@@ -109,10 +109,24 @@ enum NotificationDashboardOwnership {
         targetDashboardID: UUID?,
         hasMalformedDashboardID: Bool,
         activeDashboardID: UUID?,
-        savedDashboardIDs: [UUID]
+        savedDashboardIDs: [UUID],
+        targetGatewayID: String? = nil,
+        activeDashboardGatewayIDs: Set<String> = []
     ) -> Outcome {
         if hasMalformedDashboardID {
             return .failClosed(.unrecognizedDashboard)
+        }
+        // The push came from the host the active dashboard is signed in to:
+        // that host told this dashboard its relay gateway id, over its
+        // signed-in connection and only for a pairing with this iPhone. A
+        // pairing bound to another saved entry for the same host (or to one
+        // since removed) still belongs here, and switching away would tear
+        // down the connection that can open it. The id comes from the relay
+        // stamp, as `dashboard_id` does: the relay is already trusted to
+        // route.
+        if activeDashboardID != nil, let targetGatewayID,
+           activeDashboardGatewayIDs.contains(targetGatewayID) {
+            return .route
         }
         if let id = targetDashboardID {
             if id == activeDashboardID { return .route }
@@ -243,7 +257,12 @@ struct NotificationDashboardPairings: Equatable {
     /// legacy pairing as the selected dashboard's, and "your other
     /// dashboards" would be relative to nothing. Nothing is listed or counted.
     @MainActor
-    init(gateways: [RelayMetaInfo.Gateway], activeDashboardID: UUID?, savedDashboardIDs: [UUID]) {
+    init(
+        gateways: [RelayMetaInfo.Gateway],
+        activeDashboardID: UUID?,
+        savedDashboardIDs: [UUID],
+        activeDashboardGatewayIDs: Set<String> = []
+    ) {
         guard activeDashboardID != nil else { return }
         for gateway in gateways {
             // Parsed like a push payload's `dashboard_id`: blank is unscoped,
@@ -254,7 +273,9 @@ struct NotificationDashboardPairings: Equatable {
                 targetDashboardID: dashboardID,
                 hasMalformedDashboardID: !raw.isEmpty && dashboardID == nil,
                 activeDashboardID: activeDashboardID,
-                savedDashboardIDs: savedDashboardIDs
+                savedDashboardIDs: savedDashboardIDs,
+                targetGatewayID: gateway.id,
+                activeDashboardGatewayIDs: activeDashboardGatewayIDs
             )
             switch outcome {
             case .route:
@@ -471,6 +492,9 @@ final class PushNotificationService: ObservableObject {
     /// The last metadata fetch didn't get an answer (`relayMeta` keeps the
     /// one before, if any).
     @Published private(set) var relayMetaFetchFailed = false
+    /// The relay answered 404 to `/v1/meta` (it predates version reporting),
+    /// so returning to the front doesn't ask it again.
+    private var relayLacksMetaRoute = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
     @Published private(set) var relayNotice: String?
@@ -646,7 +670,12 @@ final class PushNotificationService: ObservableObject {
         return identifier
     }
 
-    private var registration: StoredRegistration?
+    private var registration: StoredRegistration? {
+        didSet { relayHasLocationToken = registration?.locationToken != nil }
+    }
+    /// The relay holds this iPhone's location push token, so Hermes can ask
+    /// it for a fresh position (Settings > Location says when not, #287).
+    @Published private(set) var relayHasLocationToken = false
     /// Sends a registration update to the relay; tests answer it instead.
     var sendRegistrationUpdate: @MainActor (URLRequest) async throws -> (Data, URLResponse) = {
         try await URLSession.shared.data(for: $0)
@@ -713,10 +742,13 @@ final class PushNotificationService: ObservableObject {
                 saved.relayURL = configuredRelayURL.absoluteString
             }
             registration = saved
+            // didSet doesn't run in init.
+            relayHasLocationToken = saved.locationToken != nil
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
         NotificationSharedSettings.showPreviews = preferences.showPreviews
+        NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
         refreshEncryptionState()
     }
 
@@ -904,6 +936,7 @@ final class PushNotificationService: ObservableObject {
         guard let registration else {
             relayMeta = nil
             relayMetaFetchFailed = false
+            relayLacksMetaRoute = false
             isFetchingMeta = false
             return
         }
@@ -931,6 +964,7 @@ final class PushNotificationService: ObservableObject {
         }
         relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
         relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        relayLacksMetaRoute = status == 404
         // The relay answers again: an update that failed while it couldn't
         // (a cleared location token) goes now. Nothing changed, nothing sent.
         if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
@@ -1299,6 +1333,7 @@ final class PushNotificationService: ObservableObject {
         removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
         relayMetaFetchFailed = false
+        relayLacksMetaRoute = false
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
@@ -1416,12 +1451,14 @@ final class PushNotificationService: ObservableObject {
     /// (plugin 0.24+): a new code from the relay goes to the plugin over
     /// the signed-in dashboard connection, and the plugin claims it, the
     /// same claim `hermes conduit-push pair` makes. `request` reaches that
-    /// dashboard.
+    /// dashboard. Returns the relay gateway id the plugin claimed, when it
+    /// says.
+    @discardableResult
     func pairProfile(
         _ profile: String,
         dashboardID: UUID,
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
-    ) async throws {
+    ) async throws -> String? {
         // Not mid-move: a code from the old relay is useless once the move lands.
         guard !isWorking, !isPairing, let registration else { throw DashboardTicketBridgeError.notReady }
         // One pairing at a time: the button and the automatic one can't
@@ -1447,6 +1484,7 @@ final class PushNotificationService: ObservableObject {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
         }
         await refreshMeta()
+        return response["gateway_id"] as? String
     }
 
     func didReceiveDeviceToken(_ tokenData: Data) {
@@ -1501,10 +1539,28 @@ final class PushNotificationService: ObservableObject {
             becomeActiveObserver.token = NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.requestCurrentDeviceToken() }
+                MainActor.assumeIsolated {
+                    self?.requestCurrentDeviceToken()
+                    self?.refreshMetaIfUnknown()
+                }
             }
         }
         requestCurrentDeviceToken()
+        refreshMetaIfUnknown()
+    }
+
+    /// Whether the relay sends locates decides what happens to the location
+    /// push token, so it's asked at launch (and on return while unknown),
+    /// not only when Settings > Notifications opens (notifier #287). Once
+    /// known, a token change an earlier update failed to send goes again
+    /// (nothing is sent when nothing changed).
+    private func refreshMetaIfUnknown() {
+        guard registration != nil, !isFetchingMeta, !relayLacksMetaRoute else { return }
+        guard relayMeta == nil else {
+            queueRegistrationUpdate()
+            return
+        }
+        Task { await refreshMeta() }
     }
 
     /// Removed with the service (only tests make more than one).
@@ -1726,17 +1782,39 @@ final class PushNotificationService: ObservableObject {
     /// The APNs token for the agent's on-demand locate (the Location Push
     /// extension), while background location sharing is on; nil otherwise.
     private(set) var locationToken: String?
+    /// LocationBackgroundMonitor has said this launch whether there is a
+    /// token: until then a nil `locationToken` means "not known yet".
+    private var locationTokenReported = false
 
     /// LocationBackgroundMonitor has a new location push token, or none.
     func updateLocationToken(_ token: String?) {
-        guard token != locationToken else { return }
+        guard token != locationToken || !locationTokenReported else { return }
         locationToken = token
+        locationTokenReported = true
         queueRegistrationUpdate()
     }
 
     /// The token the relay gets: only one whose relay says it sends locates.
     private var relayLocationToken: String? {
         relayMeta?.supportsLocationPush == true ? locationToken : nil
+    }
+
+    /// What an update does to the relay's location token. Until this launch
+    /// has heard whether the relay sends locates, and whether there is a
+    /// token (`reported`), nothing: neither is kept across launches, and
+    /// taking "not heard yet" for "no" cleared the token at every launch, so
+    /// locates found none (notifier #287).
+    nonisolated static func locationTokenChange(registered: String?, current: String?, reported: Bool,
+                                                relaySendsLocates: Bool?) -> VoIPTokenChange {
+        guard let relaySendsLocates, reported || !relaySendsLocates else { return .keep }
+        let wanted = relaySendsLocates ? current : nil
+        if registered == wanted { return .keep }
+        return wanted.map(VoIPTokenChange.set) ?? .clear
+    }
+
+    private func locationTokenChange(registered: String?) -> VoIPTokenChange {
+        Self.locationTokenChange(registered: registered, current: locationToken, reported: locationTokenReported,
+                                 relaySendsLocates: relayMeta?.supportsLocationPush)
     }
 
     private var ringingWatchVoIPToken: String? {
@@ -1770,7 +1848,7 @@ final class PushNotificationService: ObservableObject {
             let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
             guard tokenChanged || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
-                    || registration.locationToken != relayLocationToken else { return }
+                    || locationTokenChange(registered: registration.locationToken) != .keep else { return }
             try await updateRegistration(deviceToken: deviceToken)
         }
         registrationUpdate = update
@@ -2197,7 +2275,7 @@ final class PushNotificationService: ObservableObject {
         let watchToken = ringingWatchVoIPToken
         let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
         let locationToken = relayLocationToken
-        let locationChange: VoIPTokenChange = registration.locationToken == locationToken ? .keep : (locationToken.map(VoIPTokenChange.set) ?? .clear)
+        let locationChange = locationTokenChange(registered: registration.locationToken)
         // What the relay keeps once this lands, rather than whatever the
         // preferences are by then.
         let sentPreferences = preferences

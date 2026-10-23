@@ -259,7 +259,9 @@ final class CarPlayVoiceCoordinator {
     /// Test seam: how long after another app gives the audio back a
     /// classic conversation it interrupted listens again.
     var resumeAfterInterruptionDelay: Duration = .milliseconds(800)
-    private var interruptionObserver: NSObjectProtocol?
+    /// Whether an answered Hermes call's own voice runs. Test seam.
+    var hermesCallVoiceRunning: @MainActor () -> Bool = { HermesNativeCalls.shared.isCallVoiceRunning }
+    private var interruptionObservers: [NSObjectProtocol] = []
 
     internal init() {}
 
@@ -386,8 +388,8 @@ final class CarPlayVoiceCoordinator {
         appState.releaseCarPlayGrokLive()
         // Up to ~30 MB of orb frames at 3x; drawn again on the next connect.
         CarPlayVoiceArtwork.clearCache()
-        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
-        interruptionObserver = nil
+        interruptionObservers.forEach(NotificationCenter.default.removeObserver)
+        interruptionObservers = []
     }
 
     // MARK: - Audio interruptions
@@ -396,8 +398,8 @@ final class CarPlayVoiceCoordinator {
     /// conversation ("Audio was interrupted"); in the car it listens again
     /// once the audio comes back, rather than waiting on a tap.
     private func observeAudioInterruptions() {
-        guard interruptionObserver == nil else { return }
-        interruptionObserver = NotificationCenter.default.addObserver(
+        guard interruptionObservers.isEmpty else { return }
+        let ended = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] notification in
             guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
@@ -410,6 +412,19 @@ final class CarPlayVoiceCoordinator {
             guard options.contains(.shouldResume) else { return }
             MainActor.assumeIsolated { self?.audioInterruptionEnded() }
         }
+        // In a call from Hermes CallKit gives the audio back instead, and
+        // the system's interruption end isn't promised (#1145).
+        let callAudio = NotificationCenter.default.addObserver(
+            forName: .hermesCallAudioActivated, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                // Only the call's own voice: one from before the call would
+                // take its place.
+                guard let self, self.hermesCallVoiceRunning() else { return }
+                self.audioInterruptionEnded()
+            }
+        }
+        interruptionObservers = [ended, callAudio]
     }
 
     /// The audio came back: a classic conversation the interruption ended

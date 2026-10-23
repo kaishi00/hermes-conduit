@@ -149,23 +149,27 @@ struct SelectableTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
+        context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
         let hostView = makeUIViewForTests(
             coordinator: context.coordinator,
             drawsUntilTouched: drawsUntilTouched(in: context.environment)
         )
         hostView.selectionTint = context.environment.textSelectionTint
+        hostView.replyMessageID = context.environment.chatPinReplyAction?.messageID
         return hostView
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
+        context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
         // VoiceOver or Switch Control came on: they read the text view.
         if uiView.canvas != nil, !drawsUntilTouched(in: context.environment) {
             uiView.needsTextView = true
         }
         updateUIViewForTests(uiView, coordinator: context.coordinator)
         uiView.selectionTint = context.environment.textSelectionTint
+        uiView.replyMessageID = context.environment.chatPinReplyAction?.messageID
     }
 
     /// Whether this text is drawn until something needs its text view: on
@@ -347,11 +351,42 @@ struct SelectableTextView: UIViewRepresentable {
                 canvas.height(atWidth: width)
             }
         }
+        // A mounted text view asked for its ideal width gives its unbroken
+        // width too. Without one, an ideal-width bubble (a group room's, or
+        // any bubble under VoiceOver) shrank to nothing.
+        if wrapsLines, selfSizingWidthRange == nil,
+           proposal.width == nil || proposal.width == .infinity {
+            // Its own slot: the wrapping measurement that follows in the
+            // same layout pass would otherwise evict it every time.
+            let coordinator = context.coordinator
+            if let cached = coordinator.cachedNaturalSize,
+               cached.generation == coordinator.presentationGeneration {
+                return cached.size
+            }
+            let size = Self.naturalSize(of: uiView.mountedTextView)
+            coordinator.cachedNaturalSize = Coordinator.CachedMeasurement(
+                generation: coordinator.presentationGeneration,
+                key: .natural,
+                size: size
+            )
+            return size
+        }
         return measuredSizeCached(
             proposalWidth: proposal.width,
             textView: uiView.mountedTextView,
             coordinator: context.coordinator
         )
+    }
+
+    /// The text's unbroken size in a mounted text view, insets included,
+    /// from one layout so the width never wraps the height it came with.
+    @MainActor
+    static func naturalSize(of textView: UITextView) -> CGSize {
+        TranscriptPerf.note(.textKitMeasurement)
+        let measured = textView.sizeThatFits(
+            CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
+        )
+        return CGSize(width: max(1, ceil(measured.width)), height: ceil(measured.height))
     }
 
     /// Cached measurement entry for the SwiftUI sizing hook: an unchanged
@@ -697,11 +732,44 @@ struct SelectableTextView: UIViewRepresentable {
                 bridged.addAttribute(.foregroundColor, value: UIColor(runColor), range: range)
             }
             if let link = run.link {
+                // A group room's @mention is linked only to be found here:
+                // it shows as a tinted tag, not a tappable link.
+                if let kind = GroupRoomMentions.kind(ofLink: link) {
+                    let onAccent = linkColor == .white
+                    // A bot's tag takes the bot's own color.
+                    let tint = onAccent ? nil : GroupRoomMentions.tint(ofLink: link)?.readableColor
+                    bridged.addAttribute(
+                        .foregroundColor,
+                        value: onAccent ? UIColor.white : tint ?? UIColor.conduitAccent,
+                        range: range
+                    )
+                    bridged.addAttribute(
+                        .backgroundColor,
+                        value: tint?.withAlphaComponent(0.12) ?? Self.mentionWash(kind, onAccent: onAccent),
+                        range: range
+                    )
+                    continue
+                }
                 bridged.addAttribute(.link, value: link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
             }
         }
         return bridged
+    }
+
+    private static let accentMentionWash = UIColor { traits in
+        UIColor.conduitAccent.resolvedColor(with: traits).withAlphaComponent(0.10)
+    }
+
+    /// The wash behind a mention: the kinds differ (a member, everyone, the
+    /// user), except on the accent bubble, where every mention is white.
+    private static func mentionWash(_ kind: GroupRoomMentions.Kind, onAccent: Bool) -> UIColor {
+        if onAccent { return UIColor.white.withAlphaComponent(0.22) }
+        switch kind {
+        case .agent: return accentMentionWash
+        case .broadcast: return UIColor.orange.withAlphaComponent(0.10)
+        case .human: return UIColor.yellow.withAlphaComponent(0.12)
+        }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -745,6 +813,7 @@ struct SelectableTextView: UIViewRepresentable {
             case nonWrapping
             case selfSizing
             case wrapping(width: CGFloat)
+            case natural
         }
 
         struct CachedMeasurement {
@@ -769,11 +838,17 @@ struct SelectableTextView: UIViewRepresentable {
         /// generation. Invalidated by any generation bump; lives and dies
         /// with the coordinator (i.e. the mounted view).
         var cachedMeasurement: CachedMeasurement?
+        /// A mounted view's unbroken size, kept apart from the wrapping
+        /// measurement asked for in the same layout pass.
+        var cachedNaturalSize: CachedMeasurement?
         /// The environment's link opener, so in-app links (a voice call's
         /// job link) open inside Conduit; others fall through to the system.
         var openURL: OpenURLAction?
         /// Set inside a chat: the selection menu then offers Quote (#385).
         var quoteAction: ChatQuoteAction?
+        /// Set on a reply that can be pinned: the menu then offers Pin for
+        /// the selected passage and Pin reply after Quote (#918, #1147).
+        var pinReplyAction: ChatPinReplyAction?
 
         init(
             linkColor: UIColor,
@@ -801,31 +876,85 @@ struct SelectableTextView: UIViewRepresentable {
 
         /// Inside a chat, the native selection menu gains Quote right after
         /// the standard edit group (Copy), which puts the selection in the
-        /// composer as a `>` quote (#385). Elsewhere the default menu shows.
+        /// composer as a `>` quote (#385), and on a reply that can be pinned,
+        /// Pin for the selected passage and Pin reply after it (#918, #1147).
+        /// Elsewhere the default menu shows.
         func textView(
             _ textView: UITextView,
             editMenuForTextIn range: NSRange,
             suggestedActions: [UIMenuElement]
         ) -> UIMenu? {
-            guard let quoteAction, quoteAction.isAvailable, range.length > 0 else { return nil }
-            let quote = UIAction(
-                title: AppLocalization.string("Quote"),
-                image: UIImage(systemName: "text.quote")
-            ) { [weak textView] _ in
-                guard let textView else { return }
-                // The selection as it is now, should the text have changed
-                // under the open menu.
-                let current = textView.selectedRange
-                Self.quoteSelection(in: textView, range: current.length > 0 ? current : range, with: quoteAction)
+            guard range.length > 0 else { return nil }
+            var added: [UIMenuElement] = []
+            if let quoteAction, quoteAction.isAvailable {
+                added.append(UIAction(
+                    title: AppLocalization.string("Quote"),
+                    image: UIImage(systemName: "text.quote")
+                ) { [weak textView] _ in
+                    guard let textView else { return }
+                    // The selection as it is now, should the text have changed
+                    // under the open menu.
+                    let current = textView.selectedRange
+                    Self.quoteSelection(in: textView, range: current.length > 0 ? current : range, with: quoteAction)
+                })
             }
-            return UIMenu(children: Self.editMenuElements(suggestedActions, adding: quote))
+            // Pin takes the selected passage and Pin reply the whole reply
+            // (#1147); both live here, not in the reply's action row.
+            if let pinReplyAction {
+                let selected = Self.selectedText(in: textView, range: range)
+                if selected.contains(where: { !$0.isWhitespace }) {
+                    let isPinned = pinReplyAction.isPinned(passage: selected)
+                    added.append(UIAction(
+                        title: AppLocalization.string(isPinned ? "Unpin" : "Pin"),
+                        image: UIImage(systemName: isPinned ? "pin.slash" : "pin")
+                    ) { [weak textView] _ in
+                        guard let textView else { return }
+                        // The selection as it is now, should it have changed
+                        // under the open menu.
+                        let current = textView.selectedRange
+                        let passage = current.length > 0
+                            ? Self.selectedText(in: textView, range: current)
+                            : selected
+                        Self.dismissSelection(in: textView)
+                        pinReplyAction.togglePassage(passage)
+                    })
+                }
+                let replyPinned = pinReplyAction.isPinned
+                added.append(UIAction(
+                    title: AppLocalization.string(replyPinned ? "Unpin reply" : "Pin reply"),
+                    image: UIImage(systemName: replyPinned ? "pin.slash.fill" : "pin.fill")
+                ) { [weak textView] _ in
+                    if let textView { Self.dismissSelection(in: textView) }
+                    pinReplyAction()
+                })
+            }
+            guard !added.isEmpty else { return nil }
+            return UIMenu(children: Self.editMenuElements(suggestedActions, adding: added))
         }
 
-        static func editMenuElements(_ suggestedActions: [UIMenuElement], adding quote: UIMenuElement) -> [UIMenuElement] {
+        static func editMenuElements(_ suggestedActions: [UIMenuElement], adding added: [UIMenuElement]) -> [UIMenuElement] {
             var elements = suggestedActions
             let standardEdit = elements.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
-            elements.insert(quote, at: standardEdit.map { $0 + 1 } ?? 0)
+            elements.insert(contentsOf: added, at: standardEdit.map { $0 + 1 } ?? 0)
             return elements
+        }
+
+        /// Clears the selection, which dismisses the menu.
+        @MainActor
+        static func dismissSelection(in textView: UITextView) {
+            (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
+            textView.selectedRange = NSRange(location: textView.selectedRange.location, length: 0)
+            textView.resignFirstResponder()
+        }
+
+        /// The selected text as Copy would take it: all of a selection
+        /// spanning blocks.
+        @MainActor
+        static func selectedText(in textView: UITextView, range: NSRange) -> String {
+            let fullText = textView.attributedText ?? NSAttributedString()
+            let clamped = NSIntersectionRange(range, NSRange(location: 0, length: fullText.length))
+            return (textView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()?.string
+                ?? MarkdownProseRun.copyableText(fullText.attributedSubstring(from: clamped)).string
         }
 
         /// Hands the selected text to the composer and clears the selection,
@@ -836,8 +965,7 @@ struct SelectableTextView: UIViewRepresentable {
         static func quoteSelection(in textView: UITextView, range: NSRange, with quoteAction: ChatQuoteAction) {
             let fullText = textView.attributedText ?? NSAttributedString()
             let clamped = NSIntersectionRange(range, NSRange(location: 0, length: fullText.length))
-            let selected = (textView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()?.string
-                ?? MarkdownProseRun.copyableText(fullText.attributedSubstring(from: clamped)).string
+            let selected = selectedText(in: textView, range: range)
             guard selected.contains(where: { !$0.isWhitespace }) else { return }
             (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
             textView.selectedRange = NSRange(location: clamped.location, length: 0)
@@ -948,6 +1076,24 @@ private final class MarkdownSelectionTextView: UITextView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         selectionCoordinator?.cancelPendingSelection()
         super.touchesCancelled(touches, with: event)
+    }
+
+    /// VoiceOver pins the whole reply from an action on its text (#918),
+    /// named for the reply as it is now.
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            var actions = super.accessibilityCustomActions ?? []
+            if let pin = (delegate as? SelectableTextView.Coordinator)?.pinReplyAction {
+                actions.append(UIAccessibilityCustomAction(
+                    name: AppLocalization.string(pin.isPinned ? "Unpin reply" : "Pin reply")
+                ) { _ in
+                    pin()
+                    return true
+                })
+            }
+            return actions.isEmpty ? nil : actions
+        }
+        set { super.accessibilityCustomActions = newValue }
     }
 
     override func copy(_ sender: Any?) {
@@ -1176,6 +1322,15 @@ final class SelectableTextViewHostView: UIView {
             guard selectionTint != oldValue else { return }
             // A drawn host's text view takes it when it mounts.
             textView?.tintColor = selectionTint
+        }
+    }
+
+    /// The reply this text belongs to, where its passages can be pinned:
+    /// a pinned passage's jump finds and flashes it here (#1147).
+    var replyMessageID: String? {
+        didSet {
+            guard replyMessageID != oldValue, replyMessageID != nil else { return }
+            PinnedPassageFlasher.register(self)
         }
     }
 

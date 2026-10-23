@@ -261,6 +261,9 @@ struct InlineAudioClipView: View {
     var openFailed = false
     let load: () async -> Data?
     let openFull: () -> Void
+    /// The expand button; a voice message still being previewed has no
+    /// full-screen view.
+    var showsOpenButton = true
     @ScaledMetric(relativeTo: .body) private var playSize: CGFloat = 40
     @ScaledMetric(relativeTo: .footnote) private var expandSize: CGFloat = 32
 
@@ -287,31 +290,37 @@ struct InlineAudioClipView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-            Button {
-                // Quick Look has its own player; don't play underneath it.
-                player.stop(id: id)
-                openFull()
-            } label: {
-                Group {
-                    if opening {
-                        ProgressView().tint(secondary)
-                    } else {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.footnote.weight(.semibold))
-                    }
-                }
-                .foregroundStyle(secondary)
-                .frame(width: expandSize, height: expandSize)
-                .contentShape(Rectangle())
+            if showsOpenButton {
+                openButton
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Open full screen"))
-            .accessibilityHint(Text("Opens full screen with save and share"))
         }
         .padding(10)
         .frame(maxWidth: 360, alignment: .leading)
         .background(background)
         .onDisappear { player.stop(id: id) }
+    }
+
+    private var openButton: some View {
+        Button {
+            // Quick Look has its own player; don't play underneath it.
+            player.stop(id: id)
+            openFull()
+        } label: {
+            Group {
+                if opening {
+                    ProgressView().tint(secondary)
+                } else {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.footnote.weight(.semibold))
+                }
+            }
+            .foregroundStyle(secondary)
+            .frame(width: expandSize, height: expandSize)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Open full screen"))
+        .accessibilityHint(Text("Opens full screen with save and share"))
     }
 
     @ViewBuilder

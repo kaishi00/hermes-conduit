@@ -28,6 +28,17 @@ final class TurnStateTests: XCTestCase {
         XCTAssertEqual(TurnState.unsupportedGateway.composerAction(hasText: true, hasAttachments: false, busyInputMode: .steer), .unavailable)
     }
 
+    /// #1146: while Hermes replies, attachments go as Queue in every busy
+    /// mode; steer takes text alone.
+    func testAttachmentsWhileRunningQueue() {
+        for mode in BusyInputMode.allCases {
+            XCTAssertEqual(TurnState.running.composerAction(hasText: true, hasAttachments: true, busyInputMode: mode), .queue)
+            XCTAssertEqual(TurnState.running.composerAction(hasText: false, hasAttachments: true, busyInputMode: mode), .queue)
+        }
+        XCTAssertEqual(TurnState.idle.composerAction(hasText: false, hasAttachments: true, busyInputMode: .steer), .send)
+        XCTAssertEqual(ComposerSendChoice.choices(for: .queue, hasAttachments: true, isSlashCommand: false), [])
+    }
+
     /// Hermes treats an unset or unknown `display.busy_input_mode` as
     /// interrupt, so the app does too.
     func testBusyInputModeDefaultsToInterruptLikeHermes() {

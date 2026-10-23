@@ -137,7 +137,7 @@ enum StreamEventParser {
             )
 
         case "tool.start", "tool_call":
-            let name = payload?["name"]?.stringValue ?? ""
+            let name = Self.liveToolName(payload)
             let toolID = ["tool_id", "tool_call_id", "call_id"]
                 .compactMap { payload?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first { !$0.isEmpty }
@@ -149,7 +149,7 @@ enum StreamEventParser {
             return .toolStart(sessionId: sessionId, toolName: name, toolInput: input, toolID: toolID)
 
         case "tool.complete", "tool_result":
-            let name = payload?["name"]?.stringValue ?? ""
+            let name = Self.liveToolName(payload)
             let toolID = ["tool_id", "tool_call_id", "call_id"]
                 .compactMap { payload?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first { !$0.isEmpty }
@@ -252,6 +252,18 @@ enum StreamEventParser {
         default:
             return .unparsed(payload: obj.mapValues { $0.anyValue })
         }
+    }
+
+    /// The tool a live event names. Hermes names the deferred tool a
+    /// Tool Search `tool_call` ran; a wrapper name is resolved from its
+    /// envelope in case a gateway sends it unresolved.
+    private static func liveToolName(_ payload: [String: AnyCodable]?) -> String {
+        let name = payload?["name"]?.stringValue ?? ""
+        guard ToolSearchBridge.isWrapper(name),
+              let call = ToolSearchBridge.underlyingCall((payload?["args"] ?? payload?["arguments"])?.anyValue) else {
+            return name
+        }
+        return call.name
     }
 
     private static func delegateAgentActivity(from payload: [String: AnyCodable], eventType: String, sessionId: String) -> DelegateAgentActivity {

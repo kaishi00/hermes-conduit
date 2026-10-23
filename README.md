@@ -3,8 +3,11 @@
 A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
 
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)
+[![TestFlight](https://img.shields.io/badge/TestFlight-Beta-blue)](https://testflight.apple.com/join/gcF9BBJ3)
 [![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://hermesconduit.app)
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/agrias)
+
+Want new features sooner? The [TestFlight beta](https://testflight.apple.com/join/gcF9BBJ3) gets newer builds before they reach the App Store.
 
 ## What it does
 

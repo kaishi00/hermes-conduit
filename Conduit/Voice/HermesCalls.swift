@@ -145,6 +145,8 @@ enum HermesCallCopy {
 
     /// What a call is about, as the notification says it: Hermes' own
     /// reason when it gave one (in its language), else how the job ended.
+    /// The notification extension's banner says the same
+    /// (NotificationCopy.callLine): keep the two in step.
     static func summary(kind: HermesCallRequest.Kind?, title: String?, reason: String?) -> String {
         guard let reason else { return outcome(kind: kind, title: title) }
         switch kind {

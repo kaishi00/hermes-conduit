@@ -129,6 +129,15 @@ enum WatchBridgeDelegation {
         return (number, rest)
     }
 
+    /// GPTLiveDelegationBridge.addToJobMarker: "Add to job 2: a quiet
+    /// table" → (2, "a quiet table"), an addition that steers the job.
+    static func addToJobMarker(in request: String) -> (number: Int, rest: String)? {
+        guard let range = request.range(of: #"^\s*add\s+to\s+job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—](?![0-9])"#, options: [.regularExpression, .caseInsensitive]),
+              let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
+        let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number, rest)
+    }
+
     /// GPTLiveDelegationBridge.followUpWords: the user's own words since
     /// the last delegation, else the delegation's.
     static func followUpWords(userWords: String, delegated: String) -> String {

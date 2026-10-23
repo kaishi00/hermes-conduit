@@ -222,10 +222,13 @@ struct ReplyReferenceQuoteCard: View {
     private let excerpt: String
     /// On the accent-colored user bubble the card uses white text.
     private let onAccentSurface: Bool
+    /// Whose message it quoted, in a group room, where there are several.
+    private let authorName: String?
 
-    init(quote: String, onAccentSurface: Bool = true) {
+    init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil) {
         self.excerpt = ChatQuote.excerpt(of: quote)
         self.onAccentSurface = onAccentSurface
+        self.authorName = authorName
     }
 
     var body: some View {
@@ -234,7 +237,10 @@ struct ReplyReferenceQuoteCard: View {
                 .fill(primaryColor.opacity(0.7))
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 2) {
-                Label(AppLocalization.string("Replying to"), systemImage: "quote.bubble")
+                Label(
+                    authorName.map { AppLocalization.string("Replying to \($0)") } ?? AppLocalization.string("Replying to"),
+                    systemImage: "quote.bubble"
+                )
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(primaryColor)
                 Text(excerpt)

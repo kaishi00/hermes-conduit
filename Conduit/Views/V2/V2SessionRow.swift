@@ -146,6 +146,13 @@ struct V2SessionIcon: View {
     }
 }
 
+/// The profile a row in All belongs to, on the corner of its icon.
+struct V2ProfileBadge: Equatable {
+    let profile: String
+    let name: String
+    let url: URL?
+}
+
 struct V2SessionRow: View {
     /// Where a Chats row's text starts (16 pt in, the 38 pt icon, 12 pt):
     /// its hairline and nest summary line up here.
@@ -169,6 +176,8 @@ struct V2SessionRow: View {
     /// A Chats row with its "3 jobs" summary under it: the summary sits
     /// close, as part of this row, rather than a row's gap away.
     var hasNestBelow = false
+    /// All, mixing profiles: whose chat this is.
+    var profileBadge: V2ProfileBadge? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -176,6 +185,19 @@ struct V2SessionRow: View {
         HStack(alignment: icon == nil ? .top : .center, spacing: 0) {
             if let icon {
                 V2SessionIcon(source: icon, isUnread: isUnread)
+                    .overlay(alignment: .bottomTrailing) {
+                        if let profileBadge {
+                            ProfileAvatarView(
+                                profile: profileBadge.profile,
+                                displayName: profileBadge.name,
+                                url: profileBadge.url,
+                                size: 18
+                            )
+                            .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
+                            .offset(x: 4, y: 4)
+                            .accessibilityHidden(true)
+                        }
+                    }
                     .padding(.leading, 16)
                     .padding(.trailing, 12)
             } else {
@@ -274,6 +296,7 @@ struct V2SessionRow: View {
 
     private var accessibilityValue: String {
         [
+            profileBadge.map { AppLocalization.string("\($0.name) profile") },
             isUnread ? AppLocalization.string("Unread") : nil,
             isPinned ? AppLocalization.string("Pinned") : nil,
             isStarred ? AppLocalization.string("Starred") : nil,

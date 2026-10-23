@@ -503,6 +503,11 @@ private final class PluginHost {
     var selfRestartErrors: [Error] = []
     /// Answers to the capabilities route in order; the last one repeats.
     var capabilities: [[String: Any]] = []
+    /// The host-run update (plugin 0.63+): the job answers in order, the
+    /// last one repeating, or the error the start answers with.
+    var selfUpdateJobs: [[String: Any]] = []
+    var selfUpdateStartError: Error?
+    var selfUpdatePaths: [String] = []
     /// The dashboard restart signs everyone out, like a host without a
     /// fixed sign-in secret.
     var restartSignsOut = false
@@ -532,6 +537,13 @@ private final class PluginHost {
     private func respond(path: String, method: String, body: [String: Any]?) throws -> [String: Any] {
         calls.append("\(method) \(path.split(separator: "?").first.map(String.init) ?? path)")
         guard signedIn else { throw DashboardTicketBridgeError.signInRequired }
+        if path.hasPrefix(NotifierPluginUpdater.selfUpdatePath) {
+            selfUpdatePaths.append(path)
+            if method == "POST", let selfUpdateStartError { throw selfUpdateStartError }
+            guard let first = selfUpdateJobs.first else { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
+            if selfUpdateJobs.count > 1 { selfUpdateJobs.removeFirst() }
+            return ["ok": true, "job": first]
+        }
         switch path {
         case NotifierPluginUpdater.updatePath:
             if let updateError { throw updateError }
@@ -560,5 +572,190 @@ private final class PluginHost {
             XCTFail("unexpected request \(method) \(path)")
             throw DashboardTicketBridgeError.http(status: 404, detail: "")
         }
+    }
+}
+
+/// What each plugin version brings (NotifierPluginChangelog.swift) and the
+/// update the host runs on its own (plugin 0.63+).
+@MainActor
+extension GatewayRestartTests {
+    private static let changelog = """
+    # Conduit plugin changelog
+
+    - `## <version> (<YYYY-MM-DD>)`: the version.
+      ### Fixes is not a heading here.
+
+    ## 0.63.0 (2026-10-23)
+
+    ### New and improved
+    - The host runs the whole update,
+      and notifies.
+
+    ## 0.62.0 (2026-10-22)
+
+    ### Security
+    - Room turns stay out of memory.
+
+    ## 0.61.3 (2026-10-22)
+
+    ### Fixes
+    - Pulse reads keys in scope.
+
+    ### New and improved
+    - Something new.
+    """
+
+    func testTheChangelogIsReadWithWrappedLines() throws {
+        let log = try XCTUnwrap(NotifierPluginChangelog(markdown: Self.changelog))
+        XCTAssertEqual(log.entries.map(\.version), ["0.63.0", "0.62.0", "0.61.3"])
+        XCTAssertEqual(log.entries[0].changes.map(\.text), ["The host runs the whole update, and notifies."])
+        XCTAssertEqual(log.entries[2].changes.map(\.kind), [.fixes, .new])
+        let day = try XCTUnwrap(log.released("0.62.0"))
+        XCTAssertEqual(day, Date(timeIntervalSince1970: 1_792_627_200))
+        XCTAssertNil(NotifierPluginChangelog(markdown: "version: 0.50.0\n"))
+    }
+
+    func testAnUpdateShowsSecurityFixesFirstFromAfterTheInstalledVersion() throws {
+        let log = try XCTUnwrap(NotifierPluginChangelog(markdown: Self.changelog))
+        let changes = log.updateChanges(after: "0.61.3", through: "0.63.0")
+        XCTAssertEqual(changes.map(\.version), ["0.62.0", "0.63.0"])
+        XCTAssertEqual(changes.first?.kind, .security)
+        XCTAssertEqual(log.updateChanges(after: nil, through: "0.62.0").map(\.kind), [.security, .fixes, .new])
+        XCTAssertTrue(log.updateChanges(after: "0.63.0", through: "0.63.0").isEmpty)
+
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "0.61.3", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.latestVersion = "0.63.0"
+        let notes = try XCTUnwrap(NotifierPluginReleaseNotes(changelog: log, status: status))
+        XCTAssertEqual(notes.version, "0.63.0")
+        XCTAssertTrue(notes.hasSecurityFixes)
+        XCTAssertNotNil(notes.released)
+        XCTAssertNil(NotifierPluginReleaseNotes(changelog: nil, status: status))
+    }
+
+    func testTheHostRunsTheUpdateAndConduitFollowsIt() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "downloading"],
+            ["id": "j1", "step": "waiting_for_chats", "running_chats": 2],
+            ["id": "j1", "step": "restarting_dashboard"],
+            ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new")]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.profile = "coder"
+        var reports: [[String: Any]] = []
+        updater.report = { reports.append($0) }
+        var steps: [NotifierPluginUpdateState] = []
+        let outcome = await updater.run { steps.append($0) }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertTrue(steps.contains(.updating(.waitingForChats(count: 2))))
+        XCTAssertTrue(steps.contains(.updating(.restartingDashboard)))
+        // Nothing run from here: the host did it.
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertTrue(host.selfUpdatePaths.allSatisfy { $0.contains("profile=coder") })
+        XCTAssertGreaterThan(host.selfUpdatePaths.count, 1)
+        XCTAssertEqual(reports.count, 1)
+    }
+
+    func testAHostThatCantRunTheUpdateLeavesTheStepsToConduit() async {
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 501, detail: "This Hermes can't run the plugin update on its own")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testAHostThatCantPullThisPluginLeavesTheReinstallToConduit() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "downloading",
+                                "detail": "Plugin 'conduit_push' has no owned Git checkout; reinstall from its source."]]
+        host.updateError = DashboardTicketBridgeError.http(status: 400, detail: "Plugin 'conduit_push' has no owned Git checkout; reinstall from its source.")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testConduitStopsFollowingALongHostUpdateWithoutCallingItFailed() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "waiting_for_chats", "running_chats": 1]]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.sleep = { [unowned host] _ in host.clock += 120 }
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .runningOnHost)
+    }
+
+    func testAStartWhoseAnswerIsLostFollowsTheJobInsteadOfUpdatingTwice() async {
+        let host = PluginHost()
+        host.selfUpdateStartError = URLError(.timedOut)
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "restarting_gateway"],
+            ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new")]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    /// #299: the new plugin's report replaces the status at once, and a
+    /// status read already asked of the old plugin lands under it.
+    func testTheUpdatedPluginsReportWinsOverAStatusReadInFlight() {
+        let suite = "PluginUpdate.AppState.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        // A read of the old plugin starts.
+        appState.notifierPluginStatusGeneration += 1
+        let inFlight = appState.notifierPluginStatusGeneration
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"))
+        XCTAssertEqual(appState.notifierPlugin.runningVersion, "0.63.0")
+        XCTAssertFalse(appState.notifierPlugin.restartPending)
+        // refreshNotifierPluginStatus drops an answer whose generation isn't newer.
+        XCTAssertLessThanOrEqual(inFlight, appState.notifierPluginStatusAcceptedGeneration)
+    }
+
+    func testAHostJobThatFailsAfterThePullDoesntRunTheStepsAgain() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [["id": "j1", "step": "failed", "failed_step": "restarting_gateway",
+                                "detail": "Gateway restart: unit not found"]]
+        host.capabilities = [Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old")]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: "Gateway restart: unit not found"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testHostJobOutcomes() {
+        XCTAssertNil(NotifierPluginUpdater.hostOutcome(["step": "restarting_gateway"]))
+        XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway"]), .restartingGateway(nil))
+        XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "detail": "no"]), .failed(detail: "no"))
+        XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "failed", "code": "restart_needed", "detail": "Restart it"]),
+                       .needsDashboardRestart(detail: "Restart it"))
+        XCTAssertEqual(NotifierPluginUpdater.hostOutcome(["step": "done", "version": "0.63.0"]), .updated(version: "0.63.0"))
     }
 }

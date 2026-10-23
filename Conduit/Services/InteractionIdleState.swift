@@ -32,6 +32,9 @@ final class InteractionIdleState: ObservableObject {
     private let now: () -> TimeInterval
     private let schedule: Schedule
     private var lastActivity: TimeInterval
+    /// The last touch, keystroke or return to the app. Unlike
+    /// `lastActivity`, turn and voice edges don't move it.
+    private var lastUse: TimeInterval
     private var turnIsRunning = false
     private var voiceConversationIsShown = false
     /// Cancels the one pending deadline timer; nil when none is scheduled.
@@ -56,6 +59,7 @@ final class InteractionIdleState: ObservableObject {
         self.schedule = schedule
         self.notificationCenter = notificationCenter
         lastActivity = now()
+        lastUse = lastActivity
         // Coming back to the app counts as using it. Typing counts too: a
         // hardware keyboard on an iPad sends no touches.
         let names: [Notification.Name] = [
@@ -78,9 +82,25 @@ final class InteractionIdleState: ObservableObject {
     /// A touch, a keystroke or the app becoming active: wakes at once and
     /// pushes the deadline back.
     func noteInteraction() {
+        lastUse = now()
+        noteActivity()
+    }
+
+    /// Something happened on screen without the user: wakes the backdrop
+    /// and pushes its deadline back, but isn't use (`usedWithin`).
+    private func noteActivity() {
         lastActivity = now()
         if isIdle { isIdle = false }
         scheduleWakeIfNeeded()
+    }
+
+    /// Whether someone touched, typed in or returned to Conduit within the
+    /// last `seconds`. Unlike `isIdle`, a turn or a voice conversation
+    /// starting or ending doesn't count: the on-screen report
+    /// (ChatOnScreen.swift) asks whether anyone is still looking, and a
+    /// queued message sending itself after a turn is nobody.
+    func usedWithin(_ seconds: TimeInterval) -> Bool {
+        now() - lastUse <= seconds
     }
 
     /// AppState reports turn edges here, so nothing has to observe AppState
@@ -108,7 +128,7 @@ final class InteractionIdleState: ObservableObject {
             cancelPendingWake?()
             cancelPendingWake = nil
         }
-        noteInteraction()
+        noteActivity()
     }
 
     private func scheduleWakeIfNeeded() {

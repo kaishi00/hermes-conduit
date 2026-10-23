@@ -67,12 +67,7 @@ struct LoginAddressStep: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focusedField = nil }
-            }
-        }
+        .keyboardDoneButton { focusedField = nil }
     }
 
     private var prefix: String { context.identifierPrefix }
@@ -327,12 +322,7 @@ struct LoginCredentialsPage: View {
         .navigationTitle(Text("Sign in"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focusedField = nil }
-            }
-        }
+        .keyboardDoneButton { focusedField = nil }
         .onAppear {
             flow.refreshBiometrics()
             // Straight to the empty field: the username is often filled in.

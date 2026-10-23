@@ -47,14 +47,30 @@ final class CarPlayPreferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let data = defaults.data(forKey: Self.shortcutsKey),
+        let stored = Self.stored(in: defaults)
+        shortcuts = stored.shortcuts
+        playsSounds = stored.playsSounds
+        choosesChatFirst = stored.choosesChatFirst
+    }
+
+    /// Reads the stored values again, after another device's preferences
+    /// were synced into them (#1089).
+    func reload() {
+        let stored = Self.stored(in: defaults)
+        if stored.shortcuts != shortcuts { shortcuts = stored.shortcuts }
+        if stored.playsSounds != playsSounds { playsSounds = stored.playsSounds }
+        if stored.choosesChatFirst != choosesChatFirst { choosesChatFirst = stored.choosesChatFirst }
+    }
+
+    private static func stored(in defaults: UserDefaults) -> (shortcuts: [CarPlayShortcut], playsSounds: Bool, choosesChatFirst: Bool) {
+        var shortcuts: [CarPlayShortcut] = []
+        if let data = defaults.data(forKey: shortcutsKey),
            let decoded = try? JSONDecoder().decode([CarPlayShortcut].self, from: data) {
-            shortcuts = Array(decoded.prefix(Self.maximumShortcuts))
-        } else {
-            shortcuts = []
+            shortcuts = Array(decoded.prefix(maximumShortcuts))
         }
-        playsSounds = defaults.object(forKey: Self.soundsKey) as? Bool ?? true
-        choosesChatFirst = defaults.object(forKey: Self.chooseChatFirstKey) as? Bool ?? false
+        return (shortcuts,
+                defaults.object(forKey: soundsKey) as? Bool ?? true,
+                defaults.object(forKey: chooseChatFirstKey) as? Bool ?? false)
     }
 
     var canAddShortcut: Bool { shortcuts.count < Self.maximumShortcuts }

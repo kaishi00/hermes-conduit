@@ -378,6 +378,28 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(rows.first?.title, "Kitchen chat")
     }
 
+    func testAllProfilesHitsMatchChatsOnlyInTheirOwnProfile() {
+        // Two profiles hold the same chat id: the one in use lists it, the
+        // other's match still shows and opens that profile's chat.
+        var atlasChat = session("same", title: "Atlas chat")
+        atlasChat.profile = "atlas"
+        let tagged = hits([result("same")]) + hits([result("same")]).map { hit in
+            var hit = hit
+            hit.profile = "atlas"
+            return hit
+        }
+        let rows = SessionContentSearch.rows(
+            hits: tagged,
+            listed: [session("same")],
+            known: [session("same"), atlasChat],
+            activeProfile: "default",
+            owner: { $0.profile ?? "" }
+        )
+        XCTAssertEqual(rows.map(\.id), ["atlas\u{1F}same"])
+        XCTAssertEqual(rows.first?.session?.profile, "atlas")
+        XCTAssertEqual(rows.first?.title, "Atlas chat")
+    }
+
     func testDuplicatesMatchThroughStoredIDsAndLineageRoots() {
         // The list holds the runtime id; Hermes answers with the stored id,
         // or with a compression tip whose root the list row carries.
@@ -491,5 +513,29 @@ final class SessionContentSearchTests: XCTestCase {
         let styled = attributed.runs.filter { $0.foregroundColor != nil }
         XCTAssertEqual(styled.count, 1)
         XCTAssertEqual(styled.first.map { String(attributed[$0.range].characters) }, "recycling")
+    }
+
+    // MARK: - All profiles
+
+    func testAllProfilesSearchAsksEachProfileAndTagsTheirHits() async {
+        let stub = StubSearchRequester()
+        stub.responses[path("recycling")] = .success(["results": [result("own")]])
+        stub.responses[path("recycling", profile: "atlas")] = .success(["results": [result("theirs")]])
+        stub.responses[path("recycling", profile: "nova")] = .failure(URLError(.timedOut))
+        let model = SessionContentSearchModel(support: SessionContentSearchSupport(), debounce: .zero)
+        let context = SessionContentSearchModel.Context(
+            scope: scope,
+            profile: "default",
+            otherProfiles: ["atlas", "nova"]
+        ) { path in
+            try await stub.request(path)
+        }
+        model.update(query: "recycling", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(stub.paths, [path("recycling"), path("recycling", profile: "atlas"), path("recycling", profile: "nova")])
+        // A profile whose search failed is left out; the others still show.
+        XCTAssertEqual(model.hits.map(\.sessionID), ["own", "theirs"])
+        XCTAssertEqual(model.hits.map(\.profile), [nil, "atlas"])
+        XCTAssertFalse(model.isSearching)
     }
 }

@@ -23,8 +23,14 @@ extension Color {
 /// in its WatchPhoneContext as ConduitAccentChoice's raw value; an older
 /// iPhone app shares none, and a choice this Watch app doesn't know yet
 /// (a newer iPhone app's) draws gold too. A new preset goes in both lists.
+/// A colour of the user's own comes as "#RRGGBB" and draws in the dark
+/// shade the iPhone works out from it.
 enum WatchAccent {
     static func color(_ choice: String?) -> Color {
+        if let choice, let custom = CustomAccentColor(hex: choice) {
+            let shade = custom.darkShade
+            return Color(red: shade.red, green: shade.green, blue: shade.blue)
+        }
         switch choice {
         case "blue": return Color(red: 0.33, green: 0.58, blue: 0.98)
         case "green": return Color(red: 0.30, green: 0.72, blue: 0.47)

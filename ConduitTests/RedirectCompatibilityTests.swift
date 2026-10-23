@@ -22,4 +22,13 @@ final class RedirectCompatibilityTests: XCTestCase {
         // "Unknown method" counts only when it names session.redirect.
         XCTAssertFalse(AppState.isUnsupportedRedirect(code: nil, message: "unknown method: prompt.submit"))
     }
+
+    /// #1076: a gateway without session.steer lets an addition redirect.
+    func testGatewayWithoutSteerFallsBack() {
+        XCTAssertTrue(AppState.isUnsupportedSteer(code: -32601, message: "unknown method: session.steer"))
+        XCTAssertTrue(AppState.isUnsupportedSteer(code: nil, message: "unknown method: session.steer"))
+        XCTAssertTrue(AppState.isUnsupportedSteer(code: nil, message: "Method not found"))
+        XCTAssertFalse(AppState.isUnsupportedSteer(code: 4040, message: "session not found"))
+        XCTAssertFalse(AppState.isUnsupportedSteer(code: nil, message: "unknown method: session.redirect"))
+    }
 }

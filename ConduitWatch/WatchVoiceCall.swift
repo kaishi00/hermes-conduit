@@ -19,6 +19,9 @@ import WatchKit
 enum WatchCallEnd {
     static let byUser = "ended on the Watch"
     static let goodbye = "Hermes said goodbye."
+    /// The call's grant has no audio streams left (the host refused one, or
+    /// the Watch used them all): only a new call gets more.
+    static let streamsSpent = String(localized: "This call can't reconnect to Hermes again. Start the call again.")
 
     static func isNormal(_ reason: String?) -> Bool {
         guard let reason else { return true }

@@ -49,6 +49,12 @@ struct V2ConversationScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
+    @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
+    /// A voice message recorded while the big button is held keeps the
+    /// button under the finger, though the composer opens beside it.
+    @ObservedObject private var voiceMessages = VoiceMessageRecorder.shared
+
+    private var hidesVoiceButton: Bool { composerExpanded && !voiceMessages.isHeld }
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
@@ -82,15 +88,15 @@ struct V2ConversationScreen: View {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
                         // shrinks and fades while the composer is expanded.
-                        V2VoiceButton(context: .conversation, isHidden: composerExpanded)
-                            .scaleEffect(composerExpanded && !reduceMotion ? 0.4 : 1)
-                            .offset(x: composerExpanded && !reduceMotion ? 30 : 0)
-                            .opacity(composerExpanded ? 0 : 1)
-                            .allowsHitTesting(!composerExpanded)
-                            .accessibilityHidden(composerExpanded)
+                        V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton)
+                            .scaleEffect(hidesVoiceButton && !reduceMotion ? 0.4 : 1)
+                            .offset(x: hidesVoiceButton && !reduceMotion ? 30 : 0)
+                            .opacity(hidesVoiceButton ? 0 : 1)
+                            .allowsHitTesting(!hidesVoiceButton)
+                            .accessibilityHidden(hidesVoiceButton)
                             .padding(.trailing, 16)
                             .padding(.bottom, 10)
-                            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: composerExpanded)
+                            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hidesVoiceButton)
                     }
                 }
                 // On a wide window the transcript, the composer and the
@@ -159,6 +165,15 @@ struct V2ConversationScreen: View {
                     }
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
+                }
+            }
+            // The big button does something else: a live call stays one
+            // tap away up here.
+            if appState.activeRoomSurface == nil,
+               ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
+                ToolbarItem(placement: .topBarTrailing) {
+                    V2VoiceButton(context: .conversation, style: .toolbar)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -233,12 +248,13 @@ private struct V2FadingBarBackdrop: ViewModifier {
 }
 
 /// Shown under the title only while the gateway isn't connected, so the
-/// header stays quiet when all is well.
+/// header stays quiet when all is well. Coming back to the app, a
+/// reconnect gets a few seconds to land before it shows (#296).
 private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        if !appState.isConnected {
+        if !appState.isConnected, !appState.hidesBriefReconnect {
             let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")

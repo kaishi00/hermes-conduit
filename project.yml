@@ -183,6 +183,10 @@ targets:
           - "Widgets/**"
           - "Location/**"
           - "ShareDraft/**"
+      # Notifications in the App Language (#1144): the app's catalog,
+      # resolved through NotificationLocalization.swift.
+      - path: Conduit/Localizable.xcstrings
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService
@@ -194,6 +198,16 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: "Conduit Notification Service App Store"
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # The app's draft languages (Conduit/Info.plist) never ship here either.
+      - name: Strip draft localizations
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
+            --info-plist "$SRCROOT/Conduit/Info.plist" \
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
+            --development-language "$DEVELOPMENT_LANGUAGE"
   ConduitLocationPush:
     # The Location Push Service Extension: iOS launches it for a `location`
     # push (the agent's on-demand locate) and it posts one sealed fix
@@ -212,6 +226,7 @@ targets:
           - "LocalLive/**"
           - "Widgets/**"
           - "ShareDraft/**"
+          - "Notifications/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
     dependencies:

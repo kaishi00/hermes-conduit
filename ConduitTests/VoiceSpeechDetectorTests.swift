@@ -55,6 +55,119 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(detections, [.none, .started, .continued], "the relative rise must be recognized")
     }
 
+    func testWindowOpenedMidSpeechEndsOverRoomNoiseWithALearnedFloor() {
+        // A steer window opens while the user is already speaking: a cold
+        // start hears only speech and keeps the minimum floor, so room
+        // noise counts as more speech.
+        var cold = VoiceSpeechDetector()
+        XCTAssertEqual(cold.observe(0.2), .started)
+        XCTAssertEqual(cold.observe(0.012), .continued, "room noise holds a cold window's utterance open")
+
+        // Started from the floor learned before the window, the same room
+        // noise is silence and the utterance can end.
+        var seeded = VoiceSpeechDetector()
+        seeded.reset(learnedNoiseFloor: 0.012)
+        XCTAssertEqual(seeded.observe(0.2), .started)
+        XCTAssertEqual(seeded.observe(0.012), .none)
+    }
+
+    func testGarbageLearnedFloorKeepsTheColdStart() {
+        var detector = VoiceSpeechDetector()
+        detector.reset(learnedNoiseFloor: .nan)
+        XCTAssertEqual(detector.noiseFloor, detector.constants.minimumNoiseFloor)
+        XCTAssertEqual(detector.observe(0.2), .started)
+        XCTAssertEqual(detector.observe(0.012), .continued, "a NaN floor is ignored, not adopted")
+    }
+
+    // MARK: Room floor learned while Hermes thinks
+
+    /// Feeds `levels` in order, one every 20 ms (about the tap's rate).
+    private func feed(
+        _ room: inout VoiceRoomNoiseFloor, _ levels: [Float], from start: Date
+    ) -> Date {
+        var date = start
+        for level in levels {
+            room.observe(level, at: date)
+            date = date.addingTimeInterval(0.02)
+        }
+        return date
+    }
+
+    func testRoomFloorLearnsSteadyRoomNoise() {
+        var room = VoiceRoomNoiseFloor()
+        XCTAssertNil(room.floor, "nothing heard yet: a steer cold-starts as before")
+        _ = feed(&room, Array(repeating: 0.012, count: 60), from: Date())
+        XCTAssertEqual(room.floor ?? 0, 0.012, accuracy: 0.001)
+    }
+
+    func testQuietSpeechWhileThinkingDoesNotRaiseTheRoomFloor() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
+        // Speech too quiet to open a steer window, over three seconds.
+        let words: [Float] = [0.03, 0.045, 0.02, 0.05, 0.035, 0.008]
+        _ = feed(&room, Array(Array(repeating: words, count: 25).joined()), from: end)
+
+        let floor = room.floor ?? 1
+        XCTAssertLessThanOrEqual(floor, 0.0121, "quiet speech must not teach the room")
+        // A steer window started from that floor still hears the speech.
+        var detector = VoiceSpeechDetector()
+        detector.reset(learnedNoiseFloor: floor)
+        XCTAssertEqual(detector.observe(0.1), .started)
+        XCTAssertEqual(detector.observe(0.03), .continued)
+    }
+
+    func testQuietSpeechAfterALongQuietRoomStillHasToHoldSteady() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 100), from: Date())
+        // Speech just over the room, with dips back to it: the long quiet
+        // run before it must not count as the speech holding steady.
+        let words: [Float] = [0.021, 0.023, 0.012, 0.022, 0.02, 0.012]
+        _ = feed(&room, Array(Array(repeating: words, count: 25).joined()), from: end)
+        XCTAssertLessThanOrEqual(room.floor ?? 1, 0.0121)
+    }
+
+    func testARunDoesNotSpanUnheardTime() {
+        var room = VoiceRoomNoiseFloor()
+        _ = feed(&room, Array(repeating: 0.005, count: 5), from: Date())
+        // Suspected speech, then nothing heard for two seconds (a steer
+        // window, playback), then the same level once.
+        let start = Date().addingTimeInterval(1)
+        room.observe(0.03, at: start)
+        room.observe(0.03, at: start.addingTimeInterval(2))
+        XCTAssertEqual(room.floor ?? 0, 0.005, accuracy: 0.0005)
+    }
+
+    func testRoomFloorFollowsARoomThatGetsLouder() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
+        // A fan comes on: steady, so it becomes the room within seconds.
+        _ = feed(&room, Array(repeating: 0.04, count: 300), from: end)
+        XCTAssertGreaterThan(room.floor ?? 0, 0.03)
+    }
+
+    func testAHeldVowelBarelyMovesTheRoomFloor() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
+        // Two seconds of a flat "ummm" just too quiet to steer.
+        _ = feed(&room, Array(repeating: 0.03, count: 100), from: end)
+        let floor = room.floor ?? 1
+        XCTAssertLessThan(floor, 0.02)
+        var detector = VoiceSpeechDetector()
+        detector.reset(learnedNoiseFloor: floor)
+        XCTAssertEqual(detector.observe(0.1), .started)
+        XCTAssertEqual(detector.observe(0.03), .continued, "the same level still reads as speech in a steer")
+    }
+
+    func testRoomFloorIgnoresGarbageAndForgetsOnReset() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.008, count: 10), from: Date())
+        room.observe(.nan, at: end)
+        room.observe(-1, at: end)
+        XCTAssertEqual(room.floor ?? 0, 0.008, accuracy: 0.0005)
+        room.reset()
+        XCTAssertNil(room.floor)
+    }
+
     func testSingleIsolatedSpikeDoesNotStartSpeech() {
         var detector = VoiceSpeechDetector()
         for _ in 0..<6 { _ = detector.observe(0.003) }

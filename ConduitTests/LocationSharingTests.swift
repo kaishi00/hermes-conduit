@@ -952,6 +952,48 @@ extension NotificationE2ETests {
         }
     }
 
+    func testEveryIngestSaysWhetherTheHostsOtherProfilesMayRead() throws {
+        var settings = LocationSharingSettings()
+        settings.talking = true
+        XCTAssertFalse(settings.otherProfiles, "only the bound profile reads unless the user says so")
+        var sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["other_profiles"] as? Bool, false)
+        settings.otherProfiles = true
+        sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["other_profiles"] as? Bool, true)
+        // Saved before the switch existed: the bound profile alone (notifier #287).
+        let old = try JSONDecoder().decode(LocationSharingSettings.self, from: Data(#"{"talking": true}"#.utf8))
+        XCTAssertFalse(old.otherProfiles)
+        XCTAssertTrue(try JSONDecoder().decode(LocationSharingSettings.self, from: JSONEncoder().encode(settings)).otherProfiles)
+    }
+
+    @MainActor
+    func testTheFirstLayerOnRecordsWhetherOtherProfilesMayReadAndASecondKeepsIt() {
+        let home = LocationBinding(dashboardID: LocationFixtures.dashboardID, profile: "default", host: "hermes.example.com")
+        let other = LocationBinding(dashboardID: UUID(), profile: "default", host: "other.example.com")
+        func decide(_ settings: LocationSharingSettings, to destination: LocationBinding? = nil, offered: Bool) -> Bool {
+            LocationSharingController.otherProfiles(turningOn: settings, bound: home, to: destination ?? home, offered: offered)
+        }
+        var settings = LocationSharingSettings()
+        XCTAssertTrue(decide(settings, offered: true))
+        XCTAssertFalse(decide(settings, offered: false))
+        settings.talking = true
+        settings.otherProfiles = true
+        XCTAssertTrue(decide(settings, offered: false), "the background layer keeps what the user agreed to")
+        settings.otherProfiles = false
+        XCTAssertFalse(decide(settings, offered: true), "turned off in Settings: a second layer doesn't turn it back on")
+        // Off in Settings, then sharing off and on again: the choice stands.
+        settings.otherProfilesChosen = true
+        settings.talking = false
+        XCTAssertFalse(decide(settings, offered: true))
+        settings.otherProfiles = true
+        XCTAssertTrue(decide(settings, offered: false))
+        // On for another host: that host's profiles are asked about afresh.
+        XCTAssertFalse(decide(settings, to: other, offered: false))
+        settings.otherProfiles = false
+        XCTAssertTrue(decide(settings, to: other, offered: true))
+    }
+
     func testEveryIngestSaysThePhoneAnswersMapsAndWhetherTheHostMayToo() throws {
         var settings = LocationSharingSettings()
         settings.background = true
@@ -1022,5 +1064,91 @@ extension NotificationE2ETests {
         XCTAssertEqual(keys.load()?.answersMaps, true)
         _ = await engine.send(batch, config: background, request: request)
         XCTAssertEqual(keyRequests, 1)
+    }
+
+    // MARK: Apple Maps datum in mainland China (#1122)
+
+    func testMapDatumShiftsMainlandChinaToWhereAppleMapsDrawsIt() {
+        let tiananmen = CLLocationCoordinate2D(latitude: 39.9087, longitude: 116.3975)
+        let onMap = MapDatum.toMap(tiananmen)
+        XCTAssertEqual(onMap.latitude, 39.910103, accuracy: 0.000005)
+        XCTAssertEqual(onMap.longitude, 116.403744, accuracy: 0.000005)
+        let shift = CLLocation(latitude: tiananmen.latitude, longitude: tiananmen.longitude)
+            .distance(from: CLLocation(latitude: onMap.latitude, longitude: onMap.longitude))
+        XCTAssertGreaterThan(shift, 300)
+    }
+
+    func testMapDatumRegionParsesEveryPoint() {
+        let tokens = MapDatumRegion.mainland.split(whereSeparator: \.isWhitespace)
+        XCTAssertGreaterThan(tokens.count, 1_000)
+        for token in tokens + MapDatumRegion.excluded.flatMap({ $0.split(whereSeparator: \.isWhitespace) }) {
+            let parts = token.split(separator: ",")
+            XCTAssertEqual(parts.count, 2, String(token))
+            XCTAssertNotNil(parts.first.flatMap { Double($0) }, String(token))
+            XCTAssertNotNil(parts.last.flatMap { Double($0) }, String(token))
+        }
+    }
+
+    func testMapDatumReadsAMapPointBackToTheFixDatum() {
+        for fix in [CLLocationCoordinate2D(latitude: 39.9087, longitude: 116.3975),
+                    CLLocationCoordinate2D(latitude: 31.2304, longitude: 121.4737),
+                    CLLocationCoordinate2D(latitude: 22.5431, longitude: 114.0579),
+                    CLLocationCoordinate2D(latitude: 30.5728, longitude: 104.0668)] {
+            let back = MapDatum.fromMap(MapDatum.toMap(fix))
+            let error = CLLocation(latitude: fix.latitude, longitude: fix.longitude)
+                .distance(from: CLLocation(latitude: back.latitude, longitude: back.longitude))
+            XCTAssertLessThan(error, 0.01)
+        }
+    }
+
+    func testMapDatumLeavesPlacesOutsideMainlandChinaAlone() {
+        let outside: [(Double, Double)] = [
+            (51.5007, -0.1246),   // London
+            (25.0330, 121.5654),  // Taipei
+            (23.5700, 119.5800),  // Penghu
+            (24.4300, 118.3200),  // Kinmen
+            (26.1600, 119.9500),  // Matsu
+            (22.2819, 114.1582),  // Hong Kong Central
+            (22.4450, 114.0200),  // Yuen Long
+            (22.5280, 114.1130),  // Lo Wu
+            (22.2930, 114.1700),  // Victoria Harbour
+            (22.2400, 114.1500),  // off Aberdeen
+            (22.1987, 113.5439),  // Macau
+            (22.1900, 113.5600),  // between Macau and Taipa
+            (47.9184, 106.9177),  // Ulaanbaatar
+            (48.9683, 89.9625),   // Ölgii
+            (42.8700, 74.6000),   // Bishkek
+            (27.7000, 85.3200),   // Kathmandu
+            (27.4700, 89.6400),   // Thimphu
+            (21.0300, 105.8500),  // Hanoi
+            (40.1000, 124.4000),  // Sinuiju
+            (50.2700, 127.5300),  // Blagoveshchensk
+            (37.5665, 126.9780),  // Seoul
+            (37.9700, 124.6700),  // Baengnyeong
+        ]
+        for (latitude, longitude) in outside {
+            let place = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            XCTAssertFalse(MapDatum.isShifted(place), "\(latitude), \(longitude)")
+            for converted in [MapDatum.toMap(place), MapDatum.fromMap(place)] {
+                XCTAssertEqual(converted.latitude, place.latitude)
+                XCTAssertEqual(converted.longitude, place.longitude)
+            }
+        }
+        let mainland: [(Double, Double)] = [
+            (22.5431, 114.0579),  // Shenzhen
+            (22.4800, 113.9100),  // Shekou
+            (22.2186, 113.5489),  // Gongbei, Zhuhai
+            (22.1300, 113.5200),  // Hengqin
+            (24.4798, 118.0894),  // Xiamen
+            (30.0160, 122.2070),  // Zhoushan
+            (18.2528, 109.5119),  // Sanya
+            (40.1270, 124.3900),  // Dandong
+            (50.2450, 127.4900),  // Heihe
+            (43.8256, 87.6168),   // Urumqi
+            (39.4700, 75.9900),   // Kashgar
+        ]
+        for (latitude, longitude) in mainland {
+            XCTAssertTrue(MapDatum.isShifted(CLLocationCoordinate2D(latitude: latitude, longitude: longitude)), "\(latitude), \(longitude)")
+        }
     }
 }

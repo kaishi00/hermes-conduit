@@ -82,7 +82,7 @@ final class ComposerDictationService: ObservableObject {
         defer { if startToken == token { isStarting = false } }
         let recognizer: any DictationRecognizer
         do {
-            recognizer = try await makeRecognizer(choice, words: words, hermesGateway: hermesGateway)
+            recognizer = try await Self.makeRecognizer(choice, words: words, hermesGateway: hermesGateway)
         } catch {
             // Cancelled (the composer went away) meanwhile: cancel()
             // already cleared the callbacks.
@@ -137,7 +137,8 @@ final class ComposerDictationService: ObservableObject {
     }
 
     /// Permission, language and the model, before the microphone opens.
-    private func makeRecognizer(
+    /// Voice messages transcribe with the same engine.
+    static func makeRecognizer(
         _ choice: DictationEngine,
         words: [String],
         hermesGateway: () -> HermesVoiceGateway?

@@ -162,6 +162,8 @@ final class HermesNativeCalls: NSObject {
         /// Telling the relay this phone answered it.
         var settling: Task<HermesRingSettleResult, Never>? = nil
         var answered = false
+        /// The voice conversation the answer opened is running.
+        var voiceStarted = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
     }
@@ -171,6 +173,10 @@ final class HermesNativeCalls: NSObject {
     /// store that call's session at the relay.
     private var ringTargets: [String: (target: ConduitNotificationTarget, ring: HermesRing, at: Date)] = [:]
     private var audioActive = false
+    /// Notes every route change of the call's audio in the call trace
+    /// while CallKit has it, so a Speaker button that disagrees with where
+    /// the sound comes out shows up in a copied trace.
+    private var routeObserver: NSObjectProtocol?
     private var audioWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// At launch, before it returns: a call that launched Conduit waits on
@@ -551,6 +557,11 @@ final class HermesNativeCalls: NSObject {
         await keepCallWhileVoiceRuns(id, appState: appState, startTimeout: Self.voiceStartTimeout)
     }
 
+    /// An answered call's own voice conversation is running. Until then,
+    /// voice an interruption ended isn't the call's, and restarting it
+    /// would take the call's place (its open finds voice in use).
+    var isCallVoiceRunning: Bool { calls.values.contains { $0.voiceStarted } }
+
     /// Opens the call as its notification's Talk button would, then keeps
     /// the CallKit call while the voice it opens runs.
     private func openThroughRoute(_ id: UUID, target: ConduitNotificationTarget, appState: AppState) async {
@@ -588,6 +599,7 @@ final class HermesNativeCalls: NSObject {
             if appState.isVoiceInUse {
                 if !started { HermesCallTrace.shared.note("Voice in use", since: voiceWait) }
                 started = true
+                calls[id]?.voiceStarted = true
             } else if started || ContinuousClock.now > startBy {
                 break
             }
@@ -823,8 +835,33 @@ final class HermesNativeCalls: NSObject {
         }
     }
 
+    private func observeRoute() {
+        stopObservingRoute()
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            // On main: the block's assumeIsolated depends on it.
+            queue: .main
+        ) { note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
+                .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            MainActor.assumeIsolated {
+                HermesCallTrace.shared.note(
+                    "Audio route: \(HermesCallAudioRoute.describe(.sharedInstance())) (\(HermesCallAudioRoute.describe(reason)))"
+                )
+            }
+        }
+    }
+
+    private func stopObservingRoute() {
+        guard let routeObserver else { return }
+        NotificationCenter.default.removeObserver(routeObserver)
+        self.routeObserver = nil
+    }
+
     private func settle() {
         guard calls.isEmpty else { return }
+        stopObservingRoute()
         VoiceAudioSessionCoordinator.shared.nativeCallEnded()
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
     }
@@ -913,6 +950,9 @@ extension HermesNativeCalls: CXProviderDelegate {
             }
             self.calls = [:]
             self.audioActive = false
+            VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
+            self.stopObservingRoute()
+            NotificationCenter.default.post(name: .hermesCallAudioDeactivated, object: nil)
             self.resumeAudioWaiters()
             for target in answered { self.endVoice(of: target) }
             self.settle()
@@ -942,19 +982,71 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
+            HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
             self.audioActive = true
+            self.observeRoute()
             self.resumeAudioWaiters()
+            NotificationCenter.default.post(name: .hermesCallAudioActivated, object: nil)
+            AppStateRuntimeRegistry.shared.existing?.hermesCallAudioActivated()
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio off")
+            VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.audioActive = false
+            self.stopObservingRoute()
+            NotificationCenter.default.post(name: .hermesCallAudioDeactivated, object: nil)
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
         action.fail()
+    }
+}
+
+extension Notification.Name {
+    /// CallKit gave a call from Hermes its audio: at the answer, or back
+    /// after an interruption. Under CallKit the system's interruption end
+    /// isn't promised, so voice an interruption paused resumes on this.
+    /// Answered in the car, CallKit's audio can also come on after the
+    /// call's voice started on a session Conduit activated itself (#1145).
+    static let hermesCallAudioActivated = Notification.Name("conduit.hermesCall.audioActivated")
+    /// CallKit took the call's audio back (an interruption, or the call
+    /// ending): nothing plays or records until it's activated again.
+    static let hermesCallAudioDeactivated = Notification.Name("conduit.hermesCall.audioDeactivated")
+}
+
+/// Where a call's audio goes, in a call trace's words.
+enum HermesCallAudioRoute {
+    static func describe(_ session: AVAudioSession) -> String {
+        let outputs = session.currentRoute.outputs.map { describe($0.portType) }
+        let speakerDefault = session.categoryOptions.contains(.defaultToSpeaker) ? ", speaker by default" : ""
+        return (outputs.isEmpty ? "no output" : outputs.joined(separator: " + ")) + speakerDefault
+    }
+
+    static func describe(_ port: AVAudioSession.Port) -> String {
+        switch port {
+        case .builtInSpeaker: return "Speaker"
+        case .builtInReceiver: return "Earpiece"
+        case .headphones: return "Headphones"
+        case .bluetoothHFP, .bluetoothA2DP, .bluetoothLE: return "Bluetooth"
+        case .carAudio: return "CarPlay"
+        default: return port.rawValue
+        }
+    }
+
+    static func describe(_ reason: AVAudioSession.RouteChangeReason?) -> String {
+        switch reason {
+        case .newDeviceAvailable?: return "device added"
+        case .oldDeviceUnavailable?: return "device removed"
+        case .categoryChange?: return "category"
+        case .override?: return "override"
+        case .wakeFromSleep?: return "wake"
+        case .noSuitableRouteForCategory?: return "no route"
+        case .routeConfigurationChange?: return "configuration"
+        default: return "other"
+        }
     }
 }

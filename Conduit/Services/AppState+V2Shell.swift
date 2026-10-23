@@ -29,13 +29,17 @@ extension AppState {
 
     /// Which of `profiles` have a listed conversation with activity the
     /// user hasn't seen. Only rows this device has listed count, so a profile
-    /// never opened here shows no dot rather than a guess. One walk of the
+    /// never opened here shows no dot rather than a guess (All lists the
+    /// other profiles' rows). One walk of the
     /// catalog for the whole profile strip, which redraws with every top bar.
     func profilesWithUnread(among profiles: [String]) -> Set<String> {
         var unread = Set<String>()
         // Owners repeat across rows, so each distinct one is matched once.
         var profilesByOwner: [String: [String]] = [:]
-        for session in sessions {
+        // All's combined read lists the other profiles' rows too.
+        let others = isAllProfilesChatsOn && allProfilesCatalog.dashboardID == activeDashboardID
+            ? allProfilesCatalog.sessions : []
+        for session in sessions + others {
             guard unread.count < profiles.count else { break }
             guard let owner = session.profile else { continue }
             let matched: [String]

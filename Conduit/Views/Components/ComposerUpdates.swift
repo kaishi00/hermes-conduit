@@ -47,6 +47,7 @@ struct ComposerInputs: Equatable {
     let prefillDraftKey: ComposerDraftKey?
     let quoteRequest: ComposerQuoteRequest?
     let focusRequest: ComposerFocusRequest?
+    let dictationRequest: ComposerDictationRequest?
     let restoreRequests: [ComposerRestoreRequest]
     let isVoiceInUse: Bool
     let showsVoiceButton: Bool
@@ -54,6 +55,7 @@ struct ComposerInputs: Equatable {
     let activeVoiceCallSessionID: String?
     let canResumeVoiceCall: Bool
     let isPreparingVoiceResume: Bool
+    let chatVoiceButtonOverride: String?
 
     @MainActor
     init(_ appState: AppState) {
@@ -97,6 +99,7 @@ struct ComposerInputs: Equatable {
         prefillDraftKey = appState.composerPrefillDraftKey
         quoteRequest = appState.composerQuoteRequest
         focusRequest = appState.composerFocusRequest
+        dictationRequest = appState.composerDictationRequest
         restoreRequests = appState.composerRestoreRequests
         isVoiceInUse = appState.isVoiceInUse
         showsVoiceButton = appState.showsComposerVoiceButton
@@ -104,6 +107,7 @@ struct ComposerInputs: Equatable {
         activeVoiceCallSessionID = appState.activeVoiceCallSessionID
         canResumeVoiceCall = appState.canResumeVoiceCall
         isPreparingVoiceResume = appState.isPreparingVoiceResume
+        chatVoiceButtonOverride = appState.chatVoiceButtonOverride
     }
 }
 

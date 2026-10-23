@@ -301,6 +301,10 @@ struct VoiceBackgroundJobBackend {
     /// interrupt: Hermes keeps the turn's work so far and takes the new
     /// direction at once (#451).
     var redirect: @MainActor (_ sessionID: String, _ text: String) async throws -> VoiceRedirectResult = { _, _ in .notRunning }
+    /// Adds words to a running turn without replacing its current direction.
+    /// Throwing HermesError.steerRejected (a refusal, or a gateway without
+    /// steer) lets the supervisor redirect the words instead.
+    var steer: @MainActor (_ sessionID: String, _ text: String) async throws -> VoiceRedirectResult = { _, _ in .notRunning }
     /// The chat's latest assistant reply, read without starting a turn.
     var latestThreadReply: @MainActor (_ thread: VoiceThreadTarget) async -> String? = { _ in nil }
     /// Whether `sessionID` is one of the attached chat's ids, including a
@@ -1347,13 +1351,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// mean ("never mind", "hold that", "make it Alex"). A request that
     /// hasn't gone out yet takes them into its own text instead. Follow-ups
     /// to one request go one at a time, in the order they were said.
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
+    func followUp(jobID: UUID, words: String, kind: String? = nil) async -> VoiceFollowUpOutcome {
         let previous = followUpsInFlight[jobID]
         let generation = generation
         let current = Task { [weak self] () -> VoiceFollowUpOutcome in
             _ = await previous?.value
             guard let self, generation == self.generation else { return .finished(title: "") }
-            return await self.sendFollowUp(jobID: jobID, words: words)
+            return await self.sendFollowUp(jobID: jobID, words: words, kind: kind)
         }
         followUpsInFlight[jobID] = current
         let outcome = await current.value
@@ -1361,7 +1365,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return outcome
     }
 
-    private func sendFollowUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
+    private func sendFollowUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome {
         let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let job = job(jobID) else { return .finished(title: "") }
         guard job.status.isActive else { return .finished(title: job.title) }
@@ -1389,7 +1393,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if !wasQueued { update(jobID) { $0.followUp = .sending } }
                 let result: VoiceRedirectResult
                 do {
-                    result = try await backend.redirect(sessionID, text)
+                    if kind?.lowercased() == "add" {
+                        do {
+                            result = try await backend.steer(sessionID, text)
+                        } catch HermesError.steerRejected {
+                            // A gateway can explicitly decline steer; retain
+                            // the established redirect path in that case.
+                            result = try await backend.redirect(sessionID, text)
+                        }
+                    } else {
+                        result = try await backend.redirect(sessionID, text)
+                    }
                 } catch {
                     if generation == self.generation, !wasQueued { endFollowUp(jobID) }
                     return .failed(UserFacingError.message(for: error))

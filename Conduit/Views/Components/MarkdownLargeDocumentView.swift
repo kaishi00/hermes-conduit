@@ -712,7 +712,7 @@ private struct LargeDocumentPreparingView: View {
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
-    private var cachedChatTextSize: ChatTextSize?
+    private var cachedChatTextSize: ChatTextAppearance?
     private var cachedUsesAccentSurface: Bool?
 
     @MainActor
@@ -722,7 +722,7 @@ final class LargeFlowChunkBox {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory,
-        chatTextSize: ChatTextSize = .default
+        chatTextSize: ChatTextAppearance = .default
     ) -> NSAttributedString? {
         if let cachedText,
            cachedCategory == contentCategory,
@@ -779,7 +779,7 @@ struct LargeFlowChunkView: View {
         ) {
             SelectableTextView(
                 attributedText: attributed,
-                font: ChatTypography.font(for: .body, chatSize: chatTextSize),
+                font: ChatTypography.font(for: .body, appearance: chatTextSize),
                 textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                 lineSpacing: 4,
                 linkColor: usesAccentSurface ? .white : .link,
@@ -1066,7 +1066,7 @@ enum LargeCodeSliceIdentity {
     static func identity(
         source: String,
         sizeCategory: ContentSizeCategory,
-        chatTextSize: ChatTextSize
+        chatTextSize: ChatTextAppearance
     ) -> String {
         "\(source.hashValue)-\(sizeCategory)-chat:\(chatTextSize.cacheIdentity)"
     }
@@ -1136,7 +1136,7 @@ private struct LargeCodeSliceView: View {
     @Environment(\.chatTextSize) private var chatTextSize
 
     private var font: UIFont {
-        ChatTypography.font(for: .blockCode, chatSize: chatTextSize)
+        ChatTypography.font(for: .blockCode, appearance: chatTextSize)
     }
 
     private var sliceIdentity: String {

@@ -11,6 +11,9 @@ import UIKit
 /// - The accent is text and tint on the backdrop and on plain light
 ///   surfaces, so it needs 4.5:1 there.
 ///
+/// A colour of the user's own is held to the same contract: its shades are
+/// worked out from the pick, so the extremes are checked too.
+///
 /// One shade can't do both in dark mode: an accent light enough to read on
 /// the near-black backdrop is too light for white text. So a sent bubble has
 /// its own fill.
@@ -20,7 +23,7 @@ final class AccentContrastTests: XCTestCase {
     private static let lightBackdrop = UIColor(red: 0.94, green: 0.95, blue: 0.98, alpha: 1)
 
     func testSentBubbleTextIsReadableOnEveryPreset() {
-        for choice in ConduitAccentChoice.allCases {
+        for choice in Self.everyAccent {
             for dark in [false, true] {
                 let traits = Self.traits(choice, dark: dark)
                 let top = UIColor.conduitUserBubble.resolvedColor(with: traits)
@@ -32,7 +35,7 @@ final class AccentContrastTests: XCTestCase {
     }
 
     func testAccentReadsAsTextOnTheBackdrop() {
-        for choice in ConduitAccentChoice.allCases {
+        for choice in Self.everyAccent {
             XCTAssertGreaterThanOrEqual(
                 Self.contrast(choice.color(dark: true), Self.darkBackdrop), 4.5,
                 "\(choice): dark accent on the dark backdrop"
@@ -49,7 +52,7 @@ final class AccentContrastTests: XCTestCase {
     }
 
     func testSelectionOnASentBubbleStandsOutFromIt() {
-        for choice in ConduitAccentChoice.allCases {
+        for choice in Self.everyAccent {
             for dark in [false, true] {
                 let traits = Self.traits(choice, dark: dark)
                 let bubble = UIColor.conduitUserBubble.resolvedColor(with: traits)
@@ -60,7 +63,7 @@ final class AccentContrastTests: XCTestCase {
     }
 
     func testTheBubbleFollowsThePick() {
-        for choice in ConduitAccentChoice.allCases {
+        for choice in Self.everyAccent {
             for dark in [false, true] {
                 let resolved = UIColor.conduitUserBubble.resolvedColor(with: Self.traits(choice, dark: dark))
                 XCTAssertEqual(Self.contrast(resolved, choice.bubbleColor), 1, accuracy: 0.01, "\(choice) dark=\(dark)")
@@ -68,9 +71,33 @@ final class AccentContrastTests: XCTestCase {
         }
     }
 
+    func testACustomColorRoundTripsThroughItsStoredValue() {
+        let pick = CustomAccentColor(red: 0.2, green: 0.6, blue: 0.4)
+        XCTAssertEqual(ConduitAccent(rawValue: pick.hex), .custom(pick))
+        XCTAssertEqual(ConduitAccent(rawValue: "teal"), .preset(.teal))
+        XCTAssertNil(ConduitAccent(rawValue: "#12345"))
+        XCTAssertNil(ConduitAccent(rawValue: "violet"))
+    }
+
+    func testACustomColorThatAlreadyReadsIsDrawnAsPicked() {
+        // A mid blue reads on the dark backdrop as it is.
+        let pick = CustomAccentColor(red: 0.33, green: 0.58, blue: 0.98)
+        XCTAssertEqual(pick.darkShade, pick.picked)
+        XCTAssertNotEqual(pick.lightShade, pick.picked, "too light for white text, so darkened")
+    }
+
     // MARK: Helpers
 
-    private static func traits(_ choice: ConduitAccentChoice, dark: Bool) -> UITraitCollection {
+    /// Every preset, and custom picks from white to black: the palest and
+    /// darkest, pure primaries, a grey, and a spread of hues.
+    private static let customPicks: [(red: Double, green: Double, blue: Double)] = [
+        (1, 1, 1), (0, 0, 0), (0.5, 0.5, 0.5), (1, 1, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1),
+        (0, 1, 1), (1, 0, 1), (1, 0.95, 0.85), (0.05, 0.08, 0.2), (0.89, 0.38, 0.25),
+    ]
+    private static let everyAccent: [ConduitAccent] = ConduitAccentChoice.allCases.map { ConduitAccent.preset($0) }
+        + customPicks.map { ConduitAccent.custom(CustomAccentColor(red: $0.red, green: $0.green, blue: $0.blue)) }
+
+    private static func traits(_ choice: ConduitAccent, dark: Bool) -> UITraitCollection {
         UITraitCollection(mutations: { traits in
             traits.conduitAccent = choice
             traits.userInterfaceStyle = dark ? .dark : .light

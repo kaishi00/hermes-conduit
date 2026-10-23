@@ -99,8 +99,11 @@ final class FakeVoiceJobBackend {
     /// Hermes' answers to the next ones (taken in turn; none left means
     /// it took them).
     private(set) var redirects: [(String, String)] = []
+    private(set) var steers: [(String, String)] = []
     var redirectResults: [VoiceRedirectResult] = []
     var redirectError: Error?
+    var steerResults: [VoiceRedirectResult] = []
+    var steerError: Error?
     /// Runs inside redirect, so a test can deliver events while it is sent.
     var onRedirect: (@MainActor () -> Void)?
     /// When true, the next redirect parks until `releaseRedirect()`.
@@ -174,6 +177,11 @@ final class FakeVoiceJobBackend {
                 }
                 if let error = self.redirectError { throw error }
                 return self.redirectResults.isEmpty ? .redirected : self.redirectResults.removeFirst()
+            },
+            steer: { [self] id, text in
+                self.steers.append((id, text))
+                if let error = self.steerError { throw error }
+                return self.steerResults.isEmpty ? .redirected : self.steerResults.removeFirst()
             },
             latestThreadReply: { [self] chat in
                 self.replyReads.append(chat)
@@ -1850,6 +1858,56 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.jobs.first?.followUp)
     }
 
+    func testAnAddFollowUpSteersWithoutRedirecting() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "also ask for a quiet table", kind: "add")
+
+        XCTAssertEqual(outcome, .interrupted(title: job.title))
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testChangeMissingAndUnknownFollowUpKindsKeepRedirecting() async throws {
+        for kind in ["change", nil, "other"] {
+            let (supervisor, fake) = makeSupervisor()
+            _ = await supervisor.startJob(instructions: "book a table for Sam")
+            let job = try XCTUnwrap(supervisor.jobs.first)
+
+            _ = await supervisor.followUp(jobID: job.id, words: "make it Alex", kind: kind)
+
+            XCTAssertTrue(fake.steers.isEmpty, "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"], "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"], "\(String(describing: kind))")
+        }
+    }
+
+    func testExplicitSteerRefusalFallsBackToRedirectButTransportFailureDoesNot() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.steerError = HermesError.steerRejected
+
+        _ = await supervisor.followUp(jobID: job.id, words: "also make it quiet", kind: "add")
+        XCTAssertEqual(fake.steers.count, 1)
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["also make it quiet"])
+
+        let (timedOutSupervisor, timedOutFake) = makeSupervisor()
+        _ = await timedOutSupervisor.startJob(instructions: "book a table for Sam")
+        let timedOutJob = try XCTUnwrap(timedOutSupervisor.jobs.first)
+        timedOutFake.steerError = URLError(.timedOut)
+
+        guard case .failed = await timedOutSupervisor.followUp(jobID: timedOutJob.id, words: "also make it quiet", kind: "add") else {
+            return XCTFail("a transport failure must be reported")
+        }
+        XCTAssertEqual(timedOutFake.steers.count, 1)
+        XCTAssertTrue(timedOutFake.redirects.isEmpty, "an ambiguous steer must not dispatch again")
+    }
+
     func testACompletionBeforeAQueuedFollowUpRunsIsNotTheJobsEnd() async throws {
         let (supervisor, fake) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "book a table for Sam")
@@ -1997,6 +2055,17 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "ask_thread", arguments: ["request": "and hotels?"]))
         guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    func testGeminiStartJobAndAskThreadExposeOptionalFollowUpKinds() throws {
+        let start = try XCTUnwrap(GeminiLiveToolBridge.functionDeclarations.first { $0.name == "start_job" })
+        let ask = try XCTUnwrap(GeminiLiveToolBridge.threadDeclarations.first { $0.name == "ask_thread" })
+        for declaration in [start, ask] {
+            let kind = try XCTUnwrap((declaration.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])
+            XCTAssertEqual(kind["type"] as? String, "STRING")
+            XCTAssertEqual(kind["enum"] as? [String], ["add", "change"])
+            XCTAssertFalse((declaration.parameters["required"] as? [String] ?? []).contains("kind"))
+        }
     }
 
     func testGeminiInterruptJobPassesTheUsersWordsIntoThatJob() async throws {
@@ -2322,6 +2391,73 @@ extension VoiceConversationControllerTests {
             return XCTFail("the chat's reply answers send_request")
         }
         XCTAssertEqual(reply["result"], "Three flights to Rome.")
+    }
+
+    func testGeminiApprovedHeldAskThreadAddSteersTheRunningChatWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: [
+            "request": "also check the test results", "kind": "add",
+        ]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also check the test results"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testGeminiApprovedHeldAttachedStartJobAddSteersTheRunningChatWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: [
+            "instructions": "also check the test results", "kind": "add",
+        ]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also check the test results"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testGeminiApprovedHeldChatFollowUpWithoutKindStillRedirects() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "make it green"]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertTrue(fake.steers.isEmpty)
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it green"])
     }
 
     func testGeminiSendItToHermesSkipsTheQuestionOnce() async {

@@ -106,6 +106,23 @@ struct ConduitPluginSettingsDetail: View {
                 Text(verbatim: statusText(status))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if status.updateAvailable, let notes = NotifierPluginReleaseNotes(changelog: appState.notifierPluginChangelog, status: status) {
+                    if let summary = notes.summary {
+                        Text(verbatim: summary)
+                            .font(.footnote)
+                            .foregroundStyle(notes.hasSecurityFixes ? Color.orange : Color.secondary)
+                    }
+                    if !notes.changes.isEmpty {
+                        DisclosureGroup {
+                            NotifierPluginChangesList(changes: notes.changes)
+                                .padding(.top, 8)
+                        } label: {
+                            Text(verbatim: AppLocalization.string("What's new in \(notes.version)"))
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .accessibilityIdentifier("settings.plugin.whatsNew")
+                    }
+                }
                 if showsAction(status, update: update) {
                     Button { confirming = true } label: {
                         Label(actionTitle(status), systemImage: "arrow.down.circle")
@@ -279,7 +296,11 @@ private struct NotifierPluginUpdateConfirmation: ViewModifier {
             Button(AppLocalization.string("Update and Restart Hermes")) { appState.updateNotifierPlugin(install: install) }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
-            Text("Hermes updates the plugin, then restarts its gateway and dashboard once running chats finish. Chats and messaging channels reconnect by themselves.")
+            if !install && appState.notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability) {
+                Text("Hermes updates the plugin on the host, then restarts its gateway and dashboard once running chats finish. You can close Conduit: you'll get a notification when it's done.")
+            } else {
+                Text("Hermes updates the plugin, then restarts its gateway and dashboard once running chats finish. Chats and messaging channels reconnect by themselves.")
+            }
         }
     }
 }
@@ -415,6 +436,13 @@ struct NotifierPluginUpdateStatusView: View {
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
+        case .runningOnHost:
+            return Row(
+                title: AppLocalization.string("Still updating on the host"),
+                detail: AppLocalization.string("The update is still running on the host. You'll get a notification when it's done."),
+                symbol: "clock",
+                tint: .secondary
+            )
         case .unsupported:
             return Row(
                 title: AppLocalization.string("This Hermes can't update plugins from Conduit"),
@@ -462,6 +490,10 @@ struct NotifierPluginUpdateBanner: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @State private var confirming = false
+    @State private var showsNotes = false
+    /// The notes as they were when What's New was tapped: an hourly
+    /// changelog read can't empty the open sheet.
+    @State private var shownNotes: NotifierPluginReleaseNotes?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -475,6 +507,15 @@ struct NotifierPluginUpdateBanner: View {
         }
         .animation(.snappy, value: appState.showsNotifierPluginUpdateNotice)
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall)
+        .sheet(isPresented: $showsNotes) {
+            if let shownNotes {
+                NotifierPluginChangesSheet(notes: shownNotes)
+            }
+        }
+    }
+
+    private var notes: NotifierPluginReleaseNotes? {
+        NotifierPluginReleaseNotes(changelog: appState.notifierPluginChangelog, status: appState.notifierPlugin)
     }
 
     private var isInstall: Bool { appState.notifierPlugin.offersInstall }
@@ -507,8 +548,37 @@ struct NotifierPluginUpdateBanner: View {
                 Text(verbatim: text)
                     .font(.subheadline)
                     .lineLimit(2)
+                // When it came out and what's in it (#297, #300).
+                if update == .idle, offer == .update, let notes {
+                    let line = [notes.summary, notes.changes.isEmpty ? nil : AppLocalization.string("What's New")]
+                        .compactMap { $0 }.joined(separator: " · ")
+                    if notes.changes.isEmpty, !line.isEmpty {
+                        Text(verbatim: line)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if !line.isEmpty {
+                        Button {
+                            shownNotes = notes
+                            showsNotes = true
+                        } label: {
+                            Text(verbatim: line)
+                                .font(.footnote)
+                                .foregroundStyle(notes.hasSecurityFixes ? Color.orange : Color.secondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pluginUpdate.whatsNew")
+                    }
+                }
                 if case .updating(let step) = update {
                     NotifierPluginUpdateProgress(step: step, startedAt: appState.notifierPluginUpdate.startedAt)
+                }
+                if update == .runningOnHost, let detail = row?.detail {
+                    Text(verbatim: detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -546,7 +616,8 @@ struct NotifierPluginUpdateBanner: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel(Text(update.isInProgress ? AppLocalization.string("Cancel") : AppLocalization.string("Not now")))
+            .accessibilityLabel(Text(update.isInProgress ? AppLocalization.string("Cancel")
+                : update == .idle ? AppLocalization.string("Not now") : AppLocalization.string("Dismiss")))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -574,5 +645,124 @@ extension NotifierPluginStatus {
         case .failed, .unsupported: return predatesOneTapUpdate
         default: return false
         }
+    }
+}
+
+/// What an update brings, from the plugin's changelog
+/// (NotifierPluginChangelog): security fixes first, then fixes, then new
+/// things, each with its version.
+struct NotifierPluginChangesList: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let changes: [NotifierPluginChangelog.Change]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(NotifierPluginChangelog.Kind.allCases, id: \.self) { kind in
+                let items = changes.filter { $0.kind == kind }
+                if !items.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(Self.title(of: kind), systemImage: Self.symbol(of: kind))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(kind == .security ? Color.orange : Color.primary)
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(items) { change in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(verbatim: change.version)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Text(verbatim: change.text)
+                                    .font(.footnote)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    static func title(of kind: NotifierPluginChangelog.Kind) -> String {
+        switch kind {
+        case .security: return AppLocalization.string("Security fixes")
+        case .fixes: return AppLocalization.string("Fixes")
+        case .new: return AppLocalization.string("New and improved")
+        }
+    }
+
+    private static func symbol(of kind: NotifierPluginChangelog.Kind) -> String {
+        switch kind {
+        case .security: return "lock.shield"
+        case .fixes: return "wrench.and.screwdriver"
+        case .new: return "sparkles"
+        }
+    }
+}
+
+/// What the update to the offered version brings, and when that version
+/// came out, for the notice and Settings > Conduit plugin.
+struct NotifierPluginReleaseNotes: Equatable {
+    var version: String
+    var released: Date?
+    var changes: [NotifierPluginChangelog.Change]
+
+    var hasSecurityFixes: Bool { changes.contains { $0.kind == .security } }
+
+    /// Nil when the changelog isn't read yet or names neither the date nor a change.
+    init?(changelog: NotifierPluginChangelog?, status: NotifierPluginStatus) {
+        guard let changelog else { return nil }
+        version = status.offeredVersion
+        released = changelog.released(version)
+        // A host whose version isn't known gets what this build's floor
+        // brought on, not the whole history.
+        changes = changelog.updateChanges(after: status.runningVersion ?? status.version ?? NotifierPluginStatus.recommendedVersion,
+                                          through: version)
+        if released == nil && changes.isEmpty { return nil }
+    }
+
+    /// "Released Oct 22, 2026", plus whether security fixes are in it.
+    @MainActor
+    var summary: String? {
+        var parts: [String] = []
+        if let released {
+            let day = released.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted,
+                                                          locale: AppLocalization.formattingLocale,
+                                                          timeZone: TimeZone(identifier: "UTC") ?? .current))
+            parts.append(AppLocalization.string("Released \(day)"))
+        }
+        if hasSecurityFixes { parts.append(AppLocalization.string("Includes security fixes")) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// The notes in full, from the notice's What's New.
+struct NotifierPluginChangesSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.dismiss) private var dismiss
+    let notes: NotifierPluginReleaseNotes
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let summary = notes.summary {
+                        Text(verbatim: summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    NotifierPluginChangesList(changes: notes.changes)
+                }
+                .padding(16)
+            }
+            .navigationTitle(Text(verbatim: AppLocalization.string("What's new in \(notes.version)")))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

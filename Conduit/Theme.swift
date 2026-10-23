@@ -136,6 +136,56 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Black or white, whichever stands out on `fill`.
+    static func markColor(on fill: UIColor) -> UIColor {
+        fill.conduitRelativeLuminance > 0.3 ? .black : .white
+    }
+}
+
+/// The accent in force: a preset, or a colour of the user's own. A custom
+/// one is stored under the same key as "#RRGGBB" in place of a preset's
+/// name, so it syncs and reaches the Watch as the presets do; an app too
+/// old to know it reads the default.
+enum ConduitAccent: Hashable, Sendable, RawRepresentable {
+    case preset(ConduitAccentChoice)
+    case custom(CustomAccentColor)
+
+    static let storageKey = ConduitAccentChoice.storageKey
+    static let defaultValue = ConduitAccent.preset(ConduitAccentChoice.defaultChoice)
+
+    init?(rawValue: String) {
+        if let preset = ConduitAccentChoice(rawValue: rawValue) {
+            self = .preset(preset)
+        } else if let custom = CustomAccentColor(hex: rawValue) {
+            self = .custom(custom)
+        } else {
+            return nil
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .preset(let choice): return choice.rawValue
+        case .custom(let custom): return custom.hex
+        }
+    }
+
+    /// The accent itself, as ConduitAccentChoice.color(dark:).
+    func color(dark: Bool) -> UIColor {
+        switch self {
+        case .preset(let choice): return choice.color(dark: dark)
+        case .custom(let custom): return UIColor(dark ? custom.darkShade : custom.lightShade)
+        }
+    }
+
+    /// The lighter companion shade (`conduitAccentSoft`).
+    func softColor(dark: Bool) -> UIColor {
+        switch self {
+        case .preset(let choice): return choice.softColor(dark: dark)
+        case .custom(let custom): return UIColor(dark ? custom.softDarkShade : custom.softLightShade)
+        }
+    }
+
     /// The fill of the user's own message bubbles, which carry white text:
     /// the light-mode accent, in dark mode too. The dark-mode accent is light
     /// enough to read on the dark backdrop, and so too light under white
@@ -152,50 +202,71 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
 
     /// The tint a text selection takes on a sent bubble: the system draws
     /// selections in the accent, which disappears on an accent bubble.
-    var selectionColorOnBubble: UIColor { Self.markColor(on: bubbleColor) }
+    var selectionColorOnBubble: UIColor { ConduitAccentChoice.markColor(on: bubbleColor) }
+}
 
-    /// Black or white, whichever stands out on `fill`.
-    static func markColor(on fill: UIColor) -> UIColor {
-        fill.conduitRelativeLuminance > 0.3 ? .black : .white
+extension UIColor {
+    convenience init(_ rgb: CustomAccentColor.RGB) {
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
     }
+}
+
+extension CustomAccentColor {
+    /// The colour as text and tint on the app's backdrop: the shade that
+    /// reads in the mode it draws in. A group room draws each bot in its
+    /// own colour this way.
+    var readableColor: UIColor {
+        let light = UIColor(lightShade)
+        let dark = UIColor(darkShade)
+        return UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+    }
+}
+
+extension CustomAccentColor {
+    /// The last colour of the user's own, kept on this device while a
+    /// preset is picked.
+    static let lastPickKey = "conduit.accentLastCustomColor"
+    /// The custom swatch's colour before the user's first pick: a coral no
+    /// preset has.
+    static let firstPick = CustomAccentColor(red: 0.89, green: 0.38, blue: 0.25)
 }
 
 /// Carries the accent choice through UIKit traits, so the dynamic accent
 /// colours resolve it wherever they draw, SwiftUI and UIKit alike.
 struct ConduitAccentTrait: UITraitDefinition {
-    static let defaultValue = ConduitAccentChoice.defaultChoice
+    static let defaultValue = ConduitAccent.defaultValue
     static let affectsColorAppearance = true
     static let name = "ConduitAccent"
 }
 
 extension UITraitCollection {
-    var conduitAccent: ConduitAccentChoice { self[ConduitAccentTrait.self] }
+    var conduitAccent: ConduitAccent { self[ConduitAccentTrait.self] }
 }
 
 extension UIMutableTraits {
-    var conduitAccent: ConduitAccentChoice {
+    var conduitAccent: ConduitAccent {
         get { self[ConduitAccentTrait.self] }
         set { self[ConduitAccentTrait.self] = newValue }
     }
 }
 
 private struct ConduitAccentEnvironmentKey: EnvironmentKey {
-    static let defaultValue = ConduitAccentChoice.defaultChoice
+    static let defaultValue = ConduitAccent.defaultValue
 }
 
 extension ConduitAccentEnvironmentKey: UITraitBridgedEnvironmentKey {
-    static func read(from traitCollection: UITraitCollection) -> ConduitAccentChoice {
+    static func read(from traitCollection: UITraitCollection) -> ConduitAccent {
         traitCollection.conduitAccent
     }
 
-    static func write(to mutableTraits: inout UIMutableTraits, value: ConduitAccentChoice) {
+    static func write(to mutableTraits: inout UIMutableTraits, value: ConduitAccent) {
         mutableTraits.conduitAccent = value
     }
 }
 
 extension EnvironmentValues {
     /// Set once at the root from the saved choice.
-    var conduitAccent: ConduitAccentChoice {
+    var conduitAccent: ConduitAccent {
         get { self[ConduitAccentEnvironmentKey.self] }
         set { self[ConduitAccentEnvironmentKey.self] = newValue }
     }
@@ -206,13 +277,13 @@ extension UIColor {
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
 
-    /// See ConduitAccentChoice.selectionColorOnBubble.
+    /// See ConduitAccent.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
         traits.conduitAccent.selectionColorOnBubble
     }
 
     /// A sent bubble's fill, top-leading and bottom-trailing stops. See
-    /// ConduitAccentChoice.bubbleColor.
+    /// ConduitAccent.bubbleColor.
     static let conduitUserBubble = UIColor { traits in
         traits.conduitAccent.bubbleColor
     }
@@ -708,7 +779,7 @@ private struct OutOfProcessAccentTint: ViewModifier {
 /// the window turns light or dark: the window's own trait change, since the
 /// tinting view is never laid out again and its changes can arrive late.
 struct WindowAccentTint: UIViewRepresentable {
-    let choice: ConduitAccentChoice
+    let choice: ConduitAccent
 
     func makeUIView(context: Context) -> TintingView {
         let view = TintingView()
@@ -722,7 +793,7 @@ struct WindowAccentTint: UIViewRepresentable {
     }
 
     final class TintingView: UIView {
-        var choice = ConduitAccentChoice.defaultChoice {
+        var choice = ConduitAccent.defaultValue {
             didSet { if choice != oldValue { applyTint() } }
         }
 
