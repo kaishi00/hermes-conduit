@@ -129,6 +129,10 @@ struct PulseSettingsPage: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if let chat = state.homeChat {
+                // Shown whether Pulse is on or off: where its cards come from.
+                SettingsMetricRow(label: AppLocalization.string("Pulse chat"), value: chat.title, lineLimit: 1)
+            }
             if state.homeChat != nil, !state.homeProblem.isEmpty {
                 // Something wrong with the Pulse chat, in the plugin's own
                 // words (English); kept out of Behind the scenes so it shows.
@@ -296,9 +300,6 @@ struct PulseSettingsPage: View {
                             .foregroundStyle(.secondary)
                     }
                     budgetRows(state, budgets: budgets)
-                    if let chat = state.homeChat {
-                        SettingsMetricRow(label: AppLocalization.string("Pulse chat"), value: chat.title, lineLimit: 1)
-                    }
                     if !state.recent.isEmpty {
                         recentChecks(state)
                     }

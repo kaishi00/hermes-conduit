@@ -332,7 +332,7 @@ struct V2PulsePage: View {
             .pulseRow()
     }
 
-    /// Not now: off the list, nothing learned. A plugin before 0.67.0 can't take it.
+    /// Not now: off the list, nothing learned. A plugin before 0.68.0 can't take it.
     @ViewBuilder private func notNowButton(_ card: PulseCard) -> some View {
         if card.dismissedAt == nil, card.doneAt == nil, canDismiss {
             Button {

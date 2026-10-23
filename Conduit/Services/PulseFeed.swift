@@ -40,7 +40,7 @@ struct PulseCard: Equatable, Identifiable {
     let itemID: Int?
     /// What a report item is about ("date", "promise"…) on a "noticed" card.
     let topic: String
-    /// The morning brief it went out in (0.67.0): the brief's own card and
+    /// The morning brief it went out in (0.68.0): the brief's own card and
     /// the held cards it brought share it, and show together.
     let brief: String
     /// Swiped away ("Not now"): in Done and cleared, nothing learned.
@@ -534,6 +534,6 @@ extension PulseClient {
     static let doneCapability = "pulse_done"
     /// After Do it, Pulse marks the card done itself once the chat shows it (0.64.0).
     static let actedCapability = "pulse_acted"
-    /// Cards can be swiped away, and briefs name the cards they brought (0.67.0).
+    /// Cards can be swiped away, and briefs name the cards they brought (0.68.0).
     static let dismissCapability = "pulse_dismiss"
 }
