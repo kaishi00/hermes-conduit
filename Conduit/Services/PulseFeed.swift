@@ -379,20 +379,6 @@ extension AppState {
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
-    /// Opens Pulse's own chat and sends `text` there once it's open (or
-    /// leaves it in that chat's composer); false when the chat didn't open.
-    func replyInPulseChat(_ text: String, chatID: String) async -> Bool {
-        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return false }
-        let dashboard = activeDashboardID
-        openAppLink(.session(id: chatID, profile: Self.pulseHomeProfile))
-        guard await waitForOpenChat(chatID, on: dashboard) else { return false }
-        // The chat is open: a send it refused waits in its composer.
-        let sent = await sendMessage(message)
-        if !sent { prefillComposer(message) }
-        return true
-    }
-
     /// Do it on a follow-up card: opens the chat the promise or to-do came
     /// from with the reminder in its composer, ready to send. False when the
     /// chat didn't open.

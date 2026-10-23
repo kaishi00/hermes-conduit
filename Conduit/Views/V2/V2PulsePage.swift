@@ -87,8 +87,6 @@ struct V2PulsePage: View {
     @State private var reasonCard: PulseCard?
     @State private var showsLearned = false
     @State private var expandedWhy: Set<Int> = []
-    @State private var reply = ""
-    @State private var sending = false
     @State private var ratingCards: Set<Int> = []
     @State private var actingCard: Int?
     @State private var finishingCards: Set<Int> = []
@@ -127,10 +125,7 @@ struct V2PulsePage: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                if homeChatID != nil { replyBar }
-                MinimisedLiveVoiceBar()
-            }
+            MinimisedLiveVoiceBar()
         }
         .sheet(isPresented: $showsLearned) {
             PulseLearnedSheet {
@@ -523,29 +518,6 @@ struct V2PulsePage: View {
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
-    private var replyBar: some View {
-        HStack(spacing: 8) {
-            TextField(AppLocalization.string("Reply to Pulse"), text: $reply, axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Capsule().fill(.thinMaterial))
-                .accessibilityIdentifier("pulse.reply")
-            Button {
-                send()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.conduitAccent)
-            }
-            .disabled(sending || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityLabel(AppLocalization.string("Send"))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
-
     // MARK: Actions
 
     private func load() async {
@@ -628,24 +600,6 @@ struct V2PulsePage: View {
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
-            }
-        }
-    }
-
-    private func send() {
-        guard let homeChatID else { return }
-        let text = reply
-        sending = true
-        let dashboard = appState.activeDashboardID
-        Task {
-            defer { sending = false }
-            let sent = await appState.replyInPulseChat(text, chatID: homeChatID)
-            guard appState.activeDashboardID == dashboard else { return }
-            if sent {
-                reply = ""
-                errorMessage = nil
-            } else {
-                errorMessage = AppLocalization.string("Couldn't send that to Pulse. Try again.")
             }
         }
     }
