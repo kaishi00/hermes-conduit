@@ -206,4 +206,17 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(report.heading, PulseCardKind.title("report"))
         XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
+
+    func testACardPointingAtPulsesOwnChatOpensNoChat() throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "brief", "level": "push", "news": "Morning", "chat_id": "pulse_chat"},
+          {"id": 2, "kind": "followup", "level": "push", "news": "Deck", "chat_id": "work"}
+        ]}
+        """)))
+        state.applyPulseFeed(page)
+        XCTAssertFalse(state.pulseCardHasChat(page.cards[0]))
+        XCTAssertTrue(state.pulseCardHasChat(page.cards[1]))
+    }
 }

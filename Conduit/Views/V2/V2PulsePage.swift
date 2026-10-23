@@ -339,7 +339,7 @@ struct V2PulsePage: View {
                     if canMarkDone(card) { doneButton(card) }
                 }
             }
-            if !card.chatID.isEmpty {
+            if appState.pulseCardHasChat(card) {
                 Button {
                     appState.openPulseCardChat(card)
                 } label: {

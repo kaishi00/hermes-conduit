@@ -241,7 +241,8 @@ struct PulseSettingsPage: View {
             .buttonStyle(.settings)
             .disabled(working)
             .accessibilityIdentifier("settings.pulse.report-now")
-            briefTime(state)
+            // The plugin takes the brief's time with the Pulse screen (0.55.0).
+            if appState.notifierPlugin.reports(PulseClient.feedCapability) { briefTime(state) }
         }
     }
 

@@ -404,8 +404,14 @@ extension AppState {
     }
 
     /// Opens the chat a card came from.
+    /// The card links a chat to open: not Pulse's own, which is hidden (a
+    /// report's or brief's cards point there).
+    func pulseCardHasChat(_ card: PulseCard) -> Bool {
+        !card.chatID.isEmpty && card.chatID != pulseHomeChatID
+    }
+
     func openPulseCardChat(_ card: PulseCard) {
-        guard !card.chatID.isEmpty else { return }
+        guard pulseCardHasChat(card) else { return }
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
