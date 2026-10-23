@@ -92,6 +92,7 @@ struct V2PulsePage: View {
     @State private var ratingCards: Set<Int> = []
     @State private var actingCard: Int?
     @State private var finishingCards: Set<Int> = []
+    @State private var showsOldDone = false
 
     private var client: PulseClient { appState.pulseClient }
 
@@ -224,11 +225,17 @@ struct V2PulsePage: View {
                             .foregroundStyle(.red)
                             .padding(.horizontal, 4)
                     }
-                    ForEach(page.cards) { card in
-                        cardView(card)
-                            .accessibilityElement(children: .contain)
-                            .accessibilityFocused($voiceOverCard, equals: card.id)
-                            .id(card.id)
+                    let folded = page.cards.filter { isFolded($0) }
+                    ForEach(page.cards.filter { !isFolded($0) }) { card in
+                        listedCard(card)
+                    }
+                    if !folded.isEmpty {
+                        oldDoneToggle(count: folded.count)
+                        if showsOldDone {
+                            ForEach(folded) { card in
+                                listedCard(card)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -252,6 +259,52 @@ struct V2PulsePage: View {
                 }
             }
         }
+    }
+
+    private func listedCard(_ card: PulseCard) -> some View {
+        cardView(card)
+            .accessibilityElement(children: .contain)
+            .accessibilityFocused($voiceOverCard, equals: card.id)
+            .id(card.id)
+    }
+
+    /// Done more than a day ago: kept under the Done row at the bottom, so
+    /// the list is about what's still open. The card a push opened stays out.
+    private func isFolded(_ card: PulseCard) -> Bool {
+        guard let doneAt = card.doneAt, card.id != focusedCard else { return false }
+        return Date().timeIntervalSince(doneAt) > 86_400
+    }
+
+    private func oldDoneToggle(count: Int) -> some View {
+        Button {
+            Haptics.selection()
+            withAnimation(.snappy) { showsOldDone.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle")
+                Text(AppLocalization.string("Done"))
+                Text(verbatim: "\(count)")
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(showsOldDone ? 180 : 0))
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(Text(verbatim: "\(count)"))
+        .accessibilityHint(Text(AppLocalization.string("Shows the cards done more than a day ago")))
+        .accessibilityAddTraits(showsOldDone ? .isSelected : [])
+        .accessibilityIdentifier("pulse.done-cards")
+    }
+
+    /// One request at a time per card, whichever of its buttons sent it.
+    private func isBusy(_ card: PulseCard) -> Bool {
+        actingCard == card.id || finishingCards.contains(card.id) || ratingCards.contains(card.id)
     }
 
     private func cardView(_ card: PulseCard) -> some View {
@@ -367,7 +420,12 @@ struct V2PulsePage: View {
                 if errorMessage == failure { errorMessage = nil }
                 // Pulse reads the chat once Hermes has answered and marks the card done itself.
                 if appState.notifierPlugin.reports(PulseClient.actedCapability) {
-                    try? await client.acted(card: card.id)
+                    do {
+                        try await client.acted(card: card.id)
+                    } catch {
+                        guard appState.activeDashboardID == dashboard else { return }
+                        errorMessage = AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.")
+                    }
                 }
             }
         } label: {
@@ -378,7 +436,7 @@ struct V2PulsePage: View {
         .controlSize(.small)
         .tint(.conduitAccent)
         .accessibilityHint(Text(AppLocalization.string("Opens the chat with this reminder ready to send")))
-        .disabled(actingCard != nil)
+        .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
     }
 
@@ -399,7 +457,7 @@ struct V2PulsePage: View {
         .controlSize(.small)
         .tint(.conduitAccent)
         .accessibilityHint(Text(AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
-        .disabled(finishingCards.contains(card.id))
+        .disabled(isBusy(card))
         .accessibilityIdentifier("pulse.card.done")
     }
 
@@ -416,11 +474,11 @@ struct V2PulsePage: View {
                     Haptics.selection()
                     markDone(card, false)
                 } label: {
-                    Text("Undo")
+                    Text(AppLocalization.string("Undo"))
                         .font(.footnote.weight(.medium))
                 }
                 .buttonStyle(.borderless)
-                .disabled(finishingCards.contains(card.id))
+                .disabled(isBusy(card))
                 .accessibilityLabel(Text(AppLocalization.string("Undo Done")))
                 .accessibilityHint(Text(AppLocalization.string("Pulse checks on it again")))
                 .accessibilityIdentifier("pulse.card.undo-done")
@@ -442,7 +500,7 @@ struct V2PulsePage: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        .disabled(ratingCards.contains(card.id))
+        .disabled(isBusy(card))
         .accessibilityLabel(up ? AppLocalization.string("Useful") : AppLocalization.string("Not useful"))
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }

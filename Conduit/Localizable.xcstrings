@@ -319929,6 +319929,170 @@
           }
         }
       }
+    },
+    "Shows the cards done more than a day ago" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Karten, die vor mehr als einem Tag erledigt wurden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra las tarjetas hechas hace más de un día"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche les cartes terminées il y a plus d’un jour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menampilkan kartu yang selesai lebih dari sehari lalu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra le schede completate più di un giorno fa"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1日以上前に完了したカードを表示します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하루 이상 전에 완료된 카드를 표시합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokazuje karty oznaczone jako zrobione ponad dzień temu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra os cartões concluídos há mais de um dia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывает карточки, выполненные больше суток назад"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir günden önce tamamlanan kartları gösterir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示一天多以前已完成的卡片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示一天多以前已完成的卡片"
+          }
+        }
+      }
+    },
+    "Pulse couldn't be told about this one. Tap Done once it's taken care of." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse konnte darüber nicht informiert werden. Tippe auf „Fertig“, sobald es erledigt ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo avisar a Pulse de esto. Toca Hecho cuando esté resuelto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse n’a pas pu en être informé. Touchez Terminé une fois que c’est réglé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse tidak bisa diberi tahu soal ini. Ketuk Selesai setelah beres."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile avvisare Pulse. Tocca Fatto quando è sistemato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseにこのことを伝えられませんでした。片付いたら「完了」をタップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse에 이 내용을 알리지 못했습니다. 처리되면 완료를 탭하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się powiadomić Pulse. Stuknij Gotowe, gdy sprawa będzie załatwiona."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível avisar o Pulse sobre isso. Toque em Concluído quando estiver resolvido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сообщить об этом Pulse. Нажмите «Готово», когда всё будет сделано."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse'a bu bildirilemedi. Halledildiğinde Bitti'ye dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法告知 Pulse 这件事。处理好后请轻点“完成”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法告知 Pulse 這件事。處理好後請點一下「完成」。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
