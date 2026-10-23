@@ -247,6 +247,21 @@ extension GatewayRestartTests {
         XCTAssertFalse(cards.showsPlan, "an opened finished plan still goes after a while")
     }
 
+    func testReconnectKeepsThePlanTheChatShowedAfterItsRowsGo() {
+        let cards = ChatCardsModel(defaults: freshDefaults())
+        cards.applyServerPlan(AgentPlan(snapshotJSON: result([("1", "Old", "in_progress")])), for: cardsChat)
+        cards.transcriptChanged([todoRow("t1", output: result([("1", "New", "in_progress")]))], for: cardsChat)
+        // A rewind: the page reloads without the todo row.
+        cards.transcriptChanged([reply("r", "A reloaded page without the todo row")], for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.first?.content, "New")
+
+        cards.applyServerPlan(nil, for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.first?.content, "New", "a reconnect without todo_state keeps the chat's plan")
+
+        cards.applyServerPlan(AgentPlan(snapshotJSON: result([("1", "Old", "in_progress")])), for: cardsChat)
+        XCTAssertEqual(cards.plan?.items.first?.content, "New", "an older todo_state doesn't replace it")
+    }
+
     func testAnotherIDForTheSameChatKeepsItsCards() {
         let cards = ChatCardsModel(defaults: freshDefaults())
         cards.transcriptChanged([todoRow("t1", output: result([("1", "A", "pending")]))], for: cardsChat)

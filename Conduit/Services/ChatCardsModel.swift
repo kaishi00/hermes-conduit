@@ -102,10 +102,11 @@ final class ChatCardsModel: ObservableObject {
         show(chat)
         guard self.chat != nil else { return }
         serverPlan = snapshot?.isEmpty == false ? snapshot : nil
-        // A resume is newer than what the transcript showed before it.
-        transcriptPlan = nil
+        // The plan the transcript showed outranks the snapshot, even once its
+        // rows have left the loaded page: a resume may carry no `todo_state`
+        // (before Hermes 0.21) or an older one.
         guard planRowID == nil else { return }
-        present(serverPlan, rowTimestamp: nil)
+        present(transcriptPlan ?? serverPlan, rowTimestamp: nil)
     }
 
     /// The transcript on screen changed.
