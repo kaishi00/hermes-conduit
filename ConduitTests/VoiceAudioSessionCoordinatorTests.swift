@@ -644,9 +644,9 @@ extension VoiceAudioSessionCoordinatorTests {
         coordinator.nativeCallAudioDeactivated()
         session.resetRecordings()
 
-        try coordinator.reassert()
+        _ = try coordinator.acquire(.conversationPlayback)
 
-        XCTAssertEqual(session.activationCount, 1)
+        XCTAssertEqual(session.activationCount, 1, "the next acquire activates, even with its policy already applied")
     }
 
     func testCallEndingUnderALiveConversationRestoresItsOwnPolicy() throws {

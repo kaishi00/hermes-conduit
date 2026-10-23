@@ -670,12 +670,9 @@ extension VoiceAudioSessionCoordinatorTests {
 
         stopped.stop()
         NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
-        let deadline = Date().addingTimeInterval(2)
-        while engines.count == built, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        let moved = await waitForCondition { engines.count == built + 1 }
 
-        XCTAssertEqual(engines.count, built + 1, "the reply moved to a new engine")
+        XCTAssertTrue(moved, "the reply moved to a new engine")
         XCTAssertTrue(try XCTUnwrap(engines.last).isRunning)
         XCTAssertEqual(service.pendingBuffers, 3, "nothing queued was dropped")
         XCTAssertTrue(service.isPlaying)

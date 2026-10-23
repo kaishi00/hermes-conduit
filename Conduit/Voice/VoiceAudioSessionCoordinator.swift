@@ -416,7 +416,10 @@ final class VoiceAudioSessionCoordinator {
     /// CallKit took the call's audio back (an interruption, the call
     /// ending): the next acquire or reassert activates the session itself.
     func nativeCallAudioDeactivated() {
+        guard isNativeCallAudioActive else { return }
         isNativeCallAudioActive = false
+        // Even an acquire whose policy is already applied.
+        needsReapply = true
     }
 
     /// The last call from Hermes is gone: a conversation still holding the
