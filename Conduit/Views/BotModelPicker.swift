@@ -89,7 +89,7 @@ struct BotModelPicker: View {
     }
 
     /// The Model row's value: the pick, or what an empty pick means.
-    static func summary(provider: String, model: String, allowsInherit: Bool) -> String {
+    static func summary(model: String, allowsInherit: Bool) -> String {
         if !model.isEmpty { return model }
         return allowsInherit
             ? AppLocalization.string("Same as Main Profile")

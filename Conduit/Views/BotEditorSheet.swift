@@ -374,11 +374,7 @@ struct BotEditorSheet: View {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
                         LabeledContent(AppLocalization.string("Model")) {
-                            Text(verbatim: BotModelPicker.summary(
-                                provider: draft.provider,
-                                model: draft.model,
-                                allowsInherit: isCreating
-                            ))
+                            Text(verbatim: BotModelPicker.summary(model: draft.model, allowsInherit: isCreating))
                         }
                     }
                 }
@@ -485,7 +481,8 @@ struct BotEditorSheet: View {
                 onFinished(createdName, warning, createdName != nil && !needsModel)
             case .confirmModel(let message):
                 Haptics.warning()
-                modelConfirmation = message
+                // Only Edit Bot asks; a create pins through profiles.create.
+                if editedBot == nil { error = message } else { modelConfirmation = message }
             }
         }
     }
@@ -493,6 +490,7 @@ struct BotEditorSheet: View {
     private func confirmModel() {
         guard let bot = editedBot else { return }
         isSaving = true
+        error = nil
         let draft = self.draft
         Task {
             let result = await appState.saveBotModel(bot, provider: draft.provider, model: draft.model, confirmed: true)
