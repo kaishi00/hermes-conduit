@@ -90,6 +90,7 @@ struct V2PulsePage: View {
     @State private var reply = ""
     @State private var sending = false
     @State private var ratingCards: Set<Int> = []
+    @State private var actingCard: Int?
 
     private var client: PulseClient { appState.pulseClient }
 
@@ -279,9 +280,16 @@ struct V2PulsePage: View {
             if card.isActionable {
                 Button {
                     Haptics.selection()
+                    let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+                    actingCard = card.id
                     Task {
+                        defer { actingCard = nil }
                         let opened = await appState.actOnPulseCard(card)
-                        errorMessage = opened ? nil : AppLocalization.string("Couldn't open that chat. Try again.")
+                        if !opened {
+                            errorMessage = failure
+                        } else if errorMessage == failure {
+                            errorMessage = nil
+                        }
                     }
                 } label: {
                     Label(AppLocalization.string("Do it"), systemImage: "arrow.right.circle.fill")
@@ -291,6 +299,7 @@ struct V2PulsePage: View {
                 .controlSize(.small)
                 .tint(.conduitAccent)
                 .accessibilityHint(Text(AppLocalization.string("Opens the chat with this reminder ready to send")))
+                .disabled(actingCard != nil)
                 .accessibilityIdentifier("pulse.card.do-it")
             }
             if !card.chatID.isEmpty {

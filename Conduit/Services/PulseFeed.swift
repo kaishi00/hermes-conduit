@@ -356,8 +356,9 @@ extension AppState {
     func replyInPulseChat(_ text: String, chatID: String) async -> Bool {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return false }
+        let dashboard = activeDashboardID
         openAppLink(.session(id: chatID, profile: Self.pulseHomeProfile))
-        guard await waitForOpenChat(chatID) else { return false }
+        guard await waitForOpenChat(chatID, on: dashboard) else { return false }
         // The chat is open: a send it refused waits in its composer.
         let sent = await sendMessage(message)
         if !sent { prefillComposer(message) }
@@ -369,19 +370,27 @@ extension AppState {
     /// chat didn't open.
     func actOnPulseCard(_ card: PulseCard) async -> Bool {
         guard card.isActionable else { return false }
+        let dashboard = activeDashboardID
         openPulseCardChat(card)
-        guard await waitForOpenChat(card.chatID) else { return false }
+        guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
         prefillComposer(card.actionMessage)
         return true
     }
 
-    /// Waits up to ten seconds for `chatID` to be the open chat.
-    private func waitForOpenChat(_ chatID: String) async -> Bool {
+    /// Waits up to ten seconds for `chatID` to be the open chat. Gives up
+    /// when the task is cancelled or the dashboard changes meanwhile, so a
+    /// same-named chat elsewhere never gets the text.
+    private func waitForOpenChat(_ chatID: String, on dashboard: UUID?) async -> Bool {
         for _ in 0..<40 {
+            guard activeDashboardID == dashboard, !Task.isCancelled else { return false }
             if activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID {
                 return true
             }
-            try? await Task.sleep(for: .milliseconds(250))
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return false
+            }
         }
         return false
     }
