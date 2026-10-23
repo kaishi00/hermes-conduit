@@ -450,12 +450,14 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         let unplayed = queuedBuffers
         // The stream goes on, so an odd byte still waiting keeps its place:
         // dropped, every later sample would pair the wrong bytes.
+        // Restored only once running: the restart tears the engine down
+        // again on its way up.
         let pendingByte = remainder
         tearDownEngine()
-        remainder = pendingByte
         do {
             try coordinator.reassert()
             try ensureRunning()
+            remainder = pendingByte
             if let player, let playerFormat {
                 let kept = unplayed.filter { $0.format == playerFormat }
                 kept.forEach { schedule($0, on: player) }
