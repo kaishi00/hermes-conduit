@@ -7,8 +7,8 @@
 //  the promise was made in, says why Pulse spoke up, and takes a thumbs up
 //  or down; a thumbs down asks why, and each answer changes what Pulse does
 //  on the host (PulseFeed.swift). What Pulse learned is listed, with each
-//  kind's loudness, and every lesson can be undone. A reply box at the
-//  bottom talks to Pulse in its own chat.
+//  kind's loudness, and every lesson can be undone. Pulse's own chat, where
+//  its hidden turns run, isn't shown: the cards are the way to answer it.
 //
 
 import SwiftUI
@@ -74,9 +74,6 @@ struct V2PulsePage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
 
     @State private var page: PulseFeedPage?
-    @State private var homeChatID: String?
-    /// The last feed named Pulse's chat: one that stops naming it lost it.
-    @State private var pulseFeedNamedChat = false
     @State private var loadError: String?
     @State private var errorMessage: String?
     /// A note on what the last rating changed.
@@ -105,16 +102,6 @@ struct V2PulsePage: View {
         .navigationTitle(Text("Pulse"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            if let homeChatID {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        appState.openAppLink(.session(id: homeChatID, profile: AppState.pulseHomeProfile))
-                    } label: {
-                        Label(AppLocalization.string("Open the Pulse chat"), systemImage: "bubble.left.and.text.bubble.right")
-                    }
-                    .accessibilityIdentifier("pulse.chat")
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showsLearned = true
@@ -159,12 +146,9 @@ struct V2PulsePage: View {
         .onDisappear { isShown = false }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
-            reply = ""
             errorMessage = nil
-            // Another dashboard: its own cards and Pulse chat.
+            // Another dashboard: its own cards.
             page = nil
-            homeChatID = nil
-            pulseFeedNamedChat = false
             loadError = nil
             learnedNote = nil
             focusedCard = nil
@@ -530,9 +514,6 @@ struct V2PulsePage: View {
             errorMessage = nil
             learnedNote = nil
             appState.applyPulseFeed(loaded)
-            // A feed that names no chat (none made, or an older plugin) asks the state below.
-            if let home = loaded.homeChatID { homeChatID = home } else if pulseFeedNamedChat { homeChatID = nil }
-            pulseFeedNamedChat = loaded.homeChatID != nil
             if let request = appState.pulseOpenRequest, isShown { focus(request) }
             if isShown, loaded.unseen > 0, (try? await client.markSeen(nil)) != nil,
                appState.activeDashboardID == dashboard {
@@ -541,9 +522,6 @@ struct V2PulsePage: View {
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
             if page == nil { loadError = PulseRefusal.message(for: error) }
-        }
-        if homeChatID == nil, let state = try? await client.state(), appState.activeDashboardID == dashboard {
-            homeChatID = state.homeChat?.id
         }
     }
 
