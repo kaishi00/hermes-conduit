@@ -199,6 +199,58 @@ extension BotModeTests {
         )
     }
 
+    // MARK: - Create options
+
+    func testCreateParamsCloneTheMainProfileAndShareKeysByDefault() {
+        let params = BotCreateRequest.params(slug: "scout", description: "Deals", soul: "# Scout", draft: BotEditorDraft())
+        XCTAssertEqual(params["name"] as? String, "scout")
+        XCTAssertEqual(params["clone_from"] as? String, "default", "Desktop copies the main profile's settings")
+        XCTAssertEqual(params["share_auth"] as? Bool, true)
+        XCTAssertEqual(params["no_skills"] as? Bool, false)
+        XCTAssertNil(params["model"], "no pick inherits the main profile's model")
+        XCTAssertNil(params["provider"])
+    }
+
+    func testCreateParamsCarryAFreshStartAndAModelPin() {
+        var draft = BotEditorDraft()
+        draft.cloneFrom = ""
+        draft.shareAuth = false
+        draft.noSkills = true
+        draft.provider = "openrouter"
+        draft.model = " anthropic/claude-sonnet "
+        let params = BotCreateRequest.params(slug: "scout", description: "", soul: "", draft: draft)
+        XCTAssertNil(params["clone_from"], "omitted = a fresh profile with the bundled skills")
+        XCTAssertEqual(params["share_auth"] as? Bool, false)
+        XCTAssertEqual(params["no_skills"] as? Bool, true)
+        XCTAssertEqual(params["provider"] as? String, "openrouter")
+        XCTAssertEqual(params["model"] as? String, "anthropic/claude-sonnet")
+
+        draft.provider = ""
+        let half = BotCreateRequest.params(slug: "scout", description: "", soul: "", draft: draft)
+        XCTAssertNil(half["model"], "the gateway pins only a provider and a model together")
+    }
+
+    func testRuntimeCheckNeedsModelOnlyOnAnExplicitRefusal() {
+        XCTAssertTrue(BotRuntimeCheck.needsModel(.object(["ok": .bool(false), "error": .string("No usable credentials")])))
+        XCTAssertFalse(BotRuntimeCheck.needsModel(.object(["ok": .bool(true)])))
+        XCTAssertFalse(BotRuntimeCheck.needsModel(nil), "an older gateway without the check goes ahead")
+        XCTAssertFalse(BotRuntimeCheck.needsModel(.object([:])))
+    }
+
+    func testModelConfirmationReadsTheGatewaysGuardMessage() {
+        XCTAssertEqual(
+            BotModelConfirmation.message(in: .object([
+                "ok": .bool(true),
+                "applied": .object([:]),
+                "confirm_required": .bool(true),
+                "confirm_message": .string("This model costs $15 per million tokens.")
+            ])),
+            "This model costs $15 per million tokens."
+        )
+        XCTAssertNotNil(BotModelConfirmation.message(in: .object(["confirm_required": .bool(true)])))
+        XCTAssertNil(BotModelConfirmation.message(in: .object(["ok": .bool(true), "applied": .object(["model": .bool(true)])])))
+    }
+
     // MARK: - Avatar images
 
     func testGetAssetResultDecodesTheDataURL() {

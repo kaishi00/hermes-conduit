@@ -410,3 +410,32 @@ Settings > Notifications
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
 **Checked:** 2026-10-23, seeded from main at 64d53c3.
+
+## Bots: create and edit
+
+New Bot and Edit Bot, and what they write to the bot's Hermes profile.
+Hermes Desktop's bot editor writes the same records, so both apps show the
+same bot.
+
+**Siblings:** New Bot · Edit Bot · Hermes Desktop's bot editor (same
+profile records) · the bot's face in the Bots list, its Bot Chat and group
+rooms · profile pictures in the profile picker · the SOUL a new bot is
+born with (the messaging section older gateways need)
+
+**Code**
+- Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotRosterView.swift`
+- Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
+- Roster: `Conduit/Services/BotModeModels.swift`
+
+**Rulings**
+- A bot's look lives on Hermes: title, color and picture kind in `ui_meta['hermes-bots']`, the picture in the profile's asset store, never on the device (2026-10-02, #297; 2026-10-14, #580).
+- New Bot does what Desktop's does: it copies the main profile's settings and shares its keys and accounts unless Advanced says otherwise, then introduces itself only when its profile can reach a model (2026-10-23, Eric asked for Desktop parity).
+- A model pick the gateway guards (expensive or data-training) is saved only after the user confirms its message (2026-10-23).
+
+**Open gaps**
+- No skills, tools or MCP toggles on New Bot or Edit Bot, and no installing MCP servers from Hermes' catalog.
+- No generated pictures for bots or group rooms, though Hermes can generate them (`image.generate`).
+- Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
+- No Duplicate or Hide in the Bots list.
+
+**Checked:** 2026-10-23, at fc9c388.

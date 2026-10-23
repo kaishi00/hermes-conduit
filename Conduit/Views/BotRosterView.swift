@@ -46,13 +46,14 @@ struct BotRosterView: View {
                 .environmentObject(appState)
         }
         .sheet(item: $editorMode) { mode in
-            BotEditorSheet(mode: mode) { createdName, warning in
+            BotEditorSheet(mode: mode) { createdName, warning, introduces in
                 managementNotice = warning
                 guard let createdName,
                       let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
-                // Desktop opens a new bot's forever chat straight away.
+                // Desktop opens a new bot's forever chat straight away, and
+                // the bot introduces itself when it can reach a model.
                 appState.dismissSidebarDrawer()
-                Task { await appState.openBotChat(for: bot) }
+                Task { await appState.openNewBotChat(for: bot, introduces: introduces) }
             }
             .environmentObject(appState)
         }

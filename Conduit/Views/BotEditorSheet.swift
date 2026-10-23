@@ -19,8 +19,9 @@ struct BotEditorSheet: View {
 
     let mode: Mode
     /// Called after a successful save, with the new bot's profile name (for
-    /// a create) and any best-effort part that did not save.
-    let onFinished: (_ createdBotName: String?, _ warning: String?) -> Void
+    /// a create), any best-effort part that did not save, and whether the
+    /// new bot can introduce itself (its profile reaches a model).
+    let onFinished: (_ createdBotName: String?, _ warning: String?, _ introduces: Bool) -> Void
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +34,9 @@ struct BotEditorSheet: View {
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
     @State private var seeded = false
+    @State private var showsAdvanced = false
+    /// The gateway's message for a model pick it wants confirmed.
+    @State private var modelConfirmation: String?
 
     private enum DetailsState {
         case idle, loading, loaded, failed
@@ -72,6 +76,7 @@ struct BotEditorSheet: View {
                     Text(AppLocalization.string("Description"))
                 }
                 personalitySection
+                advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
             .navigationBarTitleDisplayMode(.inline)
@@ -93,6 +98,23 @@ struct BotEditorSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
+        .alert(
+            AppLocalization.string("Use This Model?"),
+            isPresented: Binding(
+                get: { modelConfirmation != nil },
+                set: { if !$0 { modelConfirmation = nil } }
+            ),
+            presenting: modelConfirmation
+        ) { _ in
+            Button(AppLocalization.string("Use Anyway")) { confirmModel() }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {
+                // Everything else already saved; only the model stays.
+                dismiss()
+                onFinished(nil, AppLocalization.string("The model was not saved."), false)
+            }
+        } message: { message in
+            Text(verbatim: message)
+        }
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(image: $pickedImage)
         }
@@ -314,6 +336,67 @@ struct BotEditorSheet: View {
         }
     }
 
+    /// Desktop's Advanced disclosure. Creating: where the profile starts
+    /// from, its model, shared keys and bundled skills. Editing: its model.
+    @ViewBuilder
+    private var advancedSection: some View {
+        Section {
+            Button {
+                Haptics.light()
+                withAnimation { showsAdvanced.toggle() }
+            } label: {
+                HStack {
+                    Text(AppLocalization.string("Advanced"))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
+            if showsAdvanced {
+                if isCreating {
+                    Picker(AppLocalization.string("Start From"), selection: $draft.cloneFrom) {
+                        Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
+                        ForEach(cloneSources, id: \.name) { bot in
+                            Text(verbatim: bot.displayLabel).tag(bot.name)
+                        }
+                        Text(AppLocalization.string("Fresh Profile")).tag("")
+                    }
+                }
+                if isCreating || detailsState == .loaded {
+                    NavigationLink {
+                        BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
+                    } label: {
+                        LabeledContent(AppLocalization.string("Model")) {
+                            Text(verbatim: BotModelPicker.summary(
+                                provider: draft.provider,
+                                model: draft.model,
+                                allowsInherit: isCreating
+                            ))
+                        }
+                    }
+                }
+                if isCreating {
+                    Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
+                    Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+                }
+            }
+        } footer: {
+            if showsAdvanced, isCreating {
+                Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
+            }
+        }
+    }
+
+    /// Bots a new one can copy its settings from, besides the main profile.
+    private var cloneSources: [BotProfile] {
+        appState.botRoster.filter { !BotManagement.isDefaultProfile($0.name) }
+    }
+
     // MARK: State
 
     private var avatarName: String {
@@ -370,6 +453,8 @@ struct BotEditorSheet: View {
             draft.description = loaded.description
         }
         draft.soul = loaded.soul
+        draft.provider = loaded.provider
+        draft.model = loaded.model
         detailsState = .loaded
     }
 
@@ -392,10 +477,33 @@ struct BotEditorSheet: View {
             case .failed(let message):
                 Haptics.warning()
                 error = message
-            case .saved(let warning):
+            case .saved(let warning, let needsModel):
                 Haptics.success()
                 dismiss()
-                onFinished(createdName, warning)
+                onFinished(createdName, warning, createdName != nil && !needsModel)
+            case .confirmModel(let message):
+                Haptics.warning()
+                modelConfirmation = message
+            }
+        }
+    }
+
+    private func confirmModel() {
+        guard let bot = editedBot else { return }
+        isSaving = true
+        let draft = self.draft
+        Task {
+            let result = await appState.saveBotModel(bot, provider: draft.provider, model: draft.model, confirmed: true)
+            isSaving = false
+            switch result {
+            case .saved(let warning, _):
+                Haptics.success()
+                dismiss()
+                onFinished(nil, warning, false)
+            case .confirmModel, .failed:
+                Haptics.warning()
+                dismiss()
+                onFinished(nil, AppLocalization.string("The model was not saved."), false)
             }
         }
     }

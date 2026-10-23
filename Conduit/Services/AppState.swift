@@ -20260,6 +20260,13 @@ final class AppState: ObservableObject {
         return try? await client.describeBotProfile(name: bot.name)
     }
 
+    /// The gateway's provider and model inventory for the bot editor's
+    /// Model page. Nil when it could not be read.
+    func loadBotModelProviders() async -> [ProviderInfo]? {
+        guard let client, isConnected else { return nil }
+        return try? await client.modelOptions().providers
+    }
+
     /// The profile id a new bot named `name` gets, and whether it is free.
     func newBotSlug(for name: String) -> (slug: String, isValid: Bool, isTaken: Bool) {
         let slug = BotProfileSlug.slug(from: name)
@@ -20297,7 +20304,12 @@ final class AppState: ObservableObject {
         )
         let epoch = botRosterEpoch
         do {
-            try await client.createBotProfile(name: slug, description: description, soul: soul)
+            try await client.createBotProfile(params: BotCreateRequest.params(
+                slug: slug,
+                description: description,
+                soul: soul,
+                draft: draft
+            ))
         } catch {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
@@ -20332,14 +20344,58 @@ final class AppState: ObservableObject {
         } catch {
             lookSaved = false
         }
+        // The introduction is a real model turn: a bot whose profile has no
+        // usable model skips it and says so, instead of a failed first turn.
+        let needsModel = BotRuntimeCheck.needsModel(await client.botRuntimeCheck(profile: slug))
         await refreshBotRosterAfterWrite()
         await loadProfiles()
+        var warnings: [String] = []
         if !lookSaved || !photoSaved {
-            return .saved(warning: AppLocalization.string(
+            warnings.append(AppLocalization.string(
                 "The bot was created, but its picture or look was not saved. Edit the bot to try again."
             ))
         }
-        return .saved(warning: nil)
+        if needsModel {
+            warnings.append(AppLocalization.string(
+                "No model is ready for this bot yet, so it skipped its introduction. Edit the bot and pick a model."
+            ))
+        }
+        return .saved(warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), needsModel: needsModel)
+    }
+
+    /// A just-created bot's Bot Chat, opened, and with `introduces` its
+    /// first turn: Desktop's kickoff ("Hey, tell me about yourself!"), sent
+    /// only into the new bot's own empty chat.
+    func openNewBotChat(for bot: BotProfile, introduces: Bool) async {
+        guard await openBotChat(for: bot), introduces,
+              let sessionId = activeSessionId,
+              botChatSessionProfiles[sessionId]?.caseInsensitiveCompare(bot.name) == .orderedSame,
+              messages.isEmpty, !turnState.isRunning else { return }
+        _ = await submitComposer(text: AppLocalization.string("Hey, tell me about yourself!"))
+    }
+
+    /// Pins the bot's own model (`profiles.configure` model + provider).
+    /// A guarded pick comes back as `.confirmModel` with the gateway's
+    /// message until it is resent `confirmed`.
+    func saveBotModel(_ bot: BotProfile, provider: String, model: String, confirmed: Bool) async -> BotSaveResult {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        do {
+            let result = try await client.configureBotModel(
+                name: bot.name,
+                provider: provider,
+                model: model,
+                confirmed: confirmed
+            )
+            if let message = BotModelConfirmation.message(in: result) { return .confirmModel(message) }
+            if !BotConfigureSections.failed(in: result, among: ["model"]).isEmpty {
+                return .saved(warning: AppLocalization.string("The model was not saved."))
+            }
+            return .saved(warning: nil)
+        } catch {
+            return .saved(warning: AppLocalization.string("The model was not saved."))
+        }
     }
 
     /// Saves the edit sheet: ui_meta (title, color, picture kind) as a
@@ -20458,6 +20514,26 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 problems.append(AppLocalization.string("The picture was not removed."))
+            }
+        }
+        // The model goes last and on its own: a pick the gateway wants
+        // confirmed must not hold back the rest of the save.
+        if let loadedDetails,
+           !draft.provider.isEmpty, !draft.model.isEmpty,
+           draft.provider != loadedDetails.provider || draft.model != loadedDetails.model {
+            switch await saveBotModel(bot, provider: draft.provider, model: draft.model, confirmed: false) {
+            case .confirmModel(let message):
+                await refreshBotRosterAfterWrite()
+                // Another part already failed: report that rather than ask.
+                guard problems.isEmpty else {
+                    problems.append(AppLocalization.string("The model was not saved."))
+                    return .saved(warning: problems.joined(separator: " "))
+                }
+                return .confirmModel(message)
+            case .saved(let warning, _):
+                if let warning { problems.append(warning) }
+            case .failed(let message):
+                problems.append(message)
             }
         }
         await refreshBotRosterAfterWrite()

@@ -1998,24 +1998,38 @@ final class HermesClient: ObservableObject {
     // sent UNSCOPED, like `profiles.list`: the dashboard's own profile
     // context must never redirect a write meant for another bot.
 
-    /// `profiles.create`. A fresh profile (bundled skills) that inherits the
-    /// launch profile's model and credentials (the gateway's default).
-    func createBotProfile(name: String, description: String, soul: String) async throws {
-        _ = try await rpc("profiles.create", params: [
-            "name": name,
-            "description": description,
-            "soul": soul
-        ], timeout: 60, scoped: false)
+    /// `profiles.create` with `BotCreateRequest.params`. A cloning create
+    /// copies the source's config, so it can take longer than a fresh one.
+    func createBotProfile(params: [String: Any]) async throws {
+        _ = try await rpc("profiles.create", params: params, timeout: 60, scoped: false)
     }
 
-    /// `profiles.describe`: the editor snapshot (description + SOUL.md).
+    /// `setup.runtime_check` for one profile: whether its sessions can reach
+    /// a model. Nil when the gateway lacks the method.
+    func botRuntimeCheck(profile: String) async -> AnyCodable? {
+        try? await rpc("setup.runtime_check", params: ["profile": profile], timeout: 30, scoped: false)
+    }
+
+    /// `profiles.describe`: the editor snapshot (description, SOUL.md, and
+    /// the profile's own model pin).
     func describeBotProfile(name: String) async throws -> BotProfileDetails {
         let result = try await rpc("profiles.describe", params: ["name": name], scoped: false)
         guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        let model = object["model"]?.objectValue ?? [:]
         return BotProfileDetails(
             description: object["description"]?.stringValue ?? "",
-            soul: object["soul"]?.stringValue ?? ""
+            soul: object["soul"]?.stringValue ?? "",
+            provider: model["provider"]?.stringValue ?? "",
+            model: model["default"]?.stringValue ?? ""
         )
+    }
+
+    /// `profiles.configure` model pin. `confirmed` resends a pick the
+    /// gateway first answered with `confirm_required`.
+    func configureBotModel(name: String, provider: String, model: String, confirmed: Bool) async throws -> AnyCodable {
+        var params: [String: Any] = ["name": name, "provider": provider, "model": model]
+        if confirmed { params["confirm_expensive_model"] = true }
+        return try await rpc("profiles.configure", params: params, scoped: false)
     }
 
     /// `profiles.configure`. Sections are independent; the answer's
