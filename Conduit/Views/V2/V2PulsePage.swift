@@ -170,8 +170,6 @@ struct V2PulsePage: View {
         .onDisappear {
             isShown = false
             newCards = nil
-            // The card a push opened stays put while it's handled under
-            // your eyes; next visit it sits with the rest.
             focusedCard = nil
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
@@ -912,6 +910,8 @@ struct V2PulsePage: View {
                     page?.cards[index].doneAt = done ? Date() : nil
                     page?.cards[index].doneBy = done ? "user" : ""
                 }
+                // Handled like Not now: it folds with the rest (Undo brings it back).
+                if done, focusedCard == card.id { focusedCard = nil }
                 if done {
                     untoldCards.remove(card.id)
                     showUndo(.done, card: card.id)
