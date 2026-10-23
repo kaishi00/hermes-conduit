@@ -305,7 +305,7 @@ struct PulseSettingsPage: View {
                 }
                 .padding(.top, 8)
             } label: {
-                Text("Recent checks, daily token budgets, time zone, and looking through your chats now.")
+                Text("Budgets, memory, next look, time zone, the Pulse chat and recent checks.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

@@ -172,6 +172,8 @@ struct V2PulsePage: View {
             isShown = false
             newCards = nil
             focusedCard = nil
+            voiceOverCard = nil
+            undo = nil  // an undo belongs to the visit that made it
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
@@ -885,7 +887,7 @@ struct V2PulsePage: View {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = dismissed ? Date() : nil
                     }
-                    if focusedCard == card.id, dismissed { focusedCard = nil }
+                    if focusedCard == card.id, dismissed { focusedCard = nil; voiceOverCard = nil }
                 }
                 if dismissed { showUndo(.dismissed, card: card.id) }
                 errorMessage = nil
@@ -914,7 +916,7 @@ struct V2PulsePage: View {
                     page?.cards[index].doneBy = done ? "user" : ""
                 }
                 // Handled like Not now: it folds with the rest (Undo brings it back).
-                if done, focusedCard == card.id { focusedCard = nil }
+                if done, focusedCard == card.id { focusedCard = nil; voiceOverCard = nil }
                 if done {
                     untoldCards.remove(card.id)
                     showUndo(.done, card: card.id)
