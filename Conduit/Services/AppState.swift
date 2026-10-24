@@ -13052,11 +13052,17 @@ final class AppState: ObservableObject {
         // tickets are single-use and last 30 seconds), so a fresh one is
         // minted with the dashboard's cookies first, as the OAuth restore
         // does. A mint that fails leaves the saved record: its refusal
-        // schedules the reconnect, as before.
+        // schedules the reconnect, as before. A cancelled one (the bridge
+        // torn down by a switch or a sign-out) ends this restore, as it
+        // does the OAuth restore's: the spent ticket is never tried.
         var connection = saved
-        if let ticket = try? await mintChatResumeTicket(for: saved) {
+        do {
+            let ticket = try await mintChatResumeTicket(for: saved)
             connection = HermesConnection(baseUrl: saved.baseUrl, ticket: ticket)
-        }
+        } catch is CancellationError {
+            if restoreOwnsFlow(switchGeneration), widgetLease?.isCurrent != false { isConnecting = false }
+            return
+        } catch {}
         // Re-fence after the mint await.
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
