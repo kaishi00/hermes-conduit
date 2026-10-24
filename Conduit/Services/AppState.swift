@@ -16722,6 +16722,13 @@ final class AppState: ObservableObject {
         serverCompactionClaims.removeAll()
     }
 
+    #if DEBUG
+    /// Test seam: the chat socket closing under the app.
+    func handleDisconnectForTesting() {
+        handleDisconnect()
+    }
+    #endif
+
     private func handleDisconnect() {
         let wasRunning = isBusy
         isConnected = false
@@ -16738,8 +16745,13 @@ final class AppState: ObservableObject {
         if let connectedAt, Date().timeIntervalSince(connectedAt) > 10 {
             reconnectAttempts = 0
         }
+        // A reply on its way reconnects at once, but only over a usable
+        // path: without one no attempt can work, and the path coming back
+        // reconnects at once anyway (networkPathChanged). The gate is here,
+        // not in scheduleReconnect: a path change's own immediate reconnect
+        // runs before the path monitor's current value has the new path.
         scheduleReconnect(
-            immediately: wasRunning,
+            immediately: wasRunning && deviceConditions().pathSatisfied,
             purpose: chatResumePurposeForDisconnect()
         )
     }

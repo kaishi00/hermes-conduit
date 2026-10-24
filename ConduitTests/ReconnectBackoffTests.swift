@@ -144,6 +144,22 @@ extension CarPlayTransportRecoveryTests {
         XCTAssertEqual(recorder.executed, 1)
     }
 
+    /// A socket that drops mid-reply reconnects at once, but only with a
+    /// network to reconnect over: offline it waits for the path like any
+    /// other drop.
+    func testADropMidReplyWaitsForTheNetworkLikeAnyOther() {
+        for (pathSatisfied, expected) in [(false, 60.0), (true, 0.1)] {
+            let recorder = BackoffRecorder()
+            let appState = makeBackoffAppState(recorder, conditions: { DeviceConditions(pathSatisfied: pathSatisfied) })
+            appState.activeSessionId = "chat"
+            appState.handleStreamEvent(.sessionBusy(sessionId: "chat", busy: true))
+            XCTAssertEqual(appState.turnState, .running)
+            appState.handleDisconnectForTesting()
+            XCTAssertEqual(recorder.delays.count, 1, "path satisfied: \(pathSatisfied)")
+            XCTAssertEqual(recorder.delays.first ?? 0, expected, accuracy: 0.001, "path satisfied: \(pathSatisfied)")
+        }
+    }
+
     func testAPathChangeSkipsTheRestOfALongBackoff() async {
         let recorder = BackoffRecorder()
         let appState = makeBackoffAppState(recorder)
