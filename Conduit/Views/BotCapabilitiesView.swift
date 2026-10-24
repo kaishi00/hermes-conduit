@@ -44,12 +44,16 @@ struct BotCapabilitiesView: View {
                 } else {
                     ForEach(capabilities.toolsets.indices, id: \.self) { index in
                         toggle($capabilities.toolsets[index])
+                            // Hermes reads no tools as its default tools, so
+                            // the last one on stays on.
+                            .disabled(isLastToolOn(index))
                     }
                 }
             } header: {
                 Text(AppLocalization.string("Tools"))
             } footer: {
-                Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools."))
+                Text(verbatim: AppLocalization.string("With every tool on, the bot follows Hermes' default tools.")
+                    + " " + AppLocalization.string("At least one tool stays on."))
             }
             Section {
                 if capabilities.mcpServers.isEmpty {
@@ -68,6 +72,10 @@ struct BotCapabilitiesView: View {
         }
         .navigationTitle(AppLocalization.string("Skills, Tools and MCP"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func isLastToolOn(_ index: Int) -> Bool {
+        capabilities.toolsets[index].enabled && capabilities.toolsets.filter(\.enabled).count == 1
     }
 
     private var visibleSkillIndices: [Int] {

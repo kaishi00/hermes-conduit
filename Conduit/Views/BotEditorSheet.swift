@@ -407,14 +407,21 @@ struct BotEditorSheet: View {
                         set: { draft.capabilities = $0 }
                     ),
                     skillsSkipped: isCreating && draft.noSkills,
-                    sourceLabel: isCreating ? startFromLabel : nil
+                    // A fresh profile gets the bundled skills, not the main
+                    // profile's, though its lists are read from there.
+                    sourceLabel: isCreating && !draft.cloneFrom.isEmpty ? startFromLabel : nil
                 )
             } label: {
                 Text(AppLocalization.string("Skills, Tools and MCP"))
             }
         } else if capabilitiesLoadFailed {
-            Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
+                    .foregroundStyle(.secondary)
+                Button(AppLocalization.string("Try Again")) {
+                    Task { await loadStartFromCapabilities() }
+                }
+            }
         } else {
             LabeledContent(AppLocalization.string("Skills, Tools and MCP")) {
                 ProgressView()

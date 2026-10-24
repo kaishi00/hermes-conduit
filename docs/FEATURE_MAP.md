@@ -465,7 +465,8 @@ describes them (the editor's footers and README.md's bots line)
 - New Bot does what Desktop's does: it copies the main profile's settings and shares its keys and accounts unless Advanced says otherwise (Start From another bot or a fresh profile, a separate copy of the keys, no bundled skills), then introduces itself only when its profile can reach a model (2026-10-23, Eric asked for Desktop parity).
 - An edited bot always keeps a model of its own: Edit Bot offers no "Same as Main Profile", since `profiles.configure` pins a provider and model and has no way to clear the pin (2026-10-23).
 - On Edit Bot, a model pick the gateway guards (expensive or data-training) is saved only after the user confirms its message (2026-10-23).
-- Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile, as on Desktop (2026-10-23).
+- Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile (the main profile's for a fresh one), as on Desktop (2026-10-23).
+- A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
