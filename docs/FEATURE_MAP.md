@@ -442,7 +442,7 @@ Settings > Notifications
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1180 (Siblings only).
 
 ## Pulse
 
@@ -476,13 +476,14 @@ memory), its routes under /pulse and its capabilities · the
 - Not now hides a card without teaching Pulse anything, and the item rests a week (2026-10-23, #1173, notifier #334); it stays neutral when Pulse learns from ratings (2026-10-24, Eric).
 - Pulse gets louder on its own only within the channels and intensity the user allowed. It never turns on a channel they turned off and never grants calling: calls need an opt-in, and adding the kinds that may call asks first (2026-10-24, Eric).
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
+- Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
 - Create Pulse chat in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
-- Pulse pushes follow the Notifications rulings (App Language from title_label, titled with the session title); what a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
+- What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
 **Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
 
