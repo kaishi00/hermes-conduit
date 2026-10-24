@@ -25,6 +25,14 @@ enum ComposerReturnKey {
 
     static func sendsByDefault(onMac: Bool) -> Bool { onMac }
 
+    /// Settings' note on where the preference starts, so a Mac user can
+    /// tell why it's already on.
+    static func defaultFootnote(onMac: Bool) -> String {
+        sendsByDefault(onMac: onMac)
+            ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
+            : AppLocalization.string("Off by default on iPhone and iPad.")
+    }
+
     /// What the text view should do with one hardware Return press.
     enum Decision: Equatable {
         case submit

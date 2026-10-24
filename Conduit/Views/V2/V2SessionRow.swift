@@ -357,7 +357,7 @@ struct V2ContentMatchRow: View {
                     Text(snippet.attributed())
                         .font(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 }
             }
         }

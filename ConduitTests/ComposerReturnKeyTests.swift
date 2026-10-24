@@ -272,6 +272,19 @@ final class ComposerReturnKeyTests: XCTestCase {
         )
     }
 
+    /// Settings says where the preference starts, so a Mac user can tell
+    /// why it's already on (#1088).
+    func testSettingsSaysTheDefaultForEachDevice() {
+        XCTAssertEqual(
+            ComposerReturnKey.defaultFootnote(onMac: true),
+            AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
+        )
+        XCTAssertEqual(
+            ComposerReturnKey.defaultFootnote(onMac: false),
+            AppLocalization.string("Off by default on iPhone and iPad.")
+        )
+    }
+
     func testPreferenceRestoresStoredValue() {
         UserDefaults.standard.set(true, forKey: ComposerReturnKey.preferenceKey)
         XCTAssertTrue(UserDefaults.standard.bool(forKey: ComposerReturnKey.preferenceKey))

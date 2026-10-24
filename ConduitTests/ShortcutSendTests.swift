@@ -188,6 +188,37 @@ extension ScreenQuestionTests {
         XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
     }
 
+    /// A reopen that fails, or a reopened runtime that's gone too, ends the
+    /// run with Conduit's own words, never Hermes's raw "session not found"
+    /// for Siri to read out (#1056). Nothing was sent either way.
+    @MainActor
+    func testAChatThatCannotBeReopenedSaysNothingWasSent() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        hermes.goneRuntimes = ["resumed-1"]
+        var backend = hermes.backend()
+        backend.reopenChat = { _ in throw RpcError(code: 4001, message: "session not found") }
+        do {
+            _ = try await ShortcutSender(backend: backend, chats: chats)
+                .send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should fail")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .reopenFailed)
+        }
+
+        hermes.goneRuntimes = ["resumed-2", "reopened-1"]
+        do {
+            _ = try await sender(hermes, chats).send(shortcutRequest("three", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should fail")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .reopenFailed)
+        }
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
+        XCTAssertEqual(hermes.retriesLanded, 0)
+    }
+
     @MainActor
     func testOtherSendFailuresAreNotRetried() async throws {
         let hermes = FakeHermes()

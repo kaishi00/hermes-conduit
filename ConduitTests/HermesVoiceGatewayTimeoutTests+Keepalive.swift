@@ -119,6 +119,8 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTFail("a dead speak socket after audio must fail the reply")
         } catch {
             XCTAssertFalse(error is CancellationError)
+            // A lost path, not a timeout (#980).
+            XCTAssertEqual(error.localizedDescription, AppLocalization.string("Lost the connection to Hermes speech."))
         }
         XCTAssertLessThan(ContinuousClock.now - started, .seconds(5))
         XCTAssertTrue(socket.isCancelled)

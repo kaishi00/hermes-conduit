@@ -2,6 +2,19 @@ import XCTest
 @testable import Conduit
 
 final class ModelPickerTests: XCTestCase {
+    /// A catalog fetch that failed says so, with Try Again, instead of
+    /// "No models are available" or loading forever (#1016). A re-load that
+    /// fails keeps the rows it already had.
+    func testModelCatalogTellsAFailedFetchFromAnEmptyOne() {
+        let row = ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
+        XCTAssertEqual(ModelCatalogState.of(providers: nil, failed: false), .loading)
+        XCTAssertEqual(ModelCatalogState.of(providers: nil, failed: true), .failed)
+        XCTAssertEqual(ModelCatalogState.of(providers: [], failed: false), .empty)
+        XCTAssertEqual(ModelCatalogState.of(providers: [], failed: true), .failed)
+        XCTAssertEqual(ModelCatalogState.of(providers: [row], failed: false), .ready)
+        XCTAssertEqual(ModelCatalogState.of(providers: [row], failed: true), .ready)
+    }
+
     func testModelPickerYoloDraftStartsFromCurrentRuntimeValue() {
         let draft = ModelPickerYoloDraft(runtimeYolo: true)
 

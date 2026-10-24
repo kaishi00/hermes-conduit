@@ -17,6 +17,24 @@ extension GroupChatModelsTests {
         ] as [String: Any]))
     }
 
+    /// Past the room's 50 MB cap a higher Settings limit can't help, so
+    /// the message names the room's cap and doesn't send the user to
+    /// Settings (#935). Under it, the Settings limit is the one that bound.
+    func testRoomTooLargeMessageNamesTheRoomCapWhenItBinds() {
+        let capped = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: 256)
+        XCTAssertTrue(capped.contains("clip.mov") && capped.contains("50"), capped)
+        XCTAssertFalse(capped.contains("Settings"), capped)
+        let cappedMany = GroupRoomFilesClient.tooLargeMessage(names: ["a.mov", "b.mov"], preference: 128)
+        XCTAssertTrue(cappedMany.contains("a.mov") && cappedMany.contains("b.mov") && cappedMany.contains("50"), cappedMany)
+        XCTAssertFalse(cappedMany.contains("Settings"), cappedMany)
+        // A Settings limit equal to the cap: raising it still can't help.
+        let atCap = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: GroupRoomFilesClient.maximumMegabytes)
+        XCTAssertEqual(atCap, capped)
+
+        let preferred = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: 16)
+        XCTAssertEqual(preferred, AttachmentSizeLimit.tooLargeMessage(names: ["clip.mov"], megabytes: 16))
+    }
+
     func testRoomFileReferenceTakesTheHostsRefText() throws {
         let reference = try GroupRoomFilesClient.reference(from: [
             "ok": true, "path": "/h/conduit/room-files/a/photo.jpg", "ref_text": "@file:/h/conduit/room-files/a/photo.jpg",

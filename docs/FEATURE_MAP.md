@@ -85,7 +85,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - The resume jump finds clarify cards, not approvals (#486).
 - Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1188 (the approval card's shield).
 
 ## Voice follow-ups
 
@@ -533,13 +533,19 @@ same bot.
 **Siblings:** New Bot · Edit Bot · Hermes Desktop's bot editor (same
 profile records) · the bot's face in the Bots list, its Bot Chat and group
 rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the SOUL a new bot is
-born with (the messaging section older gateways need) · the text that
-describes them (the editor's footers and README.md's bots line)
+born with (the messaging section older gateways need) · the Bots list's row
+menu (New Chat, Groups, Pin, Hide, Duplicate, Delete) and its Hidden section,
+as on Desktop's bot row · Edit Bot's MCP catalog (adding a server with
+its keys, OAuth sign-in through Safari, and the sign-in loopback shared with
+Hermes sign-in) · the text that describes them (the editor's footers
+and README.md's bots line)
 
 **Code**
 - Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/BotRosterView.swift`
 - Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotCapabilities, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, loadBotCapabilities, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
 - Roster: `Conduit/Services/BotModeModels.swift`
+- MCP catalog and sign-in: `Conduit/Views/BotCapabilitiesView.swift` (catalogRow, signInRow, BotMcpKeysSheet, BotMcpBrowserView), `Conduit/Services/BotMcpSetup.swift`, `Conduit/Services/AppState.swift` (loadBotMcpSetup, addBotMcpServer, signInBotMcpServer), `Conduit/Services/HermesClient.swift` (botMcpCatalog, botMcpServers, addBotMcpServer, setBotMcpKey, testBotMcpServer, botMcpOAuth), `Conduit/Services/NativeOAuth.swift` (NativeOAuthLoopbackServer's relay mode, NativeOAuthFlow.callbackValues)
+- Row menu: `Conduit/Views/BotRosterView.swift` (BotRosterRow, botRooms, the Hidden section), `Conduit/Services/BotManagement.swift` (BotDuplicate), `Conduit/Services/AppState.swift` (duplicateBot, setBotHidden, setBotPinned), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's preselected bots)
 - Generated pictures: `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Services/PictureGeneration.swift`, `Conduit/Views/GroupChatView.swift` (GroupRoomPicturePicker, GroupRoomActionItems), `Conduit/Views/V2/V2ConversationScreen.swift` (the V2 room menu's picker), `Conduit/Services/AppState.swift` (refreshPictureGeneration, generatePicture), `Conduit/Services/HermesClient.swift` (imageGenerationAvailable, generateImage)
 
 **Rulings**
@@ -550,15 +556,19 @@ describes them (the editor's footers and README.md's bots line)
 - Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile, as on Desktop. A fresh profile offers no lists until it exists, since its set is Hermes' defaults (Desktop shows the main profile's instead) (2026-10-24, #1177).
 - A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
 - MCP servers are plain on/off per server: `enabled_mcp_servers: []` turns them all off (2026-10-24, #1177).
+- Edit Bot adds servers from Hermes' catalog (`mcp.catalog`) the way Desktop's Set Up does: `mcp.servers.add` from the preset, each typed key through `mcp.servers.set_api_key` (blank ones skipped), then `mcp.servers.test`. Hermes writes the server at once, so it stays even if the editor is cancelled, as on Desktop. Keys go to Hermes and aren't kept on the phone (2026-10-24).
+- An OAuth server (from `mcp.servers.list`, or the add reply) signs in in Safari. Hermes runs the flow and keeps the tokens; the redirect comes back to a loopback on the phone, which hands it to Hermes (`client_redirect_uri` and `mcp.servers.oauth.callback`, as Desktop does for a remote Hermes). A Hermes that ignores the redirect is told to update rather than opening a page that can't finish (2026-10-24).
+- New Bot offers no catalog: the server and its keys live in the bot's profile, which doesn't exist until Create. Desktop creates the profile early instead; Conduit says to add them in Edit Bot (2026-10-24).
 - Generated pictures come from Hermes' own image generation (`image.generate`). Generate shows only when Hermes says a backend is set up, and the bot editor and group pictures share one sheet (2026-10-24, #1179).
+- Duplicate makes `<name>-2` (the first free number) as a full `clone_from` copy, then copies the look with " (copy)" on the title, as Desktop's `duplicateBot` does. A clone doesn't copy the asset store, so Conduit copies the photo itself and only claims one that landed; the copy is neither hidden nor pinned, whatever the original is (2026-10-24, #1192).
+- Hide is the ui_meta `hidden` flag Desktop writes: a hidden bot moves to a collapsed Hidden section at the end of the list, and Desktop hides it too. It keeps working and keeps its rooms, but isn't offered for a new group, whose picker lists visible bots only (2026-10-24, #1192).
+- Groups lists the hosted rooms the bot is in, then New Group Chat with the bot already picked. Hosted groups can't add or remove members after they start, so there's no Add to Group (2026-10-24).
 
 **Open gaps**
-- No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
 - New Bot's model pick isn't guarded: `profiles.create` pins it without the gateway's expensive-model check, the same as on Desktop.
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
-- No Duplicate or Hide in the Bots list.
 
-**Checked:** 2026-10-24, at #1181.
+**Checked:** 2026-10-24, at #1192.
 
 ## Bot mentions and teammate messages
 
@@ -576,7 +586,8 @@ the bot's SOUL messaging section · README.md's bots line
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete)
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (mentionCandidates, attachmentButton), `Conduit/Views/Components/GroupRoomComposer.swift`
-- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle), `Conduit/Views/ChatActivityRows.swift` (ChatStepSubject, the step's subject line)
+- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, TeammateReplyNote, SettledToolCardContent.stepTitle, runningToolTitle), `Conduit/Views/ChatRowState.swift` (teammateReplies, botLabels), `Conduit/Views/ChatActivityRows.swift` (ChatStepSubject, ChatWorkingLine.currentToolTitle)
+- Previews, quotes and speech: `Conduit/Services/PreviewText.swift` (strip), read by the chat list and spoken previews
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`, notifier #338)
 - The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
 
@@ -587,19 +598,18 @@ the bot's SOUL messaging section · README.md's bots line
 - A `message_agent` call, or a terminal `hermes -p name chat … -q "Message from …"` run, reads as "Messaged Name" (2026-10-24, #1181).
 - A step's subject line prefers a `message` field after the usual keys, for every tool, so a delivery shows what was said (2026-10-24, #1181).
 - `message_agent` is a messaging tool on the Live Activity, in both the app's and the plugin's category lists (2026-10-24, #1181, notifier #338).
+- A delivery previews as "Atlas: what it said" wherever `PreviewText` reads it (the chat list, spoken previews), and its body renders as Markdown. A quote is taken from the opened note's text, so it carries no signature. Read Aloud and live voice speak replies, never a delivery, so they need nothing (2026-10-24, #1192).
+- The bot's replies to a delivery it didn't ask for fold under "Replied to Atlas" until the user next writes; a delivery answering the bot's own `message_agent` doesn't fold, and a reply still streaming stays open (upstream `dispatchedTo`, 2026-10-24).
+- A terminal or `process` delivery's step shows the message, not the command, and the teammate's answer from the output as a note under it; a failed send (an error or non-zero exit) stays a plain tool step (2026-10-24).
+- The working line says "Messaging Atlas…" while a delivery runs. The Live Activity keeps "Sending a message": it carries only a tool category, never names, by design (2026-10-24).
+- A signature is read from the first 320 characters, so a message of any length is still a delivery; tool calls past 64 KB aren't scanned. A signed name may contain "(" ("Atlas (v2)") (2026-10-24).
+- A "Messaged" step names the bot from the roster, and redraws when the roster loads (2026-10-24).
+- Group rooms have no Mention a Bot item: their recipient picks do the same job (2026-10-24).
 
 **Open gaps**
-- Chat list previews and quotes show a delivery's raw "Message from 🤖 …" text.
-- Read Aloud and live voice read a delivery as written.
-- Desktop folds the sender's reply to a delivery it asked for; Conduit shows every reply as usual.
-- Group rooms have no Mention a Bot item; their recipient picks do the same job.
-- A delivery's text shows as plain text when opened; Desktop renders its Markdown.
-- A terminal delivery's step shows the whole `hermes … chat` command as its subject; a `message_agent` step shows the message.
-- The working line and Live Activity say "Sending a message", not the teammate's name.
-- A signed name with "(" in it ("Atlas (v2)") isn't read as a delivery and stays the user's text.
-- A "Messaged" step drawn before the roster loads names the routing key ("Messaged scout") until the row redraws; the note follows the roster.
+- None known.
 
-**Checked:** 2026-10-24, at #1181.
+**Checked:** 2026-10-24, at #1192.
 
 ## Markdown lists in messages
 
@@ -719,6 +729,166 @@ much history an open transcript keeps
 - Group rooms keep the scroll position by row id (ScrollViewReader), not by the chat engine's same-pass layout, so a follow can animate where a chat snaps.
 
 **Checked:** 2026-10-24, at #1184.
+
+## Model lists that fail to load
+
+What a model picker shows before Hermes's model catalog has rows: still
+loading, a fetch that failed, or a gateway that lists no models.
+
+**Siblings:** the model sheet · the Model page's Default model, Delegate
+model and Fallback models editors · a bot's model picker · the voice job and
+voice reply model pickers · the Kanban task composer's catalog
+
+**Code**
+- The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, and the model sheet's modelSection, loadModels)
+- Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
+- Bots: `Conduit/Views/BotModelPicker.swift`
+- Voice: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings), `Conduit/Services/AppState.swift` (loadVoiceJobModelProviders)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (catalogSection)
+
+**Rulings**
+- A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
+- A list that didn't load is never edited or saved: Save stays off until the catalog is in.
+
+**Open gaps**
+- The voice job and voice reply pickers get `[]` for a failed fetch (loadVoiceJobModelProviders), so they can't tell failed from empty.
+- The bot model picker says "Could not load models." without Try Again.
+- The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Files over the size limit
+
+What Conduit says when a file is too large to attach, and which limit it
+names.
+
+**Siblings:** the chat composer (picker, drop, camera) · pasting into the
+composer · the share extension · Ask Hermes About Screen · a recorded voice
+message · the group room composer · the Settings caption for the limit
+
+**Code**
+- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift`
+- Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
+- Share extension: `Conduit/Services/AppState+ShareDraft.swift`
+- Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
+- Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
+
+**Rulings**
+- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB), it names that cap and offers no setting (2026-10-24, from #935's review, #1190).
+
+**Open gaps**
+- The voice message says "larger than your attachment size limit" without the size or where to change it.
+- The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Phone change errors
+
+What Hermes and the user are told when a calendar, reminder or alarm change
+can't be made on the phone.
+
+**Siblings:** a change from a voice call (PhoneVoiceTools) · a change queued
+by Hermes through the notifier (its result note) · the phone sync status line
+· alarms and timers · the wording the notifier's tools give models
+
+**Code**
+- Calendar and reminder errors: `Conduit/Phone/EventKitPhoneSource.swift` (PhoneCalendarSourceError, apply, moveDestination)
+- Alarm errors: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmError)
+- Voice tools: `Conduit/Phone/PhoneVoiceTools.swift` (the add, change, delete and alarm tools' catches)
+- Queued changes and status: `Conduit/Phone/PhoneSyncEngine.swift` (record, lastError, describe)
+- Notifier: `notifier/phone_tool.py` (the wording models read)
+
+**Rulings**
+- An error names what is missing: the item ("That item isn't on this iPhone any more."), or the calendar or list it was to move to, which leaves the item in place (2026-10-24, from #876's review, #1190).
+- Voice tools turn only a missing item on a change or delete into "read the calendar again for its id"; every other error reaches the model as "It couldn't be changed: <reason>" (or added, deleted, set, cancelled) with the error's own text (2026-10-24, #1190).
+
+**Open gaps**
+- Adding an event or reminder when the phone has no default calendar or list (and the one named is gone) says "That item isn't on this iPhone any more."
+
+**Checked:** 2026-10-24, at #1190.
+
+## Speech stream failures
+
+What a spoken reply says when its speech stream fails partway: Classic voice
+and Read Aloud speak through Hermes's speech stream or the user's speech
+server.
+
+**Siblings:** the Hermes speech stream · the speech-server speech stream ·
+the one-shot fallback a Hermes stream falls back to before any audio · the
+speech-server transcription stream (listening, not speaking)
+
+**Code**
+- Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
+- Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
+- Listening: `Conduit/Voice/SpeechServerTranscription.swift`
+- Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
+
+**Rulings**
+- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
+
+**Open gaps**
+- The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Plan card
+
+The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the
+composer: a slim line that opens upward into a card, and a sheet with the
+whole plan. [docs/PLAN_CARD.md](PLAN_CARD.md) is the design.
+
+**Siblings:** the line · the card · the whole-plan sheet · chats, project
+chats and Bot Chat (one chat screen) · group rooms (no plan) · the `todo`
+tool result in the transcript, which draws the same items · VoiceOver's
+reading of the line and its new-plan announcement
+
+**Code**
+- Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
+- Views: `Conduit/Views/Components/ChatCards.swift` (ChatPlanDock, PlanStrip, PlanCard, PlanSheet, PlanText)
+- Feeding it: `Conduit/Services/AppState+ChatCards.swift`, `Conduit/Views/ChatView.swift` (planDock), `Conduit/Services/HermesClient.swift` (`todo_state` on resume)
+- Transcript row: `Conduit/Views/ToolResultViews.swift` (the todos case)
+- Tests: `ConduitTests/GatewayRestartTests+ChatCards.swift`
+
+**Rulings**
+- Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
+- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, salvage of the #1135 review).
+- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, salvage of the #1135 review).
+
+**Open gaps**
+- The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
+- Two announcements within 450 ms race on the pulse (#1135 review).
+
+**Checked:** 2026-10-24, at #1188.
+
+## White text on the accent
+
+A chip, badge or step number that puts white text or a white glyph on a
+solid accent fill. The accent the user picks is light in dark mode, so
+white on it can fall to about 2:1; the sent-bubble colour is the shade held
+to 4.5:1 under white in both modes.
+
+**Siblings:** the running timer chip and the "Recommended" badge on rich
+cards · the numbered or symbol marker on a rich card's place rows · the
+step numbers of the notification setup commands · the Gemini Live setup
+step number · marks picked by `markColor(on:)` (text selection on a sent
+bubble, the accent swatch check)
+
+**Code**
+- Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
+- Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Tests: `ConduitTests/AccentContrastTests.swift`
+
+**Rulings**
+- White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+
+**Open gaps**
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+
+**Checked:** 2026-10-24, at #1188.
 
 ## Phone data sync with the host
 

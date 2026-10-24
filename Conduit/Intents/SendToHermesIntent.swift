@@ -72,6 +72,12 @@ struct ShortcutSendError: LocalizedError, Equatable {
     static var notConnected: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection."))
     }
+
+    /// The chat's runtime was gone and reopening it failed too: Hermes's
+    /// own error ("session not found") would mean nothing to the listener.
+    static var reopenFailed: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again."))
+    }
 }
 
 /// Hermes operations a run needs. Closures, so AppState binds them to the
@@ -223,12 +229,25 @@ struct ShortcutSender {
             // Right after a cold launch the open chat's id is the one from
             // before, until the chat's own resume: reopen the chat and send
             // once more.
-            runtimeID = try await backend.reopenChat(chat)
+            do {
+                runtimeID = try await backend.reopenChat(chat)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HermesError.notConnected {
+                throw ShortcutSendError.notConnected
+            } catch {
+                throw ShortcutSendError.reopenFailed
+            }
             try Task.checkCancellation()
             chat.runtimeSessionID = runtimeID
             if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
             guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
-            outcome = try await backend.submit(chat, runtimeID, text)
+            do {
+                outcome = try await backend.submit(chat, runtimeID, text)
+            } catch let error where HermesClient.isSessionNotFoundError(error) {
+                // The reopened runtime is gone too: nothing was sent.
+                throw ShortcutSendError.reopenFailed
+            }
             backend.retryLanded()
         }
         switch outcome {

@@ -986,8 +986,11 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         XCTAssertNil(try destination(nil), "No calendar named: it stays where it is")
         XCTAssertEqual(try destination("work"), true)
+        // The item is still there: the reason names the missing calendar,
+        // not the item (#876).
         XCTAssertThrowsError(try destination("deleted")) { error in
-            guard case PhoneCalendarSourceError.notFound = error else { return XCTFail("\(error)") }
+            guard case PhoneCalendarSourceError.noSuchCalendar = error else { return XCTFail("\(error)") }
+            XCTAssertNotEqual(error.localizedDescription, PhoneCalendarSourceError.notFound.localizedDescription)
         }
         XCTAssertThrowsError(try destination("shared")) { error in
             guard case PhoneCalendarSourceError.readOnly = error else { return XCTFail("\(error)") }

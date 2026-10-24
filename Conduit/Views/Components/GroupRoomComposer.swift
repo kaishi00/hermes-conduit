@@ -784,7 +784,7 @@ struct GroupRoomComposer: View {
                     await ComposerBar.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
+            finishImport(outcomes, roomID: roomID)
         }
     }
 
@@ -807,7 +807,7 @@ struct GroupRoomComposer: View {
                     ComposerBar.stageDocument(at: url, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
+            finishImport(outcomes, roomID: roomID)
         }
     }
 
@@ -818,13 +818,13 @@ struct GroupRoomComposer: View {
             let outcome = await Task.detached(priority: .userInitiated) {
                 ComposerBar.stageCapturedPhoto(image, limitMegabytes: limit)
             }.value
-            finishImport([outcome], limitMegabytes: limit, roomID: roomID)
+            finishImport([outcome], roomID: roomID)
         }
     }
 
     /// One cue per selection: the error and its message when anything was
     /// left out, otherwise a light tap.
-    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], limitMegabytes: Int, roomID: String?) {
+    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?) {
         // Left the room while the files were staged: this composer is gone,
         // so their local copies are dropped.
         guard appState.activeRoomSurface?.room.roomID == roomID else {
@@ -844,7 +844,7 @@ struct GroupRoomComposer: View {
         }
         var messages: [String] = []
         if !oversized.isEmpty {
-            messages.append(AttachmentSizeLimit.tooLargeMessage(names: oversized, megabytes: limitMegabytes))
+            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes))
         }
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")

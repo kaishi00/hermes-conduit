@@ -81,7 +81,9 @@ struct LiveVoiceSetupSheet: View {
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
-                        .background(Color.conduitAccent, in: Circle())
+                        // The sent-bubble fill: the dark-mode accent is
+                        // too light under white text.
+                        .background(Color.conduitUserBubble, in: Circle())
                     Text(AppLocalization.string("Add a Gemini API key"))
                         .font(.subheadline.weight(.semibold))
                 }
