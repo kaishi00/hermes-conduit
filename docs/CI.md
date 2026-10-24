@@ -41,10 +41,13 @@ touching them. The **change's own classes**: `plan-tests.py smoke
 --changed-from HEAD^1` adds every unit class declared or extended in a changed
 `ConduitTests/` file, and `<Stem>Tests` for a changed app file `<Stem>.swift`,
 cheapest first within `changed_budget_s` of baseline time (a class with no
-baseline counts 3 s) and `changed_max_classes`; the rest are named in a
-notice and the step summary.
+baseline counts 3 s) and `changed_max_classes`. What budget is left goes to
+the stem's family, `<Stem><Topic>Tests` (a change to `AppState.swift` or
+`AppState+Composer.swift` reaches `AppStateChatResumeTests`), also cheapest
+first. The rest are named in a notice and the step summary.
 Timing families are never added. Most red nights from 2026-10-19 to 10-22
-were tests a PR had added or edited and never run before merge.
+were tests a PR had added or edited and never run before merge; 2026-10-24's
+was an `AppState.swift` change (#1154) that broke `AppStateChatResumeTests`.
 
 What a PR still does not get is the full unit suite: a unit test outside
 these that a PR breaks fails that night's run on `main`, and whoever merged

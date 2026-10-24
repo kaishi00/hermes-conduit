@@ -13092,11 +13092,12 @@ final class AppState: ObservableObject {
 
     /// Cold-start restore of the saved connection. Its ticket was spent when
     /// it last opened the socket, so the dashboard bridge mints a fresh one
-    /// first; the saved record is only the fallback when that mint fails,
-    /// and its refusal then schedules the reconnect. A failed mint never
-    /// sends the user to login: requiring a freshly restored WebKit cookie
-    /// before every launch was what turned a healthy saved Hermes session
-    /// into login.
+    /// first; the saved record is only the fallback when that mint fails.
+    /// A failed mint alone never sends the user to login (requiring a freshly
+    /// restored WebKit cookie before every launch was what turned a healthy
+    /// saved Hermes session into login), but the fallback handshake can still
+    /// be refused: `stopRecoveryForRefusedSocket` then stops recovery at the
+    /// sign-in screen, while any other connect failure schedules a reconnect.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
@@ -13112,8 +13113,9 @@ final class AppState: ObservableObject {
         // The saved ticket was spent when it last opened the socket (Hermes'
         // tickets are single-use and last 30 seconds), so a fresh one is
         // minted with the dashboard's cookies first, as the OAuth restore
-        // does. A mint that fails leaves the saved record: its refusal
-        // schedules the reconnect, as before. A cancelled one (the bridge
+        // does. A mint that fails leaves the saved record, which `connect`
+        // handles like any other: a refused handshake goes to sign-in, any
+        // other failure schedules a reconnect. A cancelled one (the bridge
         // torn down by a switch or a sign-out) ends this restore, as it
         // does the OAuth restore's: the spent ticket is never tried.
         var connection = saved

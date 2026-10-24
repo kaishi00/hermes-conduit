@@ -165,9 +165,25 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         )
     }
 
-    func testFlagsAnIconOnlyMenuWithoutALabel() {
+    func testFlagsAnIconOnlyLiteralMenuWithoutALabel() {
+        // The literal `Menu {` owner, not only a helper whose name ends in it.
+        let source = """
+            HStack {
+                Menu {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        """
+        XCTAssertEqual(
+            Self.unnamedIconButtons(in: source, path: "A.swift").map(\.line),
+            [3]
+        )
+    }
+
+    func testFlagsAnIconOnlyMenuHelperWithoutALabel() {
         // A menu helper whose trailing closure is the label: no `label:`
-        // line, so only the Menu owner sees the icon.
+        // line, so only the Menu owner (matched inside `sortMenu {`) sees
+        // the icon.
         let source = """
             HStack {
                 sortMenu {
