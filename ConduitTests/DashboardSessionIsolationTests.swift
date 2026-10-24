@@ -344,6 +344,26 @@ final class DashboardSessionIsolationTests: XCTestCase {
         XCTAssertLessThan(ContinuousClock.now - started, .seconds(5), "the wait gives up at its timeout")
     }
 
+    /// A clear whose WebKit reply never comes holds the next clear of the
+    /// same store only until the wait's timeout, not forever.
+    func testAHungStoreClearDoesNotStopTheNextOne() async {
+        let store = track(UUID())
+        let release = AsyncStream<Void>.makeStream()
+        defer { release.continuation.finish() }
+        DashboardCookiePersistence.scheduleStoreClear(for: store, predecessorTimeout: .milliseconds(100)) {
+            for await _ in release.stream {}
+        }
+        var nextRan = false
+        DashboardCookiePersistence.scheduleStoreClear(for: store, predecessorTimeout: .milliseconds(100)) {
+            nextRan = true
+        }
+
+        await DashboardCookiePersistence.awaitPendingStoreClear(for: store, timeout: .seconds(5))
+
+        XCTAssertTrue(nextRan, "the later clear runs after the bounded wait")
+        XCTAssertFalse(DashboardCookiePersistence.hasPendingStoreClear(for: store))
+    }
+
     // MARK: - Sign-out clearing without a live connection
 
     func testSignOutSelectedButDisconnectedDashboardClearsItsOwnedSession() throws {

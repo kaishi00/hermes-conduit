@@ -242,13 +242,19 @@ enum DashboardCookiePersistence {
     private static var storeClearGeneration: UInt64 = 0
 
     /// Runs `clear` after any clear of the same store already running, and
-    /// records it until it is done.
-    private static func scheduleStoreClear(for dashboardID: UUID?, _ clear: @escaping @MainActor () async -> Void) {
+    /// records it until it is done. The wait for the earlier clear is
+    /// bounded like `awaitPendingStoreClear`: one WebKit reply that never
+    /// comes must not stop every later clear of the store.
+    static func scheduleStoreClear(
+        for dashboardID: UUID?,
+        predecessorTimeout: Duration = .seconds(10),
+        _ clear: @escaping @MainActor () async -> Void
+    ) {
         storeClearGeneration &+= 1
         let generation = storeClearGeneration
         let previous = pendingStoreClears[dashboardID]?.task
         let task = Task { @MainActor in
-            await previous?.value
+            if let previous { await awaitClear(previous, timeout: predecessorTimeout) }
             await clear()
             if pendingStoreClears[dashboardID]?.generation == generation {
                 pendingStoreClears[dashboardID] = nil
