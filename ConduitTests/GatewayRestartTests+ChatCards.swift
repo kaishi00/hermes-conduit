@@ -220,6 +220,26 @@ extension GatewayRestartTests {
         XCTAssertFalse(cards.showsPlan)
     }
 
+    func testANewFinishedPlanShowsAfterARetiredOne() async throws {
+        let cards = ChatCardsModel(defaults: freshDefaults(), finishedPlanDelay: .milliseconds(30))
+        cards.transcriptChanged([reply("r", "hi")], for: cardsChat)
+        cards.transcriptChanged([reply("r", "hi"),
+                                 todoRow("t1", output: result([("1", "A", "completed")]), at: nowStamp())], for: cardsChat)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(cards.showsPlan, "the first plan finished and went")
+        let announced = cards.announcement
+
+        // Another plan, finished in one call: announced, so it must show.
+        cards.transcriptChanged([reply("r", "hi"),
+                                 todoRow("t1", output: result([("1", "A", "completed")]), at: nowStamp()),
+                                 todoRow("t2", output: result([("9", "Other", "completed"), ("8", "Work", "completed")]),
+                                         at: nowStamp())], for: cardsChat)
+        XCTAssertEqual(cards.announcement, announced + 1, "a new plan announces itself")
+        XCTAssertTrue(cards.showsPlan, "an announced plan is on screen, not left hidden with the old one")
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(cards.showsPlan, "and it goes after its own while")
+    }
+
     func testRowsWithoutAnIDGetIDsNoOtherRowHas() {
         let plan = AgentPlan(snapshotJSON: #"{"todos":["bad",{"id":"?0","content":"Real","status":"pending"},{"content":"No id","status":"pending"},42]}"#)
         let ids = plan?.items.map(\.id) ?? []

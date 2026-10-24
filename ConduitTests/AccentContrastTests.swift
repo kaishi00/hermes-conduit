@@ -62,6 +62,21 @@ final class AccentContrastTests: XCTestCase {
         }
     }
 
+    func testTheMarkOnAFillIsWhicheverOfBlackAndWhiteStandsOutMore() {
+        // A grid of fills, mid greys included, where a cutoff off the
+        // black/white crossover (luminance ~0.179) picks the weaker one.
+        let steps: [CGFloat] = [0, 0.2, 0.4, 0.45, 0.5, 0.55, 0.6, 0.8, 1]
+        var fills = steps.flatMap { red in steps.flatMap { green in steps.map { blue in
+            UIColor(red: red, green: green, blue: blue, alpha: 1)
+        } } }
+        fills += ConduitAccentChoice.allCases.flatMap { [$0.color(dark: true), $0.color(dark: false), $0.softColor(dark: true)] }
+        for fill in fills {
+            let mark = ConduitAccentChoice.markColor(on: fill)
+            let other: UIColor = Self.contrast(mark, .black) < 1.01 ? .white : .black
+            XCTAssertGreaterThanOrEqual(Self.contrast(mark, fill), Self.contrast(other, fill), "fill \(fill)")
+        }
+    }
+
     func testTheBubbleFollowsThePick() {
         for choice in Self.everyAccent {
             for dark in [false, true] {

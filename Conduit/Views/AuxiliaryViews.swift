@@ -2889,6 +2889,8 @@ struct ProfileConfigSettingsPage: View {
                 .submitLabel(.done)
                 .onSubmit { saveDraft(field, defaultValue: defaultValue) }
                 .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
+                // VoiceOver names the field, not its placeholder.
+                .accessibilityLabel(Text(field.label))
             Button("Save") { saveDraft(field, defaultValue: defaultValue) }
                 .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
                 .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
@@ -4051,7 +4053,9 @@ struct NotificationSetupCommand: View {
                     .conduitFixedGlyph()
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
-                    .background(Color.conduitAccent, in: Circle())
+                    // The sent-bubble fill: the dark-mode accent is too
+                    // light under white text.
+                    .background(Color.conduitUserBubble, in: Circle())
                 Text(title).font(.subheadline.weight(.semibold))
             }
             Button {

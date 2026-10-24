@@ -623,7 +623,9 @@ private struct RichOptionColumn: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.conduitAccent, in: Capsule())
+                // The sent-bubble fill: the dark-mode accent is too light
+                // under white text.
+                .background(Color.conduitUserBubble, in: Capsule())
             }
             Text(verbatim: option.name)
                 .font(.subheadline.weight(.semibold))
@@ -822,7 +824,9 @@ private struct RichStepTimer: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .foregroundStyle(left != nil ? Color.white : Color.conduitAccent)
-            .background(left != nil ? Color.conduitAccent : Color.conduitAccent.opacity(0.14), in: Capsule())
+            // Running: white on the sent-bubble fill, which keeps 4.5:1 in
+            // dark mode where the accent itself is too light.
+            .background(left != nil ? Color.conduitUserBubble : Color.conduitAccent.opacity(0.14), in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(left != nil ? Text("Stop timer") : Text("Start a \(Self.spoken(seconds)) timer"))

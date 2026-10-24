@@ -255,6 +255,42 @@ enum BotMetaPatch {
     }
 }
 
+/// Duplicate in the Bots list, the way Desktop's `duplicateBot` does it: a
+/// full `clone_from` copy named `<name>-2` (the first free number), with the
+/// original's look and a "(copy)" title so the two tell apart until renamed.
+enum BotDuplicate {
+    /// The first free `<name>-N`, the base cut so the suffix always fits the
+    /// 64-character profile name (Desktop's #19). Nil past `-99`.
+    static func name(for base: String, taken: [String]) -> String? {
+        let used = Set(taken.map { $0.lowercased() })
+        for n in 2..<100 {
+            let suffix = "-\(n)"
+            let candidate = String(base.prefix(64 - suffix.count)) + suffix
+            if !used.contains(candidate.lowercased()) { return candidate }
+        }
+        return nil
+    }
+
+    /// `profiles.create` for the copy. Desktop sends only these three.
+    static func createParams(name: String, source: BotProfile) -> [String: Any] {
+        ["name": name, "clone_from": source.name, "description": source.profileDescription]
+    }
+
+    /// The copy's ui_meta: the original's look without its `chat` or
+    /// `created`, titled "<title> (copy)". Not `hidden` or `pinned`: the
+    /// copy is a new bot, shown in the list where it can be found. `photoCopied` false drops a photo
+    /// `imageKind` the copy's asset store doesn't hold.
+    static func meta(from source: BotProfile, photoCopied: Bool = true) -> [String: Any] {
+        var meta = BotMetaPatch.merged(existing: source.botMeta, patch: ["created": nil, "hidden": nil, "pinned": nil])
+        if !photoCopied, (meta["imageKind"] as? String)?.lowercased() == "photo" {
+            meta["imageKind"] = nil
+        }
+        let title = (source.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        meta["title"] = title.isEmpty ? "" : "\(title) (copy)"
+        return meta
+    }
+}
+
 /// How the ui_meta half of a `profiles.configure` landed.
 enum BotMetaWriteOutcome: Equatable {
     /// `applied.ui_meta == true`.
