@@ -62,9 +62,16 @@ stream_new_lines() {
 # or not all digits. Every such value ends up inside $(( )), where bash reads
 # a leading zero as octal (08 and 09 abort, 060 is 48) and silently wraps an
 # oversized number, possibly to a negative one. So leading zeros are dropped
-# as text and anything above one day (86400) is clamped to one day.
+# as text and anything above one day (86400) is clamped to one day. The
+# fallback must itself be all digits: a caller that passes anything else gets
+# a message on stderr and status 2, never the bad value printed back.
 decimal_seconds() {
   local value="$1"
+  case "$2" in
+    ''|*[!0-9]*)
+      echo "decimal_seconds: fallback '$2' is not a whole number of seconds" >&2
+      return 2 ;;
+  esac
   case "$value" in ''|*[!0-9]*) value="$2" ;; esac
   value="${value#"${value%%[!0]*}"}"
   [ -z "$value" ] && value=0
@@ -410,7 +417,8 @@ reset_and_boot_simulator() {
   # GATE_SLEEP_SCALE: 1 (default) everywhere except the gate's stubbed
   # integration suite, which scales settling sleeps to 0 - deadlines are
   # wall-clock (`date`), so watchdog budgets never depend on this multiplier.
-  sleep $(( 3 * ${GATE_SLEEP_SCALE:-1} ))
+  # Read as base 10 like every other override that reaches $(( )).
+  sleep $(( 3 * $(decimal_seconds "${GATE_SLEEP_SCALE:-}" 1) ))
   if ! udid=$(resolve_own_udid); then
     echo "::warning::could not resolve simulator UDID - letting xcodebuild boot the destination itself"
     [ "$erase" -eq 1 ] && return 1

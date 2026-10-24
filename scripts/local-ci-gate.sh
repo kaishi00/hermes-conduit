@@ -50,7 +50,12 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 # suite scales it to 0 so ~20 stubbed gate runs fit the hosted self-test
 # job's ceiling. Deadlines are computed from `date`, never from sleep counts,
 # so watchdog budgets are unaffected by the scale.
-export GATE_SLEEP_SCALE="${GATE_SLEEP_SCALE:-1}"
+# Both knobs below reach $(( )), so they are read as base 10 (08 would
+# otherwise abort as invalid octal) through ci-lib.sh's decimal_seconds,
+# sourced in a subshell so none of its other functions enter this script.
+GATE_SLEEP_SCALE=$(. "$SCRIPT_DIR/ci-lib.sh"; decimal_seconds "${GATE_SLEEP_SCALE:-}" 1)
+export GATE_SLEEP_SCALE
+GATE_TEARDOWN_GRACE_S=$(. "$SCRIPT_DIR/ci-lib.sh"; decimal_seconds "${GATE_TEARDOWN_GRACE_S:-}" 10)
 
 HELPER="$SCRIPT_DIR/local-gate.py"
 # Explicit default repeat classes: the settled-Markdown/dormancy and
@@ -477,7 +482,7 @@ EOF
   # and the gate lock are released immediately after this, so nothing may be
   # left to chance. The settle is a wedge-mitigation sleep, so the stubbed
   # integration suite scales it to 0 and gets the KILL path immediately.
-  sleep $(( ${GATE_TEARDOWN_GRACE_S:-10} * GATE_SLEEP_SCALE ))
+  sleep $(( GATE_TEARDOWN_GRACE_S * GATE_SLEEP_SCALE ))
   local _mc_member
   for _mc_pid in $_mc_targets; do
     if kill -0 "$_mc_pid" 2>/dev/null; then
