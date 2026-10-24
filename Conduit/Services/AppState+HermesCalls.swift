@@ -803,11 +803,13 @@ extension AppState {
               target.dashboardID == nil || target.dashboardID == activeDashboardID,
               let bridge = dashboardTicketBridge else { return nil }
         let profile = target.profile ?? activeProfile
+        // Short, all chats together: the Watch call is starting, and without
+        // it the call only says where to answer.
+        let deadline = Date().addingTimeInterval(6)
         for sessionID in call.sessionIDs {
+            guard Date() < deadline else { break }
             guard let encoded = DashboardPath.encodedQueryComponent(sessionID) else { continue }
             let path = DashboardPath.withProfile("\(Self.hermesCallWaitingPath)?session_id=\(encoded)", profile: profile)
-            // Short: the Watch call is starting, and without it the call
-            // only says where to answer.
             // One chat's failed read leaves the call's other chats to try.
             guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 4_000) else { continue }
             if let waiting = (response["waiting"] as? [String: Any]).flatMap({ HermesCallWaiting(host: $0) }), waiting.kind == kind {
