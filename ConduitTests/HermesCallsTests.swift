@@ -70,7 +70,7 @@ final class FakeCallDecisions {
             },
             answer: { [self] answer in
                 self.answers.append(answer)
-                return .answered
+                return .answered()
             }
         )
     }
@@ -1578,11 +1578,13 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["localLive": true])
     }
 
-    func testCallsFromHermesNeverRingAWatchOnLocalLive() {
+    func testCallsFromHermesRingAWatchOnLocalLiveWhenItsReady() {
         var voices = WatchCallVoices()
         voices.note(.localLive, ready: true, scope: "d|default")
-        XCTAssertFalse(voices.rings(engine: WatchCallVoices.Voice.localLive.rawValue),
-                       "The host runs its turns in a chat of its own: the iPhone answers instead")
+        XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.localLive.rawValue),
+                      "The call says why Hermes called, and the host takes the answer")
+        voices.note(.localLive, ready: false, scope: "d|default")
+        XCTAssertFalse(voices.rings(engine: WatchCallVoices.Voice.localLive.rawValue))
         XCTAssertTrue(voices.rings(engine: WatchCallVoices.Voice.geminiLive.rawValue), "Not checked yet: rings, as before")
     }
 }

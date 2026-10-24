@@ -1151,6 +1151,29 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchToolAnswer.delegatedCantOpen, channel: .commentary)
             return
         }
+        // "Answer: 2" for the call from Hermes this call answers: the host
+        // passes it to Hermes (WatchCallAnswer). Never an approval: on the
+        // Watch the user taps those.
+        if relay.tools.contains(WatchCallAnswer.tool),
+           let arguments = WatchCallAnswer.delegatedArguments(itemText, userWords: userWords, approves: false) {
+            answerCall(for: id, arguments: arguments, relay: relay)
+            return
+        }
+        // Any other answer marker answers nothing here, and is never new
+        // work: a bare "Answer:" with nothing said yet, or one on a call
+        // that can't answer Hermes.
+        let marker = itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if marker.hasPrefix("answer:") {
+            answer(id, relay.tools.contains(WatchCallAnswer.tool)
+                ? WatchCallAnswer.missingArgument(name: "answer_question")["error"] ?? ""
+                : "This call can't give Hermes the answer. Tell the user to answer in that chat in Conduit on their iPhone.",
+                channel: .commentary)
+            return
+        }
+        if ["approve:", "deny:"].contains(where: marker.hasPrefix) {
+            answer(id, "Approvals aren't given by voice on the Watch. Tell the user to answer in that chat in Conduit on their iPhone.", channel: .commentary)
+            return
+        }
         // "Job 2: make it Alex" puts the user's words into job 2 while it
         // runs (#455). A number with no job is just new work.
         // Read where the phone reads it: the delegation's own text, else
@@ -1332,6 +1355,34 @@ final class WatchBridgeCallModel: ObservableObject {
         case .finished: return "finished"
         case .failed: return "failed"
         case .unknownJob: return "unknownJob"
+        }
+    }
+
+    /// The user's answer to what the call from Hermes waits on, through the
+    /// grant to the host; its reply (and a batch's next question) goes
+    /// back on the delegation. The log carries the outcome, never the answer.
+    private func answerCall(for delegationID: String, arguments: [String: Any], relay: WatchToolRelayClient) {
+        guard relay.canRun(WatchCallAnswer.tool) else {
+            let ranOut: String = WatchBridgeDelegation.grantRanOut
+            answer(delegationID, "The answer didn't reach Hermes: " + ranOut + " Tell the user to answer in Conduit on their iPhone.", channel: .commentary)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: WatchCallAnswer.tool, arguments: arguments)
+            guard let self, self.callID == id, self.isActive else { return }
+            let text: String
+            switch outcome {
+            case .answered(let body):
+                text = WatchCallAnswer.delegatedReply(body: body)
+            case .timedOut:
+                text = "Hermes didn't confirm the answer in time. Tell the user to check the chat in Conduit on their iPhone."
+            case .unavailable:
+                text = "The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone."
+            }
+            self.note("bridgeCallAnswer", ["outcome": outcome.logLabel, "ms": Int((self.now - sentAt) * 1000)])
+            self.answer(delegationID, text, channel: .commentary)
         }
     }
 

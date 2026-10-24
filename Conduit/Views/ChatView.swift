@@ -161,13 +161,26 @@ struct ChatView: View {
         return Self.runningToolName(in: appState.messages)
     }
 
+    /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
+    /// says; nil for any other tool.
+    private var runningToolTitle: String? {
+        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
+              let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
+        let name = BotTeammateMessages.displayName(for: key, in: appState.botRoster)
+        return AppLocalization.string("Messaging \(name)…")
+    }
+
     static func runningToolName(in messages: [ChatMessage]) -> String? {
+        runningTool(in: messages)?.name
+    }
+
+    static func runningTool(in messages: [ChatMessage]) -> ToolActivity? {
         // Back to the turn's start: a long turn can run many tools. A steer
         // joins the running turn rather than starting one.
         for message in messages.reversed() {
             if message.role == .user && !message.isSteer { return nil }
             if message.role == .tool, let tool = message.tool, tool.status == .running {
-                return tool.name
+                return tool
             }
         }
         return nil
@@ -467,6 +480,7 @@ struct ChatView: View {
                     isBusy: appState.isBusy,
                     author: appState.activeProfile,
                     currentToolName: runningToolName,
+                    currentToolTitle: runningToolTitle,
                     turnStartedAt: turnStartedAt,
                     repliesElsewhere: appState.activeChatRepliesElsewhere
                 )
@@ -520,6 +534,7 @@ struct ChatView: View {
             ChatJumpControls(
                 chrome: scrollEngine.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
+                pendingIsApproval: appState.pendingDecisionIsApproval,
                 jumpToQuestion: { id in scrollEngine.explicitMessageRequested(id: id) },
                 jumpToLatest: { requestLatest(animated: true) },
                 followingChanged: {
@@ -938,6 +953,8 @@ private final class ChatScrollEventRouter {
 private struct ChatJumpControls: View {
     @ObservedObject var chrome: ChatScrollChrome
     let pendingClarifyMessageID: String?
+    /// The waiting card is an approval: the button says so.
+    let pendingIsApproval: Bool
     let jumpToQuestion: @MainActor (String) -> Void
     let jumpToLatest: @MainActor () -> Void
     let followingChanged: @MainActor () -> Void
@@ -967,8 +984,8 @@ private struct ChatJumpControls: View {
                 } label: {
                     if hasPendingClarify {
                         HStack(spacing: 7) {
-                            Image(systemName: "questionmark.bubble")
-                            Text(AppLocalization.string("Go to your question"))
+                            Image(systemName: pendingIsApproval ? "checkmark.shield" : "questionmark.bubble")
+                            Text(pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to your question"))
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -988,11 +1005,11 @@ private struct ChatJumpControls: View {
                 )
                 .accessibilityLabel(
                     hasPendingClarify
-                        ? AppLocalization.string("Go to the question that needs your answer")
+                        ? (pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to the question that needs your answer"))
                         : AppLocalization.string("Scroll to latest message")
                 )
                 .modifier(OptionalAccessibilityHint(
-                    hint: hasPendingClarify
+                    hint: hasPendingClarify && !pendingIsApproval
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
@@ -1134,6 +1151,18 @@ struct MessageBubble: View, Equatable {
                 }
                 .frame(maxWidth: 560, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let sender = rowState.teammateReplies[message.id] {
+                // The bot answering a teammate, not the user: folded, as on
+                // Desktop ("Replied to Atlas", the reply a tap away).
+                TeammateReplyNote(
+                    name: BotTeammateMessages.displayName(for: sender, in: appState.botRoster)
+                ) {
+                    AssistantBubble(
+                        message: message,
+                        readAloudController: appState.messageReadAloudController,
+                        gatewayResolver: gatewayResolver
+                    )
+                }
             } else {
                 AssistantBubble(
                     message: message,
@@ -1321,9 +1350,9 @@ struct TeammateMessageNote: View {
             ))
 
             if expanded {
-                Text(inbound.body)
+                // Bots write Markdown; it reads as a reply does.
+                MarkdownText(source: inbound.body)
                     .font(.subheadline)
-                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
@@ -1355,6 +1384,54 @@ struct TeammateMessageNote: View {
     private static func resolve(_ inbound: BotTeammateMessages.Inbound, in roster: [BotProfile]) -> BotProfile? {
         BotTeammateMessages.bot(named: inbound.handle, in: roster)
             ?? BotTeammateMessages.bot(named: inbound.sender, in: roster)
+    }
+}
+
+/// A bot's reply to a teammate's delivery, folded to "Replied to Atlas"
+/// (Desktop's inter-agent reply notice). Tap shows the reply as usual.
+struct TeammateReplyNote<Reply: View>: View {
+    let name: String
+    @ViewBuilder let reply: () -> Reply
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button {
+                Haptics.selection()
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrowshape.turn.up.right")
+                        .font(.caption2)
+                        .accessibilityHidden(true)
+                    Text(AppLocalization.string("Replied to \(name)"))
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .accessibilityHint(Text(
+                expanded
+                    ? AppLocalization.string("Hides the reply.")
+                    : AppLocalization.string("Shows the reply.")
+            ))
+            .accessibilityValue(Text(
+                expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
+            ))
+
+            if expanded {
+                reply()
+                    .transition(.opacity)
+            }
+        }
     }
 }
 
@@ -2841,6 +2918,8 @@ private struct SettledToolCardContent: View, Equatable {
     @State private var tapped: Bool?
     /// Names the teammate a delivery messaged; read, not observed.
     @Environment(\.chatRowActions) private var rowActions
+    /// Its `botLabels` redraw that name once the roster loads.
+    @Environment(\.chatRowState) private var rowState
 
     /// Open from the start when tools expand by default, rather than opening
     /// on appear: a row that grows after its first layout moves everything
@@ -2857,13 +2936,31 @@ private struct SettledToolCardContent: View, Equatable {
             && lhs.gatewayResolver === rhs.gatewayResolver
     }
 
+    /// A delivery to a teammate bot, unless it failed: Desktop shows a
+    /// failed one as the plain step it was.
+    private func delivery(_ tool: ToolActivity) -> BotTeammateMessages.Delivery? {
+        guard let delivery = BotTeammateMessages.delivery(toolName: tool.name, input: tool.input, output: tool.output)
+        else { return nil }
+        if tool.status == .complete, let presentation, presentation.error != nil || presentation.exitCode != nil {
+            return nil
+        }
+        return delivery
+    }
+
+    private func teammateName(_ key: String) -> String {
+        let _ = rowState.botLabels
+        return BotTeammateMessages.displayName(for: key, in: rowActions?.appState.botRoster ?? [])
+    }
+
     /// "Messaged Atlas" for a delivery to a teammate bot, as Desktop shows
     /// it; otherwise the step's own words.
-    private func stepTitle(_ tool: ToolActivity, style: ChatStepStyle, running: Bool) -> String {
-        guard let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else {
-            return running ? style.runningTitle : style.doneTitle
-        }
-        let name = BotTeammateMessages.displayName(for: key, in: rowActions?.appState.botRoster ?? [])
+    private func stepTitle(
+        _ delivery: BotTeammateMessages.Delivery?,
+        style: ChatStepStyle,
+        running: Bool
+    ) -> String {
+        guard let delivery else { return running ? style.runningTitle : style.doneTitle }
+        let name = teammateName(delivery.target)
         return running
             ? AppLocalization.string("Messaging \(name)…")
             : AppLocalization.string("Messaged \(name)")
@@ -2879,6 +2976,7 @@ private struct SettledToolCardContent: View, Equatable {
         if let tool = message.tool {
             let style = ChatStepStyle(toolName: tool.name)
             let running = tool.status == .running
+            let delivery = delivery(tool)
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -2898,7 +2996,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(tool, style: style, running: running))
+                                Text(stepTitle(delivery, style: style, running: running))
                                     .font(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
@@ -2909,7 +3007,10 @@ private struct SettledToolCardContent: View, Equatable {
                                     tone: .supporting
                                 )
                             }
-                            if !expanded, let subject = ChatStepSubject.line(from: tool.input)
+                            // A delivery's subject is what was said, not the
+                            // command that sent it.
+                            if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                                ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
                                     .font(.subheadline)
@@ -2973,6 +3074,21 @@ private struct SettledToolCardContent: View, Equatable {
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // A terminal delivery waits for the teammate's answer: it
+                // reads as their message, as on Desktop.
+                if !running, let delivery, let reply = delivery.reply, let appState = rowActions?.appState {
+                    TeammateMessageNote(
+                        inbound: BotTeammateMessages.Inbound(
+                            sender: teammateName(delivery.target),
+                            handle: delivery.target,
+                            body: reply
+                        ),
+                        roster: appState.botRoster,
+                        appState: appState
+                    )
+                    .padding(.bottom, 8)
                 }
             }
             .chatStepCard(!grouped)
@@ -3533,6 +3649,7 @@ struct ApprovalCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.shield")
                         .foregroundStyle(statusColor(for: approval.status))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(statusTitle(for: approval.status))
                             .font(.caption2.weight(.bold))
@@ -3927,6 +4044,8 @@ struct ChatLiveTurnRows: View {
     let author: String
     /// The tool running now, named on the working line.
     var currentToolName: String?
+    /// Its own words for it, when it has them ("Messaging Atlas…").
+    var currentToolTitle: String?
     /// When the turn began, for the working line's timer.
     var turnStartedAt: Date?
     /// Another device is getting this chat's reply.
@@ -3962,6 +4081,7 @@ struct ChatLiveTurnRows: View {
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
             ChatWorkingLine(
                 currentToolName: currentToolName,
+                currentToolTitle: currentToolTitle,
                 isThinking: projection.reasoningSegment != nil,
                 startedAt: turnStartedAt,
                 repliesElsewhere: repliesElsewhere

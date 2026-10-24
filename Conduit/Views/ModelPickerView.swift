@@ -248,6 +248,24 @@ struct ModelPickerYoloDraft: Equatable {
     }
 }
 
+/// What a model list shows before it has rows to pick from: the model
+/// sheet and the Model page's editors tell a fetch that failed (with Try
+/// Again) from a gateway that lists no models, and neither from loading.
+enum ModelCatalogState: Equatable {
+    case loading
+    case failed
+    case empty
+    case ready
+
+    /// `providers` is nil until a load succeeds. A re-load that fails keeps
+    /// the rows it already had.
+    static func of(providers: [ProviderInfo]?, failed: Bool) -> ModelCatalogState {
+        if let providers, !providers.isEmpty { return .ready }
+        if failed { return .failed }
+        return providers == nil ? .loading : .empty
+    }
+}
+
 struct ModelPickerSelection: Equatable {
     var model: String
     var provider: String
@@ -283,6 +301,10 @@ struct ModelPickerView: View {
     @State private var yoloEnabled = false
     @State private var initialYoloEnabled: Bool?
     @State private var providers: [ProviderInfo] = []
+    /// Whether the catalog fetch has answered, and whether it failed: an
+    /// empty `providers` alone can't tell loading, failed and none apart.
+    @State private var catalogLoaded = false
+    @State private var catalogFailed = false
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
     @State private var visibilityQuery = ""
@@ -413,12 +435,28 @@ struct ModelPickerView: View {
 
     private var modelSection: some View {
         ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
-            if providers.isEmpty {
+            switch ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) {
+            case .loading:
+                ProgressView("Loading models…")
+                    .frame(maxWidth: .infinity)
+                    .padding(16)
+            case .failed:
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(AppLocalization.string("Could not load models."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
+                        .font(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            case .empty:
                 Text("No models are available from this gateway.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(16)
-            } else {
+            case .ready:
                 let shown = visibleProviders
                 ForEach(shown, id: \.name) { provider in
                     providerCard(provider)
@@ -876,10 +914,15 @@ struct ModelPickerView: View {
     }
 
     private func loadModels() async {
-        guard let client = appState.client else { return }
+        catalogFailed = false
+        guard let client = appState.client else {
+            catalogFailed = true
+            return
+        }
         do {
             let (_, _, provs) = try await client.modelOptions(sessionId: appState.activeSessionId)
             providers = provs ?? []
+            catalogLoaded = true
             selectedModel = appState.runtime.model
             seededModel = selectedModel
             selectedProvider = appState.runtime.provider
@@ -888,7 +931,10 @@ struct ModelPickerView: View {
             // made while the catalog loaded, and Apply would write that back.
             refreshYoloToggle(force: false)
         } catch {
-            // Model options are supplementary to the current session state.
+            // Model options are supplementary to the current session state,
+            // but the list says it didn't load rather than that there are
+            // no models.
+            catalogFailed = true
         }
     }
 

@@ -10,9 +10,11 @@
 //  job runs, and the finished result is sent back on that call with
 //  WHEN_IDLE scheduling, so the model reports it once it has finished
 //  speaking — never over the user. list_jobs and cancel_job are quick local
-//  answers and BLOCKING. A job's approvals and clarifications are never
-//  answered by voice: a job that needs input tells the user to open it in
-//  Conduit (a call Hermes made about one is the exception, below).
+//  answers and BLOCKING. A job's approval or question, and the one a call
+//  Hermes made is about (below), is answered by voice only with the user's
+//  own words: answer_approval on their yes, answer_question with the choice
+//  they picked or their answer. Anything else that needs input tells the
+//  user to open it in Conduit.
 //
 //  web_search (offered only when lookups run on the Hermes host) and
 //  recall_memory are NON_BLOCKING too, answered with WHEN_IDLE scheduling.
@@ -75,6 +77,9 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func showOnScreen(title: String, markdown: String, cards: [[String: Any]]) -> VoiceScreenCard?
     /// Exchanges typed in the attached chat, for the call to keep quietly.
     func takePendingChatContext() -> String?
+    /// What the chat of a call from Hermes waits on anew, for the model to
+    /// say now.
+    func takePendingCallPrompt() -> String?
     /// The call's own request still open in its attached chat (#451).
     func threadFollowUpTarget() -> UUID?
     /// The background job with this number in spoken job lists.
@@ -93,6 +98,9 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// Jobs of the call waiting on the user's OK for a command, which
     /// `answerApproval` answers when no call from Hermes waits on one.
     var jobsWaitingOnApproval: [UUID] { get }
+    /// Jobs of the call waiting on the user's answer to a question, which
+    /// `answerQuestion` answers when no call from Hermes waits on one.
+    var jobsWaitingOnQuestion: [UUID] { get }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome
     /// The user's earlier chats matching `query`, numbered for open_chat.
@@ -121,6 +129,8 @@ extension GeminiLiveJobSupervising {
     func withdrawNextCallback() {}
     var callWaitsOn: HermesCallRequest.Kind? { nil }
     var jobsWaitingOnApproval: [UUID] { [] }
+    var jobsWaitingOnQuestion: [UUID] { [] }
+    func takePendingCallPrompt() -> String? { nil }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome { .nothingPending }
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome { .nothingPending }
     func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome { .failed("Searching chats isn't available on this call.") }
@@ -182,8 +192,8 @@ final class GeminiLiveToolBridge {
     /// searched, call_me_when_done when the host takes call watches, and
     /// the answer for what a call from Hermes waits on (`waitsOn`), and
     /// find_chat / open_chat / read_chat on the phone (`chats`).
-    /// `jobApprovals`: a phone call, whose jobs' approvals the user can
-    /// answer out loud.
+    /// `jobApprovals`: a phone call, whose jobs' approvals and questions
+    /// the user can answer out loud.
     static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false, callback: Bool = false, waitsOn: HermesCallRequest.Kind? = nil, chats: Bool = false, jobApprovals: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
         functionDeclarations
             + (chats ? chatDeclarations : [])
@@ -192,7 +202,7 @@ final class GeminiLiveToolBridge {
             + (thread ? threadDeclarations : [])
             + (callback ? [callMeWhenDoneDeclaration] : [])
             + (waitsOn == .approval || jobApprovals ? [answerApprovalDeclaration] : [])
-            + (waitsOn == .question ? [answerQuestionDeclaration] : [])
+            + (waitsOn == .question || jobApprovals ? [answerQuestionDeclaration] : [])
     }
 
     /// Finding, opening and reading the user's earlier chats on a phone call. Opening
@@ -274,13 +284,13 @@ final class GeminiLiveToolBridge {
 
     static let answerQuestionDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.answerQuestion.rawValue,
-        description: "Give Hermes the user's answer to the question it is waiting on in this chat, the one this call is about. Only with what the user said; never answer it yourself. Then tell the user what it says, in a few words.",
+        description: "Give Hermes the user's answer to the question it is waiting on: the one this call is about, or one a job of this call asks (a job update reads it out with its choices). Read the choices out with their numbers first, and say which one is marked (Recommended). Only with what the user picked or said; never answer it yourself. A question of several is answered one at a time, in order. To have Hermes explain more before they choose, send their request starting \"Before I choose:\": Hermes is paused until it gets an answer, so this is the only way to ask it. Then tell the user what it says, in a few words.",
         parameters: [
             "type": "OBJECT",
             "properties": [
                 "answer": [
                     "type": "STRING",
-                    "description": "The user's answer, in their words.",
+                    "description": "The number of the choice the user picked (like 2, or 1, 3 when they may pick several), or, with no fitting choice, their answer in their own words.",
                 ],
             ],
             "required": ["answer"],
@@ -291,11 +301,13 @@ final class GeminiLiveToolBridge {
     /// A Watch call's tools: no attached chat, no asking first, which
     /// needs the user's speech timing on the phone that runs the bridge, and
     /// no read-back, whose results the phone's own call keeps (#451).
-    static func watchDeclarations(webSearch: Bool, memoryRecall: Bool, chats: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
+    /// `answers`: what the call from Hermes it answers waits on, when the
+    /// host can take the user's answer from the Watch (WatchCallAnswer).
+    static func watchDeclarations(webSearch: Bool, memoryRecall: Bool, chats: Bool = false, answers: HermesCallRequest.Kind? = nil) -> [GeminiLiveProtocol.FunctionDeclaration] {
         // No screen on the Watch: show_on_screen would only ever fail, and
         // open_chat would open a chat on a phone nobody's looking at.
         let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue, Tool.readLastReply.rawValue, Tool.showOnScreen.rawValue, Tool.callMeWhenDone.rawValue, Tool.openChat.rawValue]
-        return declarations(webSearch: webSearch, memoryRecall: memoryRecall, thread: false, chats: chats)
+        return declarations(webSearch: webSearch, memoryRecall: memoryRecall, thread: false, waitsOn: answers, chats: chats)
             .filter { !phoneOnly.contains($0.name) }
             .map { $0.name == Tool.findChat.rawValue ? findChatDeclaration(opens: false) : $0 }
     }
@@ -984,6 +996,9 @@ final class GeminiLiveToolBridge {
             }
             queuedNotices.append((text, item.jobID))
             outgoing.append(.textWhenIdle(text))
+        }
+        while let prompt = supervisor.takePendingCallPrompt() {
+            outgoing.append(.textWhenIdle(prompt))
         }
         while let context = supervisor.takePendingChatContext() {
             outgoing.append(.contextWhenIdle(context))

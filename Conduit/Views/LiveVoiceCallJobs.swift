@@ -415,3 +415,129 @@ struct LiveVoiceJobResultSheet: View {
         [job.storedSessionID, job.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
     }
 }
+
+/// What Hermes waits on the user for during a live call, with the chat's
+/// buttons: an approval or question in the call's own chat (its cards, as
+/// Classic voice shows them), else one a job of the call waits on. A spoken
+/// answer works too. Observes the app only here, so the rest of the call
+/// doesn't redraw with it.
+struct LiveVoiceWaitingPanel: View {
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        let chatCards = appState.openChatWaitingCards
+        if !chatCards.isEmpty {
+            VoiceApprovalPanel(approvals: chatCards)
+        } else if let job = jobs.callJobs(jobs.liveCallID).first(where: Self.waits) {
+            LiveVoiceJobWaitingCard(job: job, jobs: jobs)
+        }
+    }
+
+    static func waits(_ job: VoiceBackgroundJob) -> Bool {
+        guard job.status == .needsInput else { return false }
+        return job.waitingApproval != nil || job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion } != nil
+    }
+}
+
+/// A job's approval or question on the call screen: Run and Reject, or the
+/// question's choices, answered as the job's chat card would answer them.
+struct LiveVoiceJobWaitingCard: View {
+    let job: VoiceBackgroundJob
+    let jobs: VoiceBackgroundJobSupervisor
+    @State private var sending = false
+    /// A multi-select question's picks, sent together as the chat's card does.
+    @State private var picked: Set<Int> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: job.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+            if let approval = job.waitingApproval {
+                Text("APPROVAL NEEDED")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !asked.isEmpty {
+                    Text(verbatim: asked)
+                        .font(.callout)
+                }
+                if !approval.command.isEmpty {
+                    Text(verbatim: approval.command)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                }
+                HStack(spacing: 10) {
+                    Button(role: .destructive) {
+                        send { await jobs.answerJobApproval(job.id, choice: "deny") }
+                    } label: {
+                        Text("Reject")
+                    }
+                    .buttonStyle(.bordered)
+                    Button {
+                        send { await jobs.answerJobApproval(job.id, choice: "once") }
+                    } label: {
+                        Label("Run", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else if let question = job.waitingQuestion.flatMap({ HermesCallWaiting(clarify: $0)?.openQuestion }) {
+                Text(verbatim: question.text)
+                    .font(.callout)
+                if question.choices.isEmpty {
+                    Text("Answer in your own words.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Array(question.choices.enumerated()), id: \.offset) { index, choice in
+                    Button {
+                        if question.multiSelect {
+                            if picked.contains(index) { picked.remove(index) } else { picked.insert(index) }
+                        } else {
+                            // The number picks it, as a spoken "two" does.
+                            send { await jobs.answerJobQuestion(job.id, answer: String(index + 1)) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(verbatim: "\(index + 1). \(choice.label)")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if question.multiSelect, picked.contains(index) {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityAddTraits(question.multiSelect && picked.contains(index) ? .isSelected : [])
+                }
+                if question.multiSelect {
+                    Button {
+                        // "1, 3", as a spoken pick of several is sent.
+                        let numbers = picked.sorted().map { String($0 + 1) }.joined(separator: ", ")
+                        picked = []
+                        send { await jobs.answerJobQuestion(job.id, answer: numbers) }
+                    } label: {
+                        Text("Send")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(picked.isEmpty)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .conduitGlassControl(cornerRadius: 16)
+        // Picks belong to one question: the next in a batch starts clean.
+        .onChange(of: job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion?.id }) { _, _ in picked = [] }
+        .disabled(sending)
+    }
+
+    private func send(_ answer: @escaping @MainActor () async -> VoiceCallDecisionOutcome) {
+        sending = true
+        Task { @MainActor in
+            _ = await answer()
+            sending = false
+        }
+    }
+}

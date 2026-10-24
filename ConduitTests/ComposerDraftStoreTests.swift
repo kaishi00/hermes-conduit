@@ -455,6 +455,42 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual(store.draft(for: key), .empty)
     }
 
+    func testClosingAChatKeepsTheDraftInTheFieldUnlessTheStoreWasCleared() {
+        let store = ComposerDraftStore()
+        let key = ComposerDraftKey(profile: "default", sessionID: "one")
+        let loadedClearCount = store.clearCount
+
+        // Back from a chat: what's in the field is kept under its draft.
+        XCTAssertEqual(
+            ComposerBar.draftKeyToKeep(
+                loaded: key,
+                loadedClearCount: loadedClearCount,
+                storeClearCount: store.clearCount
+            ),
+            key
+        )
+        XCTAssertNil(
+            ComposerBar.draftKeyToKeep(
+                loaded: nil,
+                loadedClearCount: loadedClearCount,
+                storeClearCount: store.clearCount
+            ),
+            "Nothing loaded yet"
+        )
+
+        // A sign-out or server switch cleared the store: the composer
+        // going away, or handing off to another chat, after it doesn't put
+        // the draft back.
+        store.removeAll()
+        XCTAssertNil(
+            ComposerBar.draftKeyToKeep(
+                loaded: key,
+                loadedClearCount: loadedClearCount,
+                storeClearCount: store.clearCount
+            )
+        )
+    }
+
     func testStoreEvictsTheOldestBucketWhenCapacityIsExceeded() {
         let store = ComposerDraftStore(capacity: 1)
         let first = ComposerDraftKey(profile: "default", sessionID: "one")

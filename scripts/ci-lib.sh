@@ -19,6 +19,8 @@
 #   simulator_udid             - resolve the destination device UDID.
 #   reset_and_boot_simulator   - bounded shutdown/erase/boot recovery.
 #   now_iso                    - UTC timestamp for lane result documents.
+#   decimal_seconds            - a seconds override read as base 10, with a
+#                                fallback and a one-day ceiling.
 
 # Whether the test session itself has ENDED and xcodebuild is only finalizing.
 # Two markers say so: xcodebuild's own "** TEST [EXECUTE ]SUCCEEDED/FAILED **"
@@ -56,6 +58,22 @@ stream_new_lines() {
   fi
 }
 
+# Print a seconds override as a plain decimal number, or $2 when $1 is empty
+# or not all digits. Every such value ends up inside $(( )), where bash reads
+# a leading zero as octal (08 and 09 abort, 060 is 48) and silently wraps an
+# oversized number, possibly to a negative one. So leading zeros are dropped
+# as text and anything above one day (86400) is clamped to one day.
+decimal_seconds() {
+  local value="$1"
+  case "$value" in ''|*[!0-9]*) value="$2" ;; esac
+  value="${value#"${value%%[!0]*}"}"
+  [ -z "$value" ] && value=0
+  if [ "${#value}" -gt 5 ] || [ "$value" -gt 86400 ]; then
+    value=86400
+  fi
+  printf '%s\n' "$value"
+}
+
 # Run the command given after the first two args under a wall-clock deadline
 # (arg 1 = budget seconds, arg 2 = log path). Streams the log into the step
 # log; returns the command's exit status, or 124 when the deadline killed it.
@@ -77,10 +95,10 @@ run_with_deadline() {
   shift 2
   local started deadline poll printed heartbeat timed_out now remaining runner grace
   local finalize_grace grace_granted budget_deadline
-  # Same guard as the poll cadence below: a non-numeric override would make
-  # the deadline arithmetic read it as 0 (an instant kill) or abort the script.
-  finalize_grace="${XCODEBUILD_FINALIZE_GRACE_S:-180}"
-  case "$finalize_grace" in ''|*[!0-9]*) finalize_grace=180 ;; esac
+  # A non-numeric override would make the deadline arithmetic read it as 0
+  # (an instant kill) or abort the script, and a leading zero (08, 09) is
+  # invalid octal there; decimal_seconds falls back to 180 and reads base 10.
+  finalize_grace=$(decimal_seconds "${XCODEBUILD_FINALIZE_GRACE_S:-}" 180)
   [ "$finalize_grace" -lt 1 ] && finalize_grace=1
   # Poll cadence. 15s keeps hosted-lane log streaming and deadline checks
   # cheap for minute-scale invocations; the state-machine tests shrink it so
@@ -464,9 +482,10 @@ build_destination() {
 # error. It is strictly a gate: the pinned name is never substituted with
 # another device.
 wait_for_destination_device() {
-  local budget="${DESTINATION_SETTLE_TIMEOUT_S:-180}"
-  # A non-numeric override must not defeat the deadline comparison.
-  case "$budget" in ''|*[!0-9]*) budget=180 ;; esac
+  # A non-numeric or leading-zero override must not defeat (or abort) the
+  # deadline arithmetic below.
+  local budget
+  budget=$(decimal_seconds "${DESTINATION_SETTLE_TIMEOUT_S:-}" 180)
   # Wall-clock deadline, not a sleep counter: each simulator_udid probe can
   # itself block up to its own 60s bound on a wedged CoreSimulatorService,
   # and the budget must cap total wall time, not just idle time.

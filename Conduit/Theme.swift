@@ -136,9 +136,13 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Black or white, whichever stands out on `fill`.
+    /// Black or white, whichever stands out on `fill`: the one with the
+    /// higher WCAG contrast (they cross at a luminance of about 0.179).
     static func markColor(on fill: UIColor) -> UIColor {
-        fill.conduitRelativeLuminance > 0.3 ? .black : .white
+        let luminance = fill.conduitRelativeLuminance
+        let onBlack = (luminance + 0.05) / 0.05
+        let onWhite = 1.05 / (luminance + 0.05)
+        return onBlack >= onWhite ? .black : .white
     }
 }
 

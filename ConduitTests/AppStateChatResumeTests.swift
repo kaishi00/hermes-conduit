@@ -1005,6 +1005,12 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.lastSessionID(for: "default"), "stored-newest")
         XCTAssertEqual(scheduler.scheduledCount, 0)
         XCTAssertNil(harness.appState.errorMessage)
+        // A message waiting for the deleted chat goes into the composer on
+        // screen instead of that chat's draft (#996).
+        let dashboardID = harness.appState.activeDashboardID
+        XCTAssertTrue(harness.appState.conversationIsGone(sessionIDs: ["stored-deleted"], dashboardID: dashboardID, profile: "default"))
+        XCTAssertFalse(harness.appState.conversationIsGone(sessionIDs: ["stored-newest"], dashboardID: dashboardID, profile: "default"))
+        XCTAssertFalse(harness.appState.conversationIsGone(sessionIDs: ["stored-deleted"], dashboardID: dashboardID, profile: "work"))
     }
 
     func testAutomaticReturnDeletedMissingSavedSessionDoesNotSelectCanonicalBotChat() async {
@@ -6342,6 +6348,9 @@ final class AppStateChatResumeTests: XCTestCase {
         let active = session("stored-a")
         let request = publishRestoration(in: harness, session: active)
         installComposerClient(in: harness)
+        // Files sent mid-reply go as Queue (#1154); a Hermes known to
+        // refuse Queue turns them away before anything is cancelled.
+        harness.appState.client?.gatewayRefusesQueued = true
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
         let attachment = Attachment(
             id: "notes",
@@ -6357,6 +6366,7 @@ final class AppStateChatResumeTests: XCTestCase {
         )
 
         XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.errorMessage, HermesClient.QueueUnsupportedError.attachmentsMessage)
         XCTAssertEqual(harness.appState.chatResumeRestorationRequest, request)
         XCTAssertTrue(harness.coordinator.isCurrent(generation: request.generation))
     }

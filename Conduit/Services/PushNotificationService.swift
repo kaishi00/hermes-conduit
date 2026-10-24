@@ -938,7 +938,7 @@ final class PushNotificationService: ObservableObject {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil) else { continue }
             let rotates = Self.hostKeepsReplacedKeys(status: status)
-            // Inline rotation (notifier 0.71+): the best suite both sides run.
+            // Inline rotation (notifier 0.72+): the best suite both sides run.
             let inlineSuite = NotificationKeyRotation.suite(hostSuites: status["rotate_suites"] as? [String] ?? [])
             if let statusGateway = status["gateway_id"] as? String, let pending = pendingRotations[statusGateway],
                (status["e2e"] as? [String: Any])?["kid"] as? String == pending.kidNew {
@@ -1086,7 +1086,7 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// Whether the host keeps a replaced key for answers in flight, so new
-    /// keys lose nothing (notifier 0.70+, which reports `rotate`).
+    /// keys lose nothing (notifier 0.71+, which reports `rotate`).
     nonisolated static func hostKeepsReplacedKeys(status: [String: Any]) -> Bool {
         (status["rotate"] as? Bool) != nil
     }

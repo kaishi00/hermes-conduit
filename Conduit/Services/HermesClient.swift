@@ -2033,6 +2033,51 @@ final class HermesClient: ObservableObject {
         )
     }
 
+    /// `mcp.catalog` for a profile: Hermes' bundled MCP servers, with the
+    /// keys each needs. Like the `profiles.*` writes, the bot is named in
+    /// `profile`, never taken from the dashboard's own scope.
+    func botMcpCatalog(profile: String) async throws -> [BotMcpCatalogEntry] {
+        let result = try await rpc("mcp.catalog", params: ["profile": profile], scoped: false)
+        return BotMcpSetup.catalog(from: result)
+    }
+
+    /// `mcp.servers.list` for a profile: its servers' auth, secrets redacted.
+    func botMcpServers(profile: String) async throws -> [BotMcpServerSummary] {
+        let result = try await rpc("mcp.servers.list", params: ["profile": profile], scoped: false)
+        return BotMcpSetup.servers(from: result)
+    }
+
+    /// `mcp.servers.add` from a catalog preset.
+    func addBotMcpServer(profile: String, name: String, preset: String) async throws -> AnyCodable {
+        try await rpc(
+            "mcp.servers.add",
+            params: ["profile": profile, "name": name, "preset": preset],
+            timeout: 60,
+            scoped: false
+        )
+    }
+
+    /// `mcp.servers.set_api_key`: Hermes keeps the value in the profile's
+    /// .env; the config only references it.
+    func setBotMcpKey(profile: String, name: String, envVar: String, value: String) async throws {
+        _ = try await rpc(
+            "mcp.servers.set_api_key",
+            params: ["profile": profile, "name": name, "env_var": envVar, "value": value],
+            scoped: false
+        )
+    }
+
+    /// `mcp.servers.test`: connect, list tools, disconnect. A cold `npx`
+    /// server can take a while.
+    func testBotMcpServer(profile: String, name: String) async throws -> AnyCodable {
+        try await rpc("mcp.servers.test", params: ["profile": profile, "name": name], timeout: 120, scoped: false)
+    }
+
+    /// `mcp.servers.oauth.<action>` (start, poll, callback, cancel).
+    func botMcpOAuth(_ action: String, params: [String: Any]) async throws -> AnyCodable {
+        try await rpc("mcp.servers.oauth.\(action)", params: params, timeout: 60, scoped: false)
+    }
+
     /// `profiles.describe`: the editor snapshot (description, SOUL.md, the
     /// profile's own model pin, and its skills, toolsets and MCP servers).
     func describeBotProfile(name: String) async throws -> BotProfileDetails {
@@ -2541,7 +2586,8 @@ final class HermesClient: ObservableObject {
     private var gatewayRefusesVoiceTurn = false
 
     /// Set once this gateway refused `prompt.submit`'s `queued` key.
-    private var gatewayRefusesQueued = false
+    /// Internal so tests can stand in for that refusal.
+    var gatewayRefusesQueued = false
 
     /// This gateway is known to refuse Queue.
     var refusesQueuedPrompts: Bool { gatewayRefusesQueued }

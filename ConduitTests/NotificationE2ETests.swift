@@ -302,7 +302,7 @@ extension NotificationE2ETests {
         }
         XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":false}"#)))
         XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":true}"#)))
-        // Before notifier 0.70 the field is missing.
+        // Before notifier 0.71 the field is missing.
         XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true}"#)))
         XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":null}"#)))
     }

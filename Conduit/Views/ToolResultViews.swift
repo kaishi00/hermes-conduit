@@ -95,7 +95,9 @@ struct ToolResultBodyView: View {
                         .buttonStyle(.plain)
                         .accessibilityHint(AppLocalization.string("Opens the page"))
                     } else {
+                        // One VoiceOver stop per link, as a button row is.
                         linkLabel(link)
+                            .accessibilityElement(children: .combine)
                     }
                 }
             }
