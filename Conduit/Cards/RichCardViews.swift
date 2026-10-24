@@ -239,7 +239,9 @@ private struct RichPlaceRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
-                Circle().fill(Color.conduitAccent)
+                // The sent-bubble fill: the dark-mode accent is too light
+                // under white marks.
+                Circle().fill(Color.conduitUserBubble)
                 if let number {
                     Text(verbatim: "\(number)")
                         .font(.caption.weight(.bold))

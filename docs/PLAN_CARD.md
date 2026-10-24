@@ -73,15 +73,18 @@ conduit_push plugin doesn't change.
   one. Subtasks are indented. Its chevron folds it back to the line.
 - **A new plan announces itself on the line**: the line pops in (or, if
   it was already there, pulses with an accent tint for half a second),
-  with a light haptic. It doesn't open over the chat. A plan counts as
+  with a light haptic, and VoiceOver reads the line out ("Tasks, 0 of 4
+  done, now: …"). It doesn't open over the chat. A plan counts as
   new when it's the first in the chat, when fewer than half of its items
   match the previous plan's (same id and same text), or when work is
   added to a finished plan.
 - **A finished plan goes after a while.** It shows "✓ Tasks 5/5" for
   60 s after its last item is completed or cancelled, then disappears:
-  the line and, if the user had it open, the card. Opening or folding the card of a
+  the line and, if the user had it open, the card or the whole-plan
+  sheet. Opening or folding the card of a
   finished plan starts those 60 s again. More work on it (an item added
-  or reopened) brings the line back and announces it.
+  or reopened) brings the line back and announces it, and so does a
+  new plan that arrives already finished; that one gets its own 60 s.
 - **Reopening a chat** shows an unfinished plan's line; nothing
   announces. A plan that finished before the chat opened shows nothing.
 - **Too many items:** the card shows at most 5 rows. They're picked around
@@ -111,3 +114,6 @@ conduit_push plugin doesn't change.
   group room.
 - VoiceOver reads the line and the card's header as one element:
   "Tasks, 3 of 5 done, now: …".
+- Text size: the line and the card stop growing at the first
+  accessibility size; the whole-plan sheet, a scrolling list, takes
+  every size.

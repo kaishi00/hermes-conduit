@@ -189,9 +189,14 @@ final class ChatCardsModel: ObservableObject {
             return
         }
         let reopened = previous?.isFinished == true && !next.isFinished
-        if isNew || reopened { announcement &+= 1 }
+        // An announced plan is on screen, even one that arrives finished
+        // after the last one went: it gets its own while.
+        if isNew || reopened {
+            planRetired = false
+            announcement &+= 1
+        }
         if next.isFinished {
-            if previous?.isFinished != true { scheduleFinishedPlanRetire() }
+            if previous?.isFinished != true || isNew { scheduleFinishedPlanRetire() }
         } else {
             planTimer?.cancel()
         }

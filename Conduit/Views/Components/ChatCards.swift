@@ -36,17 +36,24 @@ struct ChatPlanDock: View {
                 }
             }
         }
+        // The line and the card stop growing at the first accessibility
+        // size. The cap sits on them alone, so the sheet below, a
+        // scrolling list, takes every size whatever the modifier order.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: cards.plan)
         .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: cards.planExpanded)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: cards.planRetired)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: isCompact)
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         // A new plan announces itself on the line, without opening over
-        // the chat: a pulse, and a light tap.
+        // the chat: a pulse, and a light tap. VoiceOver reads the line,
+        // since its user may not be looking at it.
         .onChange(of: cards.announcement) {
             Haptics.light()
+            if let plan = cards.plan, cards.showsPlan {
+                UIAccessibility.post(notification: .announcement, argument: PlanText.spoken(plan))
+            }
             guard !reduceMotion else { return }
             withAnimation(ConduitMotion.overshoot(reduceMotion: false)) { pulses = true }
             Task { @MainActor in
@@ -313,7 +320,7 @@ private struct PlanSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let plan = cards.plan {
+                if let plan = cards.plan, cards.showsPlan {
                     List {
                         Section {
                             ProgressView(value: plan.progress) {
@@ -330,7 +337,8 @@ private struct PlanSheet: View {
                         }
                     }
                 } else {
-                    // The plan went (another chat opened): nothing to list.
+                    // The plan went (another chat opened) or, finished, it
+                    // has had its time and the line hid: the sheet goes too.
                     Color.clear.onAppear { dismiss() }
                 }
             }

@@ -85,7 +85,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - The resume jump finds clarify cards, not approvals (#486).
 - Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1188 (the approval card's shield).
 
 ## Voice follow-ups
 
@@ -862,6 +862,61 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
 **Checked:** 2026-10-24, at #1203.
+
+## Plan card
+
+The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the
+composer: a slim line that opens upward into a card, and a sheet with the
+whole plan. [docs/PLAN_CARD.md](PLAN_CARD.md) is the design.
+
+**Siblings:** the line · the card · the whole-plan sheet · chats, project
+chats and Bot Chat (one chat screen) · group rooms (no plan) · the `todo`
+tool result in the transcript, which draws the same items · VoiceOver's
+reading of the line and its new-plan announcement
+
+**Code**
+- Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
+- Views: `Conduit/Views/Components/ChatCards.swift` (ChatPlanDock, PlanStrip, PlanCard, PlanSheet, PlanText)
+- Feeding it: `Conduit/Services/AppState+ChatCards.swift`, `Conduit/Views/ChatView.swift` (planDock), `Conduit/Services/HermesClient.swift` (`todo_state` on resume)
+- Transcript row: `Conduit/Views/ToolResultViews.swift` (the todos case)
+- Tests: `ConduitTests/GatewayRestartTests+ChatCards.swift`
+
+**Rulings**
+- Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
+- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, salvage of the #1135 review).
+- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, salvage of the #1135 review).
+
+**Open gaps**
+- The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
+- Two announcements within 450 ms race on the pulse (#1135 review).
+
+**Checked:** 2026-10-24, at #1188.
+
+## White text on the accent
+
+A chip, badge or step number that puts white text or a white glyph on a
+solid accent fill. The accent the user picks is light in dark mode, so
+white on it can fall to about 2:1; the sent-bubble colour is the shade held
+to 4.5:1 under white in both modes.
+
+**Siblings:** the running timer chip and the "Recommended" badge on rich
+cards · the numbered or symbol marker on a rich card's place rows · the
+step numbers of the notification setup commands · the Gemini Live setup
+step number · marks picked by `markColor(on:)` (text selection on a sent
+bubble, the accent swatch check)
+
+**Code**
+- Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
+- Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Tests: `ConduitTests/AccentContrastTests.swift`
+
+**Rulings**
+- White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+
+**Open gaps**
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+
+**Checked:** 2026-10-24, at #1188.
 
 ## Feature map rules
 

@@ -3646,6 +3646,7 @@ struct ApprovalCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.shield")
                         .foregroundStyle(statusColor(for: approval.status))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(statusTitle(for: approval.status))
                             .font(.caption2.weight(.bold))

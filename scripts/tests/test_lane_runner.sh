@@ -941,9 +941,11 @@ assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['passed']"
 
 # --- unit case 11e: a non-numeric finalize grace falls back to the default -----
-# XCODEBUILD_FINALIZE_GRACE_S=soon used to reach the deadline arithmetic raw,
-# where bash reads an unknown word as 0: the grace became an instant kill and a
-# finished session was reported as a timeout. It must fall back to 180s.
+# XCODEBUILD_FINALIZE_GRACE_S=soon used to reach the deadline arithmetic raw:
+# under the lane's set -u bash aborted on it as an unbound variable, and
+# without set -u it read the unknown word as 0, so the grace became an instant
+# kill and a finished session was reported as a timeout. It must fall back to
+# 180s.
 end_case
 begin_case "non-numeric finalize grace falls back to the default" "$WORK/b11e"
 : > "$INVOCATION_LOG"
@@ -970,6 +972,39 @@ if grep -q "allowing 180s finalize grace" "$WORKCASE/stdout.log"; then
   ok "non-numeric grace fell back to 180s"
 else
   bad "a non-numeric XCODEBUILD_FINALIZE_GRACE_S must fall back to 180s"
+fi
+export XCODEBUILD_FINALIZE_GRACE_S=3
+
+# --- unit case 11f: a leading-zero finalize grace is read as base 10 -----------
+# 08 passes the digit-only guard, but bash arithmetic reads a leading zero as
+# octal and 08 is not a valid octal number: the deadline arithmetic failed. It
+# must be read as 8 seconds.
+end_case
+begin_case "leading-zero finalize grace is read as base 10" "$WORK/b11f"
+: > "$INVOCATION_LOG"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+prev=""
+for a in "$@"; do
+  case "$prev" in -resultBundlePath) echo "$(basename "$a" .xcresult)" >> "$INVOCATION_LOG" ;; esac
+  prev="$a"
+done
+echo "** TEST EXECUTE SUCCEEDED **"
+echo "finalizing xcresult (stub)"
+sleep 3
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=08
+write_canned "$WORK/canned-grace-octal.json" "AlphaTests" "Passed"
+run_lane "AlphaTests" 30 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed']"
+if grep -q "allowing 8s finalize grace" "$WORKCASE/stdout.log"; then
+  ok "leading-zero grace 08 read as 8s"
+else
+  bad "XCODEBUILD_FINALIZE_GRACE_S=08 must be read as 8s, not octal"
 fi
 export XCODEBUILD_FINALIZE_GRACE_S=3
 
