@@ -1159,6 +1159,12 @@ final class WatchBridgeCallModel: ObservableObject {
             answerCall(for: id, arguments: arguments, relay: relay)
             return
         }
+        // A bare "Answer:" with nothing said yet answers nothing, and isn't
+        // new work either.
+        if relay.tools.contains(WatchCallAnswer.tool), itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("answer:") {
+            answer(id, WatchCallAnswer.missingArgument(name: "answer_question")["error"] ?? "", channel: .commentary)
+            return
+        }
         if relay.tools.contains(WatchCallAnswer.tool), itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("approve:") {
             answer(id, "Approvals aren't given by voice on the Watch. Tell the user to answer in that chat in Conduit on their iPhone.", channel: .commentary)
             return

@@ -83,13 +83,13 @@ the host answers with the user's words (`_local_live_call_answer`).
 - Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py` (a call's answer wins), `notifier/calls_store.py` (the waiting copy, map_answer), `notifier/calls.py` (follow_approval), `notifier/__init__.py` (the approval hook), `notifier/dashboard/plugin_api.py` (/calls/waiting, answer_call, _local_live_call_answer), `notifier/phone_tool.py` (the wording models read)
 
 **Rulings**
-- A spoken answer counts only when exactly one item is waiting, and it can only approve once or deny (2026-10-20, #991).
+- A spoken answer counts only when exactly one item is waiting, and for an approval it can only approve once or deny; a question takes a choice or the user's own words (2026-10-20, #991; questions added 2026-10-24, #1194).
 - A phone change needs the user's own yes, as their next words after the reply that asked (2026-10-20, #991, #1051).
 - Only the user's own words answer: never the model's judgment, a web page or a job's output (2026-10-20, #991).
 - A spoken pick that points at one choice ("two", "the recommended one", its label) sends what its tap sends; anything else goes to Hermes as the user's words (2026-10-24, #1194).
-- Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (a deny's reason for an approval), since its turn is paused on the prompt (2026-10-24, #1194).
+- Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (for an approval, a deny's reason, on the Watch only: the iPhone's approval answer carries no reason), since its turn is paused on the prompt (2026-10-24, #1194).
 - On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice" (the grant's `answer_approvals`), and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, #1194, notifier #343).
-- A call from Hermes rings a Watch on Local Live too: the speech server says why Hermes called, the host takes the user's words as the answer, and what they say after goes to the Watch call's own chat (2026-10-24, #1194, notifier #343).
+- A call from Hermes rings a Watch on Local Live too: the speech server says why Hermes called, the host takes the user's words as the answer, and what they say after goes to the Watch call's own chat (proposed 2026-10-24, #1194, notifier #343; changes the iPhone-only rule, pending Eric's decision).
 - CarPlay shows no card: Apple allows only the voice control template while voice runs, so the ask is spoken and the listening window takes the answer (2026-10-24, #1194).
 - Classic's notice tells the user to hold to talk under push to talk, and to answer on the card while the microphone is paused (2026-10-24, #1194).
 - The resume jump and its button go to the newest question or approval waiting on the user (2026-10-24, #1194).
