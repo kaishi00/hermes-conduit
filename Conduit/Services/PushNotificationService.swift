@@ -2288,6 +2288,9 @@ final class PushNotificationService: ObservableObject {
             (data, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
         }
         try validate(response: response, data: data)
+        // The relay moved (or push was turned off) while this was on its
+        // way: its answer describes an installation that is gone.
+        guard self.registration?.installationID == registration.installationID else { return }
         self.registration?.preferences = sentPreferences
         if let token = body.deviceToken {
             self.registration?.deviceToken = token
