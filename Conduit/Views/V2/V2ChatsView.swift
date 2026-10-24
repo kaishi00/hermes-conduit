@@ -700,7 +700,12 @@ struct V2ChatsView: View, Equatable {
         .layoutPriority(1)
         // Set by the layout that shows, never on disappearing: a chat
         // pushed over the list hides both, and the list keeps its rows.
-        .onAppear { barStacked = true }
+        .onAppear {
+            barStacked = true
+            // A query brought over from the list's field keeps the field
+            // up while it's edited down to nothing, until Cancel.
+            if !searchText.isEmpty { barSearchOpen = true }
+        }
     }
 
     /// The one-row bar took over. A query carries over to the list's
