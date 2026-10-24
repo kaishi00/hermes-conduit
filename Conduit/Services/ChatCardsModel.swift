@@ -93,9 +93,10 @@ final class ChatCardsModel: ObservableObject {
         planRetired = false
     }
 
-    /// `todo_state` from `session.resume`. A plan the loaded transcript
-    /// shows is the newest one (the page is the history's tail), so this
-    /// only stands when it shows none.
+    /// `todo_state` from `session.resume`. A plan the transcript has shown
+    /// is the newest one (the page is the history's tail) and keeps
+    /// outranking it after its rows leave the loaded page, so this only
+    /// stands when the transcript has never shown a plan.
     func applyServerPlan(_ snapshot: AgentPlan?, for chat: ChatCardsChat?) {
         // The resume can land before the chat screen has said which chat
         // is open; it is always the open chat's.
