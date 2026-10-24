@@ -1860,13 +1860,21 @@ final class CarPlayVoiceCoordinator {
         // establishLiveVoice: the old start must not stop the new mode's
         // call, or carry on into a classic listening turn.
         func stillClassic() -> Bool { CarPlayVoiceMode.current(in: appState) == .classic }
+        // A prepare that armed classic Voice before the switch landed
+        // closes what it armed, as an End meanwhile does; one that only
+        // attached to a conversation already open leaves it.
+        func standDown(_ outcome: AppState.VoiceConversationPrepareOutcome, hadConversation: Bool) -> AppState.VoiceConversationPrepareOutcome? {
+            if outcome == .handled, !hadConversation { appState.closeVoiceConversation() }
+            return nil
+        }
         guard stillClassic() else { return nil }
         appState.keepVoiceFromHermesCallCleanup()
+        let hadConversation = appState.voiceConversationController.hasLiveVoiceSession
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation
         )
-        guard stillClassic() else { return nil }
+        guard stillClassic() else { return standDown(outcome, hadConversation: hadConversation) }
         guard outcome == .deferred else { return outcome }
         carPlayLogger.notice("voice prepare deferred: waiting for Hermes to connect")
         // A lost transport is re-established by the CarPlay surface itself
@@ -1879,11 +1887,12 @@ final class CarPlayVoiceCoordinator {
             return .deferred
         }
         guard stillClassic() else { return nil }
+        let hadConversationAfterWait = appState.voiceConversationController.hasLiveVoiceSession
         let prepared = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation
         )
-        return stillClassic() ? prepared : nil
+        return stillClassic() ? prepared : standDown(prepared, hadConversation: hadConversationAfterWait)
     }
 
     /// Waits (bounded) for Hermes when it isn't connected, showing Thinking

@@ -1035,16 +1035,16 @@ taking it: in order, with a bounded backlog, so a stalled socket doesn't
 pile up audio the model can't use.
 
 **Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
-Classic's transcription streams · Watch calls (Gemini, Grok)
+Classic's transcription streams · Watch calls (Gemini, Grok, Local Live)
 
 **Code**
 - The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift`
 - Sessions: `Shared/GeminiLive/GeminiLiveSession.swift`, `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`
-- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink)
+- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions)
 - Classic: `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/HermesLiveTranscription.swift` (sendChain)
 
 **Rulings**
-- Each connection's frames go out one at a time, in order. About two seconds of audio may wait; audio past that is dropped as it arrives. Text turns and tool answers always wait their turn. Frames for a socket the session replaced fail instead of going out (2026-10-24, #1223).
+- Each connection's frames go out one at a time, in order. About two seconds of audio may wait; audio past that is dropped as it arrives. Text turns and tool answers always wait their turn. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
 - GPT-Live's audio is WebRTC's to pace, and Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
 
 **Open gaps**

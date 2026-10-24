@@ -3373,6 +3373,6 @@ extension HermesVoiceGatewayTimeoutTests {
 
         socket.release()
         await settle(until: { errors["first"] != nil })
-        XCTAssertEqual(socket.sent, ["first"], "nothing after the close goes out")
+        XCTAssertEqual(socket.sent, ["first"], "only the frame already on the socket went out")
     }
 }

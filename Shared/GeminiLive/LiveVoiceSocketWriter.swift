@@ -1,13 +1,17 @@
 import Foundation
+import os
+
+private let liveVoiceWriterLogger = Logger(subsystem: "com.milim.relay", category: "LiveVoiceWriter")
 
 /// Sends one connection's frames in order, one at a time, so a socket that
 /// stops taking them holds a short queue instead of a task and payload for
-/// every microphone chunk (#999, F1-68). Audio past `maxQueuedAudio` is
-/// dropped as it arrives: the model can't use speech that late. Everything
-/// else (text turns, tool answers) always queues.
+/// every microphone chunk (#999, F1-68). Audio past `maxQueuedAudio`, the
+/// frame on the socket included, is dropped as it arrives: the model can't
+/// use speech that late. Everything else (text turns and tool answers, a
+/// few each turn) always queues.
 @MainActor
 final class LiveVoiceSocketWriter {
-    /// About two seconds of 64 ms microphone chunks.
+    /// About two seconds of the iPhone's 64 ms microphone chunks.
     static let defaultMaxQueuedAudio = 32
 
     private struct Frame {
@@ -43,6 +47,11 @@ final class LiveVoiceSocketWriter {
         if isAudio {
             guard queuedAudio < maxQueuedAudio else {
                 droppedAudio += 1
+                // The first of a run, then every 50th: a slow link that
+                // loses speech shows in the log without flooding it.
+                if droppedAudio % 50 == 1 {
+                    liveVoiceWriterLogger.notice("Live voice audio dropped: \(self.droppedAudio, privacy: .public) frames behind a slow connection")
+                }
                 return false
             }
             queuedAudio += 1
@@ -68,12 +77,24 @@ final class LiveVoiceSocketWriter {
     private func drain() async {
         while !isClosed, !queue.isEmpty {
             let frame = queue.removeFirst()
-            if frame.isAudio { queuedAudio -= 1 }
+            var error: Error?
             do {
                 for text in frame.texts { try await socket.send(text) }
-                frame.done(nil)
-            } catch {
-                frame.done(error)
+            } catch let failure {
+                error = failure
+            }
+            // Counted until it left: the bound covers the frame on the
+            // socket too. A close meanwhile already reset the count.
+            if frame.isAudio, !isClosed { queuedAudio -= 1 }
+            frame.done(error)
+            // The socket failed: what waits behind it fails with it, once,
+            // rather than each frame trying the dead socket in turn.
+            if let error, !isClosed {
+                let rest = queue
+                queue = []
+                queuedAudio = 0
+                for waiting in rest { waiting.done(error) }
+                break
             }
         }
         if !isClosed { drainTask = nil }
