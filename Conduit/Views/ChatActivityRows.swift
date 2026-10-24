@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// How one step of a turn looks in the chat (V2): an icon on a faint disc of
-/// its color and plain words for what it does. Steps are described by the
-/// same tool categories as the Live Activity (`HermesToolCategory`), never by
-/// a tool's own name, which the opened step still shows.
+/// its color, from the same tool categories as the Live Activity
+/// (`HermesToolCategory`). Its words are `ChatStepLabel`'s.
 struct ChatStepStyle: Equatable {
     let category: HermesToolCategory
     let symbol: String
@@ -12,19 +11,14 @@ struct ChatStepStyle: Equatable {
     init(toolName: String) {
         let category = HermesToolCategory(toolName: toolName)
         self.category = category
-        let picked = Self.phoneTools[toolName.lowercased()] ?? Self.look(category)
+        let lowered = toolName.lowercased()
+        // Connector tools aren't a Live Activity category (the plugin's
+        // list is its twin); in the chat they look like the MCP tools.
+        // A Tool Search wrapper still shown runs app or connector calls.
+        let picked = Self.phoneTools[lowered] ?? Self.bridgeTools[lowered]
+            ?? Self.look(lowered.hasPrefix("connectors__") || ToolSearchBridge.isWrapper(toolName) ? .connector : category)
         symbol = picked.0
         tint = picked.1
-    }
-
-    /// The live line while this step runs ("Searching the web").
-    var runningTitle: String {
-        AppLocalization.string(String.LocalizationValue(HermesTurnCopy.toolKey(category)))
-    }
-
-    /// The row once the step finished ("Searched the web").
-    var doneTitle: String {
-        AppLocalization.string(Self.doneKey(category))
     }
 
     /// Thinking isn't an action: a quiet gray bubble, so the colored tool
@@ -61,6 +55,12 @@ struct ChatStepStyle: Equatable {
         "conduit_call_watch": ("applewatch", .conduitSuccess),
         "conduit_present": ("checkmark.bubble", .conduitAccent),
         "conduit_settings": ("gearshape", .secondary),
+    ]
+
+    /// Tool Search's own steps: finding tools, then reading about them.
+    private static let bridgeTools: [String: (String, Color)] = [
+        "tool_search": ("magnifyingglass", .secondary),
+        "tool_describe": ("book.closed", .secondary),
     ]
 
     private static func look(_ category: HermesToolCategory) -> (String, Color) {
@@ -105,6 +105,166 @@ struct ChatStepStyle: Equatable {
         case .phone: "Used your iPhone"
         case .home: "Used your smart home"
         }
+    }
+}
+
+/// A step's words. Conduit's own phrase when it knows the kind of tool
+/// ("Searched the web"); otherwise the name of what was used: the app of an
+/// MCP or connector tool ("Used Notion"), the toolset Hermes' catalog puts
+/// the tool in ("Used Spotify"), else the tool's own name made readable.
+/// "Used a tool" is left for a call with no name at all.
+struct ChatStepLabel: Equatable {
+    enum Kind: Equatable {
+        case category(HermesToolCategory)
+        /// What was used, as Hermes or the tool names it (not translated).
+        case named(String)
+        /// Tool Search's own steps.
+        case toolSearch
+        case toolDescribe
+    }
+
+    let kind: Kind
+    /// What an MCP or connector call did there ("create page").
+    var action: String?
+    /// The catalog's line about the toolset, for the opened row.
+    var detail: String?
+
+    init(toolName: String, input: String? = nil, catalog: ToolCatalog = ToolCatalog()) {
+        let name = toolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = name.lowercased()
+        switch lowered {
+        case "": kind = .category(.tool); return
+        case "tool_search": kind = .toolSearch; return
+        case "tool_describe": kind = .toolDescribe; return
+        default: break
+        }
+        if ToolSearchBridge.isWrapper(name) {
+            // A wrapper still shown is a batch or a connector call: name
+            // what it ran.
+            let labels = Self.calls(in: input).map { ChatStepLabel(toolName: $0, catalog: catalog) }
+            var names: [String] = []
+            for label in labels {
+                guard let shown = label.shownName, !names.contains(shown) else { continue }
+                names.append(shown)
+            }
+            // Every action it ran, as the subject line ("create page, list issues").
+            var actions: [String] = []
+            for label in labels {
+                guard let done = label.action, !actions.contains(done) else { continue }
+                actions.append(done)
+            }
+            let subject = actions.isEmpty ? nil : actions.prefix(3).joined(separator: ", ")
+            if names.count == 1, var only = labels.first(where: { $0.shownName == names[0] }) {
+                only.action = subject ?? only.action
+                self = only
+            } else if !names.isEmpty {
+                kind = .named(Array(names.prefix(3)).formatted(.list(type: .and).locale(AppLocalization.formattingLocale)))
+                action = subject
+            } else if let first = labels.first {
+                // Only kinds Conduit has words for: the first one's.
+                self = first
+            } else {
+                kind = .category(.tool)
+            }
+            return
+        }
+        if let call = Self.appCall(name) {
+            kind = .named(call.app)
+            action = call.action.isEmpty ? nil : call.action
+            return
+        }
+        let category = HermesToolCategory(toolName: name)
+        if category != .tool && category != .connector {
+            kind = .category(category)
+        } else if let entry = catalog.entry(for: name) {
+            kind = .named(entry.label)
+            detail = entry.description
+        } else if category == .connector {
+            kind = .category(.connector)
+        } else {
+            let readable = Self.readableName(name)
+            kind = readable.isEmpty ? .category(.tool) : .named(readable)
+        }
+    }
+
+    /// The live line while this step runs ("Using Spotify").
+    var runningTitle: String {
+        switch kind {
+        case .category(let category): AppLocalization.string(String.LocalizationValue(HermesTurnCopy.toolKey(category)))
+        case .named(let name): AppLocalization.string("Using \(name)")
+        case .toolSearch: AppLocalization.string("Looking for tools")
+        case .toolDescribe: AppLocalization.string("Reading tool details")
+        }
+    }
+
+    /// The row once the step finished ("Used Spotify").
+    var doneTitle: String {
+        switch kind {
+        case .category(let category): AppLocalization.string(ChatStepStyle.doneKey(category))
+        case .named(let name): AppLocalization.string("Used \(name)")
+        case .toolSearch: AppLocalization.string("Looked for tools")
+        case .toolDescribe: AppLocalization.string("Read tool details")
+        }
+    }
+
+    private var shownName: String? {
+        if case .named(let name) = kind { return name }
+        return nil
+    }
+
+    /// An MCP tool (`mcp__notion__create_page`) or a connector tool
+    /// (`connectors__github__list_issues`): its app and action, the way
+    /// Hermes' own tool labels split them.
+    static func appCall(_ name: String) -> (app: String, action: String)? {
+        let parts = name.components(separatedBy: "__")
+        guard parts.count >= 3, ["mcp", "connectors"].contains(parts[0].lowercased()),
+              !parts[1].isEmpty else { return nil }
+        let app = parts[1]
+        var tool = parts[2...].joined(separator: "__")
+        // Connector actions often repeat the app ("GITHUB_LIST_ISSUES").
+        let prefix = app.replacingOccurrences(of: "-", with: "_").uppercased() + "_"
+        if tool.uppercased().hasPrefix(prefix) { tool = String(tool.dropFirst(prefix.count)) }
+        let action = tool.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ").joined(separator: " ").lowercased()
+        return (appTitle(app), action)
+    }
+
+    private static let appTitles = [
+        "github": "GitHub", "gmail": "Gmail", "googlecalendar": "Google Calendar",
+        "googledocs": "Google Docs", "googledrive": "Google Drive", "stripe_mcp": "Stripe",
+    ]
+
+    static func appTitle(_ slug: String) -> String {
+        appTitles[slug.lowercased()] ?? readableName(slug, capitalizeEveryWord: true)
+    }
+
+    /// `crawl4ai_md` → "Crawl4ai md".
+    static func readableName(_ name: String, capitalizeEveryWord: Bool = false) -> String {
+        let words = name.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ").map(String.init)
+        return words.enumerated().map { index, word in
+            index == 0 || capitalizeEveryWord ? word.prefix(1).uppercased() + word.dropFirst() : word
+        }.joined(separator: " ")
+    }
+
+    /// The tool names in a `tool_call` envelope (`{"calls": [{name}]}` or
+    /// a legacy `{name}`); empty when it isn't readable.
+    private static func calls(in input: String?) -> [String] {
+        guard let input, input.utf8.count <= ChatStepSubject.parseLimit * 4,
+              let data = input.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [] }
+        var entries: [Any] = []
+        switch object["calls"] {
+        case let list as [Any]: entries = list
+        case let text as String:
+            if let data = text.data(using: .utf8), let list = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+                entries = list
+            }
+        case let one as [String: Any]: entries = [one]
+        default: entries = [object]
+        }
+        return entries.compactMap { ($0 as? [String: Any])?["name"] as? String }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 }
 
@@ -183,6 +343,8 @@ extension View {
 struct ChatWorkingLine: View {
     /// The tool running now, if any.
     let currentToolName: String?
+    /// Its input, so a Tool Search batch reads as what it runs.
+    var currentToolInput: String? = nil
     /// Its own words for it ("Messaging Atlas…"), else the tool's kind.
     var currentToolTitle: String? = nil
     let isThinking: Bool
@@ -198,7 +360,7 @@ struct ChatWorkingLine: View {
         if repliesElsewhere { return AppLocalization.string("Replying on another device") }
         if let currentToolTitle { return currentToolTitle }
         if let currentToolName {
-            return ChatStepStyle(toolName: currentToolName).runningTitle
+            return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
         }
         return isThinking ? AppLocalization.string("Thinking") : AppLocalization.string("Working…")
     }
