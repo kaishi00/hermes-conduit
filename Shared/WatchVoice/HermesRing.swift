@@ -343,6 +343,7 @@ enum HermesRingHandoff {
         case .directStart(_, _, let ring) where ring == ringID: return message
         case .grokStart(_, _, let ring) where ring == ringID: return message
         case .bridgeStart(_, _, _, let ring) where ring == ringID: return message
+        case .localLiveStart(_, _, let ring) where ring == ringID: return message
         default: return nil
         }
     }

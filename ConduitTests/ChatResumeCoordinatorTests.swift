@@ -583,6 +583,24 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         return (ChatResumeCoordinator(store: store), store, defaults, suite)
     }
 
+    func testPendingDecisionIncludesAnApprovalWaitingOnTheUser() {
+        func approval(_ id: String, _ status: ApprovalActivity.Status) -> ChatMessage {
+            ChatMessage(
+                id: id, role: .approval, content: "", timestamp: "",
+                approval: ApprovalActivity(sessionId: "default", command: "deploy", description: "Run the deploy?",
+                                           choices: nil, allowPermanent: false, smartDenied: false, status: status)
+            )
+        }
+        XCTAssertEqual(
+            ChatResumeCoordinator.pendingClarifyMessageID(in: [clarifyMessage("question", status: .pending), approval("approval", .pending)]),
+            "approval"
+        )
+        XCTAssertEqual(
+            ChatResumeCoordinator.pendingClarifyMessageID(in: [clarifyMessage("question", status: .pending), approval("approved", .approved)]),
+            "question"
+        )
+    }
+
     private func clarifyMessage(
         _ id: String,
         status: ClarifyQuestion.Status

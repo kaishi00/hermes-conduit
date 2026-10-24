@@ -1804,7 +1804,9 @@ final class VoiceConversationController: ObservableObject {
 
     /// Shows the notice and says it after any reply speech already queued,
     /// as the end of that speech. Muted, it is only shown.
-    private func sayApprovalNotice(_ line: String) {
+    private func sayApprovalNotice(_ notice: String) {
+        // "Say yes" needs a held button, or can't be heard at all.
+        let line = approvalAnswerHint.map { notice + " " + $0 } ?? notice
         conversationTranscript.append(VoiceConversationTranscriptEntry(speaker: .assistant, text: line))
         activeAssistantTranscriptEntryID = nil
         guard !isOutputMuted else { return }
@@ -1813,6 +1815,14 @@ final class VoiceConversationController: ObservableObject {
         speechDeltas.append(tail.isEmpty ? line : tail + " " + line)
         approvalNoticeOpensAnswerWindow = true
         startSpeechDrainIfNeeded()
+    }
+
+    /// How to answer when speaking alone won't: push to talk needs the
+    /// button held, and a paused microphone hears nothing.
+    private var approvalAnswerHint: String? {
+        if isMicrophonePaused { return AppLocalization.string("The microphone is paused: answer on the card.") }
+        if isPushToTalkActive { return AppLocalization.string("Hold to talk to answer.") }
+        return nil
     }
 
     /// After the notice: a listening window whose words steer the waiting

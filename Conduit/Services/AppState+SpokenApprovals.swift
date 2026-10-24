@@ -43,7 +43,10 @@ extension AppState {
     func answerWaitingBySpeech(_ words: String) async -> Bool {
         let waiting = spokenApprovalsWaiting()
         noteUserWordsSent()
-        guard let answer = SpokenApprovals.answer(words, waiting: waiting) else { return false }
+        guard let answer = SpokenApprovals.answer(words, waiting: waiting) else {
+            // Nothing waits on a yes or no: the words may answer a question.
+            return waiting.count == 0 ? await answerQuestionBySpeech(words) : false
+        }
         let approve = answer.approve
         switch answer.target {
         case .phoneChange(let id):
@@ -73,6 +76,48 @@ extension AppState {
         return true
     }
 
+    /// Classic voice's words answer the one question Hermes waits on, in
+    /// the open chat or a voice job: Hermes is paused on it, so the words
+    /// could only wait behind it otherwise. A choice they point at ("two",
+    /// "the recommended one") sends what its tap sends; other words go as
+    /// the answer, for Hermes to read. False when no question, or more
+    /// than one, waits.
+    func answerQuestionBySpeech(_ words: String) async -> Bool {
+        let trimmed = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let cards = openChatWaitingQuestions
+        let shown = Set(cards.compactMap { $0.clarify?.requestId })
+        let jobs = voiceBackgroundJobSupervisor.jobsWaitingOnQuestion.filter { id in
+            guard let request = voiceBackgroundJobSupervisor.jobs.first(where: { $0.id == id })?.waitingQuestion?.requestId else { return false }
+            return !shown.contains(request)
+        }
+        // Which one the words answer would be a guess.
+        guard cards.count + jobs.count == 1 else { return false }
+        if let message = cards.first, let clarify = message.clarify,
+           let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
+            let value = HermesCallWaiting.answerValue(for: trimmed, question: question)
+            await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: value)
+            let status = messages.first { $0.id == message.id }?.clarify?.questions.first { $0.id == question.id }?.status
+            // Not taken: the words go on as speech.
+            guard status == .answered || status == .submitting else { return false }
+            if let after = messages.first(where: { $0.id == message.id })?.clarify,
+               let next = HermesCallWaiting(clarify: after)?.openQuestion {
+                voiceConversationController.noteApprovalWaiting(
+                    sessionID: activeSessionId ?? "",
+                    request: clarify.requestId + "/" + next.id,
+                    line: HermesCallWaiting.spokenQuestion(next),
+                    stillWaiting: { [weak self] in self?.openChatWaitingQuestions.contains { $0.id == message.id } == true }
+                )
+            }
+            return true
+        }
+        guard let jobID = jobs.first else { return false }
+        switch await voiceBackgroundJobSupervisor.answerJobQuestion(jobID, answer: trimmed) {
+        case .answered: return true
+        default: return false
+        }
+    }
+
     /// The user sent words (typed or spoken): a phone change waiting now
     /// wasn't asked for in the reply their next words answer.
     func noteUserWordsSent() {
@@ -97,6 +142,46 @@ extension AppState {
         guard let client else { throw HermesError.notConnected }
         return try await client.respondToApproval(sessionId: approval.sessionId, requestId: approval.requestId,
                                                   choice: choice, profile: profile)
+    }
+
+    /// Answers one question of the clarify a voice call's job waits on:
+    /// through its card when the chat is on screen, else straight to
+    /// Hermes. The card as it stands after; nil once Hermes stopped waiting.
+    func respondToClarifyByVoice(_ clarify: ClarifyActivity, questionID: String?, answer: String) async throws -> ClarifyActivity? {
+        if messages.contains(where: { $0.clarify?.requestId == clarify.requestId }) {
+            await respondToClarify(requestId: clarify.requestId, questionId: questionID, answer: answer)
+            guard let after = messages.first(where: { $0.clarify?.requestId == clarify.requestId })?.clarify,
+                  !after.isExpired else { return nil }
+            // The card's own error: the answer didn't reach Hermes, which
+            // may still wait.
+            let target = questionID.flatMap { id in after.questions.first { $0.id == id } } ?? after.questions.first
+            if target?.status == .error { throw HermesError.notConnected }
+            return after
+        }
+        guard let client else { throw HermesError.notConnected }
+        guard let index = questionID.flatMap({ id in clarify.questions.firstIndex { $0.id == id } })
+                ?? clarify.questions.firstIndex(where: { $0.status == .pending || $0.status == .error }) else { return nil }
+        let question = clarify.questions[index]
+        // As the card sends it: a multi-select answer is always a list.
+        let wire = question.multiSelect && (try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String] == nil
+            ? ClarifyQuestion.multiSelectAnswer([answer])
+            : answer
+        let outcome = try await client.respondToClarification(
+            requestId: clarify.requestId,
+            answer: wire,
+            questionId: question.isSyntheticID ? nil : question.id
+        )
+        guard case .accepted(let remaining) = outcome else { return nil }
+        var after = clarify
+        after.questions[index].status = .answered
+        after.questions[index].answer = wire
+        if let remaining {
+            let open = Set(remaining)
+            for other in after.questions.indices where other != index && after.questions[other].status == .pending && !open.contains(after.questions[other].id) {
+                after.questions[other].status = .answered
+            }
+        }
+        return after
     }
 }
 
@@ -131,6 +216,43 @@ extension AppState {
 }
 
 extension AppState {
+    /// Hermes' turn in a Classic voice conversation stopped on a question:
+    /// the conversation reads it out with its choices and listens for the
+    /// answer, instead of sitting on Thinking with nothing to say.
+    func noteClarifyForClassicVoice(_ activity: ClarifyActivity, sessionID: String) {
+        guard let question = HermesCallWaiting(clarify: activity)?.openQuestion else { return }
+        voiceConversationController.noteApprovalWaiting(
+            sessionID: sessionID,
+            request: activity.requestId + "/" + question.id,
+            line: HermesCallWaiting.spokenQuestion(question),
+            stillWaiting: { [weak self] in
+                self?.openChatWaitingQuestions.contains { $0.clarify?.requestId == activity.requestId } == true
+            }
+        )
+    }
+
+    /// The open chat's question cards with a question still open.
+    var openChatWaitingQuestions: [ChatMessage] {
+        guard let sessionId = activeSessionId, !sessionId.isEmpty else { return [] }
+        return messages.filter { message in
+            guard let clarify = message.clarify else { return false }
+            return HermesCallWaiting(clarify: clarify) != nil
+        }
+    }
+
+    /// The open chat's approval and question cards still waiting on the
+    /// user (or on their answer reaching Hermes), for the Classic voice
+    /// screen that covers the chat.
+    var openChatWaitingCards: [ChatMessage] {
+        guard turnState.isRunning else { return [] }
+        let approvals = openChatWaitingApprovals
+        let questions = openChatWaitingQuestions
+        // In the chat's order: Hermes asks one at a time.
+        return messages.filter { message in
+            approvals.contains { $0.id == message.id } || questions.contains { $0.id == message.id }
+        }
+    }
+
     /// The open chat's approval cards still waiting on the user (or on
     /// their answer reaching Hermes), for the Classic voice screen that
     /// covers the chat.

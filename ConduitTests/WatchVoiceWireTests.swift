@@ -1096,6 +1096,8 @@ extension HermesVoiceGatewayTimeoutTests {
         grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.localLive])
         let messages: [WatchVoiceWire.Message] = [
             .localLiveStart(callID: 4, version: WatchVoiceWire.version),
+            // A call from Hermes the Watch answered on Local Live.
+            .localLiveStart(callID: 4, version: WatchVoiceWire.version, ring: "ring-1"),
             .localLiveSession(callID: 4, call: .init(grant: grant, greeting: "Hi, I'm listening.", endPhrases: ["bye"])),
             .localLiveSession(callID: 4, call: .init(grant: grant, greeting: nil)),
         ]

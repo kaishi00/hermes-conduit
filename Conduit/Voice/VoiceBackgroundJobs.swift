@@ -126,6 +126,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// The command approval the job's turn waits on, which the call can
     /// answer out loud; nil while it waits on a question, or not at all.
     var waitingApproval: ApprovalActivity?
+    /// The question the job's turn waits on, which the call reads out with
+    /// its choices and answers; nil while it waits on an approval, or not
+    /// at all.
+    var waitingQuestion: ClarifyActivity?
     /// Consecutive liveness polls that found no registry row for the job.
     /// One miss can be transient; two settle it.
     var consecutiveMissedPolls = 0
@@ -328,6 +332,12 @@ struct VoiceBackgroundJobBackend {
     /// Answers the approval a job's turn waits on (`once` or `deny`), as its
     /// card in the chat would. False when Hermes no longer waits on it.
     var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async throws -> Bool = { _, _, _ in
+        throw HermesError.notConnected
+    }
+    /// Answers one question of the clarify a job's turn waits on (`questionID`
+    /// nil for a single question), as its card would. The card as it stands
+    /// after, or nil when Hermes no longer waits on it.
+    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String) async throws -> ClarifyActivity? = { _, _, _ in
         throw HermesError.notConnected
     }
 }
@@ -631,9 +641,52 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return choice == "deny" ? .denied : .approved
     }
 
-    /// The live model answered the question the call is about.
+    /// The live model answered, with the user's words, the question the
+    /// call from Hermes is about, or else the one a job of the call asks.
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome {
-        await callDecisions?.answer(answer) ?? .nothingPending
+        if callWaitsOn == .question { return await callDecisions?.answer(answer) ?? .nothingPending }
+        let waiting = jobsWaitingOnQuestion
+        // Which one the words answer would be a guess.
+        guard waiting.count <= 1 else { return .severalAsking }
+        guard let jobID = waiting.first else { return await callDecisions?.answer(answer) ?? .nothingPending }
+        return await answerJobQuestion(jobID, answer: answer)
+    }
+
+    /// The call's jobs waiting on the user's answer to a question.
+    var jobsWaitingOnQuestion: [UUID] {
+        jobs.filter { job in
+            job.status == .needsInput && job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0) } != nil
+        }.map(\.id)
+    }
+
+    /// Answers the first open question `jobID` asks, as its card would: a
+    /// choice the words point at sends what its tap sends. A batch goes on
+    /// with its next question.
+    func answerJobQuestion(_ jobID: UUID, answer: String) async -> VoiceCallDecisionOutcome {
+        guard let job = job(jobID), let clarify = job.waitingQuestion,
+              let waiting = HermesCallWaiting(clarify: clarify), let question = waiting.openQuestion else { return .nothingPending }
+        let value = HermesCallWaiting.answerValue(for: answer, question: question)
+        let after: ClarifyActivity?
+        do {
+            after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value)
+        } catch {
+            return .failed
+        }
+        let index = jobs.firstIndex { $0.id == jobID && $0.waitingQuestion?.requestId == clarify.requestId }
+        guard let after else {
+            if let index { jobs[index].waitingQuestion = nil }
+            return .expired
+        }
+        if let index { jobs[index].waitingQuestion = after }
+        let next = HermesCallWaiting(clarify: after)?.openQuestion
+        if next == nil, let index {
+            jobs[index].waitingQuestion = nil
+            if jobs[index].status == .needsInput { jobs[index].status = .running }
+        }
+        return .answered(
+            choice: HermesCallWaiting.answerLabel(for: answer, question: question),
+            next: next.map { HermesCallWaiting(item: .questions([$0])).block }
+        )
     }
 
     /// How long a watch stays held past its last renewal: the most a lost
@@ -1489,6 +1542,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !request.isEmpty else {
             return (nil, AppLocalization.string("Hermes didn't get a request to send."))
         }
+        // Hermes is paused in the chat on a question or approval: a new
+        // turn would only queue behind it, and nothing comes back until the
+        // user answers.
+        let jobWaits = jobs.contains { job in
+            job.isThreadTurn && job.status == .needsInput
+                && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+        }
+        if jobWaits || callWaitsOn != nil {
+            return (nil, AppLocalization.string("Hermes is paused in this chat until you answer what it asked, so it can't take another request yet. Answer it first, or ask Hermes to explain more as your answer."))
+        }
         // Only this chat's turns count: ones an earlier call left running in
         // another chat don't hold this one.
         let inFlight = jobs.filter { job in
@@ -1536,6 +1599,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// among them, and any job update.
     func dropPendingNotices() {
         chatNotes.removeAll()
+        callChatPrompts.removeAll()
         // Each take consumes a notice; the cap only guards the loop, far
         // above what the job limits (3 running, 10 settled) can queue.
         var dropped = 0
@@ -1545,6 +1609,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func detachLiveThread() {
         liveThread = nil
         chatNotes.removeAll()
+        callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
@@ -1957,6 +2022,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         screenCards.removeAll()
         threadTargets.removeAll()
         chatNotes.removeAll()
+        callChatPrompts.removeAll()
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
@@ -2021,15 +2087,23 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
                 jobs[index].waitingApproval = nil
+                jobs[index].waitingQuestion = nil
             }
         case .approval(_, let activity):
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
             jobs[index].waitingApproval = activity
-        case .clarify, .inputPrompt:
+            jobs[index].waitingQuestion = nil
+        case .clarify(_, let activity):
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
             jobs[index].waitingApproval = nil
+            jobs[index].waitingQuestion = activity
+        case .inputPrompt:
+            jobs[index].status = .needsInput
+            jobs[index].inputRequestDelivered = false
+            jobs[index].waitingApproval = nil
+            jobs[index].waitingQuestion = nil
         case .messageComplete(_, let messageID, let content, _, _):
             // A replay of a voice turn's own completion, once it no longer
             // owns the chat, is not a typed turn.
@@ -2054,6 +2128,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
             jobs[index].waitingApproval = nil
+            jobs[index].waitingQuestion = nil
         }
         if jobs[index] != before {
             // Read before notifying: the host delivers the notice right away,
@@ -2176,6 +2251,23 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// hears it at the next turn and asks the user.
     func notePhoneChange(_ text: String) {
         queueChatNote(ChatNote(text: text))
+    }
+
+    /// The chat a call from Hermes is about waits on the user again (a
+    /// question asked again, or a new approval): the model says it as soon
+    /// as it's quiet, like a job's news, and asks the user.
+    func noteCallChatWaiting(_ text: String) {
+        callChatPrompts.append(text)
+        onNoticePending?()
+    }
+
+    /// What `noteCallChatWaiting` queued, oldest first.
+    private var callChatPrompts: [String] = []
+
+    /// Removes and returns the oldest prompt waiting for the call.
+    func takePendingCallPrompt() -> String? {
+        guard !callChatPrompts.isEmpty else { return nil }
+        return callChatPrompts.removeFirst()
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
@@ -2330,11 +2422,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// What a job waiting on the user says: the command it asks to run,
     /// which a yes or no answers in the call, or else to open it.
     static func waitingNotice(for job: VoiceBackgroundJob) -> String {
+        if let clarify = job.waitingQuestion, let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
+            return questionNotice(job.title, question: question)
+        }
         guard let approval = job.waitingApproval else { return waitingNotice(job.title) }
         let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let what = asked.isEmpty ? approval.command : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
         return AppLocalization.string("\(job.title) needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
+    }
+
+    /// A job's question, with its choices numbered as an answer names them.
+    static func questionNotice(_ title: String, question: HermesCallWaiting.Question) -> String {
+        HermesCallWaiting.spokenQuestion(question, asker: title)
     }
 
     /// With Hermes' reason, when there is one, as the call is told it: its
@@ -2468,6 +2568,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
             jobs[index].waitingApproval = nil
+            jobs[index].waitingQuestion = nil
             changed = true
         }
         for id in settledJobs {
@@ -2491,6 +2592,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.followUp = nil
                 $0.heldCompletion = nil
                 $0.waitingApproval = nil
+                $0.waitingQuestion = nil
             }
             changed = true
         }
@@ -2515,6 +2617,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.followUp = nil
                 $0.heldCompletion = nil
                 $0.waitingApproval = nil
+                $0.waitingQuestion = nil
             }
             changed = true
         }

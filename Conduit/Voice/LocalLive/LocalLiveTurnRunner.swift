@@ -57,6 +57,11 @@ final class LocalLiveTurnRunner {
         /// "deny"); true when Hermes took it.
         var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async -> Bool
             = { _, _, _ in false }
+        /// Answers one question of the clarify the followed reply waits on
+        /// (`questionID` nil for a single question); the card as it stands
+        /// after, or nil when Hermes didn't take it.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String) async -> ClarifyActivity?
+            = { _, _, _ in nil }
     }
 
     var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
@@ -88,6 +93,9 @@ final class LocalLiveTurnRunner {
         /// The command approval the reply is paused on, which the user's
         /// next yes or no answers.
         var waitingApproval: ApprovalActivity?
+        /// The question the reply is paused on, which the user's next words
+        /// answer.
+        var waitingQuestion: ClarifyActivity?
         /// The profile of the chat it runs in.
         var profile: String?
     }
@@ -184,6 +192,23 @@ final class LocalLiveTurnRunner {
             }
             guard generation == self.generation else { return }
         }
+        // The answer to the question the reply is paused on: a choice the
+        // words point at sends what its tap sends. A batch reads out its
+        // next question.
+        if let clarify = reply?.waitingQuestion, let question = HermesCallWaiting(clarify: clarify)?.openQuestion {
+            let value = HermesCallWaiting.answerValue(for: words, question: question)
+            if let after = await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value) {
+                guard reply?.waitingQuestion?.requestId == clarify.requestId else { return }
+                if let next = HermesCallWaiting(clarify: after)?.openQuestion {
+                    reply?.waitingQuestion = after
+                    say(HermesCallWaiting.spokenQuestion(next), to: turnID, generation: generation)
+                } else {
+                    reply?.waitingQuestion = nil
+                }
+                return
+            }
+            guard generation == self.generation else { return }
+        }
         // A yes or no to what waits on the user, answered as a tap would.
         // When Hermes' reply is paused on it, the words aren't put into the
         // reply: it goes on and answers this turn. Otherwise Hermes hears
@@ -272,6 +297,7 @@ final class LocalLiveTurnRunner {
             if !current.correcting { reply?.skipsInterruption = false }
             // Writing again: whatever it waited on was answered.
             reply?.waitingApproval = nil
+            reply?.waitingQuestion = nil
         case .messageDelta(let id, let text):
             guard id == current.runtimeID else { return }
             // Until Hermes takes the correction, the words are the reply
@@ -311,7 +337,18 @@ final class LocalLiveTurnRunner {
             reply?.waitingApproval = activity
             guard let turn else { return }
             say(Self.approvalLine(activity), to: turn.id, generation: generation)
-        case .clarify(let id, _), .inputPrompt(let id, _):
+        case .clarify(let id, let activity):
+            guard id == current.runtimeID else { return }
+            reply?.waitingQuestion = activity
+            guard let turn else { return }
+            // Hermes asks: the call reads the question out with its
+            // choices, and the user's next words answer it.
+            if let question = HermesCallWaiting(clarify: activity)?.openQuestion {
+                say(HermesCallWaiting.spokenQuestion(question), to: turn.id, generation: generation)
+            } else {
+                say(Self.needsInputLine, to: turn.id, generation: generation)
+            }
+        case .inputPrompt(let id, _):
             guard id == current.runtimeID, let turn else { return }
             // Hermes waits on the user: the call says where to answer, and
             // the reply is still followed for the turn after.
