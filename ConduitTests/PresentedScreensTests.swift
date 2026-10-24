@@ -116,6 +116,26 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(all?["host|default"]?.first?["outcome"] as? String, "declined")
     }
 
+    /// The request holds the dashboard bridge: a finished sync keeps
+    /// nothing of it, like the agent settings sync.
+    func testAFinishedSyncKeepsNoHoldOnItsRequest() async throws {
+        final class Bridge {}
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        weak var released: Bridge?
+        do {
+            let bridge = Bridge()
+            released = bridge
+            await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+                withExtendedLifetime(bridge) {}
+                return ["ok": true, "prompts": []]
+            }
+        }
+        XCTAssertNil(released, "The sync let go of its request and the bridge it holds")
+    }
+
     func testAGoConfirmationCarriesWhereMapsOpens() async throws {
         let prompt = try XCTUnwrap(PresentedConfirm(json: [
             "id": "p1", "title": "Directions to Heathrow?", "action_label": "Go",
