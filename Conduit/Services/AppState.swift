@@ -20714,6 +20714,61 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Hides or shows a bot in the Bots list (ui_meta `hidden`, shared with
+    /// Desktop). Presentation only: a hidden bot keeps working, stays
+    /// mentionable and keeps its group rooms.
+    func setBotHidden(_ bot: BotProfile, hidden: Bool) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        let epoch = botRosterEpoch
+        let patch: [String: Any?] = ["hidden": hidden]
+        do {
+            let result = try await client.configureBotProfile(
+                name: bot.name,
+                botMeta: BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                expectedMetaRevision: bot.botMetaRevision
+            )
+            var outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+            }
+            await refreshBotRosterAfterWrite()
+            return outcome == .failed || outcome == .conflict
+                ? AppLocalization.string("Could not update \(bot.displayLabel).")
+                : nil
+        } catch {
+            return AppLocalization.string("Could not update \(bot.displayLabel).")
+        }
+    }
+
+    /// Duplicate (Desktop's `duplicateBot`): a full copy of the bot's profile
+    /// as `<name>-2`, with its look and a "(copy)" title. Returns the notice
+    /// to show: what was made, or why not.
+    func duplicateBot(_ bot: BotProfile) async -> String {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        guard let name = BotDuplicate.name(for: bot.name, taken: botRoster.map(\.name) + profiles) else {
+            return AppLocalization.string("No free name for the copy of \(bot.displayLabel).")
+        }
+        let epoch = botRosterEpoch
+        do {
+            _ = try await client.createBotProfile(params: BotDuplicate.createParams(name: name, source: bot))
+        } catch {
+            return AppLocalization.string("Could not duplicate the bot: \(UserFacingError.message(for: error))")
+        }
+        var lookSaved = false
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            let result = try? await client.configureBotProfile(name: name, botMeta: BotDuplicate.meta(from: bot))
+            lookSaved = result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
+        }
+        await refreshBotRosterAfterWrite()
+        return lookSaved
+            ? AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel).")
+            : AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its look was not copied.")
+    }
+
     /// Whether Conduit lets this bot be deleted: never the gateway's primary
     /// profile, and never the profile this dashboard is working in.
     func canDeleteBot(_ bot: BotProfile) -> Bool {

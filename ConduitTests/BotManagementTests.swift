@@ -423,4 +423,34 @@ extension BotModeTests {
         XCTAssertEqual(decoded.size.height * decoded.scale, 256)
         XCTAssertEqual(Array(png.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
     }
+
+    // MARK: - Duplicate
+
+    func testDuplicateTakesTheFirstFreeNumberAndKeepsTheSuffix() {
+        XCTAssertEqual(BotDuplicate.name(for: "scout", taken: ["scout"]), "scout-2")
+        XCTAssertEqual(BotDuplicate.name(for: "scout", taken: ["scout", "Scout-2", "scout-3"]), "scout-4")
+        let long = String(repeating: "a", count: 64)
+        XCTAssertEqual(BotDuplicate.name(for: long, taken: [long]), String(repeating: "a", count: 62) + "-2")
+        XCTAssertNil(BotDuplicate.name(for: "x", taken: (2..<100).map { "x-\($0)" }))
+    }
+
+    func testDuplicateCopiesTheLookWithACopyTitle() {
+        var source = BotProfile(
+            name: "scout", botTitle: "Trip Scout", displayName: "", profileDescription: "Finds trips",
+            model: nil, provider: nil, hasAvatar: true, isPinned: true, isHiddenByMeta: false,
+            appearanceColor: "blue", canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        source.botMeta = [
+            "title": .string("Trip Scout"), "color": .string("blue"),
+            "created": .number(1), "chat": .string("old")
+        ]
+        let meta = BotDuplicate.meta(from: source)
+        XCTAssertEqual(meta["title"] as? String, "Trip Scout (copy)")
+        XCTAssertEqual(meta["color"] as? String, "blue")
+        XCTAssertNil(meta["created"])
+        XCTAssertNil(meta["chat"])
+        let params = BotDuplicate.createParams(name: "scout-2", source: source)
+        XCTAssertEqual(params["clone_from"] as? String, "scout")
+        XCTAssertEqual(params["description"] as? String, "Finds trips")
+    }
 }

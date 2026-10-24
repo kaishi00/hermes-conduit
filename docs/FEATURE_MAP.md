@@ -533,13 +533,16 @@ same bot.
 **Siblings:** New Bot · Edit Bot · Hermes Desktop's bot editor (same
 profile records) · the bot's face in the Bots list, its Bot Chat and group
 rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the SOUL a new bot is
-born with (the messaging section older gateways need) · the text that
-describes them (the editor's footers and README.md's bots line)
+born with (the messaging section older gateways need) · the Bots list's row
+menu (New Chat, Groups, Pin, Hide, Duplicate, Delete) and its Hidden section,
+as on Desktop's bot row · the text that describes them (the editor's footers
+and README.md's bots line)
 
 **Code**
 - Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/BotRosterView.swift`
 - Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotCapabilities, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, loadBotCapabilities, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
 - Roster: `Conduit/Services/BotModeModels.swift`
+- Row menu: `Conduit/Views/BotRosterView.swift` (BotRosterRow, botRooms, the Hidden section), `Conduit/Services/BotManagement.swift` (BotDuplicate), `Conduit/Services/AppState.swift` (duplicateBot, setBotHidden, setBotPinned), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's preselected bots)
 - Generated pictures: `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Services/PictureGeneration.swift`, `Conduit/Views/GroupChatView.swift` (GroupRoomPicturePicker, GroupRoomActionItems), `Conduit/Views/V2/V2ConversationScreen.swift` (the V2 room menu's picker), `Conduit/Services/AppState.swift` (refreshPictureGeneration, generatePicture), `Conduit/Services/HermesClient.swift` (imageGenerationAvailable, generateImage)
 
 **Rulings**
@@ -551,14 +554,16 @@ describes them (the editor's footers and README.md's bots line)
 - A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
 - MCP servers are plain on/off per server: `enabled_mcp_servers: []` turns them all off (2026-10-24, #1177).
 - Generated pictures come from Hermes' own image generation (`image.generate`). Generate shows only when Hermes says a backend is set up, and the bot editor and group pictures share one sheet (2026-10-24, #1179).
+- Duplicate makes `<name>-2` (the first free number) as a full `clone_from` copy, then copies the look with " (copy)" on the title, as Desktop's `duplicateBot` does (2026-10-24).
+- Hide is the ui_meta `hidden` flag Desktop writes: a hidden bot moves to a collapsed Hidden section at the end of the list, and Desktop hides it too (2026-10-24).
+- Groups lists the hosted rooms the bot is in, then New Group Chat with the bot already picked. Hosted groups can't add or remove members after they start, so there's no Add to Group (2026-10-24).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
 - New Bot's model pick isn't guarded: `profiles.create` pins it without the gateway's expensive-model check, the same as on Desktop.
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
-- No Duplicate or Hide in the Bots list.
 
-**Checked:** 2026-10-24, at #1181.
+**Checked:** 2026-10-24, at #1192.
 
 ## Bot mentions and teammate messages
 
@@ -576,7 +581,8 @@ the bot's SOUL messaging section · README.md's bots line
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete)
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (mentionCandidates, attachmentButton), `Conduit/Views/Components/GroupRoomComposer.swift`
-- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle), `Conduit/Views/ChatActivityRows.swift` (ChatStepSubject, the step's subject line)
+- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, TeammateReplyNote, SettledToolCardContent.stepTitle, runningToolTitle), `Conduit/Views/ChatRowState.swift` (teammateReplies, botLabels), `Conduit/Views/ChatActivityRows.swift` (ChatStepSubject, ChatWorkingLine.currentToolTitle)
+- Previews, quotes and speech: `Conduit/Services/PreviewText.swift` (strip), read by the chat list, Read Aloud and live voice
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`, notifier #338)
 - The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
 
@@ -587,19 +593,18 @@ the bot's SOUL messaging section · README.md's bots line
 - A `message_agent` call, or a terminal `hermes -p name chat … -q "Message from …"` run, reads as "Messaged Name" (2026-10-24, #1181).
 - A step's subject line prefers a `message` field after the usual keys, for every tool, so a delivery shows what was said (2026-10-24, #1181).
 - `message_agent` is a messaging tool on the Live Activity, in both the app's and the plugin's category lists (2026-10-24, #1181, notifier #338).
+- A delivery previews, quotes and is read aloud as "Atlas: what it said", and its body renders as Markdown (2026-10-24).
+- The bot's replies to a delivery it didn't ask for fold under "Replied to Atlas" until the user next writes; a delivery answering the bot's own `message_agent` doesn't fold, and a reply still streaming stays open (upstream `dispatchedTo`, 2026-10-24).
+- A terminal or `process` delivery's step shows the message, not the command, and the teammate's answer from the output as a note under it; a failed send (an error or non-zero exit) stays a plain tool step (2026-10-24).
+- The working line says "Messaging Atlas…" while a delivery runs. The Live Activity keeps "Sending a message": it carries only a tool category, never names, by design (2026-10-24).
+- A signature is read from the first 320 characters, so a message of any length is still a delivery; tool calls past 64 KB aren't scanned. A signed name may contain "(" ("Atlas (v2)") (2026-10-24).
+- A "Messaged" step names the bot from the roster, and redraws when the roster loads (2026-10-24).
+- Group rooms have no Mention a Bot item: their recipient picks do the same job (2026-10-24).
 
 **Open gaps**
-- Chat list previews and quotes show a delivery's raw "Message from 🤖 …" text.
-- Read Aloud and live voice read a delivery as written.
-- Desktop folds the sender's reply to a delivery it asked for; Conduit shows every reply as usual.
-- Group rooms have no Mention a Bot item; their recipient picks do the same job.
-- A delivery's text shows as plain text when opened; Desktop renders its Markdown.
-- A terminal delivery's step shows the whole `hermes … chat` command as its subject; a `message_agent` step shows the message.
-- The working line and Live Activity say "Sending a message", not the teammate's name.
-- A signed name with "(" in it ("Atlas (v2)") isn't read as a delivery and stays the user's text.
-- A "Messaged" step drawn before the roster loads names the routing key ("Messaged scout") until the row redraws; the note follows the roster.
+- None known.
 
-**Checked:** 2026-10-24, at #1181.
+**Checked:** 2026-10-24, at #1192.
 
 ## Markdown lists in messages
 
