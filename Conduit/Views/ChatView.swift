@@ -1301,9 +1301,14 @@ struct TeammateMessageNote: View {
             .buttonStyle(.plain)
             .disabled(inbound.body.isEmpty)
             .accessibilityHint(Text(
-                expanded
+                inbound.body.isEmpty ? ""
+                    : expanded
                     ? AppLocalization.string("Hides what the bot said.")
                     : AppLocalization.string("Shows what the bot said.")
+            ))
+            .accessibilityValue(Text(
+                inbound.body.isEmpty ? ""
+                    : expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
             ))
 
             if expanded {
