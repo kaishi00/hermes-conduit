@@ -62,6 +62,7 @@ extension AppState {
             let status = try await hermesCallsClient.status(profile: activeProfile)
             // A read asked later, or a save, answered first: theirs is newer.
             guard generation > hermesCallsStatusAcceptedGeneration,
+                  generation > hermesCallsStatusSavedGeneration[key, default: 0],
                   key == hermesCallsKey(profile: activeProfile) else { return }
             hermesCallsStatusAcceptedGeneration = generation
             hermesCallsStatus = status
@@ -84,11 +85,12 @@ extension AppState {
         let key = hermesCallsKey(profile: profile)
         do {
             let saved = try await hermesCallsClient.save(settings, profile: profile)
-            // Reads still out were asked before this save, whichever profile
-            // is shown now: one of the saved profile mustn't land after it
-            // when the user comes back to it.
+            // Reads of the saved profile still out were asked before this
+            // save, whichever profile is shown now: one mustn't land after
+            // it when the user comes back to it. Another profile's read is
+            // not older than anything this save wrote, so it still lands.
             hermesCallsStatusGeneration &+= 1
-            hermesCallsStatusAcceptedGeneration = hermesCallsStatusGeneration
+            hermesCallsStatusSavedGeneration[key] = hermesCallsStatusGeneration
             // Saved; shown only while that profile still is.
             guard key == hermesCallsKey(profile: activeProfile) else { return true }
             if var status = activeHermesCallsStatus {

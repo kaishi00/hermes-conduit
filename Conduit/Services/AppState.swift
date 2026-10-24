@@ -6347,6 +6347,10 @@ final class AppState: ObservableObject {
     /// late can't replace what a newer read or a save set.
     var hermesCallsStatusGeneration: UInt64 = 0
     var hermesCallsStatusAcceptedGeneration: UInt64 = 0
+    /// Per dashboard and profile, the number of its last save: a read of
+    /// that profile asked before it is older than what was saved. Other
+    /// profiles' reads still land.
+    var hermesCallsStatusSavedGeneration: [String: UInt64] = [:]
     lazy var hermesCallsClient = HermesCallsClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
