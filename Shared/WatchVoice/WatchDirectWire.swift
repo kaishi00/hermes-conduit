@@ -19,14 +19,17 @@ extension WatchVoiceWire.DirectToken {
             expiresAt: token.expiresAt,
             newSessionExpiresAt: token.newSessionExpiresAt,
             model: token.model,
-            webSocketURL: token.webSocketURL.absoluteString
+            webSocketURL: token.webSocketURL.absoluteString,
+            voice: token.voice,
+            provider: token.provider
         )
     }
 
     /// Nil if the URL can't be read.
     var geminiToken: GeminiLiveToken? {
-        guard let url = URL(string: webSocketURL) else { return nil }
-        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url)
+        guard let url = URL(string: webSocketURL), url.scheme?.lowercased() == "wss" else { return nil }
+        if let provider, model.isEmpty || model.hasPrefix("qwen") != (provider == .qwen) { return nil }
+        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url, voice: voice, provider: provider)
     }
 }
 
@@ -232,6 +235,7 @@ enum WatchStall {
 /// the host could have sent it; the Gemini key itself stays there.
 enum WatchLiveToken {
     static let tool = "live_token"
+    static let qwenTool = "qwen_live_token"
 
     /// Nil unless it's a token with a wss URL (as the iPhone's
     /// GeminiLiveTokenClient reads the route).
@@ -242,12 +246,17 @@ enum WatchLiveToken {
               let url = URL(string: urlString),
               url.scheme?.lowercased() == "wss" else { return nil }
         let model = (body["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? GeminiLiveProtocol.model
+        let provider = (body["provider"] as? String).flatMap(DirectLiveProvider.init(rawValue:))
+        if body["provider"] != nil && provider == nil { return nil }
+        if let provider, model.hasPrefix("qwen") != (provider == .qwen) { return nil }
         return GeminiLiveToken(
             token: token,
             expiresAt: date(body["expires_at"]),
             newSessionExpiresAt: date(body["new_session_expires_at"]),
             model: model,
-            webSocketURL: url
+            webSocketURL: url,
+            voice: body["voice"] as? String,
+            provider: provider
         )
     }
 

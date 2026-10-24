@@ -133,7 +133,7 @@ struct MainView: View {
     private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
     private var isVoiceConversationShown: Bool {
-        appState.showVoiceSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet
+        appState.showVoiceSheet || appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet
             || appState.showGrokLiveSheet || appState.showLocalLiveSheet
     }
 
@@ -201,7 +201,7 @@ struct MainView: View {
             of: VoiceScreenAwake.holdsScreenAwake(
                 enabled: keepScreenAwake,
                 voiceSheetShown: appState.showVoiceSheet,
-                liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet || appState.showGrokLiveSheet
+                liveSheetShown: appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet || appState.showGrokLiveSheet
                     || appState.showLocalLiveSheet
             ),
             initial: true
@@ -227,6 +227,21 @@ struct MainView: View {
                 waitsToStart: appState.waitingCall?.engine == .geminiLive,
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
+            )
+            .safeAreaInset(edge: .top, spacing: 0) { callTopBanners }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $appState.showQwenLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.qwenLive) }) {
+            GeminiLiveVoiceSheet(
+                controller: appState.qwenLiveController,
+                jobs: appState.voiceBackgroundJobSupervisor,
+                appState: appState,
+                engine: .qwen,
+                waitsToStart: appState.waitingCall?.engine == .qwenLive,
+                onClose: appState.closeQwenLiveConversation,
+                onRetry: { Task { await appState.qwenLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { callTopBanners }
             .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
@@ -395,7 +410,7 @@ struct MainView: View {
         guard settingsPresentation == nil else { return }
         let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
             || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
-            || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
+            || appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
             || appState.showLocalLiveSheet
         guard !otherSheetUp else { return }
         // A host without calls (or not heard from yet) has no such page:

@@ -69,12 +69,14 @@ extension CPInterfaceController: CarPlayInterfacing {
 enum CarPlayVoiceMode: Equatable {
     case classic
     case geminiLive
+    case qwenLive
     case gptLive
     case grokLive
 
     @MainActor
     static func current(in appState: AppState) -> CarPlayVoiceMode {
         if appState.isGeminiLiveEnabled { return .geminiLive }
+        if appState.isQwenLiveEnabled { return .qwenLive }
         if appState.isGPTLiveEnabled { return .gptLive }
         if appState.isGrokLiveEnabled { return .grokLive }
         return .classic
@@ -84,6 +86,7 @@ enum CarPlayVoiceMode: Equatable {
 /// The live modes CarPlay starts itself, after waiting for Hermes.
 enum CarPlayLiveVoiceMode: Equatable {
     case geminiLive
+    case qwenLive
     case gptLive
     case grokLive
 
@@ -92,6 +95,7 @@ enum CarPlayLiveVoiceMode: Equatable {
         switch mode {
         case .classic: return nil
         case .geminiLive: self = .geminiLive
+        case .qwenLive: self = .qwenLive
         case .gptLive: self = .gptLive
         case .grokLive: self = .grokLive
         }
@@ -100,6 +104,7 @@ enum CarPlayLiveVoiceMode: Equatable {
     var voiceMode: CarPlayVoiceMode {
         switch self {
         case .geminiLive: return .geminiLive
+        case .qwenLive: return .qwenLive
         case .gptLive: return .gptLive
         case .grokLive: return .grokLive
         }
@@ -383,6 +388,7 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         appState.setCarPlayVoiceSurfaceActive(false)
         appState.handleCarPlayVoiceSurfaceRemoved()
+        appState.releaseCarPlayQwenLive()
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGrokLive()
@@ -476,6 +482,7 @@ final class CarPlayVoiceCoordinator {
                 await controller.stopAssistantReply()
             }
         case .geminiLive: appState.geminiLiveController.interruptSpeaking()
+        case .qwenLive: appState.qwenLiveController.interruptSpeaking()
         case .grokLive: appState.grokLiveController.interruptSpeaking()
         case .gptLive: break
         }
@@ -663,6 +670,7 @@ final class CarPlayVoiceCoordinator {
         switch mode {
         case .classic: beginObservingController(appState.voiceConversationController)
         case .geminiLive: beginObservingGeminiLive(appState.geminiLiveController)
+        case .qwenLive: beginObservingGeminiLive(appState.qwenLiveController)
         case .gptLive: beginObservingGPTLive(appState.gptLiveController)
         // Grok Live runs on Gemini Live's controller, so its phases map the same.
         case .grokLive: beginObservingGeminiLive(appState.grokLiveController)
@@ -676,6 +684,7 @@ final class CarPlayVoiceCoordinator {
             muted = appState.voiceConversationController.$isMicrophonePaused.eraseToAnyPublisher()
             silent = appState.voiceConversationController.$isOutputMuted.eraseToAnyPublisher()
         case .geminiLive: muted = appState.geminiLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
+        case .qwenLive: muted = appState.qwenLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .gptLive: muted = appState.gptLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .grokLive: muted = appState.grokLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         }
@@ -863,6 +872,10 @@ final class CarPlayVoiceCoordinator {
         case .geminiLive:
             return consentIssue(appState.geminiLiveController.awaitingConsent)
                 ?? liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        case .qwenLive:
+            return consentIssue(appState.qwenLiveController.awaitingConsent)
+                ?? liveIssue(appState.qwenLiveController.hostIssue, .qwenLive)
                 ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         case .gptLive:
             return consentIssue(appState.gptLiveController.awaitingConsent)
@@ -1421,10 +1434,12 @@ final class CarPlayVoiceCoordinator {
         endConversation()
         switch mode {
         case .classic:
+            appState.setQwenLiveEnabled(false)
             appState.setGeminiLiveEnabled(false)
             appState.setGPTLiveEnabled(false)
             appState.setGrokLiveEnabled(false)
         case .geminiLive: appState.setGeminiLiveEnabled(true)
+        case .qwenLive: appState.setQwenLiveEnabled(true)
         case .gptLive: appState.setGPTLiveEnabled(true)
         case .grokLive: appState.setGrokLiveEnabled(true)
         }
@@ -1490,6 +1505,14 @@ final class CarPlayVoiceCoordinator {
             let gemini = appState.geminiLiveController
             switch CarPlayGeminiLiveListenAction.forPhase(gemini.phase) {
             case .start: await establishLiveVoice(.geminiLive, appState: appState, generation: generation, attachingTo: thread)
+            case .interrupt: gemini.interruptSpeaking()
+            case .nothing: break
+            }
+            return
+        case .qwenLive:
+            let gemini = appState.qwenLiveController
+            switch CarPlayGeminiLiveListenAction.forPhase(gemini.phase) {
+            case .start: await establishLiveVoice(.qwenLive, appState: appState, generation: generation, attachingTo: thread)
             case .interrupt: gemini.interruptSpeaking()
             case .nothing: break
             }
@@ -1616,6 +1639,9 @@ final class CarPlayVoiceCoordinator {
         case .geminiLive:
             let gemini = appState.geminiLiveController
             gemini.setMicrophoneMuted(!gemini.isMicrophoneMuted)
+        case .qwenLive:
+            let gemini = appState.qwenLiveController
+            gemini.setMicrophoneMuted(!gemini.isMicrophoneMuted)
         case .gptLive:
             let gpt = appState.gptLiveController
             gpt.setMicrophoneMuted(!gpt.isMicrophoneMuted)
@@ -1638,6 +1664,8 @@ final class CarPlayVoiceCoordinator {
             return appState.voiceConversationController.hasLiveVoiceSession
         case .geminiLive:
             return Self.canTakeNotice(appState.geminiLiveController.phase)
+        case .qwenLive:
+            return Self.canTakeNotice(appState.qwenLiveController.phase)
         case .gptLive:
             switch appState.gptLiveController.phase {
             case .connecting, .listening, .speaking, .paused: return true
@@ -1666,6 +1694,7 @@ final class CarPlayVoiceCoordinator {
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic: appState.closeVoiceConversation()
         case .geminiLive: appState.closeGeminiLiveConversation()
+        case .qwenLive: appState.closeQwenLiveConversation()
         case .gptLive: appState.closeGPTLiveConversation()
         case .grokLive: appState.closeGrokLiveConversation()
         }
@@ -1727,6 +1756,7 @@ final class CarPlayVoiceCoordinator {
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic: return appState.voiceConversationController.hasLiveVoiceSession
         case .geminiLive: return appState.geminiLiveController.isActive
+        case .qwenLive: return appState.qwenLiveController.isActive
         case .gptLive: return appState.gptLiveController.isActive
         case .grokLive: return appState.grokLiveController.isActive
         }
@@ -1755,6 +1785,17 @@ final class CarPlayVoiceCoordinator {
                 return
             }
             await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
+            return
+        case .qwenLive:
+            // A conversation already running (started on the phone) is
+            // just shown; otherwise the CarPlay launch starts one.
+            let gemini = appState.qwenLiveController
+            guard !gemini.isActive else {
+                // Unmuted for the driver as with GPT-Live.
+                gemini.setMicrophoneMuted(false)
+                return
+            }
+            await establishLiveVoice(.qwenLive, appState: appState, generation: generation)
             return
         case .gptLive:
             let gpt = appState.gptLiveController
@@ -1818,6 +1859,12 @@ final class CarPlayVoiceCoordinator {
             // The surface went away while connecting: nothing presents it now.
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGeminiLive()
+            }
+        case .qwenLive:
+            await appState.startQwenLiveForCarPlay(attachingTo: thread)
+            // The surface went away while connecting: nothing presents it now.
+            if !isCurrent(generation) || !isConnected {
+                appState.releaseCarPlayQwenLive()
             }
         case .gptLive:
             await appState.startGPTLiveForCarPlay(attachingTo: thread)

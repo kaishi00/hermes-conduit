@@ -10,7 +10,7 @@
 import Foundation
 
 enum VoiceModeChoice: String, CaseIterable, Identifiable {
-    case classic, gemini, gpt, grok, local
+    case classic, gemini, qwen, gpt, grok, local
 
     var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum VoiceModeChoice: String, CaseIterable, Identifiable {
         switch self {
         case .classic: return AppLocalization.string("Classic")
         case .gemini: return AppLocalization.string("Gemini Live")
+        case .qwen: return AppLocalization.string("Qwen Live")
         case .gpt: return AppLocalization.string("GPT-Live")
         case .grok: return AppLocalization.string("Grok Live")
         case .local: return AppLocalization.string("Local")
@@ -29,6 +30,7 @@ enum VoiceModeChoice: String, CaseIterable, Identifiable {
         switch self {
         case .classic: return nil
         case .gemini: return .geminiLive
+        case .qwen: return .qwenLive
         case .gpt: return .gptLive
         case .grok: return .grokLive
         case .local: return .localLive
@@ -41,6 +43,7 @@ enum VoiceModeChoice: String, CaseIterable, Identifiable {
         switch engine {
         case nil: self = .classic
         case .geminiLive: self = .gemini
+        case .qwenLive: self = .qwen
         case .gptLive: self = .gpt
         case .grokLive: self = .grok
         case .localLive: self = localAgent ? .local : .classic

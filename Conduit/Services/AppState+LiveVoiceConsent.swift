@@ -37,6 +37,7 @@ extension AppState {
         }
         switch mode {
         case .geminiLive: if isGeminiLiveActive { closeGeminiLiveConversation() }
+        case .qwenLive: if isQwenLiveActive { closeQwenLiveConversation() }
         case .gptLive: if isGPTLiveActive { closeGPTLiveConversation() }
         case .grokLive: if isGrokLiveActive { closeGrokLiveConversation() }
         case .localLive: break
@@ -47,6 +48,7 @@ extension AppState {
     func isLiveVoiceSheetShown(_ mode: LiveVoiceModeName) -> Bool {
         switch mode {
         case .geminiLive: return showGeminiLiveSheet
+        case .qwenLive: return showQwenLiveSheet
         case .gptLive: return showGPTLiveSheet
         case .grokLive: return showGrokLiveSheet
         case .localLive: return showLocalLiveSheet

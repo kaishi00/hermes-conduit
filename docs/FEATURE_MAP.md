@@ -1,5 +1,44 @@
 # Feature map
 
+## Qwen direct voice
+
+**Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
+Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
+
+**Code**
+- Adapter: `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift`
+- Credentials: `Shared/GeminiLive/GeminiLiveToken.swift`, `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift`
+- Watch wire: `Shared/WatchVoice/WatchDirectWire.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
+- Plugin capability inventory: `Conduit/Views/ConduitPluginViews.swift` (separate Gemini/Qwen feature entries)
+- Lifecycle/recovery: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift`, `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`
+- Phone entry, shared settings and captions: `Conduit/Services/AppState.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
+- Picker/setup identity: `Conduit/Voice/VoiceModeChoice.swift`, `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Voice/VoiceSetupIssue.swift`
+- Saved-call preferences/identity: `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceHistory.swift`
+- Watch transport and diagnostics: `ConduitWatch/WatchGeminiSocket.swift`
+- Watch capability compatibility tests: `ConduitTests/HermesCallsTests.swift` (legacy plugins, Qwen-only and concurrent providers)
+
+**Rulings**
+- Gemini and Qwen are independent picker entries, concurrently configurable on
+  the host, with separate preferences, consent, data permissions and saved
+  call identity. Shared controllers/adapters must not combine their product
+  identities (2026-10-24, maintainer request on #1182).
+- Both providers connect directly from the device. Watch starts explicitly
+  name the provider; reconnect grants authorize the selected token tool only.
+- Qwen voice can be selected on the phone independently of Gemini, with the
+  host's configured voice as fallback. Qwen uses Hermes search functions.
+- Qwen inherits job approvals/questions, follow-up steering, quiet job-result
+  delivery, barge-in and incoming Agent Calls through the shared direct-call
+  controller/tool bridge. The corresponding entries below apply to Qwen as
+  to Gemini; separate implementation rows are unnecessary because those
+  behaviors use the same code paths. Provider consent and history stay separate.
+
+**Open gaps**
+- Real credentials, entitlement, voice availability and Watch background
+  behavior need device testing; Windows checks cannot establish them.
+
+**Checked:** 2026-10-24, #1182; independent provider routes and regression tests.
+
 Features that have siblings: other screens, voice modes or notifier pieces
 that must do the same thing. A change that reaches one sibling and not the
 others leaves a gap that users find later. Each entry lists the siblings,
@@ -27,7 +66,7 @@ checked against its main.
 checked against the rest, and where one can't follow, the PR says so and the
 maintainer decides (2026-10-20).
 
-- Voice modes: Classic (hands-free on a speech server too), Gemini Live, Grok
+- Voice modes: Classic (hands-free on a speech server too), Gemini Live, Qwen Live, Grok
   Live, GPT-Live, Local Live (agent mode, and Hermes turns).
 - Where a call runs: the phone's call screen, the minimised call bar,
   CarPlay, a call from Hermes (CallKit, locked phone), the Apple Watch.
@@ -44,14 +83,14 @@ An approval, a clarify question or a phone change that Hermes can't go on
 without.
 
 **Siblings:** chat card · notification · Classic voice (phone, CarPlay) ·
-Gemini Live · Grok Live · GPT-Live · Local Live · Watch calls · a call from
+Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live · Watch calls · a call from
 Hermes about it · group rooms · the resume jump · what models and Settings
 say about it
 
 | Where | Says it | Answer by voice | Card on screen |
 |---|---|---|---|
 | Classic | approvals, not questions | approvals and phone changes, yes or no | over the voice sheet; not on CarPlay |
-| Gemini, Grok, GPT-Live | a job's approval or question | job approvals, once or deny | none; the job row says "Waiting for you" |
+| Gemini, Qwen, Grok, GPT-Live | a job's approval or question | job approvals, once or deny | none; the job row says "Waiting for you" |
 | Local Live | approvals | yes or no | none |
 | Watch | job approvals | Gemini and Grok, when "Approve from the Watch" is "Tap or voice" | Approve once and Deny |
 | Group rooms | no voice | no voice | Run and Reject above the composer |
@@ -92,13 +131,13 @@ A call Hermes made about an approval or question takes the answer by voice:
 What the user adds or changes by voice while Hermes is already working on
 their request.
 
-**Siblings:** Gemini Live · Grok Live · GPT-Live · Local Live · Classic
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live · Classic
 (phone, CarPlay) · Watch calls · the composer's Steer, Interrupt and Queue ·
 the outcome text each model is told
 
 | Where | Add to the work | Change or stop it |
 |---|---|---|
-| Gemini, Grok, Local Live agent | `interrupt_job` with kind add: `session.steer` | kind change, or none: `session.redirect` |
+| Gemini, Qwen, Grok, Local Live agent | `interrupt_job` with kind add: `session.steer` | kind change, or none: `session.redirect` |
 | GPT-Live | "Add to job N:": steer | "Job N:": redirect |
 | Local Live, Hermes turns | none | a correction redirects the running reply |
 | Classic | speech while Hermes thinks steers it | talking over the reply starts a new turn |
@@ -131,7 +170,7 @@ the outcome text each model is told
 How a background job's result, failure or question reaches the user while a
 call is still going, and what of it stays after.
 
-**Siblings:** Classic · Gemini Live · Grok Live · GPT-Live · Local Live (agent
+**Siblings:** Classic · Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live (agent
 mode, Hermes turns) · Watch calls · CarPlay · the call screen's job cards ·
 the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 
@@ -172,7 +211,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 What a call can do for the user (phone features, health and location reads,
 finding chats, web lookups) and the consent each needs.
 
-**Siblings:** Gemini Live · Grok Live · GPT-Live · Local Live agent · Classic
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live agent · Classic
 (Hermes' own tools) · Watch calls · CarPlay · the phone features set · the
 consent screens · the tool text each model reads, in Conduit and the notifier
 

@@ -34,7 +34,7 @@ enum NotifierPluginSummary {
 /// The features Conduit uses from the plugin, by capability id, and what
 /// the user calls them.
 enum NotifierPluginFeature: CaseIterable {
-    case chatTakeover, savedCalls, liveVoiceContext, geminiLive, gptLive, grokLive
+    case chatTakeover, savedCalls, liveVoiceContext, geminiLive, qwenLive, gptLive, grokLive
     case encryptedNotifications, pairing, hermesCalls, agentSettings, healthSync, updates
 
     /// Every capability id the feature needs.
@@ -44,6 +44,7 @@ enum NotifierPluginFeature: CaseIterable {
         case .savedCalls: return ["voice-sessions", "voice-tags", "voice-summary"]
         case .liveVoiceContext: return ["memory", "personality", "web-search"]
         case .geminiLive: return ["gemini-live"]
+        case .qwenLive: return ["qwen-live"]
         case .gptLive: return ["gpt-live"]
         case .grokLive: return ["grok-live"]
         case .encryptedNotifications: return ["e2e-notifications"]
@@ -62,6 +63,7 @@ enum NotifierPluginFeature: CaseIterable {
         case .savedCalls: return AppLocalization.string("Saved voice calls")
         case .liveVoiceContext: return AppLocalization.string("Memory, personality and web search in live voice")
         case .geminiLive: return AppLocalization.string("Gemini Live")
+        case .qwenLive: return AppLocalization.string("Qwen Live")
         case .gptLive: return AppLocalization.string("GPT-Live")
         case .grokLive: return AppLocalization.string("Grok Live")
         case .encryptedNotifications: return AppLocalization.string("Encrypted notifications")

@@ -144,7 +144,7 @@ extension AppState {
                 let deadline = ContinuousClock.now + .seconds(2)
                 // A Watch call's words come with its tool call: read once,
                 // so a later turn's yes can't answer this change.
-                let onWatch = !(self.isGeminiLiveActive || self.isGrokLiveActive || self.isGPTLiveActive || self.isLocalLiveActive)
+                let onWatch = !(self.isQwenLiveActive || self.isGeminiLiveActive || self.isGrokLiveActive || self.isGPTLiveActive || self.isLocalLiveActive)
                     && self.watchCallUserTurn != nil
                 while true {
                     let turn = self.liveCallLastUserTurn()
@@ -368,7 +368,7 @@ extension AppState {
                 let turn = self.liveCallLastUserTurn().id
                 for prompt in fresh { PhoneVoiceTools.noteArrival(prompt.id, userTurn: turn) }
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
-                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive,
+                      self.isQwenLiveActive || self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive,
                       self.phoneSync.preferences.letsVoiceUse(mode) else { return }
                 for prompt in fresh { supervisor.notePhoneChange(PhoneVoiceTools.note(for: prompt)) }
             }

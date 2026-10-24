@@ -55,7 +55,7 @@ extension AppState {
 
     private var isVoiceIdleForWake: Bool {
         !showVoiceSheet
-            && !showGeminiLiveSheet
+            && !showQwenLiveSheet && !showGeminiLiveSheet
             && !showGPTLiveSheet
             && !showGrokLiveSheet
             && !showLocalLiveSheet

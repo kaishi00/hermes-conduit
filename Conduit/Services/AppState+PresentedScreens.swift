@@ -34,7 +34,7 @@ extension AppState {
 
     /// Whether a voice conversation is up that can show Hermes' cards.
     var voiceConversationShowsCards: Bool {
-        isGeminiLiveActive || isGrokLiveActive || isLocalLiveActive || showVoiceSheet
+        isQwenLiveActive || isGeminiLiveActive || isGrokLiveActive || isLocalLiveActive || showVoiceSheet
     }
 
     /// Hermes showing a card (`conduit_show`) or ending a reply during a
@@ -205,7 +205,9 @@ extension AppState {
     /// The user's last turn in the running live call.
     func liveCallLastUserTurn() -> (id: UUID?, text: String) {
         let transcript: [VoiceConversationTranscriptEntry]
-        if isGeminiLiveActive {
+        if isQwenLiveActive {
+            transcript = qwenLiveController.transcript
+        } else if isGeminiLiveActive {
             transcript = geminiLiveController.transcript
         } else if isGrokLiveActive {
             transcript = grokLiveController.transcript
@@ -257,7 +259,7 @@ extension AppState {
                 let turn = self.liveCallLastUserTurn().id
                 for prompt in fresh { self.presentedScreens.noteShown(prompt.id, userTurn: turn) }
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
-                      self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive else { return }
+                      self.isQwenLiveActive || self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive else { return }
                 for prompt in fresh { supervisor.notePhoneChange(PresentVoiceTool.note(for: prompt)) }
             }
     }

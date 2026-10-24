@@ -184,12 +184,13 @@ enum CarPlayBrowse {
 }
 
 extension CarPlayVoiceMode {
-    static let all: [CarPlayVoiceMode] = [.classic, .geminiLive, .gptLive, .grokLive]
+    static let all: [CarPlayVoiceMode] = [.classic, .geminiLive, .qwenLive, .gptLive, .grokLive]
 
     var symbol: String {
         switch self {
         case .classic: return "mic.fill"
         case .geminiLive: return "sparkles"
+        case .qwenLive: return "waveform.circle.fill"
         case .gptLive: return "waveform"
         case .grokLive: return "bolt.fill"
         }
@@ -199,6 +200,7 @@ extension CarPlayVoiceMode {
         switch self {
         case .classic: return AppLocalization.string("Classic voice")
         case .geminiLive: return AppLocalization.string("Gemini Live")
+        case .qwenLive: return AppLocalization.string("Qwen Live")
         case .gptLive: return AppLocalization.string("GPT-Live")
         case .grokLive: return AppLocalization.string("Grok Live")
         }

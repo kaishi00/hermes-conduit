@@ -141,6 +141,16 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var geminiLiveMemory: Bool? = nil
     /// Whether Gemini Live speaks as the profile's SOUL.md persona. Nil is off.
     var geminiLivePersonality: Bool? = nil
+    var qwenLiveEnabled: Bool = false
+    /// Where Qwen Live's quick lookups search. Nil is automatic.
+    var qwenLiveSearch: GeminiLiveSearchMode? = nil
+    /// Qwen Live's prebuilt voice ("Tina", "Serena"…). Nil is Qwen's
+    /// default voice.
+    var qwenLiveVoice: String? = nil
+    /// Whether Qwen Live gets the Hermes host's memory. Nil is off.
+    var qwenLiveMemory: Bool? = nil
+    /// Whether Qwen Live speaks as the profile's SOUL.md persona. Nil is off.
+    var qwenLivePersonality: Bool? = nil
     /// Opt-in GPT-Live voice mode on the host's ChatGPT subscription (off by
     /// default; older blobs decode off). Never on together with Gemini Live.
     var gptLiveEnabled: Bool = false
@@ -265,6 +275,13 @@ struct VoiceProfilePreferences: Codable, Equatable {
         geminiLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .geminiLiveVoice)) ?? nil
         geminiLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLiveMemory)) ?? nil
         geminiLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .geminiLivePersonality)) ?? nil
+        qwenLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .qwenLiveEnabled) ?? false
+        // An unknown mode (a newer build's) falls back to automatic rather
+        // than failing the whole blob.
+        qwenLiveSearch = (try? container.decodeIfPresent(GeminiLiveSearchMode.self, forKey: .qwenLiveSearch)) ?? nil
+        qwenLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .qwenLiveVoice)) ?? nil
+        qwenLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .qwenLiveMemory)) ?? nil
+        qwenLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .qwenLivePersonality)) ?? nil
         gptLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveEnabled)) ?? false
         gptLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .gptLiveVoice)) ?? nil
         gptLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveMemory)) ?? nil

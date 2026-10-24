@@ -769,6 +769,32 @@ struct SettingsView: View {
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
                         setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
                     ),
+                    qwenLive: GeminiLiveSettingsModel(
+                        enabled: appState.isQwenLiveEnabled,
+                        setEnabled: { appState.setQwenLiveEnabled($0) },
+                        checkAvailability: {
+                            do {
+                                let status = try await appState.qwenLiveTokenClient.availability()
+                                await MainActor.run { appState.noteWatchCallVoice(.qwenLive, ready: status.isAvailable) }
+                                return .success(status)
+                            } catch {
+                                return .failure(error)
+                            }
+                        },
+                        search: appState.qwenLiveSearchMode,
+                        setSearch: { appState.setQwenLiveSearchMode($0) },
+                        voice: appState.qwenLiveVoice,
+                        setVoice: { appState.setQwenLiveVoice($0) },
+                        memory: appState.qwenLiveMemoryEnabled,
+                        setMemory: { appState.setQwenLiveMemoryEnabled($0) },
+                        personality: appState.qwenLivePersonalityEnabled,
+                        setPersonality: { appState.setQwenLivePersonalityEnabled($0) },
+                        saveCalls: appState.voiceCallSavingEnabled,
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
+                        speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
+                        provider: .qwenLive
+                    ),
                     gptLive: GPTLiveSettingsModel(
                         enabled: appState.isGPTLiveEnabled,
                         setEnabled: { appState.setGPTLiveEnabled($0) },
@@ -834,7 +860,7 @@ struct SettingsView: View {
                         agent: appState.isLocalLiveAgent,
                         setAgent: { appState.setLocalLiveAgent($0) }
                     ),
-                    liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
+                    liveStyle: appState.isQwenLiveEnabled || appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(
                             profile: appState.activeProfile,
                             style: appState.liveVoiceStyle,

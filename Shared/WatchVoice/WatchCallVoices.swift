@@ -18,6 +18,7 @@ struct WatchCallVoices: Codable, Equatable {
     /// The Watch's voices (WatchVoiceEngine.callVoice).
     enum Voice: String, CaseIterable {
         case geminiLive
+        case qwenLive
         case gptLive
         case grokLive
         /// The user's own speech server through the host (plugin 0.48).

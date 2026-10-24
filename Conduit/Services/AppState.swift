@@ -2315,6 +2315,9 @@ final class AppState: ObservableObject {
     /// Presents the Gemini Live sheet. Separate from `showVoiceSheet`: the
     /// two voice modes never run at once.
     @Published var showGeminiLiveSheet = false
+    @Published var showQwenLiveSheet = false
+
+    var isQwenLiveEnabled: Bool { loadVoiceProfilePreferences(profile: activeProfile).qwenLiveEnabled }
     /// A live mode whose provider still needs the user's OK after a call
     /// the phone wasn't showing (CarPlay, the Watch) stopped on it (#827):
     /// the phone asks on its own sheet.
@@ -2446,6 +2449,78 @@ final class AppState: ObservableObject {
     /// The host's memory for the next Gemini Live session, read when it
     /// starts so it reflects what Hermes has learned since the last one.
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
+    /// Where Qwen Live's quick lookups search on this profile.
+    var qwenLiveSearchMode: GeminiLiveSearchMode {
+        loadVoiceProfilePreferences(profile: activeProfile).qwenLiveSearch ?? .automatic
+    }
+
+    /// Applies from the next Qwen Live conversation.
+    func setQwenLiveSearchMode(_ mode: GeminiLiveSearchMode) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: GeminiLiveSearchMode? = mode == .automatic ? nil : mode
+        guard preferences.qwenLiveSearch != stored else { return }
+        objectWillChange.send()
+        preferences.qwenLiveSearch = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The prebuilt voice Qwen Live speaks with on this profile; nil is
+    /// Gemini's default voice.
+    var qwenLiveVoice: String? {
+        loadVoiceProfilePreferences(profile: activeProfile).qwenLiveVoice
+    }
+
+    /// Applies from the next Qwen Live conversation.
+    func setQwenLiveVoice(_ voice: String?) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored = voice.flatMap { $0.isEmpty ? nil : $0 }
+        guard preferences.qwenLiveVoice != stored else { return }
+        objectWillChange.send()
+        preferences.qwenLiveVoice = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The search the next Qwen Live session uses, resolved when it
+    /// starts (automatic asks the host whether it has a search backend).
+    private var qwenLiveSearchSource: GeminiLiveSearchSource = .none
+
+    /// Whether Qwen Live gets the Hermes host's memory on this profile.
+    /// Off until the user turns it on: it sends that memory to Alibaba Cloud.
+    var qwenLiveMemoryEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).qwenLiveMemory ?? false
+    }
+
+    /// Applies from the next Qwen Live conversation.
+    func setQwenLiveMemoryEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.qwenLiveMemory != stored else { return }
+        objectWillChange.send()
+        preferences.qwenLiveMemory = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// Whether Qwen Live speaks as the profile's SOUL.md persona. Off
+    /// until the user turns it on: it sends SOUL.md to Alibaba Cloud.
+    var qwenLivePersonalityEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).qwenLivePersonality ?? false
+    }
+
+    /// Applies from the next Qwen Live conversation.
+    func setQwenLivePersonalityEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.qwenLivePersonality != stored else { return }
+        objectWillChange.send()
+        preferences.qwenLivePersonality = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The profile's persona for the next Qwen Live session.
+    private var qwenLivePersonality: String?
+    /// The host's memory for the next Qwen Live session, read when it
+    /// starts so it reflects what Hermes has learned since the last one.
+    private var qwenLiveMemoryContext: GeminiLiveMemoryContext?
     /// The transcript `submitVoiceTranscript` is submitting, while it is.
     private var spokenSubmissionText: String?
     /// The phone's change cards waiting when the user last sent words; nil
@@ -2476,6 +2551,11 @@ final class AppState: ObservableObject {
         return mode.resolved(hermesAvailable: hermesAvailable)
     }
 
+    private func resolveQwenLiveSearchSource() async -> GeminiLiveSearchSource {
+        guard qwenLiveSearchMode != .off else { return .none }
+        return await qwenLiveTokenClient.webSearchAvailable() ? .hermes : .none
+    }
+
     func setGeminiLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.geminiLiveEnabled != enabled else { return }
@@ -2483,17 +2563,43 @@ final class AppState: ObservableObject {
         preferences.geminiLiveEnabled = enabled
         // One live voice engine per profile: turning Gemini on turns the others off.
         if enabled {
+            preferences.qwenLiveEnabled = false
             preferences.gptLiveEnabled = false
             preferences.grokLiveEnabled = false
             preferences.localLiveEnabled = false
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeQwenLiveConversation()
             closeGPTLiveConversation()
             closeGrokLiveConversation()
             closeLocalLiveConversation()
         } else {
             closeGeminiLiveConversation()
+        }
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+    }
+
+    func setQwenLiveEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.qwenLiveEnabled != enabled else { return }
+        objectWillChange.send()
+        preferences.qwenLiveEnabled = enabled
+        // One live voice engine per profile: turning Qwen on turns the others off.
+        if enabled {
+            preferences.geminiLiveEnabled = false
+            preferences.gptLiveEnabled = false
+            preferences.grokLiveEnabled = false
+            preferences.localLiveEnabled = false
+        }
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        if enabled {
+            closeGeminiLiveConversation()
+            closeGPTLiveConversation()
+            closeGrokLiveConversation()
+            closeLocalLiveConversation()
+        } else {
+            closeQwenLiveConversation()
         }
         CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
@@ -2507,33 +2613,48 @@ final class AppState: ObservableObject {
         return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
     })
 
+    lazy var qwenLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+        self?.activeProfile ?? "default"
+    }, provider: { .qwen }, request: { [weak self] path, method, body, timeout in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+    })
+
     /// Built on first use only: boundaries that merely check whether Gemini
     /// Live is running must not construct its audio engines.
     private var geminiLiveControllerCreated = false
+    private var qwenLiveControllerCreated = false
+    var isQwenLiveActive: Bool { qwenLiveControllerCreated && qwenLiveController.isActive }
 
     /// Whether a Gemini Live conversation is running, without creating one.
     var isGeminiLiveActive: Bool {
         geminiLiveControllerCreated && geminiLiveController.isActive
     }
 
-    lazy var geminiLiveController: GeminiLiveConversationController = {
-        geminiLiveControllerCreated = true
-        let tokens = geminiLiveTokenClient
+    lazy var geminiLiveController = makeDirectLiveController(provider: .gemini)
+    lazy var qwenLiveController = makeDirectLiveController(provider: .qwen)
+
+    /// Provider-specific state and credentials, shared audio/tool machinery.
+    private func makeDirectLiveController(provider: DirectLiveProvider) -> GeminiLiveConversationController {
+        let qwen = provider == .qwen
+        let mode: LiveVoiceModeName = qwen ? .qwenLive : .geminiLive
+        if qwen { qwenLiveControllerCreated = true } else { geminiLiveControllerCreated = true }
+        let tokens = qwen ? qwenLiveTokenClient : geminiLiveTokenClient
         let audio = makeLiveVoiceAudio(outputSampleRate: GeminiLiveProtocol.outputSampleRate)
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
-                let search = self?.geminiLiveSearchSource ?? .google
-                let memory = self?.geminiLiveMemoryContext
+                let search = qwen ? (self?.qwenLiveSearchSource ?? .none) : (self?.geminiLiveSearchSource ?? .google)
+                let memory = qwen ? self?.qwenLiveMemoryContext : self?.geminiLiveMemoryContext
                 return GeminiLiveSession(
                     tokens: tokens,
                     systemInstruction: GeminiLiveConversationController.instructions(
                         search: search,
                         memory: memory,
-                        personality: self?.geminiLivePersonality,
+                        personality: qwen ? self?.qwenLivePersonality : self?.geminiLivePersonality,
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
-                        + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: .geminiLive) } ?? "")
+                        + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
                         + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -2547,7 +2668,7 @@ final class AppState: ObservableObject {
                         jobApprovals: true
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     googleSearch: search == .google,
-                    voice: self?.geminiLiveVoice
+                    voice: qwen ? self?.qwenLiveVoice : self?.geminiLiveVoice
                 )
             },
             availability: { [weak self] in
@@ -2556,24 +2677,33 @@ final class AppState: ObservableObject {
                 // a newly configured host backend applies on the next one.
                 // The host calls run together: one after another they
                 // stacked four round trips in front of every connection.
-                let wantsMemory = self.geminiLiveMemoryEnabled
-                let wantsPersonality = self.geminiLivePersonalityEnabled
-                async let search = self.resolveGeminiLiveSearchSource()
+                let wantsMemory = qwen ? self.qwenLiveMemoryEnabled : self.geminiLiveMemoryEnabled
+                let wantsPersonality = qwen ? self.qwenLivePersonalityEnabled : self.geminiLivePersonalityEnabled
+                async let search = qwen ? self.resolveQwenLiveSearchSource() : self.resolveGeminiLiveSearchSource()
                 async let memory = wantsMemory ? tokens.memoryContext() : nil
-                async let personality = wantsPersonality ? tokens.personality() : nil
-                async let hostTools: Void = self.prepareVoiceHostTools(for: .geminiLive)
+                async let loadedPersonality = wantsPersonality ? tokens.personality() : nil
+                async let hostTools: Void = self.prepareVoiceHostTools(for: mode)
                 let status = try await tokens.availability()
                 // Unavailable: return now; leaving scope cancels the other
                 // calls instead of waiting on them.
                 guard status.isAvailable else { return status }
-                self.geminiLiveSearchSource = await search
-                self.geminiLiveMemoryContext = await memory
-                self.geminiLivePersonality = await personality
+                let resolvedSearch = await search
+                let resolvedMemory = await memory
+                let resolvedPersonality = await loadedPersonality
+                if qwen {
+                    self.qwenLiveSearchSource = resolvedSearch
+                    self.qwenLiveMemoryContext = resolvedMemory
+                    self.qwenLivePersonality = resolvedPersonality
+                } else {
+                    self.geminiLiveSearchSource = resolvedSearch
+                    self.geminiLiveMemoryContext = resolvedMemory
+                    self.geminiLivePersonality = resolvedPersonality
+                }
                 await hostTools
                 return status
             },
             // Fails closed: without the app state, the stored answer decides.
-            missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.geminiLive) ?? LiveVoiceProviderConsent.missing(.geminiLive) },
+            missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(mode) ?? LiveVoiceProviderConsent.missing(mode) },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
             input: audio.input,
             output: audio.output,
@@ -2583,12 +2713,15 @@ final class AppState: ObservableObject {
                 return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
-            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
+            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
+            provider: provider
         )
         // A hands-free goodbye closes the sheet like the Close button.
-        controller.onEndConversation = { [weak self] in self?.closeGeminiLiveConversation() }
+        controller.onEndConversation = { [weak self] in
+            if qwen { self?.closeQwenLiveConversation() } else { self?.closeGeminiLiveConversation() }
+        }
         return controller
-    }()
+    }
 
     /// Opens Gemini Live instead of the classic Voice conversation. The
     /// classic conversation (and Read Aloud) is closed first so the two
@@ -2598,6 +2731,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
@@ -2628,6 +2762,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
@@ -2699,6 +2834,117 @@ final class AppState: ObservableObject {
         closeGeminiLiveConversation()
     }
 
+    /// Opens Qwen Live instead of the classic Voice conversation. The
+    /// classic conversation (and Read Aloud) is closed first so the two
+    /// modes never share the audio session.
+    @discardableResult
+    func openQwenLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
+        guard isConnected else { return false }
+        messageReadAloudController.stop()
+        if showVoiceSheet { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        stopGrokLiveConversation()
+        stopLocalLiveConversation()
+        showSidebar = false
+        if minimisedLiveVoice == .qwenLive { minimisedLiveVoice = nil }
+        showQwenLiveSheet = true
+        if !qwenLiveController.isActive {
+            qwenLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // A new call is attached to the chat it was started from; a
+            // running one keeps what it had.
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+            beginVoiceCallRecording(engine: .qwenLive)
+            CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
+            let waited = liveCallOpens(.qwenLive)
+            Task {
+                // Not if it was called off on its waiting screen meanwhile.
+                guard !waited || waitedCallStarts(.qwenLive) else { return }
+                await qwenLiveController.start()
+            }
+        }
+        return true
+    }
+
+    /// Starts Qwen Live for the CarPlay surface. CarPlay presents it, so
+    /// no phone sheet opens; the classic conversation and read aloud stop
+    /// first, as on the phone.
+    func startQwenLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        stopGrokLiveConversation()
+        stopLocalLiveConversation()
+        guard !qwenLiveController.isActive else { return }
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
+        beginVoiceCallRecording(engine: .qwenLive)
+        await qwenLiveController.start()
+    }
+
+    /// CarPlay went away. A Qwen Live conversation only CarPlay was
+    /// presenting ends; one the phone's sheet or minimised bar shows keeps going. A
+    /// conversation that already failed drops its memory and persona too:
+    /// nothing presents it, so nothing would close it.
+    func releaseCarPlayQwenLive() {
+        guard !(isSceneActive && (showQwenLiveSheet || minimisedLiveVoice == .qwenLive)) else { return }
+        if isQwenLiveActive {
+            closeQwenLiveConversation()
+        } else {
+            // Its work lets go of the call too (#449).
+            finishHermesCallbacks(engine: .qwenLive)
+            dropQwenLiveHostContext()
+            if voiceCallRecorder?.engine == .qwenLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .qwenLive { minimisedLiveVoice = nil }
+        }
+    }
+
+    func closeQwenLiveConversation() {
+        callOffWaitingCall(.qwenLive)
+        // Before the call stops, while its transcript still reads (#449).
+        finishHermesCallbacks(engine: .qwenLive)
+        if qwenLiveControllerCreated { qwenLiveController.stop() }
+        showQwenLiveSheet = false
+        if minimisedLiveVoice == .qwenLive { minimisedLiveVoice = nil }
+        voiceBackgroundJobSupervisor.detachLiveThread()
+        dropQwenLiveHostContext()
+        if voiceCallRecorder?.engine == .qwenLive { finishVoiceCallRecording() }
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropQwenLiveHostContext() {
+        qwenLiveMemoryContext = nil
+        qwenLivePersonality = nil
+    }
+
+    /// Boundary teardown (disconnect, server/profile change, forced
+    /// sign-out). Background jobs are retired by the same boundaries.
+    private func stopQwenLiveConversation() {
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showQwenLiveSheet || minimisedLiveVoice == .qwenLive || isQwenLiveActive else {
+            dropQwenLiveHostContext()
+            // Its recording still closes, so the call is saved, and its
+            // work lets go of the call (#449).
+            if voiceCallRecorder?.engine == .qwenLive { finishVoiceCallRecording() }
+            finishHermesCallbacks(engine: .qwenLive)
+            // Not while another mode's call runs: it may be attached.
+            if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
+            return
+        }
+        releaseWaitingCall(.qwenLive)
+        closeQwenLiveConversation()
+    }
+
     // MARK: GPT-Live voice mode
 
     /// Presents the GPT-Live sheet. Separate from the classic and Gemini Live
@@ -2709,22 +2955,24 @@ final class AppState: ObservableObject {
     /// Voice mode (off by default), never on together with Gemini Live.
     var isGPTLiveEnabled: Bool {
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        return preferences.gptLiveEnabled && !preferences.geminiLiveEnabled
+        return preferences.gptLiveEnabled && !preferences.qwenLiveEnabled && !preferences.geminiLiveEnabled
     }
 
     func setGPTLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        guard preferences.gptLiveEnabled != enabled || (enabled && (preferences.geminiLiveEnabled || preferences.grokLiveEnabled || preferences.localLiveEnabled)) else { return }
+        guard preferences.gptLiveEnabled != enabled || (enabled && (preferences.qwenLiveEnabled || preferences.geminiLiveEnabled || preferences.grokLiveEnabled || preferences.localLiveEnabled)) else { return }
         objectWillChange.send()
         preferences.gptLiveEnabled = enabled
         // One live voice engine per profile: turning GPT-Live on turns the others off.
         if enabled {
+            preferences.qwenLiveEnabled = false
             preferences.geminiLiveEnabled = false
             preferences.grokLiveEnabled = false
             preferences.localLiveEnabled = false
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGrokLiveConversation()
             closeLocalLiveConversation()
@@ -2989,6 +3237,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
@@ -3019,6 +3268,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
@@ -3101,23 +3351,25 @@ final class AppState: ObservableObject {
     /// Voice mode (off by default), never on together with another live mode.
     var isGrokLiveEnabled: Bool {
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        return preferences.grokLiveEnabled && !preferences.geminiLiveEnabled && !preferences.gptLiveEnabled
+        return preferences.grokLiveEnabled && !preferences.qwenLiveEnabled && !preferences.geminiLiveEnabled && !preferences.gptLiveEnabled
     }
 
     func setGrokLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let othersOn = preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.localLiveEnabled
+        let othersOn = preferences.qwenLiveEnabled || preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.localLiveEnabled
         guard preferences.grokLiveEnabled != enabled || (enabled && othersOn) else { return }
         objectWillChange.send()
         preferences.grokLiveEnabled = enabled
         // One live voice engine per profile: turning Grok Live on turns the others off.
         if enabled {
+            preferences.qwenLiveEnabled = false
             preferences.geminiLiveEnabled = false
             preferences.gptLiveEnabled = false
             preferences.localLiveEnabled = false
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()
             closeLocalLiveConversation()
@@ -3292,6 +3544,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopLocalLiveConversation()
@@ -3325,6 +3578,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopLocalLiveConversation()
@@ -3411,7 +3665,7 @@ final class AppState: ObservableObject {
     /// another live mode.
     var isLocalLiveEnabled: Bool {
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        return preferences.localLiveEnabled && !preferences.geminiLiveEnabled
+        return preferences.localLiveEnabled && !preferences.qwenLiveEnabled && !preferences.geminiLiveEnabled
             && !preferences.gptLiveEnabled && !preferences.grokLiveEnabled
     }
 
@@ -3465,18 +3719,20 @@ final class AppState: ObservableObject {
 
     func setLocalLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let othersOn = preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled
+        let othersOn = preferences.qwenLiveEnabled || preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled
         guard preferences.localLiveEnabled != enabled || (enabled && othersOn) else { return }
         objectWillChange.send()
         preferences.localLiveEnabled = enabled
         // One live voice engine per profile: turning Local Live on turns the others off.
         if enabled {
+            preferences.qwenLiveEnabled = false
             preferences.geminiLiveEnabled = false
             preferences.gptLiveEnabled = false
             preferences.grokLiveEnabled = false
         }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         if enabled {
+            closeQwenLiveConversation()
             closeGeminiLiveConversation()
             closeGPTLiveConversation()
             closeGrokLiveConversation()
@@ -3678,6 +3934,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -3882,7 +4139,9 @@ final class AppState: ObservableObject {
         )
         supervisor.onNoticePending = { [weak self] in
             guard let self else { return }
-            if self.isGeminiLiveActive {
+            if self.isQwenLiveActive {
+                self.qwenLiveController.deliverPendingJobUpdates()
+            } else if self.isGeminiLiveActive {
                 self.geminiLiveController.deliverPendingJobUpdates()
             } else if self.isGPTLiveActive {
                 self.gptLiveController.deliverPendingJobUpdates()
@@ -3916,6 +4175,7 @@ final class AppState: ObservableObject {
         }
         supervisor.liveCallTranscript = { [weak self] in
             guard let self else { return nil }
+            if self.isQwenLiveActive { return self.qwenLiveController.transcript }
             if self.isGeminiLiveActive { return self.geminiLiveController.transcript }
             if self.isGPTLiveActive { return self.gptLiveController.transcript }
             if self.isGrokLiveActive { return self.grokLiveController.transcript }
@@ -3924,7 +4184,7 @@ final class AppState: ObservableObject {
         }
         supervisor.liveCallScreenIsVisible = { [weak self] in
             guard let self else { return false }
-            return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet || self.showLocalLiveSheet)
+            return self.isSceneActive && (self.showQwenLiveSheet || self.showGeminiLiveSheet || self.showGrokLiveSheet || self.showLocalLiveSheet)
         }
         supervisor.openChat = { [weak self] match in
             self?.openChatFromLiveCall(match.sessionID) ?? false
@@ -6477,6 +6737,14 @@ final class AppState: ObservableObject {
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+        } else if isQwenLiveEnabled {
+            mode = "Qwen Live"
+            text = GeminiLiveConversationController.instructions(
+                search: qwenLiveSearchMode == .off ? .none : qwenLiveSearchSource,
+                memory: qwenLiveMemoryEnabled ? placeholderMemory : nil,
+                personality: qwenLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
+            )
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(
@@ -6542,6 +6810,7 @@ final class AppState: ObservableObject {
         case .call:
             switch tag.engine.flatMap(VoiceCallEngine.init(rawValue:)) {
             case .geminiLive?: return AppLocalization.string("Gemini Live")
+            case .qwenLive?: return AppLocalization.string("Qwen Live")
             case .gptLive?: return AppLocalization.string("GPT-Live")
             case .grokLive?: return AppLocalization.string("Grok Live")
             case .localLive?: return AppLocalization.string("Local Live")
@@ -6731,6 +7000,7 @@ final class AppState: ObservableObject {
         let transcript: AnyPublisher<Void, Never>
         switch engine {
         case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .qwenLive: transcript = qwenLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
         case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
         case .grokLive: transcript = grokLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
         case .localLive: transcript = localLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
@@ -6779,6 +7049,7 @@ final class AppState: ObservableObject {
     private func liveVoiceTranscript(_ engine: VoiceCallEngine) -> [VoiceConversationTranscriptEntry] {
         switch engine {
         case .geminiLive: return geminiLiveControllerCreated ? geminiLiveController.transcript : []
+        case .qwenLive: return qwenLiveControllerCreated ? qwenLiveController.transcript : []
         case .gptLive: return gptLiveControllerCreated ? gptLiveController.transcript : []
         case .grokLive: return grokLiveControllerCreated ? grokLiveController.transcript : []
         case .localLive: return localLiveControllerCreated ? localLiveController.transcript : []
@@ -6791,6 +7062,9 @@ final class AppState: ObservableObject {
         case .geminiLive:
             guard geminiLiveControllerCreated else { return }
             recorder.capture(geminiLiveController.transcript, unsettled: geminiLiveController.unsettledTranscriptEntryIDs)
+        case .qwenLive:
+            guard qwenLiveControllerCreated else { return }
+            recorder.capture(qwenLiveController.transcript, unsettled: qwenLiveController.unsettledTranscriptEntryIDs)
         case .gptLive:
             guard gptLiveControllerCreated else { return }
             recorder.capture(gptLiveController.transcript, unsettled: gptLiveController.unsettledTranscriptEntryIDs)
@@ -7599,16 +7873,17 @@ final class AppState: ObservableObject {
     /// Whether Resume Call has a live voice mode to resume with.
     var canResumeVoiceCall: Bool {
         // With saving off, a resumed call couldn't add to the row.
-        isConnected && voiceCallSavingEnabled && (isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled) && !isLiveVoiceCallActive
+        isConnected && voiceCallSavingEnabled && (isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled) && !isLiveVoiceCallActive
     }
 
     /// A live call is already running; opening another would only surface it.
     /// Queued saves wait for it to end.
-    var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive || isLocalLiveActive }
+    var isLiveVoiceCallActive: Bool { isQwenLiveActive || isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive || isLocalLiveActive }
 
     /// Hangs up the live call that's running, shown or minimised, as its
     /// End button does.
     func endLiveVoiceCall() {
+        if isQwenLiveActive || showQwenLiveSheet || minimisedLiveVoice == .qwenLive { closeQwenLiveConversation() }
         if isGeminiLiveActive || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
         if isGPTLiveActive || showGPTLiveSheet || minimisedLiveVoice == .gptLive { closeGPTLiveConversation() }
         if isGrokLiveActive || showGrokLiveSheet || minimisedLiveVoice == .grokLive { closeGrokLiveConversation() }
@@ -7654,6 +7929,7 @@ final class AppState: ObservableObject {
         // A call CarPlay shows has nowhere to show the chat; the model says
         // it couldn't open it, as show_on_screen refuses there.
         guard isConnected, client != nil, !isCarPlayVoiceSurfaceActive else { return false }
+        if showQwenLiveSheet { showQwenLiveSheet = false }
         if showGeminiLiveSheet { showGeminiLiveSheet = false }
         if showGPTLiveSheet { showGPTLiveSheet = false }
         if showGrokLiveSheet { showGrokLiveSheet = false }
@@ -7709,6 +7985,7 @@ final class AppState: ObservableObject {
         waitingCall = WaitingCall(engine: engine, owner: owner)
         switch engine {
         case .geminiLive: showGeminiLiveSheet = true
+        case .qwenLive: showQwenLiveSheet = true
         case .gptLive: showGPTLiveSheet = true
         case .grokLive: showGrokLiveSheet = true
         case .localLive: showLocalLiveSheet = true
@@ -7805,6 +8082,7 @@ final class AppState: ObservableObject {
     /// or another live mode's.
     func isVoiceScreenShown(otherThan engine: VoiceCallEngine) -> Bool {
         showVoiceSheet
+            || (engine != .qwenLive && showQwenLiveSheet)
             || (engine != .geminiLive && showGeminiLiveSheet)
             || (engine != .gptLive && showGPTLiveSheet)
             || (engine != .grokLive && showGrokLiveSheet)
@@ -7820,6 +8098,7 @@ final class AppState: ObservableObject {
         guard let engine = minimisedLiveVoice else { return }
         switch engine {
         case .geminiLive: showGeminiLiveSheet = true
+        case .qwenLive: showQwenLiveSheet = true
         case .gptLive: showGPTLiveSheet = true
         case .grokLive: showGrokLiveSheet = true
         case .localLive: showLocalLiveSheet = true
@@ -7836,6 +8115,7 @@ final class AppState: ObservableObject {
     func isLiveVoiceCallActive(_ engine: VoiceCallEngine) -> Bool {
         switch engine {
         case .geminiLive: return isGeminiLiveActive
+        case .qwenLive: return isQwenLiveActive
         case .gptLive: return isGPTLiveActive
         case .grokLive: return isGrokLiveActive
         case .localLive: return isLocalLiveActive
@@ -8258,6 +8538,7 @@ final class AppState: ObservableObject {
     private func closeLiveVoiceConversation(_ engine: VoiceCallEngine) {
         switch engine {
         case .geminiLive: closeGeminiLiveConversation()
+        case .qwenLive: closeQwenLiveConversation()
         case .gptLive: closeGPTLiveConversation()
         case .grokLive: closeGrokLiveConversation()
         case .localLive: closeLocalLiveConversation()
@@ -8312,7 +8593,9 @@ final class AppState: ObservableObject {
         // A call started from a chat goes back to that chat.
         let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
         let started: Bool
-        if isGeminiLiveEnabled {
+        if isQwenLiveEnabled {
+            started = openQwenLiveConversation(attachingTo: thread)
+        } else if isGeminiLiveEnabled {
             started = openGeminiLiveConversation(attachingTo: thread)
         } else if isGrokLiveEnabled {
             started = openGrokLiveConversation(attachingTo: thread)
@@ -9181,7 +9464,7 @@ final class AppState: ObservableObject {
     /// over the preferred return surface.
     var isModalSheetPresented: Bool {
         showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
-            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet || isSettingsSheetPresented
+            || showAgentsSheet || showVoiceSheet || showQwenLiveSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet || isSettingsSheetPresented
     }
 
     /// True when an explicit destination exists but has not been routed yet
@@ -11054,6 +11337,7 @@ final class AppState: ObservableObject {
             "Server replacement \(previousIdentity, privacy: .private) -> \(identity, privacy: .private): retiring speech ownership (voiceLive=\(voiceWasLive ? "yes" : "no", privacy: .public), readAloudActive=\(readAloudWasActive ? "yes" : "no", privacy: .public))"
         )
         voiceConversationController.stop()
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -12461,6 +12745,7 @@ final class AppState: ObservableObject {
         dashboardTicketBridge = nil
         notifierPlugin = freshNotifierPluginStatus
         voiceConversationController.stop()
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -13586,6 +13871,7 @@ final class AppState: ObservableObject {
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
         voiceConversationController.stop()
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -28450,7 +28736,8 @@ final class AppState: ObservableObject {
                 saveVoiceProfilePreferences(preferences, profile: activeProfile)
             }
             voiceConversationController.stop()
-            stopGeminiLiveConversation()
+            stopQwenLiveConversation()
+        stopGeminiLiveConversation()
             stopGPTLiveConversation()
             stopGrokLiveConversation()
             stopLocalLiveConversation()
@@ -28743,6 +29030,7 @@ final class AppState: ObservableObject {
             saveVoiceProfilePreferences(preferences, profile: activeProfile)
         }
         voiceConversationController.stop()
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -32737,7 +33025,7 @@ final class AppState: ObservableObject {
     /// own; classic-only surfaces (suspension restore, provider tests) keep
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
-        if isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled {
+        if isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled {
             return isConnected ? nil : VoiceSetupIssue.notConnected.message
         }
         return voiceUnavailableReason
@@ -32760,7 +33048,7 @@ final class AppState: ObservableObject {
     /// `setVoiceEnabled` and the first setup in `refreshVoiceCapabilities`,
     /// the only writers of the persisted key.
     var showsComposerVoiceButton: Bool {
-        persistedVoiceEnabled(profile: activeProfile) || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled
+        persistedVoiceEnabled(profile: activeProfile) || isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled
     }
 
     /// The profile's saved Voice switch. Voice is on out of the box, so a
@@ -33094,6 +33382,7 @@ final class AppState: ObservableObject {
     func configuredLiveVoiceEngine(profile: String, gateway: String? = nil) -> VoiceCallEngine? {
         let preferences = loadVoiceProfilePreferences(profile: profile, gateway: gateway)
         if preferences.geminiLiveEnabled { return .geminiLive }
+        if preferences.qwenLiveEnabled { return .qwenLive }
         if preferences.gptLiveEnabled { return .gptLive }
         if preferences.grokLiveEnabled { return .grokLive }
         if preferences.localLiveEnabled { return .localLive }
@@ -33146,7 +33435,8 @@ final class AppState: ObservableObject {
         // Classic voice works in the open chat; a live call in its attached one.
         let classicWasOpen = showVoiceSheet
         let thread = classicWasOpen ? liveVoiceThreadForOpenChat() : voiceBackgroundJobSupervisor.liveThread
-        let shownLiveScreen: VoiceCallEngine? = showGeminiLiveSheet ? .geminiLive
+        let shownLiveScreen: VoiceCallEngine? = showQwenLiveSheet ? .qwenLive
+            : showGeminiLiveSheet ? .geminiLive
             : showGPTLiveSheet ? .gptLive
             : showGrokLiveSheet ? .grokLive
             : showLocalLiveSheet ? .localLive
@@ -33186,6 +33476,7 @@ final class AppState: ObservableObject {
         guard case .proceed(let thread) = await handOffVoiceMode(to: choice) else { return }
         switch choice.engine {
         case .geminiLive: openGeminiLiveConversation(attachingTo: thread)
+        case .qwenLive: openQwenLiveConversation(attachingTo: thread)
         case .gptLive: openGPTLiveConversation(attachingTo: thread)
         case .grokLive: openGrokLiveConversation(attachingTo: thread)
         case .localLive: openLocalLiveConversation(attachingTo: thread)
@@ -33220,11 +33511,13 @@ final class AppState: ObservableObject {
     func applyVoiceMode(_ choice: VoiceModeChoice) {
         switch choice {
         case .classic:
+            setQwenLiveEnabled(false)
             setGeminiLiveEnabled(false)
             setGPTLiveEnabled(false)
             setGrokLiveEnabled(false)
             setLocalLiveEnabled(false)
         case .gemini: setGeminiLiveEnabled(true)
+        case .qwen: setQwenLiveEnabled(true)
         case .gpt: setGPTLiveEnabled(true)
         case .grok: setGrokLiveEnabled(true)
         case .local:
@@ -33289,6 +33582,7 @@ final class AppState: ObservableObject {
             }
             switch liveEngine {
             case .geminiLive: return openGeminiLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .qwenLive: return openQwenLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
             case .gptLive: return openGPTLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
             case .grokLive: return openGrokLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
             case .localLive: return openLocalLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
@@ -33364,6 +33658,7 @@ final class AppState: ObservableObject {
     ) async -> VoiceConversationPrepareOutcome {
         // The classic conversation (e.g. CarPlay) takes over from Gemini
         // Live: the two voice modes never run at once.
+        stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
@@ -33677,7 +33972,7 @@ final class AppState: ObservableObject {
     /// functions and voice. The call has no attached chat and no phone
     /// screen, so it gets no chat tools and no resume context. `target`:
     /// the call from Hermes it answers, which it opens with.
-    func prepareWatchDirectCall(answering target: ConduitNotificationTarget? = nil) async throws -> WatchDirectPlan {
+    func prepareWatchDirectCall(answering target: ConduitNotificationTarget? = nil, provider: DirectLiveProvider = .gemini) async throws -> WatchDirectPlan {
         // Woken (or launched) by the Watch with no phone screen up.
         if isSceneActive, !PhoneScenePresence.isInForeground {
             isSceneActive = false
@@ -33690,18 +33985,19 @@ final class AppState: ObservableObject {
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
         // Every lookup below goes to the connection active now.
         let connection = watchDirectConnection
-        let tokens = geminiLiveTokenClient
-        let wantsMemory = geminiLiveMemoryEnabled
-        let wantsPersonality = geminiLivePersonalityEnabled
-        async let searchLookup = resolveGeminiLiveSearchSource()
+        let qwen = provider == .qwen
+        let tokens = qwen ? qwenLiveTokenClient : geminiLiveTokenClient
+        let wantsMemory = qwen ? qwenLiveMemoryEnabled : geminiLiveMemoryEnabled
+        let wantsPersonality = qwen ? qwenLivePersonalityEnabled : geminiLivePersonalityEnabled
+        async let searchLookup = qwen ? resolveQwenLiveSearchSource() : resolveGeminiLiveSearchSource()
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
-        async let hostToolsLookup = watchCallHostTools(for: .geminiLive)
+        async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive)
         let status = try await tokens.availability()
-        noteWatchCallVoice(.geminiLive, ready: status.isAvailable)
+        noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
+            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.unavailable(reason: nil).userFacingReason(for: provider)!)
         }
         let search = await searchLookup
         let memory = await memoryLookup
@@ -33740,7 +34036,7 @@ final class AppState: ObservableObject {
                 chats: true
             ),
             googleSearch: search == .google,
-            voice: geminiLiveVoice,
+            voice: qwen ? qwenLiveVoice : geminiLiveVoice,
             openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
             token: token,
             connection: connection,
@@ -34018,11 +34314,11 @@ final class AppState: ObservableObject {
     }
 
     /// A single-use token for the Watch call's next connection.
-    func watchDirectToken() async throws -> GeminiLiveToken {
+    func watchDirectToken(provider: DirectLiveProvider = .gemini) async throws -> GeminiLiveToken {
         guard await connectForWatchDirectCall(timeout: WatchDirectBroker.connectWait) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
-        return try await geminiLiveTokenClient.freshToken()
+        return try await (provider == .qwen ? qwenLiveTokenClient : geminiLiveTokenClient).freshToken()
     }
 
     /// Reconnects to Hermes if the phone's suspension dropped the
@@ -34362,7 +34658,7 @@ final class AppState: ObservableObject {
 
     /// A call or Voice conversation is open: synced preferences wait.
     var holdsSyncedVoicePreferences: Bool {
-        showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
+        showVoiceSheet || showQwenLiveSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
             || hasActiveVoiceSurface || voiceConversationController.hasLiveVoiceSession
     }
 

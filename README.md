@@ -1,5 +1,8 @@
 # Hermes Conduit
 
+Qwen Live is an independently selectable provider alongside Gemini Live.
+See [setup and validation limits](docs/QWEN_LIVE.md).
+
 A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
 
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)
@@ -29,7 +32,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 **Voice**
 
-- Live voice calls with Gemini Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
+- Live voice calls with Gemini Live, Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
 - Start, check and cancel Hermes jobs by voice; results come back into the call
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
@@ -194,7 +197,7 @@ Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer
 - `Conduit/Services/AppState.swift` (and its `AppState+*.swift` extensions) - state and session lifecycle
 - `Conduit/Views/V2/` - the app shell: Chats, Tasks, Bots, Settings
-- `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, GPT-Live, Grok Live, Local Live)
+- `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live)
 - `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
 - `ConduitWatch/` - the Apple Watch app
 - `Shared/` - code shared with the extensions and the Watch
@@ -202,7 +205,7 @@ Key places:
 
 ## Privacy
 
-Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
+Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
 
 The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/privacy/) says what each party receives.
 

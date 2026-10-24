@@ -426,8 +426,8 @@ extension VoiceConversationControllerTests {
             tokens: tokens,
             systemInstruction: "test",
             functions: GeminiLiveToolBridge.functionDeclarations,
-            openSocket: { url in
-                let socket = FakeGeminiLiveSocket(url: url)
+            openSocket: { request in
+                let socket = FakeGeminiLiveSocket(url: request.url!)
                 socket.upgradeRefusal = upgradeRefusal
                 sockets.append(socket)
                 return socket
@@ -2364,8 +2364,8 @@ extension HermesVoiceGatewayTimeoutTests {
             systemInstruction: "test",
             functions: GeminiLiveToolBridge.declarations(webSearch: true),
             googleSearch: false,
-            openSocket: { url in
-                let socket = FakeGeminiLiveSocket(url: url)
+            openSocket: { request in
+                let socket = FakeGeminiLiveSocket(url: request.url!)
                 sockets.append(socket)
                 return socket
             },

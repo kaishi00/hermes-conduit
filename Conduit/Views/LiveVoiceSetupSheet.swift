@@ -3,12 +3,14 @@ import SwiftUI
 struct LiveVoiceSetupSheet: View {
     enum Mode {
         case gemini
+        case qwen
         case gpt
         case grok
 
         var checkTitle: String {
             switch self {
             case .gemini: AppLocalization.string("Check Gemini Live")
+            case .qwen: AppLocalization.string("Check Qwen Live")
             case .gpt: AppLocalization.string("Check GPT-Live")
             case .grok: AppLocalization.string("Check Grok Live")
             }
@@ -90,6 +92,23 @@ struct LiveVoiceSetupSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        case .qwen:
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(verbatim: "2")
+                        .font(.caption.weight(.bold))
+                        .conduitFixedGlyph()
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(Color.conduitAccent, in: Circle())
+                    Text(AppLocalization.string("Add a Qwen API key"))
+                        .font(.subheadline.weight(.semibold))
+                }
+                Text(AppLocalization.string("Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case .gpt:
             VStack(alignment: .leading, spacing: 6) {
                 NotificationSetupCommand(
@@ -126,6 +145,7 @@ struct LiveVoiceSetupLink: View {
     private var accessibilityTitle: String {
         switch mode {
         case .gemini: AppLocalization.string("Set up Gemini Live")
+        case .qwen: AppLocalization.string("Set up Qwen Live")
         case .gpt: AppLocalization.string("Set up GPT-Live")
         case .grok: AppLocalization.string("Set up Grok Live")
         }

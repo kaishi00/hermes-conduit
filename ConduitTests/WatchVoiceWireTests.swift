@@ -826,6 +826,29 @@ extension HermesVoiceGatewayTimeoutTests {
     /// late is saved where the call happened, and a replayed start_job
     /// doesn't reach Hermes twice.
     @MainActor
+    func testWatchDirectLedgerRestoresQwenAndOtherProviderIdentities() throws {
+        let suite = "WatchDirectLedger.Providers.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let connection = WatchDirectConnection(profile: "work", dashboard: "A")
+        var ledger = WatchDirectCallLedger(defaults: defaults)
+        for (index, mode) in LiveVoiceModeName.all.enumerated() {
+            ledger.begin(UInt32(index), connection: connection, saveCalls: true, mode: mode)
+        }
+        let restarted = WatchDirectCallLedger(defaults: defaults)
+        for (index, mode) in LiveVoiceModeName.all.enumerated() {
+            let call = try XCTUnwrap(restarted.call(UInt32(index)))
+            XCTAssertEqual(call.liveMode, mode)
+            XCTAssertEqual(call.directProvider, mode == .qwenLive ? .qwen : .gemini)
+        }
+        // Old ledgers still decode, retaining the legacy Google token route.
+        ledger.begin(100, connection: connection, saveCalls: true)
+        let legacy = try XCTUnwrap(WatchDirectCallLedger(defaults: defaults).call(100))
+        XCTAssertNil(legacy.liveMode)
+        XCTAssertEqual(legacy.directProvider, .gemini)
+    }
+
+    @MainActor
     func testWatchDirectCallLedgerKeepsEachCallsConnectionAcrossARestart() throws {
         let suite = "WatchDirectCallLedger.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

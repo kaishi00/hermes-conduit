@@ -29,6 +29,7 @@ struct VoiceSettingsRoute: View {
     let setStopPhrases: ([String]) -> Bool
     let setEndConversationPhrases: ([String]) -> Bool
     let geminiLive: GeminiLiveSettingsModel?
+    let qwenLive: GeminiLiveSettingsModel?
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
     let localLive: LocalLiveSettingsModel?
@@ -69,6 +70,7 @@ struct VoiceSettingsRoute: View {
         setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
         setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
+        qwenLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
         localLive: LocalLiveSettingsModel? = nil,
@@ -86,6 +88,7 @@ struct VoiceSettingsRoute: View {
         self.profileName = profileName
         self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
+        self.qwenLive = qwenLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.localLive = localLive
@@ -138,6 +141,7 @@ struct VoiceSettingsRoute: View {
             setStopPhrases: setStopPhrases,
             setEndConversationPhrases: setEndConversationPhrases,
             geminiLive: geminiLive,
+            qwenLive: qwenLive,
             gptLive: gptLive,
             grokLive: grokLive,
             localLive: localLive,
@@ -224,6 +228,7 @@ struct VoiceSettingsView: View {
     let setStopPhrases: ([String]) -> Bool
     let setEndConversationPhrases: ([String]) -> Bool
     var geminiLive: GeminiLiveSettingsModel?
+    var qwenLive: GeminiLiveSettingsModel?
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
     var localLive: LocalLiveSettingsModel?
@@ -277,6 +282,7 @@ struct VoiceSettingsView: View {
         setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
         setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
+        qwenLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
         localLive: LocalLiveSettingsModel? = nil,
@@ -293,6 +299,7 @@ struct VoiceSettingsView: View {
     ) {
         self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
+        self.qwenLive = qwenLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.localLive = localLive
@@ -332,7 +339,7 @@ struct VoiceSettingsView: View {
         self.savedSpeechOutput = speechOutput
         self.savedTranscriptionModeChosen = transcriptionModeChosen
         _microphonePermission = State(initialValue: AVAudioApplication.shared.recordPermission)
-        _voiceMode = State(initialValue: Self.mode(
+        _voiceMode = State(initialValue: qwenLive?.enabled == true ? .qwen : Self.mode(
             gemini: geminiLive?.enabled == true,
             gpt: gptLive?.enabled == true,
             grok: grokLive?.enabled == true,
@@ -766,7 +773,8 @@ struct VoiceSettingsView: View {
     /// The mode the profile's saved preferences say is on.
     private var modelVoiceMode: VoiceMode {
         // Local Live without agent mode is Classic's hands-free option.
-        Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true,
+        if qwenLive?.enabled == true { return .qwen }
+        return Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true,
                   local: localLive?.enabled == true && localLive?.agent == true)
     }
 
@@ -783,6 +791,7 @@ struct VoiceSettingsView: View {
             switch mode {
             case .classic: return true
             case .gemini: return geminiLive != nil
+            case .qwen: return qwenLive != nil
             case .gpt: return gptLive != nil
             case .grok: return grokLive != nil
             case .local: return localLive != nil
@@ -820,6 +829,11 @@ struct VoiceSettingsView: View {
             if let geminiLive {
                 GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false)
                 liveModeKey(Self.geminiKeys, note: AppLocalization.string("Gemini Live connects to Google with this key on your Hermes server."))
+            }
+        case .qwen:
+            if let qwenLive {
+                GeminiLiveSettingsSection(model: qwenLive, showsModeToggle: false)
+                liveModeKey(["DASHSCOPE_API_KEY"], note: AppLocalization.string("The permanent API key stays on your Hermes server."))
             }
         case .gpt:
             if let gptLive {
@@ -1170,11 +1184,13 @@ struct VoiceSettingsView: View {
         // live engine per profile); Classic is every live mode off.
         switch mode {
         case .classic:
+            qwenLive?.setEnabled(false)
             geminiLive?.setEnabled(false)
             gptLive?.setEnabled(false)
             grokLive?.setEnabled(false)
             localLive?.setEnabled(false)
         case .gemini: geminiLive?.setEnabled(true)
+        case .qwen: qwenLive?.setEnabled(true)
         case .gpt: gptLive?.setEnabled(true)
         case .grok: grokLive?.setEnabled(true)
         case .local:
@@ -2216,6 +2232,8 @@ private extension VoiceModeChoice {
             return AppLocalization.string("Hermes listens and replies with the speech to text and assistant voice set up above. Works with any Hermes server.")
         case .gemini:
             return AppLocalization.string("A real-time conversation with Gemini that hands the work to Hermes. Needs the Hermes notifier plugin and a Gemini key on your Hermes server.")
+        case .qwen:
+            return AppLocalization.string("A real-time conversation with Qwen that hands the work to Hermes. Needs the Hermes notifier plugin and a Qwen key on your Hermes server.")
         case .gpt:
             return AppLocalization.string("A real-time conversation on your Hermes server's ChatGPT sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
         case .grok:

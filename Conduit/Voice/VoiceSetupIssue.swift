@@ -14,6 +14,7 @@ import AVFoundation
 /// names them.
 enum LiveVoiceModeName: Equatable {
     case geminiLive
+    case qwenLive
     case gptLive
     case grokLive
     /// Local Live in agent mode: the host's fast model calls the tools.
@@ -22,6 +23,7 @@ enum LiveVoiceModeName: Equatable {
     var displayName: String {
         switch self {
         case .geminiLive: return "Gemini Live"
+        case .qwenLive: return AppLocalization.string("Qwen Live")
         case .gptLive: return "GPT-Live"
         case .grokLive: return "Grok Live"
         case .localLive: return AppLocalization.string("Local Live")
@@ -32,6 +34,7 @@ enum LiveVoiceModeName: Equatable {
     var storageID: String {
         switch self {
         case .geminiLive: return "gemini-live"
+        case .qwenLive: return "qwen-live"
         case .gptLive: return "gpt-live"
         case .grokLive: return "grok-live"
         case .localLive: return "local-live"
@@ -42,6 +45,7 @@ enum LiveVoiceModeName: Equatable {
     var company: String {
         switch self {
         case .geminiLive: return "Google"
+        case .qwenLive: return "Alibaba Cloud"
         case .gptLive: return "OpenAI"
         case .grokLive: return "xAI"
         // Whichever model the user set their Hermes host to run for it.
@@ -49,7 +53,7 @@ enum LiveVoiceModeName: Equatable {
         }
     }
 
-    static let all: [LiveVoiceModeName] = [.geminiLive, .gptLive, .grokLive, .localLive]
+    static let all: [LiveVoiceModeName] = [.geminiLive, .qwenLive, .gptLive, .grokLive, .localLive]
 }
 
 /// What a live voice mode's host check found wrong, kept by the live
@@ -88,6 +92,7 @@ enum LiveVoiceHostIssue: Equatable {
     init?(error: any Error) {
         switch error {
         case GeminiLiveTokenError.unavailable(let availability): self.init(availability)
+        case GeminiLiveTokenError.providerUnavailable(let availability, _): self.init(availability)
         case GPTLiveClientError.unavailable(let availability): self.init(availability)
         case GrokLiveClientError.unavailable(let availability): self.init(availability)
         default: return nil

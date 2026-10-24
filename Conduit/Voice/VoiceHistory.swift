@@ -54,6 +54,7 @@ struct VoiceSessionTag: Equatable, Codable {
 
 enum VoiceCallEngine: String, Equatable, Codable {
     case geminiLive = "gemini-live"
+    case qwenLive = "qwen-live"
     case gptLive = "gpt-live"
     case grokLive = "grok-live"
     case localLive = "local-live"
@@ -63,6 +64,7 @@ extension VoiceCallEngine {
     /// A Watch call's engine as the host's audio bridge names it.
     static func watchBridge(_ engine: String) -> VoiceCallEngine? {
         switch engine {
+        case "qwen-live": return .qwenLive
         case WatchAudioBridgeWire.gptLive: return .gptLive
         case WatchAudioBridgeWire.grok: return .grokLive
         case WatchAudioBridgeWire.localLive: return .localLive

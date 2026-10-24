@@ -340,7 +340,7 @@ enum HermesRingHandoff {
         guard let data = try? open(sealed, root: key, direction: .start, ringID: ringID),
               let message = try? JSONDecoder().decode(WatchVoiceWire.Message.self, from: data) else { return nil }
         switch message {
-        case .directStart(_, _, let ring) where ring == ringID: return message
+        case .directStart(_, _, let ring, _) where ring == ringID: return message
         case .grokStart(_, _, let ring) where ring == ringID: return message
         case .bridgeStart(_, _, _, let ring) where ring == ringID: return message
         default: return nil

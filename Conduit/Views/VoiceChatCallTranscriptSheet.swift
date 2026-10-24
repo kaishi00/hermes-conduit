@@ -68,6 +68,7 @@ struct VoiceChatCallTranscriptSheet: View {
         case .grokLive: return AppLocalization.string("Grok: \(entry.text)")
         case .localLive: return AppLocalization.string("Hermes: \(entry.text)")
         case .geminiLive: return AppLocalization.string("Gemini: \(entry.text)")
+        case .qwenLive: return AppLocalization.string("Qwen: \(entry.text)")
         case nil: return entry.text
         }
     }

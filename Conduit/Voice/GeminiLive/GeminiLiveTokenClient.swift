@@ -86,9 +86,12 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// The Hermes profile whose key the host should use, read at call time
     /// (same `?profile=` scoping as /api/audio/*).
     private let profile: @MainActor () -> String
+    private let provider: @MainActor () -> DirectLiveProvider
+    var directProvider: DirectLiveProvider { provider() }
 
-    init(profile: @escaping @MainActor () -> String = { "default" }, request: @escaping Request) {
+    init(profile: @escaping @MainActor () -> String = { "default" }, provider: @escaping @MainActor () -> DirectLiveProvider = { .gemini }, request: @escaping Request) {
         self.profile = profile
+        self.provider = provider
         self.request = request
     }
 
@@ -115,7 +118,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func availability() async throws -> GeminiLiveAvailability {
         let response: [String: Any]
         do {
-            response = try await fetch(scoped(Self.statusPath), "GET", nil)
+            response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/status" : Self.statusPath), "GET", nil)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
@@ -126,12 +129,25 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func freshToken() async throws -> GeminiLiveToken {
         let response: [String: Any]
         do {
-            response = try await fetch(scoped(Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
+            response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/token" : Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
-            if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
+            if Self.isMissingRoute(error) { throw provider() == .gemini ? GeminiLiveTokenError.unavailable(.pluginMissing) : GeminiLiveTokenError.providerUnavailable(.pluginMissing, .qwen) }
             throw error
         }
-        return try Self.token(from: response)
+        var token: GeminiLiveToken
+        do { token = try Self.token(from: response) }
+        catch {
+            if let tokenError = error as? GeminiLiveTokenError, case .unavailable(let availability) = tokenError {
+                throw provider() == .gemini ? tokenError : GeminiLiveTokenError.providerUnavailable(availability, .qwen)
+            }
+            throw provider() == .gemini ? GeminiLiveTokenError.malformedResponse : GeminiLiveTokenError.invalidProviderToken(.qwen)
+        }
+        guard token.model.hasPrefix("qwen") == (provider() == .qwen),
+              response["provider"] == nil || response["provider"] as? String == provider().rawValue else {
+            throw GeminiLiveTokenError.invalidProviderToken(provider())
+        }
+        token.provider = provider()
+        return token
     }
 
     /// Whether the host can answer quick lookups with its own backend. Any
@@ -275,7 +291,8 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
             expiresAt: date(response["expires_at"]),
             newSessionExpiresAt: date(response["new_session_expires_at"]),
             model: model,
-            webSocketURL: url
+            webSocketURL: url,
+            voice: response["voice"] as? String
         )
     }
 

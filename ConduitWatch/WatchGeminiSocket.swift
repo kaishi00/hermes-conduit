@@ -36,11 +36,11 @@ final class WatchSocketMeter {
     /// call.
     var onSocketEvent: ((WatchSocketAPI, Int, String, [String: Any]) -> Void)?
 
-    func makeSocket(_ url: URL) -> GeminiLiveSocket {
+    func makeSocket(_ request: URLRequest) -> GeminiLiveSocket {
         opened += 1
         let number = opened
         socketState = "opening"
-        let socket = WatchURLSessionGeminiLiveSocket(url: url)
+        let socket = WatchURLSessionGeminiLiveSocket(request: request)
         socket.onEvent = { [weak self] kind, fields in
             self?.socketEvent(.urlSession, number, kind, state: WatchURLSessionGeminiLiveSocket.state(after: kind, fields), fields)
         }
@@ -137,8 +137,8 @@ final class WatchURLSessionGeminiLiveSocket: GeminiLiveSocket {
     private let session: URLSession
     private let delegate = WatchURLSessionSocketDelegate()
 
-    init(url: URL) {
-        var request = URLRequest(url: url)
+    init(request: URLRequest) {
+        var request = request
         request.networkServiceType = .avStreaming
         session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
         task = session.webSocketTask(with: request)

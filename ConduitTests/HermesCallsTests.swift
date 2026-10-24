@@ -1549,22 +1549,23 @@ extension VoiceConversationControllerTests {
         // isn't set up, whatever an earlier check found.
         let older = NotifierPluginStatus.State.reported(version: "0.8.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "memory"])
         let shared = AppState.watchContextVoices(voices, scope: "d|default", plugin: older)
-        XCTAssertEqual(shared, ["geminiLive": true, "gptLive": false, "grokLive": false, "localLive": false])
+        XCTAssertEqual(shared, ["geminiLive": true, "qwenLive": false, "gptLive": false, "grokLive": false, "localLive": false])
         let context = WatchPhoneContext(voices: shared, callsRing: false)
         XCTAssertFalse(context.notSetUp(.geminiLive), "Its route is there: the voice may start")
+        XCTAssertTrue(context.notSetUp(.qwenLive), "Older plugins have no Qwen credential route")
         XCTAssertTrue(context.notSetUp(.gptLive))
         XCTAssertTrue(context.notSetUp(.grokLive), "No audio bridge: a stale ready check doesn't count")
         XCTAssertEqual(
             AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: older),
-            ["gptLive": false, "grokLive": false, "localLive": false],
+            ["qwenLive": false, "gptLive": false, "grokLive": false, "localLive": false],
             "Gemini not checked, but served: nothing to say"
         )
 
         // 0.9-0.12 serves every Watch voice of its time without
         // hermes-calls: only the checks are missing, so nothing else is
-        // marked. Local Live on the Watch came with 0.48.
+        // marked. Local Live on the Watch came with 0.48; Qwen with 0.70.
         let bridged = NotifierPluginStatus.State.reported(version: "0.10.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "watch-audio"])
-        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), ["localLive": false])
+        XCTAssertEqual(AppState.watchContextVoices(WatchCallVoices(), scope: "d|default", plugin: bridged), ["qwenLive": false, "localLive": false])
     }
 
     func testLocalLiveOnTheWatchNeedsTheBridgesLocalLiveEngine() {
@@ -1573,9 +1574,37 @@ extension VoiceConversationControllerTests {
         voices.note(.localLive, ready: true, scope: "d|default")
         // Local Live on the phone (0.42), before the Watch could use it.
         let phoneOnly = NotifierPluginStatus.State.reported(version: "0.47.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "hermes-calls"])
-        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: phoneOnly), ["localLive": false])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: phoneOnly), ["qwenLive": false, "localLive": false])
         let current = NotifierPluginStatus.State.reported(version: "0.48.0", capabilities: ["gemini-live", "gpt-live", "grok-live", "local-live", "watch-audio", "watch-local-live", "hermes-calls"])
-        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["localLive": true])
+        XCTAssertEqual(AppState.watchContextVoices(voices, scope: "d|default", plugin: current), ["qwenLive": false, "localLive": true])
+    }
+
+    func testWatchQwenAvailabilityIsIndependentOfGeminiAndTheAudioBridge() {
+        XCTAssertEqual(AppState.watchVoiceCapabilities(.qwenLive), ["qwen-live"])
+        var voices = WatchCallVoices()
+        voices.note(.geminiLive, ready: true, scope: "d|default")
+        voices.note(.qwenLive, ready: true, scope: "d|default")
+        let qwenOnly = NotifierPluginStatus.State.reported(version: "0.70.0", capabilities: ["qwen-live", "hermes-calls"])
+        let qwenContext = AppState.watchContextVoices(voices, scope: "d|default", plugin: qwenOnly)
+        XCTAssertEqual(qwenContext["qwenLive"], true, "Direct Qwen needs neither Gemini nor watch-audio")
+        XCTAssertEqual(qwenContext["geminiLive"], false, "A stale Gemini ready check cannot replace a missing route")
+        XCTAssertTrue(WatchPhoneContext(voices: qwenContext, callsRing: true).notSetUp(.geminiLive))
+        XCTAssertFalse(WatchPhoneContext(voices: qwenContext, callsRing: true).notSetUp(.qwenLive))
+
+        let geminiOnly = NotifierPluginStatus.State.reported(version: "0.69.0", capabilities: ["gemini-live", "hermes-calls"])
+        let geminiContext = AppState.watchContextVoices(voices, scope: "d|default", plugin: geminiOnly)
+        XCTAssertEqual(geminiContext["geminiLive"], true)
+        XCTAssertEqual(geminiContext["qwenLive"], false, "A stale Qwen check cannot override a missing Qwen route")
+
+        let both = NotifierPluginStatus.State.reported(version: "0.70.0", capabilities: ["gemini-live", "qwen-live", "hermes-calls"])
+        let bothContext = AppState.watchContextVoices(voices, scope: "d|default", plugin: both)
+        XCTAssertEqual(bothContext["geminiLive"], true)
+        XCTAssertEqual(bothContext["qwenLive"], true)
+        voices.note(.qwenLive, ready: false, scope: "d|default")
+        let unavailable = AppState.watchContextVoices(voices, scope: "d|default", plugin: both)
+        XCTAssertEqual(unavailable["qwenLive"], false)
+        XCTAssertEqual(unavailable["geminiLive"], true, "A failed Qwen check leaves Gemini available")
+        XCTAssertNil(AppState.watchContextVoices(voices, scope: "d|work", plugin: both)["qwenLive"], "Another profile must perform its own check")
     }
 
     func testCallsFromHermesNeverRingAWatchOnLocalLive() {

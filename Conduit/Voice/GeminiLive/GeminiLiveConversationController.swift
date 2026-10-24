@@ -392,6 +392,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// The turn that greets the user when a call connects, when they asked
     /// for one (#290). Sent once per call, never again on a reconnect.
+    private let provider: DirectLiveProvider
     private let openingPrompt: @MainActor () -> String?
     private var hasSentOpening = false
 
@@ -407,8 +408,10 @@ final class GeminiLiveConversationController: ObservableObject {
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
         openingPrompt: @escaping @MainActor () -> String? = { nil },
         headsetMute: HeadsetMicrophoneMute? = nil,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        provider: DirectLiveProvider = .gemini
     ) {
+        self.provider = provider
         self.notificationCenter = notificationCenter
         self.makeSession = makeSession
         self.availability = availability
@@ -510,7 +513,7 @@ final class GeminiLiveConversationController: ObservableObject {
             guard status.isAvailable else {
                 initialWidgetCaptureAuthorization = nil
                 hostIssue = LiveVoiceHostIssue(status)
-                phase = .failed(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
+                phase = .failed(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.unavailable(reason: nil).userFacingReason(for: provider)!)
                 return
             }
         } catch {
