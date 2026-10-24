@@ -33,7 +33,7 @@ An approval Hermes can't go on without.
 
 
 class CheckFeatureMapTests(unittest.TestCase):
-    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",)):
+    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",), extra=()):
         """main()'s exit code and output for a map in a repo holding `files`."""
         with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as notifier:
             for root, names in ((repo, files), (notifier, notifier_files)):
@@ -46,7 +46,7 @@ class CheckFeatureMapTests(unittest.TestCase):
                 fh.write(text)
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                code = check.main(["--repo-root", repo, "--notifier-root", notifier])
+                code = check.main(["--repo-root", repo, "--notifier-root", notifier, *extra])
             return code, out.getvalue()
 
     def test_the_shipped_map_passes(self):
@@ -110,6 +110,35 @@ class CheckFeatureMapTests(unittest.TestCase):
         self.assertEqual(code, 1)
         code, out = self.run_check(ENTRY.replace("2026-10-23, #1", "2026-10-23, seeded from main at 64d53c3."))
         self.assertEqual(code, 0, out)
+
+    def test_an_entry_a_pr_edits_names_it_on_its_checked_line(self):
+        edited = ENTRY.replace("only when one item waits", "only when one approval waits")
+        self.assertEqual(check.unchecked_edits(ENTRY, ENTRY, 1201), [])
+        problems = check.unchecked_edits(ENTRY, edited, 1201)
+        self.assertEqual(len(problems), 1)
+        self.assertEqual(problems[0][0], ENTRY.splitlines().index("**Checked:** 2026-10-23, #1") + 1)
+        self.assertIn("#1201", problems[0][1])
+        self.assertEqual(check.unchecked_edits(ENTRY, edited.replace("#1\n", "#1201\n"), 1201), [])
+        # #12011 isn't #1201.
+        self.assertEqual(len(check.unchecked_edits(ENTRY, edited.replace("#1\n", "#12011\n"), 1201)), 1)
+
+    def test_a_new_entry_names_the_pr_that_adds_it(self):
+        added = ENTRY + "\n" + ENTRY.replace("Hermes is waiting on you", "Plan card")
+        problems = check.unchecked_edits(ENTRY, added, 1201)
+        self.assertEqual([p[1].split("'")[1] for p in problems], ["Plan card"])
+
+    def test_main_checks_the_pr_only_when_given_its_base(self):
+        edited = ENTRY.replace("only when one item waits", "only when one approval waits")
+        with tempfile.TemporaryDirectory() as scratch:
+            base = os.path.join(scratch, "base.md")
+            with open(base, "w", encoding="utf-8") as fh:
+                fh.write(ENTRY)
+            code, out = self.run_check(edited, extra=["--pr", "1201", "--base-map", base])
+            self.assertEqual(code, 1)
+            self.assertIn("changes in this PR", out)
+            code, out = self.run_check(edited.replace("#1\n", "#1201\n"), extra=["--pr", "1201", "--base-map", base])
+            self.assertEqual(code, 0, out)
+        self.assertEqual(self.run_check(edited)[0], 0)
 
     def test_code_names_at_least_one_path(self):
         code, out = self.run_check(ENTRY.replace("- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard)\n- Notifier: `notifier/clarify_loop.py`\n", "- Chat card: ApprovalCard\n"))

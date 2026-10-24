@@ -11,6 +11,10 @@ one order, so each reads the same: Siblings (listed on that line), Code
 (naming at least one path), Rulings, Open gaps, and a Checked line with the
 date and the PR or commit it was checked at.
 
+On a pull request, CI also passes the PR's number and main's copy of the map:
+an entry the PR adds or edits names that PR on its Checked line, so the line
+says who checked it last, not the commit the branch started from.
+
 A notifier file missing on main fails. If GitHub can't be reached at all the
 check warns and passes, so an outage doesn't block every PR.
 """
@@ -128,6 +132,26 @@ def shape_problems(text):
     return problems
 
 
+def unchecked_edits(base_text, text, pr):
+    """[(line number, problem)] for entries the PR adds or edits whose Checked
+    line doesn't name it."""
+    def body(lines):
+        # Blank lines at the end come and go as entries are added after it.
+        return "\n".join(line.rstrip() for _, line in lines).strip()
+
+    before = {name.lower(): body(lines) for _, name, lines in entries(base_text)}
+    named = re.compile(rf"#{pr}\b")
+    problems = []
+    for _, name, lines in entries(text):
+        if before.get(name.lower()) == body(lines):
+            continue
+        checked = [(n, line) for n, line in lines if line.startswith(PARTS[4])]
+        if checked and not named.search(checked[0][1]):
+            problems.append((checked[0][0], f"{name!r} changes in this PR, so its Checked line "
+                                            f"names it: \"**Checked:** <today>, #{pr}.\""))
+    return problems
+
+
 def on_notifier_main(path, attempts=3):
     """Whether hermes-conduit-notifier main has this file."""
     request = urllib.request.Request(NOTIFIER_RAW + urllib.parse.quote(path), method="HEAD")
@@ -153,6 +177,9 @@ def main(argv=None):
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--notifier-root",
                         help="check notifier/ paths in this checkout instead of on GitHub")
+    parser.add_argument("--pr", type=int,
+                        help="the pull request's number: entries it adds or edits name it")
+    parser.add_argument("--base-map", help="the map on the PR's base, to tell which entries it edits")
     args = parser.parse_args(argv)
 
     try:
@@ -163,6 +190,13 @@ def main(argv=None):
               f"({error.strerror}).")
         return 1
     problems = shape_problems(text)
+    if args.pr and args.base_map:
+        try:
+            with open(args.base_map, encoding="utf-8") as fh:
+                base_text = fh.read()
+        except OSError:
+            base_text = ""
+        problems += unchecked_edits(base_text, text, args.pr)
     notifier = {}
     found = paths(text)
     for number, path in found:
