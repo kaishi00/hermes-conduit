@@ -485,7 +485,7 @@ Settings > Notifications
 **Rulings**
 - Notifications follow the App Language: the extension builds the words from the event's title_label and session_title (2026-10-23, #1158, notifier #326).
 - Pushes are titled with the Hermes session title (2026-10-12, notifier #93 and #94).
-- A push never shows a host path: the plugin turns each MEDIA tag into 📎 and the file's name, or its type when the name is only a hash, for the plain and the sealed copy alike (2026-10-24, #APP_PR, notifier #NOTIFIER_PR).
+- A push never shows a host path: the plugin turns each MEDIA tag into 📎 and the file's name, or its type when the name is only a hash, for the plain and the sealed copy alike (2026-10-24, #1212, notifier #348).
 - A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301).
 - A push from a Bot Chat opens the Bot Chat (2026-10-16, #654), and a call from one opens the bot (2026-10-16, #630).
 - Notification status in Settings is for the active dashboard only (2026-10-05, #395).
@@ -494,7 +494,7 @@ Settings > Notifications
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
-**Checked:** 2026-10-24, #APP_PR (MEDIA tags in the push body).
+**Checked:** 2026-10-24, #1212 (MEDIA tags in the push body).
 
 ## Pulse
 
