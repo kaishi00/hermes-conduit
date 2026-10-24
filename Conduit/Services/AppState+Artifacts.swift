@@ -73,11 +73,10 @@ extension AppState {
             }
             return [ArtifactSource(profile: bot, sessionIDs: ids, label: botLabel(bot), isBotChat: true)]
         case .profile:
+            // The profile in use is read even when All leaves it out.
             var listed = [activeProfile]
             if isAllProfilesChatsOn {
-                let included = allProfilesIncluded
-                listed = included.filter { Self.profilesMatch($0, activeProfile) }
-                    + included.filter { !Self.profilesMatch($0, activeProfile) }
+                listed += allProfilesIncluded.filter { !Self.profilesMatch($0, activeProfile) }
             }
             var sources = listed.map { profile in
                 ArtifactSource(profile: profile, sessionIDs: [],

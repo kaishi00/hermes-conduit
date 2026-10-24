@@ -843,7 +843,7 @@ viewers, with Show in Chat.
 
 **Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
 (kept in the bot's own profile) · All (every included profile's chats) ·
-the notifier's artifacts route · README.md
+group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
@@ -854,7 +854,9 @@ the notifier's artifacts route · README.md
 
 **Rulings**
 - A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
-- Stores are read one at a time (the host reads two lists at once at most); a bot's chat or other profile that can't be read leaves the rest listed.
+- Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a bot's chat or other profile that can't be read leaves the rest listed.
+- The profile in use is always read, even when All leaves it out.
+- One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.

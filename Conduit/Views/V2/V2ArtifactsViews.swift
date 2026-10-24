@@ -277,7 +277,9 @@ private struct ArtifactsList: View {
                     // Reaching the end reads the next page.
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 60)
-                        .task(id: nextBefore) { await loadMore() }
+                        // Asked again once the stores' first pages are in:
+                        // the cursor may not change when they land.
+                        .task(id: isLoading ? nil : nextBefore) { await loadMore() }
                 }
             }
         }
@@ -569,6 +571,8 @@ private struct ArtifactsList: View {
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
         // One store at a time: the host reads two lists at once at most.
+        // A refresh keeps the list it refreshes until every store answers.
+        let refreshing = loadedKey == key
         var pages: [ArtifactPage?] = []
         for (index, source) in key.sources.enumerated() {
             do {
@@ -580,24 +584,26 @@ private struct ArtifactsList: View {
             } catch {
                 // A bot's chat that can't be read leaves the rest listed;
                 // the first store is the list itself.
-                guard index == 0 else {
+                if index > 0 {
                     pages.append(nil)
-                    continue
+                } else {
+                    // A failed refresh keeps the list it was refreshing (and
+                    // the end of it keeps paging).
+                    guard ticket == generation, loadedKey != key else { return }
+                    failure = UserFacingError.message(for: error)
+                    feed = nil
+                    loadedKey = key
+                    return
                 }
-                // A failed refresh keeps the list it was refreshing (and the
-                // end of it keeps paging).
-                guard ticket == generation, loadedKey != key else { return }
-                failure = UserFacingError.message(for: error)
-                feed = nil
-                loadedKey = key
-                return
             }
             guard ticket == generation else { return }
+            // Otherwise each store shows as it arrives, so a slow one
+            // doesn't hold the page blank; the feed holds older rows back.
+            guard !refreshing || pages.count == key.sources.count else { continue }
+            feed = ArtifactFeed(sources: Array(key.sources.prefix(pages.count)), pages: pages)
+            failure = nil
+            loadedKey = key
         }
-        guard ticket == generation else { return }
-        feed = ArtifactFeed(sources: key.sources, pages: pages)
-        failure = nil
-        loadedKey = key
     }
 
     private func loadMore() async {
