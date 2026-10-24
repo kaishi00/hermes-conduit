@@ -21,10 +21,11 @@ final class GroupRoomFilesClient {
     }
 
     /// What the room composer says about files over its limit. When the
-    /// room route's cap is the lower one, raising the Settings limit can't
-    /// help, so the message names the room's cap and offers no setting.
+    /// room route's cap is the one that binds (a Settings limit at or above
+    /// it), raising the Settings limit can't help, so the message names the
+    /// room's cap and offers no setting.
     static func tooLargeMessage(names: [String], preference: Int) -> String {
-        guard AttachmentSizeLimit.clampedMegabytes(preference) > maximumMegabytes else {
+        guard AttachmentSizeLimit.clampedMegabytes(preference) >= maximumMegabytes else {
             return AttachmentSizeLimit.tooLargeMessage(names: names, megabytes: preference)
         }
         let limit = String(maximumMegabytes)

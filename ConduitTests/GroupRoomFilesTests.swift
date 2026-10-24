@@ -27,6 +27,9 @@ extension GroupChatModelsTests {
         let cappedMany = GroupRoomFilesClient.tooLargeMessage(names: ["a.mov", "b.mov"], preference: 128)
         XCTAssertTrue(cappedMany.contains("a.mov") && cappedMany.contains("b.mov") && cappedMany.contains("50"), cappedMany)
         XCTAssertFalse(cappedMany.contains("Settings"), cappedMany)
+        // A Settings limit equal to the cap: raising it still can't help.
+        let atCap = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: GroupRoomFilesClient.maximumMegabytes)
+        XCTAssertEqual(atCap, capped)
 
         let preferred = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: 16)
         XCTAssertEqual(preferred, AttachmentSizeLimit.tooLargeMessage(names: ["clip.mov"], megabytes: 16))
