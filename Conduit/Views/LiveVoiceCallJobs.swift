@@ -528,6 +528,8 @@ struct LiveVoiceJobWaitingCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .conduitGlassControl(cornerRadius: 16)
+        // Picks belong to one question: the next in a batch starts clean.
+        .onChange(of: job.waitingQuestion.flatMap { HermesCallWaiting(clarify: $0)?.openQuestion?.id }) { _, _ in picked = [] }
         .disabled(sending)
     }
 
