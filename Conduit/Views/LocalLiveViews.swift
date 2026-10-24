@@ -198,7 +198,7 @@ struct LocalLiveFrontModelSettingsView: View {
             guard await save(key, for: Self.apiKeyKey) else { return }
             keyDraft = ""
         }
-        apply(await service.speechServerVoiceStatus())
+        applyAfterSave(await service.speechServerVoiceStatus())
     }
 
     private func removeKey() async {
@@ -208,7 +208,15 @@ struct LocalLiveFrontModelSettingsView: View {
         // A typed key left in the field would come back on the next Save.
         keyDraft = ""
         _ = await save("", for: Self.apiKeyKey)
-        apply(await service.speechServerVoiceStatus())
+        applyAfterSave(await service.speechServerVoiceStatus())
+    }
+
+    /// The saved values as read back. A read that failed (or a plugin that
+    /// doesn't report them) keeps the fields as they are, rather than
+    /// blanking what was just saved.
+    private func applyAfterSave(_ voice: SpeechServerVoiceStatus) {
+        guard voice.frontModel != nil else { return }
+        apply(voice)
     }
 
     private func save(_ value: String, for key: String) async -> Bool {
