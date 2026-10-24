@@ -509,6 +509,7 @@ struct LiveVoiceJobWaitingCard: View {
                         }
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityAddTraits(question.multiSelect && picked.contains(index) ? .isSelected : [])
                 }
                 if question.multiSelect {
                     Button {

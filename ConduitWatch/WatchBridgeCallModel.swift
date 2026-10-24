@@ -1159,14 +1159,18 @@ final class WatchBridgeCallModel: ObservableObject {
             answerCall(for: id, arguments: arguments, relay: relay)
             return
         }
-        // A bare "Answer:" with nothing said yet answers nothing, and isn't
-        // new work either.
-        if relay.tools.contains(WatchCallAnswer.tool), itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("answer:") {
-            answer(id, WatchCallAnswer.missingArgument(name: "answer_question")["error"] ?? "", channel: .commentary)
+        // Any other answer marker answers nothing here, and is never new
+        // work: a bare "Answer:" with nothing said yet, or one on a call
+        // that can't answer Hermes.
+        let marker = itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if marker.hasPrefix("answer:") {
+            answer(id, relay.tools.contains(WatchCallAnswer.tool)
+                ? WatchCallAnswer.missingArgument(name: "answer_question")["error"] ?? ""
+                : "This call can't give Hermes the answer. Tell the user to answer in that chat in Conduit on their iPhone.",
+                channel: .commentary)
             return
         }
-        if relay.tools.contains(WatchCallAnswer.tool),
-           ["approve:", "deny:"].contains(where: itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix) {
+        if ["approve:", "deny:"].contains(where: marker.hasPrefix) {
             answer(id, "Approvals aren't given by voice on the Watch. Tell the user to answer in that chat in Conduit on their iPhone.", channel: .commentary)
             return
         }

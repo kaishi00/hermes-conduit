@@ -51,7 +51,8 @@ enum WatchCallAnswer {
     /// answer_call's arguments. A bare "Answer:" takes `userWords`, the
     /// user's own words since the last delegation, as the phone's does. A
     /// deny keeps what follows the marker as its reason, so "Deny: Before I
-    /// choose: …" asks Hermes to explain. `approves`: false where the
+    /// choose: …" asks Hermes to explain (no Watch call passes `approves`
+    /// yet: GPT-Live there leaves approvals to a tap). `approves`: false where the
     /// model may not answer an approval (GPT-Live on the Watch: the user taps).
     static func delegatedArguments(_ text: String, userWords: String, approves: Bool) -> [String: Any]? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
