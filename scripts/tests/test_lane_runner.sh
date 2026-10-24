@@ -940,6 +940,39 @@ assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
 assert_eq "verdict" "$(lane_field "['status']")" "pass"
 assert_eq "attempts" "$(attempts_statuses)" "['passed']"
 
+# --- unit case 11e: a non-numeric finalize grace falls back to the default -----
+# XCODEBUILD_FINALIZE_GRACE_S=soon used to reach the deadline arithmetic raw,
+# where bash reads an unknown word as 0: the grace became an instant kill and a
+# finished session was reported as a timeout. It must fall back to 180s.
+end_case
+begin_case "non-numeric finalize grace falls back to the default" "$WORK/b11e"
+: > "$INVOCATION_LOG"
+cat > "$STUBS/xcodebuild" <<'EOF'
+#!/bin/bash
+prev=""
+for a in "$@"; do
+  case "$prev" in -resultBundlePath) echo "$(basename "$a" .xcresult)" >> "$INVOCATION_LOG" ;; esac
+  prev="$a"
+done
+echo "** TEST EXECUTE SUCCEEDED **"
+echo "finalizing xcresult (stub)"
+sleep 3
+exit 0
+EOF
+chmod +x "$STUBS/xcodebuild"
+export XCODEBUILD_FINALIZE_GRACE_S=soon
+write_canned "$WORK/canned-grace-word.json" "AlphaTests" "Passed"
+run_lane "AlphaTests" 30 1
+assert_eq "exit code" "$(cat "$WORKCASE/exit-code")" "0"
+assert_eq "verdict" "$(lane_field "['status']")" "pass"
+assert_eq "attempts" "$(attempts_statuses)" "['passed']"
+if grep -q "allowing 180s finalize grace" "$WORKCASE/stdout.log"; then
+  ok "non-numeric grace fell back to 180s"
+else
+  bad "a non-numeric XCODEBUILD_FINALIZE_GRACE_S must fall back to 180s"
+fi
+export XCODEBUILD_FINALIZE_GRACE_S=3
+
 echo ""
 end_case
 echo "unit batch state machine: $pass_count passed, $fail_count failed so far"
