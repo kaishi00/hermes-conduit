@@ -730,6 +730,34 @@ group rooms · the full editor · the notices that say where words went
 
 **Checked:** 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
 
+## A new chat that something waits on
+
+Some actions start a chat and then put something in it: a message sent from
+the empty canvas, a screenshot, a Hermes call setup prompt. The thing goes
+into the chat that action created, never into another one that opened
+meanwhile.
+
+**Siblings:** the composer's send from the empty canvas · Ask Hermes About
+Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
+test call and watch prompts · New Chat and its focus · a widget's or
+Shortcut's New Chat · the /new command
+
+**Code**
+- Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; focusNewChatComposer)
+- Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
+- Hermes calls: `Conduit/Services/AppState+HermesCalls.swift` (startHermesCallsChat)
+- Widget and Shortcut launches: `Conduit/Services/AppState+WidgetLaunch.swift`
+- Tests: `ConduitTests/SessionRenameTests.swift`
+
+**Rulings**
+- What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
+- New Chat focuses the composer only on the chat it made, by newChatOpenedSessionID, the most recent creation's chat while it's open.
+
+**Open gaps**
+- A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
+
+**Checked:** 2026-10-24, at #1191.
+
 ## A chat's last reply
 
 Reading the newest reply in a chat without opening it, from the open chat's
