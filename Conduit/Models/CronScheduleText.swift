@@ -250,14 +250,16 @@ enum CronScheduleText {
         let startOfToday = calendar.startOfDay(for: now)
         let dayOffset = calendar.dateComponents([.day], from: startOfToday, to: calendar.startOfDay(for: date)).day ?? 0
         let formatter: DateFormatter
-        if dayOffset == 1 {
+        // Later today but too far off for "in N hours" says "today", like
+        // tomorrow: a bare weekday would read as next week's.
+        if dayOffset == 0 || dayOffset == 1 {
             formatter = dateFormatter("tomorrow", locale: locale, timeZone: timeZone) {
                 $0.formattingContext = .middleOfSentence
                 $0.dateStyle = .medium
                 $0.timeStyle = .short
                 $0.doesRelativeDateFormatting = true
             }
-            // The formatter says "tomorrow" against the real clock, not
+            // The formatter says "today" and "tomorrow" against the real clock, not
             // `now`. Moving the run by the whole days between the two keeps
             // its wall-clock time and makes its day relative to `now` (they
             // differ only when a caller passes another `now`, as tests do).
