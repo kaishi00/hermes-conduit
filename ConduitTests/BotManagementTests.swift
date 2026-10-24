@@ -350,9 +350,9 @@ extension BotModeTests {
     // MARK: - Generated pictures
 
     func testPictureGenerationProbeNeedsAnExplicitYes() {
-        XCTAssertTrue(PictureGeneration.isAvailable(probe: .object(["available": .bool(true)])))
-        XCTAssertFalse(PictureGeneration.isAvailable(probe: .object(["available": .bool(false)])))
-        XCTAssertFalse(PictureGeneration.isAvailable(probe: nil), "an older gateway without image.generate")
+        XCTAssertEqual(PictureGeneration.isAvailable(probe: .object(["available": .bool(true)])), true)
+        XCTAssertEqual(PictureGeneration.isAvailable(probe: .object(["available": .bool(false)])), false)
+        XCTAssertNil(PictureGeneration.isAvailable(probe: nil), "an older gateway without image.generate didn't say")
         XCTAssertEqual(PictureGeneration.params(prompt: "x")["aspect_ratio"] as? String, "square")
     }
 

@@ -16,10 +16,11 @@ enum PictureGeneration {
         ["prompt": prompt, "aspect_ratio": "square"]
     }
 
-    /// Whether a probe answer says the gateway has a backend. Anything but
-    /// an explicit `available: true` counts as none.
-    static func isAvailable(probe result: AnyCodable?) -> Bool {
-        result?.objectValue?["available"]?.boolValue == true
+    /// What a probe answer says about the gateway's backend: nil when it
+    /// gave no answer (an older gateway without the method, a failed
+    /// call), so only an explicit `available: false` reads as none set up.
+    static func isAvailable(probe result: AnyCodable?) -> Bool? {
+        result?.objectValue?["available"]?.boolValue
     }
 
     /// Desktop's prompt for a bot picture from its name and description.

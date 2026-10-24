@@ -865,10 +865,11 @@ struct GroupRoomPicturePicker: ViewModifier {
                     ImagePicker(image: $picked)
                 case .generate:
                     GeneratePictureSheet(
-                        // The open room, until the onChange below captures it.
+                        // The open room: the capture below may still hold
+                        // the last one while this sheet is first built.
                         defaultPrompt: PictureGeneration.groupPrompt(
-                            name: (room ?? appState.activeRoomSurface?.room)?.name ?? "",
-                            members: (room ?? appState.activeRoomSurface?.room)?.members
+                            name: (appState.activeRoomSurface?.room ?? room)?.name ?? "",
+                            members: (appState.activeRoomSurface?.room ?? room)?.members
                                 .map { GroupRoomTurns.displayName(of: $0) } ?? []
                         ),
                         forGroup: true
@@ -891,7 +892,7 @@ struct GroupRoomPicturePicker: ViewModifier {
             // Whether the menu offers Generate Group Picture: asked only
             // where a room is open, again for each room.
             .task(id: appState.activeRoomSurface?.room.roomID) {
-                guard appState.activeRoomSurface != nil else { return }
+                guard appState.activeRoomSurface != nil, appState.canSetGroupRoomPictures else { return }
                 await appState.refreshPictureGeneration()
             }
     }

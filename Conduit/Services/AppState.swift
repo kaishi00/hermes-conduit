@@ -20290,7 +20290,8 @@ final class AppState: ObservableObject {
         let available = await client.imageGenerationAvailable()
         // The answer belongs to the server it came from.
         guard self.client === client else { return nil }
-        if canGeneratePictures != available { canGeneratePictures = available }
+        let canGenerate = available == true
+        if canGeneratePictures != canGenerate { canGeneratePictures = canGenerate }
         return available
     }
 

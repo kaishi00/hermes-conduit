@@ -2012,8 +2012,8 @@ final class HermesClient: ObservableObject {
     }
 
     /// `image.generate` probe: whether Hermes has an image backend set up.
-    /// False on an older gateway without the method.
-    func imageGenerationAvailable() async -> Bool {
+    /// Nil when it didn't say (an older gateway without the method).
+    func imageGenerationAvailable() async -> Bool? {
         let result = try? await rpc(
             "image.generate",
             params: PictureGeneration.probeParams,

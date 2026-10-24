@@ -19,6 +19,8 @@ struct GeneratePictureSheet: View {
     @State private var generation: Task<Void, Never>?
     @State private var error: String?
 
+    private static let maxPictures = 8
+
     private struct GeneratedPicture: Identifiable {
         let id = UUID()
         let image: UIImage
@@ -133,6 +135,8 @@ struct GeneratePictureSheet: View {
                 guard !Task.isCancelled else { return }
                 let picture = GeneratedPicture(image: image)
                 pictures.append(picture)
+                // Full-size pictures add up: keep the newest few.
+                if pictures.count > Self.maxPictures { pictures.removeFirst(pictures.count - Self.maxPictures) }
                 selection = picture.id
                 Haptics.success()
             } catch {
