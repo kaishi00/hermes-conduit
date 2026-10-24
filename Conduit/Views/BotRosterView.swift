@@ -16,6 +16,11 @@ struct BotRosterView: View {
     /// Outcome of the last management action that needs explaining (a
     /// failed delete, a save whose picture did not land).
     @State private var managementNotice: String?
+    /// Hidden bots, shown dimmed under the list when opened (Desktop's
+    /// "Hidden" disclosure; this session only).
+    @State private var showsHiddenBots = false
+    /// New Group Chat from a bot's Groups menu starts with that bot picked.
+    @State private var groupSheetBot: BotProfile?
     /// V2's Bots tab: its title bar's "+" asks for a new bot here, and the
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
@@ -29,7 +34,9 @@ struct BotRosterView: View {
             // Group rows keep the list up even with no visible bot: a room
             // whose bots are all meta-hidden must stay reachable, and so
             // must the group probe's failure notice.
-            if visibleBots.isEmpty && !hasGroupRows && groupProbeFailure == nil {
+            // Hidden bots still list (under Hidden), so only an empty
+            // roster is empty.
+            if appState.botRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         if let notice = managementNotice {
@@ -128,6 +135,10 @@ struct BotRosterView: View {
         appState.botRoster.filter { !$0.isHiddenByMeta }
     }
 
+    private var hiddenBots: [BotProfile] {
+        appState.botRoster.filter(\.isHiddenByMeta)
+    }
+
     /// `profiles.list` is gateway-wide and deliberately sent UNSCOPED: the
     /// roster is fenced by server identity (epoch) and dashboard, never by
     /// the selected dashboard profile. Keying on `activeProfile` made every
@@ -156,18 +167,87 @@ struct BotRosterView: View {
     @ViewBuilder
     private var botRows: some View {
         ForEach(visibleBots) { bot in
-            BotRosterRow(
-                bot: bot,
-                canManage: canManageBots,
-                canDelete: appState.canDeleteBot(bot),
-                onEdit: { editorMode = .edit(bot) },
-                onTogglePin: {
-                    Task {
-                        managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned)
-                    }
+            botRow(bot)
+        }
+        if !hiddenBots.isEmpty {
+            // Desktop's "Hidden" disclosure: hidden bots keep working, so
+            // they stay one tap away to open or unhide.
+            Button {
+                Haptics.selection()
+                withAnimation(.easeInOut(duration: 0.2)) { showsHiddenBots.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                    Text(AppLocalization.string("Hidden"))
+                    Text(verbatim: String(hiddenBots.count))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .rosterListRow(divider: false)
+            .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
+            .accessibilityValue(Text(
+                showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
+            ))
+            if showsHiddenBots {
+                ForEach(hiddenBots) { bot in
+                    botRow(bot)
+                        .opacity(0.6)
+                }
+            }
+        }
+    }
+
+    private func botRow(_ bot: BotProfile) -> some View {
+        BotRosterRow(
+            bot: bot,
+            canManage: canManageBots,
+            canDelete: appState.canDeleteBot(bot),
+            rooms: botRooms(bot),
+            canStartGroup: hostedGroupsAvailable && !bot.isHiddenByMeta && visibleBots.count >= 2,
+            actions: BotRosterRow.Actions(
+                edit: { editorMode = .edit(bot) },
+                togglePin: {
+                    Task { managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned) }
                 },
-                onDelete: { pendingDelete = bot }
+                toggleHidden: {
+                    Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
+                },
+                duplicate: {
+                    managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
+                    Task { managementNotice = await appState.duplicateBot(bot) }
+                },
+                newChat: {
+                    appState.dismissSidebarDrawer()
+                    appState.startNewChat(inProfile: bot.name)
+                },
+                openRoom: { room in
+                    appState.dismissSidebarDrawer()
+                    Task { await appState.openGroupRoom(room) }
+                },
+                newGroup: {
+                    appState.errorMessage = nil
+                    groupSheetBot = bot
+                },
+                delete: { pendingDelete = bot }
             )
+        )
+    }
+
+    /// The hosted group rooms this bot is a member of.
+    private func botRooms(_ bot: BotProfile) -> [GroupRoom] {
+        guard hostedGroupsAvailable else { return [] }
+        return appState.groupRooms.filter { room in
+            !room.isDisbanded && room.members.contains {
+                $0.profile?.caseInsensitiveCompare(bot.name) == .orderedSame
+            }
         }
     }
 
@@ -196,7 +276,7 @@ struct BotRosterView: View {
                     .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
             }
-            if !visibleBots.isEmpty && createRequest != nil {
+            if !appState.botRoster.isEmpty && createRequest != nil {
                 // V2's Bots tab: the page title names the list; a line under
                 // the bots says what a bot is. A row, not a footer: a plain
                 // List paints footers as an opaque band across the backdrop.
@@ -210,7 +290,7 @@ struct BotRosterView: View {
                         .rosterListRow(divider: false)
                 }
                 .listSectionSeparator(.hidden)
-            } else if !visibleBots.isEmpty {
+            } else if !appState.botRoster.isEmpty {
                 Section(AppLocalization.string("Bots")) {
                     botRows
                     if canManageBots {
@@ -232,6 +312,10 @@ struct BotRosterView: View {
         }
         .sheet(isPresented: $showingGroupCreateSheet) {
             GroupCreateSheet()
+                .environmentObject(appState)
+        }
+        .sheet(item: $groupSheetBot) { bot in
+            GroupCreateSheet(preselected: [bot.name])
                 .environmentObject(appState)
         }
     }
@@ -445,10 +529,23 @@ private struct BotRosterRow: View {
     let bot: BotProfile
     let canManage: Bool
     let canDelete: Bool
-    let onEdit: () -> Void
-    let onTogglePin: () -> Void
-    let onDelete: () -> Void
+    /// The group rooms it's in, for its Groups menu.
+    let rooms: [GroupRoom]
+    let canStartGroup: Bool
+    let actions: Actions
     @EnvironmentObject private var appState: AppState
+
+    /// What the row's menu and swipe actions do (Desktop's row menu).
+    struct Actions {
+        let edit: () -> Void
+        let togglePin: () -> Void
+        let toggleHidden: () -> Void
+        let duplicate: () -> Void
+        let newChat: () -> Void
+        let openRoom: (GroupRoom) -> Void
+        let newGroup: () -> Void
+        let delete: () -> Void
+    }
 
     var body: some View {
         Button {
@@ -497,18 +594,51 @@ private struct BotRosterRow: View {
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
         .contextMenu {
-            if canManage {
-                Button(action: onEdit) {
-                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+            Button(action: actions.newChat) {
+                Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
+            }
+            if !rooms.isEmpty || canStartGroup {
+                Menu {
+                    ForEach(rooms) { room in
+                        Button {
+                            actions.openRoom(room)
+                        } label: {
+                            Text(verbatim: room.name)
+                        }
+                    }
+                    if canStartGroup {
+                        Button(action: actions.newGroup) {
+                            Label(AppLocalization.string("New Group Chat"), systemImage: "plus")
+                        }
+                    }
+                } label: {
+                    Label(AppLocalization.string("Groups"), systemImage: "person.3")
                 }
-                Button(action: onTogglePin) {
+            }
+            if canManage {
+                Divider()
+                Button(action: actions.togglePin) {
                     Label(
                         bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
                         systemImage: bot.isPinned ? "pin.slash" : "pin"
                     )
                 }
+                Button(action: actions.toggleHidden) {
+                    Label(
+                        bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
+                        systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
+                    )
+                }
+                Divider()
+                Button(action: actions.edit) {
+                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+                }
+                Button(action: actions.duplicate) {
+                    Label(AppLocalization.string("Duplicate"), systemImage: "plus.square.on.square")
+                }
                 if canDelete {
-                    Button(role: .destructive, action: onDelete) {
+                    Divider()
+                    Button(role: .destructive, action: actions.delete) {
                         Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
                     }
                 }
@@ -517,11 +647,11 @@ private struct BotRosterRow: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
                 if canDelete {
-                    Button(role: .destructive, action: onDelete) {
+                    Button(role: .destructive, action: actions.delete) {
                         Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
                     }
                 }
-                Button(action: onEdit) {
+                Button(action: actions.edit) {
                     Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
                 }
                 .tint(.conduitAccent)

@@ -28,6 +28,12 @@ enum PreviewText {
     }
 
     private static func strip(_ text: String) -> String {
+        // A teammate's delivery previews as who said what ("Atlas: Found
+        // three flights"), not its "Message from 🤖 Atlas (@atlas)" signature.
+        var text = text
+        if let inbound = BotTeammateMessages.inbound(text) {
+            text = inbound.body.isEmpty ? inbound.sender : "\(inbound.sender): \(inbound.body)"
+        }
         let lines = text
             .split(whereSeparator: \.isNewline)
             .map { dropBlockMark(from: $0.trimmingCharacters(in: .whitespaces)) }

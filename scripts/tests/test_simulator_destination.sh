@@ -7,7 +7,8 @@
 # fixture `simctl list devices available -j` payload (bounded_run is
 # overridden; no simulator, no real xcrun). The fixture carries iPhone 17 Pro
 # on iOS 26.0, 26.1, and 26.10 so the 26.1-vs-26.10 discrimination is
-# observable.
+# observable. It also covers decimal_seconds, which reads the seconds
+# overrides that reach $(( )) as base 10.
 #
 # jq is required only for the simulator_udid() fixture cases; on hosts
 # without jq those cases are skipped (the pure-bash matcher cases always
@@ -198,6 +199,32 @@ else
     "$(resolve_destination 'iPhone 17 Pro' 26.1 0)" \
     "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.1"
 fi
+
+echo "# decimal_seconds: seconds overrides that reach \$(( ))"
+
+seconds_of() { # $1= value, $2= fallback -> prints the normalized seconds
+  ( set -u
+    # shellcheck disable=SC1090
+    source "$CILIB"
+    decimal_seconds "$1" "$2"
+  )
+}
+
+assert_eq "plain number is kept"                 "$(seconds_of 180 5)"       180
+assert_eq "08 is read as 8, not invalid octal"   "$(seconds_of 08 5)"        8
+assert_eq "09 is read as 9, not invalid octal"   "$(seconds_of 09 5)"        9
+assert_eq "060 is read as 60, not octal 48"      "$(seconds_of 060 5)"       60
+assert_eq "all zeros are 0"                      "$(seconds_of 000 5)"       0
+assert_eq "empty value takes the fallback"       "$(seconds_of '' 1200)"     1200
+assert_eq "non-numeric value takes the fallback" "$(seconds_of soon 180)"    180
+assert_eq "negative value takes the fallback"    "$(seconds_of -5 180)"      180
+assert_eq "value above one day is clamped"       "$(seconds_of 90000 5)"     86400
+assert_eq "oversized value is clamped, not wrapped" \
+  "$(seconds_of 99999999999999999999 5)" 86400
+assert_eq "leading zeros do not count toward the size" \
+  "$(seconds_of 0000000030 5)" 30
+assert_eq "result is safe in arithmetic" \
+  "$(echo $(( $(seconds_of 08 5) + 1 )))" 9
 
 echo "# bash syntax gate"
 

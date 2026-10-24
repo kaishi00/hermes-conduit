@@ -1102,16 +1102,19 @@ def changed_files_since(repo_root: str, ref: str) -> list:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
-def unit_classes_for_changes(repo_root: str, changed: list, unit_entries: list) -> list:
-    """Unit classes a change touches, in a stable order: classes declared or
-    extended in a changed ConduitTests file, and `<Stem>Tests` for a changed
-    app source file `<Stem>.swift`. These classes otherwise run only at
-    night, so a PR that adds or edits them would first see them fail there."""
+def unit_classes_for_changes(repo_root: str, changed: list, unit_entries: list) -> tuple:
+    """Unit classes a change touches, as (direct, related), each in a stable
+    order. Direct: classes declared or extended in a changed ConduitTests
+    file, and `<Stem>Tests` for a changed app source file `<Stem>.swift`.
+    Related: the rest of that stem's family, `<Stem><Topic>Tests` (a change
+    to AppState.swift reaches AppStateChatResumeTests). These classes
+    otherwise run only at night, so a PR that adds or edits them, or changes
+    the code they test, would first see them fail there."""
     by_name = {e["name"] for e in unit_entries}
     by_file = {}
     for e in unit_entries:
         by_file.setdefault(e["file"], []).append(e["name"])
-    picked = []
+    picked, stems = [], []
 
     def add(name):
         if name in by_name and name not in picked:
@@ -1133,7 +1136,19 @@ def unit_classes_for_changes(repo_root: str, changed: list, unit_entries: list) 
         elif not rel.startswith(UI_TARGET + "/"):
             stem = os.path.splitext(os.path.basename(rel))[0].split("+")[0]
             add(stem + "Tests")
-    return picked
+            if stem and stem not in stems:
+                stems.append(stem)
+    related = []
+    for stem in stems:
+        # `<Stem>` followed by a new word: AppState reaches AppStateChatResume
+        # but not AppStatement.
+        for name in sorted(by_name):
+            if not (name.startswith(stem) and name.endswith("Tests")):
+                continue
+            topic = name[len(stem):-len("Tests")]
+            if topic[:1].isupper() and name not in picked and name not in related:
+                related.append(name)
+    return picked, related
 
 
 def _resolve_in_repo(repo_root: str, path: str) -> str:
@@ -1257,9 +1272,10 @@ def cmd_smoke(args) -> int:
             changed = []
     if changed:
         baseline = _baseline_seconds(_resolve_in_repo(args.repo_root, args.baseline))
-        candidates = [c for c in unit_classes_for_changes(
-                          args.repo_root, changed, discovery["unit"])
-                      if c not in unit and c not in nightly_only]
+        direct, related = unit_classes_for_changes(
+            args.repo_root, changed, discovery["unit"])
+        direct = [c for c in direct if c not in unit and c not in nightly_only]
+        related = [c for c in related if c not in unit and c not in nightly_only]
 
         def cost(name):
             # Same rules as load_estimates: only a finite positive number
@@ -1270,23 +1286,30 @@ def cmd_smoke(args) -> int:
                 return _UNKNOWN_CLASS_COST_S
             return float(value)
 
+        # The change's own classes first, then its stems' families in what
+        # budget is left, each cheapest first.
         spent = 0.0
-        for name in sorted(candidates, key=lambda n: (cost(n), n)):
-            if spent + cost(name) <= changed_budget and len(changed_unit) < changed_max:
-                changed_unit.append(name)
-                spent += cost(name)
-            else:
-                changed_skipped.append(name)
-        # The change's only heavy class still runs once: a slow new suite
-        # is exactly what would otherwise first fail at night.
-        if not changed_unit and changed_skipped and changed_max > 0:
-            cheapest = min(changed_skipped, key=lambda n: (cost(n), n))
-            changed_skipped.remove(cheapest)
-            changed_unit.append(cheapest)
-            spent = cost(cheapest)
-            print(f"::notice title=changed class over the smoke budget::"
-                  f"{cheapest} (~{spent:.0f}s) runs anyway: nothing else of the "
-                  f"change fit")
+        for tier in (direct, related):
+            for name in sorted(tier, key=lambda n: (cost(n), n)):
+                if (spent + cost(name) <= changed_budget
+                        and len(changed_unit) < changed_max):
+                    changed_unit.append(name)
+                    spent += cost(name)
+                else:
+                    changed_skipped.append(name)
+            # The change's only heavy class still runs once, ahead of any
+            # family member (or the cheapest family member when the change
+            # has no class of its own): a slow new suite is exactly what
+            # would otherwise first fail at night.
+            if ((tier is direct or not direct) and not changed_unit
+                    and changed_skipped and changed_max > 0):
+                cheapest = min(changed_skipped, key=lambda n: (cost(n), n))
+                changed_skipped.remove(cheapest)
+                changed_unit.append(cheapest)
+                spent = cost(cheapest)
+                print(f"::notice title=changed class over the smoke budget::"
+                      f"{cheapest} (~{spent:.0f}s) runs anyway: nothing else of the "
+                      f"change fit")
         changed_unit.sort()
         changed_skipped.sort()
         unit = unit + changed_unit
@@ -1294,7 +1317,7 @@ def cmd_smoke(args) -> int:
             print(f"changed unit classes added: {', '.join(changed_unit)} "
                   f"(~{spent:.0f}s of {changed_budget:.0f}s)")
         if changed_skipped:
-            print(f"::notice title=changed classes left to nightly::"
+            print(f"::notice title=classes related to this change left to nightly::"
                   f"{', '.join(changed_skipped)} exceed the smoke budget "
                   f"({changed_budget:.0f}s, {changed_max} classes)")
 

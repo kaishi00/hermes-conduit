@@ -451,7 +451,8 @@ struct BotEditorSheet: View {
                         set: { draft.capabilities = $0 }
                     ),
                     skillsSkipped: isCreating && draft.noSkills,
-                    sourceLabel: isCreating ? startFromLabel : nil
+                    sourceLabel: isCreating ? startFromLabel : nil,
+                    mcpProfile: editedBot?.name
                 )
             } label: {
                 Text(AppLocalization.string("Skills, Tools and MCP"))

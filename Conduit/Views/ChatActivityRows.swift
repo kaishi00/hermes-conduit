@@ -183,6 +183,8 @@ extension View {
 struct ChatWorkingLine: View {
     /// The tool running now, if any.
     let currentToolName: String?
+    /// Its own words for it ("Messaging Atlas…"), else the tool's kind.
+    var currentToolTitle: String? = nil
     let isThinking: Bool
     /// When the turn began; nil hides the timer.
     var startedAt: Date?
@@ -194,6 +196,7 @@ struct ChatWorkingLine: View {
 
     private var phrase: String {
         if repliesElsewhere { return AppLocalization.string("Replying on another device") }
+        if let currentToolTitle { return currentToolTitle }
         if let currentToolName {
             return ChatStepStyle(toolName: currentToolName).runningTitle
         }

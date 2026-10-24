@@ -21,7 +21,10 @@ SCHEME="Conduit"
 # GitHub-hosted runners for the same repository, which is what makes the
 # absolute paths inside the .xctestrun portable without rewriting anything.
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
-BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-1200}"
+# Read as base 10 with a 1200 fallback: the value goes straight into
+# run_with_deadline's $(( )), where a non-numeric or leading-zero override
+# would abort the build job.
+BUILD_TIMEOUT_SECS=$(decimal_seconds "${BUILD_TIMEOUT_SECS:-}" 1200)
 LOG_DIR="ci-lane/build"
 mkdir -p "$LOG_DIR"
 
