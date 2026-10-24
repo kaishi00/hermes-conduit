@@ -2539,11 +2539,13 @@ private struct FallbackModelsSettings: View {
             return
         }
         defaults = models
-        // A re-load keeps fallbacks the user is still editing.
+        // A re-load keeps fallbacks the user is still editing, but what
+        // they compare against is what the host holds now: an edit changed
+        // back to the old list still differs from another client's save.
         if !loaded || entries == saved {
             entries = loadedEntries
-            saved = loadedEntries
         }
+        saved = loadedEntries
         loaded = true
     }
 
