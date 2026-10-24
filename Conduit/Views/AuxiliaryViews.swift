@@ -2141,8 +2141,12 @@ private struct ModelCatalogPlaceholder: View {
 
     var body: some View {
         switch state {
-        case .loading, .ready:
+        case .loading:
             ProgressView("Loading available models…")
+        case .ready:
+            // Callers show their pickers instead; never a spinner that
+            // can't end.
+            EmptyView()
         case .failed:
             Text(AppLocalization.string("Could not load models."))
                 .font(.footnote).foregroundStyle(.secondary)
