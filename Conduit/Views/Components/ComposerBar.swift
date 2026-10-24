@@ -1575,6 +1575,8 @@ struct ComposerBar: View, Equatable {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
                     .restoring(request.draft)
+                // Put back, not typed: a "/cmd" draft opens no suggestions.
+                if text != restored.text { suppressNextTextChangeSuggestions = true }
                 replaceComposerText(restored.text, cursorAtEnd: true)
                 attachments = restored.attachments
                 replyReference = restored.replyReference
@@ -1868,6 +1870,8 @@ struct ComposerBar: View, Equatable {
         // the message that didn't go.
         let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
             .restoring(failed)
+        // Put back, not typed: a failed "/cmd" opens no suggestions.
+        if text != restored.text { suppressNextTextChangeSuggestions = true }
         replaceComposerText(restored.text, cursorAtEnd: true)
         attachments = restored.attachments
         replyReference = restored.replyReference
