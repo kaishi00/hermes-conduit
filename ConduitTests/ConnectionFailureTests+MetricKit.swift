@@ -357,4 +357,24 @@ extension ConnectionFailureTests {
         let empty = await MetricKitReports(store: metricKitStore()).load()
         XCTAssertFalse(empty.exportFailed, "No reports is not a failure")
     }
+
+    /// A reports folder that can't be read is not "no reports": the share
+    /// file already written stays, rather than being deleted.
+    func testMetricKitAnUnreadableReportsFolderKeepsTheShareFile() async throws {
+        let store = metricKitStore()
+        let reports = MetricKitReports(store: store)
+        store.save(metricKitMetricJSON(), kind: .metrics, begin: metricKitDay(0), end: metricKitDay(1))
+        let first = await reports.load()
+        let url = try XCTUnwrap(first.exportURL)
+
+        // A file where the reports folder was: listing it fails.
+        try FileManager.default.removeItem(at: store.directory)
+        try Data("x".utf8).write(to: store.directory)
+        XCTAssertEqual(store.writeExport(now: metricKitDay(1), appVersion: "test", timeZone: metricKitUTC), url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        let again = await reports.load()
+        XCTAssertEqual(again.exportURL, url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "The share file survives a failed read")
+    }
 }

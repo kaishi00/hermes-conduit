@@ -101,11 +101,27 @@ struct MetricKitReportStore {
 
     /// One kind's payloads, oldest first.
     func entries(_ kind: MetricKitReportKind) -> [Entry] {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        let urls = reportFiles() ?? []
         return urls.compactMap { Self.entry(for: $0) }
             .filter { $0.kind == kind }
             .sorted { ($0.end, $0.begin, $0.url.lastPathComponent) < ($1.end, $1.begin, $1.url.lastPathComponent) }
     }
+
+    /// The files in the reports folder, or nil when it is there but can't
+    /// be read. A folder not made yet holds no reports.
+    private func reportFiles() -> [URL]? {
+        do {
+            return try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return []
+        } catch {
+            metricKitLog.error("Couldn't read the device reports folder: \(Self.logged(error), privacy: .public)")
+            return nil
+        }
+    }
+
+    /// The reports folder could be read: what it lists is what is stored.
+    var canReadReports: Bool { reportFiles() != nil }
 
     /// Keeps the newest of each kind within its caps.
     func prune() {
@@ -150,6 +166,11 @@ struct MetricKitReportStore {
     /// the file when nothing is stored. Returns the file when there is one.
     @discardableResult
     func writeExport(now: Date = Date(), appVersion: String = MetricKitReportStore.appVersion, timeZone: TimeZone = .current) -> URL? {
+        // A folder that can't be read isn't "nothing stored": the file
+        // written last time stays.
+        guard canReadReports else {
+            return FileManager.default.fileExists(atPath: exportURL.path) ? exportURL : nil
+        }
         let metrics = entries(.metrics)
         let diagnostics = entries(.diagnostics)
         guard !metrics.isEmpty || !diagnostics.isEmpty else {
@@ -489,6 +510,13 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
     func load() async -> Loaded {
         await withCheckedContinuation { continuation in
             queue.async(qos: .userInitiated, flags: .enforceQoS) { [self] in
+                guard store.canReadReports else {
+                    // Not "no reports": the share file written last time
+                    // stays, and without one the page says the file failed.
+                    let kept = FileManager.default.fileExists(atPath: store.exportURL.path) ? store.exportURL : nil
+                    continuation.resume(returning: Loaded(summary: store.summary(), exportURL: kept, exportFailed: kept == nil))
+                    return
+                }
                 let summary = store.summary()
                 guard !summary.isEmpty else {
                     // Nothing to offer: no share file either.
