@@ -504,6 +504,10 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
     /// from: opening the page again with nothing new reuses it rather than
     /// serializing every payload again. Only touched on `queue`.
     private var lastExport: (files: [String], appVersion: String, timeZone: String)?
+    /// The summary last read from a readable folder, shown again while the
+    /// folder can't be read rather than an empty one. Only touched on
+    /// `queue`.
+    private var lastSummary: MetricKitReportSummary?
 
     /// The summary, and a current share file, off the main thread at the
     /// page's priority (someone is waiting on it).
@@ -513,11 +517,15 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
                 guard store.canReadReports else {
                     // Not "no reports": the share file written last time
                     // stays, and without one the page says the file failed.
+                    // The summary is the last one read, not the empty one an
+                    // unreadable folder lists.
                     let kept = FileManager.default.fileExists(atPath: store.exportURL.path) ? store.exportURL : nil
-                    continuation.resume(returning: Loaded(summary: store.summary(), exportURL: kept, exportFailed: kept == nil))
+                    let summary = lastSummary ?? store.summary()
+                    continuation.resume(returning: Loaded(summary: summary, exportURL: kept, exportFailed: kept == nil))
                     return
                 }
                 let summary = store.summary()
+                lastSummary = summary
                 guard !summary.isEmpty else {
                     // Nothing to offer: no share file either.
                     try? FileManager.default.removeItem(at: store.exportURL)

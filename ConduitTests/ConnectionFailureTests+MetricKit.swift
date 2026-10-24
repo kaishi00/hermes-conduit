@@ -376,5 +376,7 @@ extension ConnectionFailureTests {
         let again = await reports.load()
         XCTAssertEqual(again.exportURL, url)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "The share file survives a failed read")
+        XCTAssertEqual(again.summary, first.summary, "The summary last read stays, not an empty one")
+        XCTAssertFalse(again.summary.isEmpty)
     }
 }
