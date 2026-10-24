@@ -20581,6 +20581,12 @@ final class AppState: ObservableObject {
                 problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
             }
         }
+        // The server may have changed during the writes above: the model
+        // pick must not land on a same-named bot elsewhere.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            if modelChanged { problems.append(AppLocalization.string("The model was not saved.")) }
+            return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+        }
         // The model goes last and on its own: a pick the gateway wants
         // confirmed must not hold back the rest of the save.
         if modelChanged {

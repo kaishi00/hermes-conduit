@@ -368,7 +368,7 @@ struct BotEditorSheet: View {
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
-                        Picker(AppLocalization.string("Start From"), selection: $draft.cloneFrom) {
+                        Picker(AppLocalization.string("Start From"), selection: startFromSelection) {
                             Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
                             ForEach(cloneSources, id: \.name) { bot in
                                 Text(verbatim: bot.displayLabel).tag(bot.name)
@@ -402,7 +402,9 @@ struct BotEditorSheet: View {
         if isCreating, draft.cloneFrom.isEmpty {
             // Nothing to diff against before the profile exists: a fresh
             // one starts with Hermes' own defaults.
-            Text(AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
+            Text(draft.noSkills
+                ? AppLocalization.string("A fresh profile starts with Hermes' default tools. Edit the bot afterwards to change them.")
+                : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if draft.capabilities != nil {
@@ -477,6 +479,22 @@ struct BotEditorSheet: View {
             capabilitiesSource = nil
             capabilitiesLoadFailed = true
         }
+    }
+
+    /// Start From, dropping the staged lists at once: a Create before the
+    /// new profile's lists load must not send the old profile's picks.
+    private var startFromSelection: Binding<String> {
+        Binding(
+            get: { draft.cloneFrom },
+            set: { source in
+                guard source != draft.cloneFrom else { return }
+                draft.cloneFrom = source
+                capabilitiesSource = nil
+                draft.capabilities = nil
+                draft.capabilitiesBaseline = nil
+                capabilitiesLoadFailed = false
+            }
+        )
     }
 
     /// Bots a new one can copy its settings from, besides the main profile.

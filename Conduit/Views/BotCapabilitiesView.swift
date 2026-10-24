@@ -84,9 +84,10 @@ struct BotCapabilitiesView: View {
 
     private var visibleSkillNames: [String] {
         let query = skillFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-        let names = capabilities.skills.map(\.name)
-        guard !query.isEmpty else { return names }
-        return names.filter { $0.localizedCaseInsensitiveContains(query) }
+        guard !query.isEmpty else { return capabilities.skills.map(\.name) }
+        return capabilities.skills
+            .filter { $0.name.localizedCaseInsensitiveContains(query) || ($0.label ?? "").localizedCaseInsensitiveContains(query) }
+            .map(\.name)
     }
 
     private func toggle(_ item: Binding<BotCapability>) -> some View {
