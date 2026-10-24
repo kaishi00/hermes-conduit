@@ -216,9 +216,14 @@ struct LocalLiveFrontModelSettingsView: View {
     /// The saved values as read back. A read that failed (or a plugin that
     /// doesn't report them) keeps the fields as they are, rather than
     /// blanking what was just saved; the key indicator still follows a key
-    /// write that succeeded.
+    /// write that succeeded. A plugin that has gone shows as gone, not as
+    /// the status read before it went, and the drafts stay.
     private func applyAfterSave(_ voice: SpeechServerVoiceStatus, keyWritten: Bool? = nil) {
         guard voice.frontModel != nil else {
+            if voice.pluginMissing {
+                status = nil
+                return
+            }
             if let keyWritten { status?.hasKey = keyWritten }
             return
         }
