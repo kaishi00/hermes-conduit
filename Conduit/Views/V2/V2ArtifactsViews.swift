@@ -494,7 +494,8 @@ private struct ArtifactsList: View {
         openingID = item.id
         let resolver = appState.gatewayMediaResolver
         openTask = Task { @MainActor in
-            defer { openingID = nil }
+            // A cancelled open unwinding late leaves a newer open's spinner.
+            defer { if openingID == item.id { openingID = nil } }
             if item.kind == .page {
                 guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
                 guard let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
@@ -543,11 +544,15 @@ private struct ArtifactsList: View {
         generation &+= 1
         let ticket = generation
         if !key.showsRows(of: loadedKey) {
-            // Another server's list isn't shown, even dimmed, under this one.
+            // Another server's list isn't shown, even dimmed, under this one,
+            // nor a file of it still opening.
             items = []
             nextBefore = nil
             failure = nil
             loadedKey = nil
+            openTask?.cancel()
+            openTask = nil
+            openingID = nil
         }
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
