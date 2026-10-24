@@ -801,7 +801,8 @@ fails destination resolution with an **empty** available-destinations list
 ("Unable to find a device matching the provided destination specifier") and
 every downstream lane is skipped. Before invoking xcodebuild,
 `ci-build-for-testing.sh` now runs `wait_for_destination_device`
-(`ci-lib.sh`): a bounded poll (default 180 s, `DESTINATION_SETTLE_TIMEOUT_S`)
+(`ci-lib.sh`): a bounded poll (default 180 s, `DESTINATION_SETTLE_TIMEOUT_S`,
+read as base 10 and clamped to one day)
 of `simctl list devices available` that absorbs the settlement race and, if
 the pinned device never appears, fails fast with the full device/runtime
 inventory instead of a misleading xcodebuild error. The gate never
@@ -903,7 +904,12 @@ finalizing (writing its xcresult, collecting diagnostics), and the watchdog's
 deadline becomes now + `XCODEBUILD_FINALIZE_GRACE_S` (default 180 s). That
 extends a nearly spent budget, so a completed run is not converted into a
 timeout (run #500) or a truncated result bundle, and shortens a large one, so
-a hung finalize step cannot spend the rest of the batch's budget. A retry
+a hung finalize step cannot spend the rest of the batch's budget. (Like
+every seconds override that reaches shell arithmetic - this one,
+`DESTINATION_SETTLE_TIMEOUT_S`, `BUILD_TIMEOUT_SECS`, and the local gate's
+`GATE_SLEEP_SCALE` and `GATE_TEARDOWN_GRACE_S` - it is read as base 10, so
+`08` means 8 s; a value that is not all digits takes the default, and
+anything above one day is clamped to 86400.) A retry
 iteration (`-retry-tests-on-failure`) prints a new `started` line after a
 failed summary and goes back on the test budget. The verdict still comes
 exclusively from the real exit status - the marker never declares success on
