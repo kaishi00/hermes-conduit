@@ -225,6 +225,10 @@ assert_eq "leading zeros do not count toward the size" \
   "$(seconds_of 0000000030 5)" 30
 assert_eq "result is safe in arithmetic" \
   "$(echo $(( $(seconds_of 08 5) + 1 )))" 9
+assert_status "non-numeric fallback is refused, not printed back" 2 \
+  seconds_of 30 soon
+assert_eq "non-numeric fallback prints nothing on stdout" \
+  "$(seconds_of 30 soon 2>/dev/null)" ""
 
 echo "# bash syntax gate"
 

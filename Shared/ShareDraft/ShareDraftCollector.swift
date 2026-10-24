@@ -188,11 +188,20 @@ struct ShareDraftCollector {
                 switch item {
                 case let string as String: continuation.resume(returning: string)
                 case let attributed as NSAttributedString: continuation.resume(returning: attributed.string)
-                case let data as Data: continuation.resume(returning: String(data: data, encoding: .utf8))
+                case let data as Data: continuation.resume(returning: text(from: data))
                 default: continuation.resume(returning: nil)
                 }
             }
         }
+    }
+
+    /// Text an item hands over as bytes: UTF-8, or UTF-16 that says so
+    /// with its byte order mark (any even run of bytes decodes as UTF-16,
+    /// so unmarked bytes are never guessed into it).
+    static func text(from data: Data) -> String? {
+        if let text = String(data: data, encoding: .utf8) { return text }
+        guard data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) else { return nil }
+        return String(data: data, encoding: .utf16)
     }
 
     enum StagedFile: Equatable {

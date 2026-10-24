@@ -19,12 +19,19 @@ struct PastedImage: Equatable {
 
 /// A pasted image link's download, kept only when it is a picture, under
 /// the type it actually is: a link can answer with an error page whatever
-/// its extension says.
+/// its extension says. One whose header claims more pixels than a reply's
+/// picture may have (`BoundedRemoteImage.maxPixelCount`) is refused too: it
+/// would become an attachment that decodes to gigabytes.
 enum PastedRemoteImage {
     static func image(from data: Data) -> PastedImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
-              let type = CGImageSourceGetType(source) as String? else { return nil }
+              let type = CGImageSourceGetType(source) as String?,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0,
+              width <= BoundedRemoteImage.maxPixelCount / height else { return nil }
         return PastedImage(data: data, typeIdentifier: type)
     }
 }

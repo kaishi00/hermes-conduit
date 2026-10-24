@@ -850,6 +850,37 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertEqual(connectedTickets.first, "saved-ticket")
     }
 
+    /// A mint cancelled under it (the bridge torn down by a switch or a
+    /// sign-out) ends this restore: it never connects with the spent ticket.
+    func testColdStartSavedSessionStopsWhenItsMintIsCancelled() async throws {
+        let connectCount = RepairConnectCount()
+        var mints = 0
+        let harness = makeHarness(lifecycleOperations: coldStartLifecycle(
+            mint: { _ in
+                mints += 1
+                throw CancellationError()
+            },
+            connected: { _ in connectCount.value += 1 }
+        ))
+        let dashboardID = harness.appState.adoptDashboard(forNormalizedURL: Self.failedURL)
+        KeychainHelper.saveConnection(
+            HermesConnection(baseUrl: Self.failedURL, ticket: "spent-ticket"),
+            dashboardID: dashboardID
+        )
+
+        harness.appState.loadSavedConnection()
+        let deadline = Date().addingTimeInterval(2)
+        while (mints == 0 || harness.appState.isConnecting) && connectCount.value == 0 && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(mints, 1)
+        XCTAssertEqual(connectCount.value, 0, "the spent ticket is never tried")
+        XCTAssertFalse(harness.appState.isConnecting, "the restore that still owns the flow stops connecting")
+        XCTAssertNotEqual(harness.appState.turnState, .synchronizing, "nor leaves the composer synchronizing")
+    }
+
     private func coldStartLifecycle(
         mint: @escaping @MainActor (String) async throws -> String,
         connected: @escaping @MainActor (HermesClient) async throws -> Void

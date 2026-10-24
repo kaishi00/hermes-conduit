@@ -195,9 +195,10 @@ extension AppState {
         persistPinnedReplies()
     }
 
-    /// Whether the transcript on screen is the chat a reveal waits for.
+    /// Whether the transcript on screen is the chat a reveal waits for. A
+    /// reveal made in the open chat is checked too: another chat may have
+    /// opened before it ran.
     func isShowingChat(for reveal: PinnedReplyReveal) -> Bool {
-        guard reveal.opening != nil else { return true }
         guard canPinReplies else { return false }
         return pinBelongs(reveal.pin, toOwnIDs: openChatPinIDs().own)
     }

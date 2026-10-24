@@ -369,6 +369,38 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
+    /// A resume whose chat can't start keeps the screenshot for the
+    /// dashboard it was taken on, even when the dashboard switched while
+    /// the chat was being started.
+    func testParkedScreenshotKeptAfterAFailedResumeStaysWithItsOwnDashboard() async throws {
+        let (a, b) = twoDashboards()
+        var duringCreate: (@MainActor () -> Void)?
+        var operations = ChatResumeLifecycleOperations(
+            sendPrompt: { _, _, _ in .accepted }
+        )
+        operations.createSession = { _, _ in
+            duringCreate?()
+            throw URLError(.networkConnectionLost)
+        }
+        let harness = makeHarness(lifecycleOperations: operations, dashboards: [a, b])
+        duringCreate = { [weak appState = harness.appState] in appState?.selectDashboardTarget(b.id) }
+        installComposerClient(in: harness)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(
+            for: shot,
+            enqueuedAt: Date(timeIntervalSinceNow: -3_600)
+        ), profile: nil)
+        harness.appState.isConnected = true
+
+        await harness.appState.resumeParkedScreenQuestion()
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Kept, never dropped")
+        XCTAssertEqual(
+            harness.appState.parkedScreenQuestion?.dashboardID, a.id,
+            "It waits for the dashboard it was taken on, not the one switched to"
+        )
+    }
+
     /// The send's await lets a dashboard switch land before the failure:
     /// the screenshot still goes back under the dashboard it was taken on.
     func testFailedSendPutsTheScreenshotBackOnItsOwnDashboardAfterASwitch() async throws {

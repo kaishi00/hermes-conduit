@@ -2586,7 +2586,12 @@ private struct FallbackModelsSettings: View {
             return
         }
         defaults = models
-        entries = loadedEntries
+        // A re-load keeps fallbacks the user is still editing, but what
+        // they compare against is what the host holds now: an edit changed
+        // back to the old list still differs from another client's save.
+        if !loaded || entries == saved {
+            entries = loadedEntries
+        }
         saved = loadedEntries
         loaded = true
     }
@@ -2947,6 +2952,9 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func saveDraft(_ field: ProfileSettingField, defaultValue: String) {
+        // Return in a field while a save is on its way: the buttons are
+        // disabled, and this waits the same way.
+        guard savingKey == nil else { return }
         let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
         switch field.control {
         case .number:
@@ -2988,12 +2996,15 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func save(_ field: ProfileSettingField, value: ProfileSettingValue) {
+        // One save at a time: an older one failing after a newer one landed
+        // would put back the value from before both.
+        guard savingKey == nil else { return }
         let previous = values[field.key]
         values[field.key] = value
         fieldErrors[field.key] = nil
         if savedKey == field.key { savedKey = nil }
+        savingKey = field.key
         Task {
-            savingKey = field.key
             guard await save(field.key, value) else {
                 values[field.key] = previous
                 fieldErrors[field.key] = AppLocalization.string("Could not save \(field.label).")

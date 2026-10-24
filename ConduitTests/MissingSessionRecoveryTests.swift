@@ -162,6 +162,40 @@ final class MissingSessionRecoveryTests: XCTestCase {
         XCTAssertEqual(f.scheduler.scheduledCount, 0, "no reconnect loop after an authoritative not-found")
     }
 
+    /// A row retired for a 4007 that resumes later (the gateway restored it,
+    /// the user opened it) is alive: a later automatic return may pick it
+    /// again instead of skipping it for the rest of the app run.
+    func testARetiredRowThatResumesLaterIsOfferedAgain() async {
+        let requests = Requests()
+        var restored = false
+        let f = makeFixture(
+            saved: "gone",
+            catalog: [session("gone"), session("other")],
+            open: { id in
+                if id == "gone", !restored { throw self.notFound }
+                return self.resumed(id)
+            },
+            requests: requests
+        )
+        f.store.setBehavior(.latestActivity)
+
+        await coldLaunchSync(f)
+        XCTAssertEqual(f.appState.activeSessionId, "other")
+
+        restored = true
+        let opened = await f.appState.openSession("gone")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(f.appState.activeSessionId, "gone")
+
+        // Away (a dashboard switch) and back.
+        f.appState.activeSessionId = nil
+        requests.ids.removeAll()
+        await coldLaunchSync(f)
+
+        XCTAssertEqual(requests.ids.first, "gone", "the newest row is no longer skipped")
+        XCTAssertEqual(f.appState.activeSessionId, "gone")
+    }
+
     /// #446: Hermes drops runtimes (a gateway restart, idle reaping) and
     /// resumes by the stored id. A listed row whose RUNTIME id answers 4007
     /// is not a dead conversation while its stored id still resumes: the

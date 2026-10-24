@@ -473,6 +473,68 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertFalse(appState.isStartingNewChat, "a failed start leaves New Chat and the next send free")
     }
 
+    func testAMessageWhoseChatDidntStartNeverGoesIntoAChatOpenedMeanwhile() async {
+        struct CreateRefused: Error {}
+        var prompts: [String] = []
+        let appState = makeConnectedAppState { sessionID, _ in prompts.append(sessionID) }
+        let other = makeSession(id: "other-stored", alternateIDs: [], profile: appState.activeProfile)
+        appState.sessions = [other]
+        appState.widgetSessionCreatorOverride = { _, _ in
+            // The user opens another chat while Hermes creates this one.
+            appState.activeSessionId = other.id
+            throw CreateRefused()
+        }
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertFalse(sent, "The composer keeps the message")
+        XCTAssertTrue(prompts.isEmpty, "Never sent into the chat opened meanwhile: \(prompts)")
+    }
+
+    func testAMessageNeverGoesIntoAChatAnotherCreationOpenedMeanwhile() async {
+        var prompts: [String] = []
+        let appState = makeConnectedAppState { sessionID, _ in prompts.append(sessionID) }
+        var creations = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            creations += 1
+            if creations == 1 {
+                // A voice action or a screen question creates its own chat
+                // while Hermes creates the composer's.
+                await appState.createNewSession()
+                return ("composer-runtime", "composer-stored", "default")
+            }
+            return ("voice-runtime", "voice-stored", "default")
+        }
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertEqual(creations, 2)
+        XCTAssertEqual(appState.activeSessionId, "voice-runtime", "The newer creation keeps the screen")
+        XCTAssertFalse(sent, "The composer keeps the message")
+        XCTAssertTrue(prompts.isEmpty, "Never sent into the other creation's chat: \(prompts)")
+        XCTAssertFalse(appState.isStartingNewChat)
+    }
+
+    func testAHermesWatchPromptNeverLandsInAChatAnotherCreationOpenedMeanwhile() async {
+        let appState = makeConnectedAppState { _, _ in }
+        var creations = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            creations += 1
+            if creations == 1 {
+                await appState.createNewSession()
+                return ("watch-runtime", "watch-stored", "default")
+            }
+            return ("voice-runtime", "voice-stored", "default")
+        }
+
+        await appState.startHermesWatch(for: "the porch light")
+
+        XCTAssertEqual(creations, 2)
+        XCTAssertEqual(appState.activeSessionId, "voice-runtime")
+        XCTAssertNil(appState.composerPrefillDraftKey, "No prompt put into the other creation's chat")
+        XCTAssertNotNil(appState.errorMessage, "The watch chat that didn't start says so")
+    }
+
     func testAMessageSentDisconnectedSaysToConnectOverAnOlderMessage() async {
         var created = 0
         let appState = makeConnectedAppState { _, _ in }

@@ -117,6 +117,9 @@ private struct ArtifactsList: View {
     /// Cancelled when the list goes, so a slow fetch can't present a viewer
     /// over whatever screen the user moved on to.
     @State private var openTask: Task<Void, Never>?
+    /// The open in flight: a cancelled one finishing late can't clear a
+    /// newer open's spinner, even of the same item.
+    @State private var openToken: UUID?
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -512,9 +515,18 @@ private struct ArtifactsList: View {
         }
         Haptics.light()
         openingID = item.id
+        let token = UUID()
+        openToken = token
         let resolver = resolver(for: item)
         openTask = Task { @MainActor in
-            defer { openingID = nil }
+            // A cancelled open unwinding late leaves a newer open's spinner,
+            // also one of the same item on another dashboard.
+            defer {
+                if openToken == token {
+                    openingID = nil
+                    openToken = nil
+                }
+            }
             if item.kind == .page {
                 guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
                 guard let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
@@ -558,15 +570,33 @@ private struct ArtifactsList: View {
     // MARK: - Loading
 
     private func reload() async {
-        guard appState.supportsArtifacts else { return }
         let key = currentKey
-        generation &+= 1
-        let ticket = generation
         if !key.showsRows(of: loadedKey) {
-            // Another server's list isn't shown, even dimmed, under this one.
+            // Another server's list isn't shown, even dimmed, under this one,
+            // nor a file of it still opening: also when this one has no
+            // artifacts to show.
             feed = nil
             failure = nil
             loadedKey = nil
+            openTask?.cancel()
+            openTask = nil
+            openingID = nil
+            openToken = nil
+        } else if loadedKey?.profile != key.profile {
+            // Another profile's rows may stay up, dimmed, but its file
+            // still opening is not presented under this one.
+            openTask?.cancel()
+            openTask = nil
+            openingID = nil
+            openToken = nil
+        }
+        // Every reload, also one that loads nothing, outdates the request
+        // before it: the previous dashboard's page can't land under this one.
+        generation &+= 1
+        let ticket = generation
+        guard appState.supportsArtifacts else {
+            isLoading = false
+            return
         }
         isLoading = true
         defer { if ticket == generation { isLoading = false } }

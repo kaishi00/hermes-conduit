@@ -78,6 +78,11 @@ final class CloudflareAccessTests: XCTestCase {
     func testIncompleteConfigurationIsAbsent() {
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "client-id", clientSecret: ""))
         XCTAssertNil(CloudflareAccessCredentials.from(clientID: "", clientSecret: "secret"))
+        XCTAssertNil(CloudflareAccessCredentials.from(clientID: "client-id", clientSecret: "  \n"),
+                     "A secret of spaces is still half-typed")
+        let pasted = CloudflareAccessCredentials.from(clientID: " client-id ", clientSecret: " fixture-secret\n")
+        XCTAssertEqual(pasted?.clientID, "client-id")
+        XCTAssertEqual(pasted?.clientSecret, "fixture-secret", "Stray whitespace around a pasted secret isn't sent")
     }
 
     // MARK: - Auth WebView initial request construction

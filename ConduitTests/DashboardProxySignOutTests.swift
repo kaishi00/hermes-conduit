@@ -64,6 +64,30 @@ final class DashboardProxySignOutTests: XCTestCase {
         XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "about:blank"), forDashboard: dashboardURL))
     }
 
+    /// A dashboard saved on http behind an edge that forces TLS: the same
+    /// host on https is the dashboard moving, not a sign-in, for the page,
+    /// the background requests and the socket alike.
+    func testTheSameHostMovingToHttpsIsSignInOnlyOnASignInPage() throws {
+        let plain = try XCTUnwrap(URL(string: "http://dashboard.example.test:9119"))
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test/"), forDashboard: plain))
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://Dashboard.example.test/sessions"), forDashboard: plain))
+        XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test/login"), forDashboard: plain))
+        XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://sso.example.test/"), forDashboard: plain),
+                      "Another host on https is still another origin")
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:443/"), forDashboard: plain))
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:9119/"), forDashboard: plain),
+                       "TLS on the dashboard's own port is the dashboard moving")
+        XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:9443/dashboard"), forDashboard: plain),
+                      "Another port on the same host is another origin")
+        XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "http://dashboard.example.test/"), forDashboard: dashboardURL),
+                      "https moving down to http is never the same dashboard")
+        XCTAssertFalse(DashboardSignInRedirect.redirectIsSignIn(
+            location: "https://dashboard.example.test/api/sessions",
+            from: try XCTUnwrap(URL(string: "http://dashboard.example.test:9119/api/sessions")),
+            forDashboard: plain
+        ))
+    }
+
     func testARedirectLocationResolvesLikeABrowserBeforeItIsJudged() throws {
         let request = try XCTUnwrap(URL(string: "https://dashboard.example.test/api/sessions"))
         XCTAssertTrue(DashboardSignInRedirect.redirectIsSignIn(

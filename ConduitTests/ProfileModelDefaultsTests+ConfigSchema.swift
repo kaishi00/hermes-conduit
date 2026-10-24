@@ -92,6 +92,15 @@ extension ProfileModelDefaultsTests {
         XCTAssertNil(ProfileSettingValue.parseNumber("abc"))
     }
 
+    func testNumberFieldsRefuseNotANumberAndInfinity() {
+        // The config is sent as JSON, which has neither (JSONSerialization
+        // raises on them).
+        XCTAssertNil(ProfileSettingValue.parseNumber("nan"))
+        XCTAssertNil(ProfileSettingValue.parseNumber("inf"))
+        XCTAssertNil(ProfileSettingValue.parseNumber("-infinity"))
+        XCTAssertNil(ProfileSettingValue.parseNumber("1e999"))
+    }
+
     func testListEditorDropsBlankLines() {
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries("  git status \n\n ls -la\n"), ["git status", "ls -la"])
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries(""), [])

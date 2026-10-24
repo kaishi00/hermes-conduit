@@ -324,9 +324,20 @@ final class LoginFlowModel: ObservableObject {
 
     /// The Connection Setup assistant's result, through the tested mapping
     /// that drops an in-memory Cloudflare token when the origin changes.
+    /// A sign-in code's username and password stay with the code's own
+    /// dashboard: when the assistant moved the address elsewhere, the next
+    /// Sign in opens the sign-in step instead of sending them there.
     func applySetupResult(_ result: ConnectionSetupResult) {
-        let handoff = LoginCloudflareHandoff.apply(result, to: LoginAddress.bestGuess(address), keeping: cloudflareState)
-        apply(LoginSeed(address: handoff.serverURL, username: handoff.username, password: handoff.password, cloudflare: handoff.cloudflare))
+        let oldAddress = LoginAddress.bestGuess(address)
+        let handoff = LoginCloudflareHandoff.apply(result, to: oldAddress, keeping: cloudflareState)
+        let leavesTheCodesDashboard = signsInFromLink
+            && !LoginCloudflareHandoff.sameOrigin(oldAddress, handoff.serverURL)
+        apply(LoginSeed(
+            address: handoff.serverURL,
+            username: leavesTheCodesDashboard ? "" : handoff.username,
+            password: leavesTheCodesDashboard ? "" : handoff.password,
+            cloudflare: handoff.cloudflare
+        ))
     }
 
     func clearFailure() {

@@ -336,6 +336,24 @@ extension NotificationE2ETests {
                                                      now: now.addingTimeInterval(NotificationE2E.previousKeyGrace)), [old])
     }
 
+    func testAPairingThatNeverRotatesKeepsWorking() throws {
+        // An older app or notifier never rotates: its one key keeps opening
+        // pushes, sealing answers and closing the padlock, at any age.
+        guard case .verified = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: true, now: now) else {
+            return XCTFail("A key that was never rotated still opens pushes")
+        }
+        let years = now.addingTimeInterval(3 * 365 * 24 * 3600)
+        XCTAssertEqual(NotificationE2E.expiredRecords([record], now: years), [], "Only a replaced key expires")
+        XCTAssertEqual(NotificationE2E.currentRecord(gatewayID: Self.gatewayID, installationID: Self.installationID, records: [record]), record)
+        let body = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "Yes", relayGatewayID: Self.gatewayID)
+        let sealed = try PushNotificationService.sealedRespondBody(body, requestID: "conduit-push-abc123def456", installationID: Self.installationID, records: [record])
+        XCTAssertTrue(sealed["answer"]?.hasPrefix("e2e1.\(Self.kid).") == true)
+        let keeps = PushNotificationService.EncryptionConfirmation(kid: Self.kid, rotates: false)
+        XCTAssertEqual(PushNotificationService.encryptionAssurance(gatewayID: Self.gatewayID, installationID: Self.installationID,
+                                                                   records: [record], confirmation: keeps, now: years),
+                       .ensured(keyCreatedAt: record.createdAt, rotates: false))
+    }
+
     func testRetiredAtIsOptionalInStoredRecords() throws {
         var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any] ?? [:]
         json.removeValue(forKey: "retiredAt")

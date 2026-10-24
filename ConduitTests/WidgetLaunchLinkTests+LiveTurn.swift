@@ -35,6 +35,15 @@ extension WidgetLaunchLinkTests {
         XCTAssertNil(LiveTurnProgress.applying(.messageDelta(sessionId: "s", text: "lo"), to: writing))
     }
 
+    func testLiveTurnInterimCommentaryIsWriting() throws {
+        // On the Codex runtime commentary arrives only as message.interim.
+        let writing = try XCTUnwrap(LiveTurnProgress.applying(
+            .messageInterim(sessionId: "s", text: "Looking at the logs", alreadyStreamed: false),
+            to: State(phase: .thinking)
+        ))
+        XCTAssertEqual(writing.turnPhase, .writing)
+    }
+
     func testLiveTurnContextIsAWholeBoundedPercent() throws {
         let state = try XCTUnwrap(LiveTurnProgress.applying(.contextUpdate(sessionId: "s", percent: 41.6, used: 41_600, max: 100_000), to: State(phase: .thinking)))
         XCTAssertEqual(state.context, 42)

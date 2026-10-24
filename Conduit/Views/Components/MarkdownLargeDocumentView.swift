@@ -1237,12 +1237,10 @@ extension MarkdownCodeSlicer {
     /// true when either ceiling (lines or bytes) leaves content unpreviewed.
     static func lineStats(source: String, previewLineBudget: Int, previewByteBudget: Int) async -> (hasMore: Bool, count: Int) {
         await Task.yield()
+        // Bytes, not Characters: faster on every streamed update, and "\r\n"
+        // is one Character that never equals "\n".
         var newlines = 0
-        var index = source.startIndex
-        while index < source.endIndex {
-            if source[index] == "\n" { newlines += 1 }
-            index = source.index(after: index)
-        }
+        for byte in source.utf8 where byte == 0x0A { newlines += 1 }
         let hasMore = newlines >= previewLineBudget || source.utf8.count > previewByteBudget
         return (hasMore, newlines + 1)
     }

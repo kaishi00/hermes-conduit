@@ -136,6 +136,16 @@ final class MarkdownLargeDocumentTests: XCTestCase {
 
     // MARK: 4/5. Expansion is chunked and preserves all content
 
+    func testLargeCodeLineCountReadsWindowsLineEndings() async {
+        // "\r\n" is one Character, so a Character walk never saw its "\n".
+        let stats = await MarkdownCodeSlicer.lineStats(source: "a\r\nb\r\nc", previewLineBudget: 2, previewByteBudget: 1_000)
+        XCTAssertEqual(stats.count, 3)
+        XCTAssertTrue(stats.hasMore)
+        let unix = await MarkdownCodeSlicer.lineStats(source: "a\nb", previewLineBudget: 2, previewByteBudget: 1_000)
+        XCTAssertEqual(unix.count, 2)
+        XCTAssertFalse(unix.hasMore)
+    }
+
     func testChunkPlanBoundsEveryFlowChunk() async {
         let source = paragraphSoup(targetBytes: 300_000)
         guard let prepared = await LargeMarkdownPreparedDocument.prepare(source) else { return XCTFail("preparation failed") }

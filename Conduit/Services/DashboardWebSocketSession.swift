@@ -42,22 +42,19 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
 
     /// The typed refusal for a handshake: a redirect counts as sign-in only
     /// when its target is one (`DashboardSignInRedirect`: another origin,
-    /// or a sign-in page on the dashboard's own). A same-origin redirect to
-    /// an ordinary address (a load balancer's 307, the same host moving to
-    /// https/wss) and a redirect without a target stay a closed connection
-    /// for the reconnect path, like a 401 or 403, which says nothing about
-    /// the account (Hermes answers a spent ticket with 403).
+    /// or a sign-in page on the dashboard's own, where the same host moving
+    /// to https/wss counts as its own). A redirect to an ordinary address on
+    /// the dashboard's origin (a load balancer's 307, the same host moving
+    /// to https/wss) and a redirect without a target stay a closed
+    /// connection for the reconnect path, like a 401 or 403, which says
+    /// nothing about the account (Hermes answers a spent ticket with 403);
+    /// one to a sign-in page there, upgraded or not, is sign-in.
     static func failure(status: Int?, redirectTarget: URL?, dashboardURL: String) -> DashboardSocketHandshakeError? {
         guard let status, (300...399).contains(status),
               let target = redirectTarget.map(httpEquivalent),
               let dashboard = URL(string: dashboardURL) else { return nil }
-        let signIn: Bool
-        if isSecureUpgrade(target, of: dashboard) {
-            signIn = DashboardSignInRedirect.isSignInPath(target.path)
-        } else {
-            signIn = DashboardSignInRedirect.isSignIn(target, forDashboard: dashboard)
-        }
-        return signIn ? .browserSessionRequired(status: status) : nil
+        return DashboardSignInRedirect.isSignIn(target, forDashboard: dashboard)
+            ? .browserSessionRequired(status: status) : nil
     }
 
     /// A socket address as the page address it stands for (ws as http, wss
@@ -70,12 +67,6 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
         default: break
         }
         return components.url ?? url
-    }
-
-    /// The dashboard's own host on https, its http address upgraded.
-    private static func isSecureUpgrade(_ target: URL, of dashboard: URL) -> Bool {
-        dashboard.scheme?.lowercased() == "http" && target.scheme?.lowercased() == "https"
-            && target.host?.lowercased() == dashboard.host?.lowercased()
     }
 
     var errorDescription: String? {
