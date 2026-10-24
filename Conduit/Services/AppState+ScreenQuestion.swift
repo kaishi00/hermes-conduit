@@ -306,10 +306,10 @@ extension AppState {
     /// Starts a chat and moves the screenshot onto it. When none starts,
     /// the screenshot goes back where it was and the user is told.
     private func startChatForScreenshot(_ entry: PendingScreenshot) async -> String? {
-        let previous = activeSessionId
         let earlierError = errorMessage
-        await createNewSession()
-        guard let created = activeSessionId, created != previous else {
+        // Only the chat this creation opened, while it is still open: one
+        // another creation opened meanwhile doesn't take the screenshot.
+        guard let created = await createNewSession(), activeSessionId == created else {
             restorePendingScreenshot(entry)
             // Where the screenshot is first, then Hermes's own reason when
             // this attempt gave one.
@@ -556,9 +556,8 @@ extension AppState {
         if let open = activeSessionId, continuesOpenChat || openChatIsEmpty {
             sessionID = open
         } else {
-            let previous = activeSessionId
-            await createNewSession()
-            guard let created = activeSessionId, created != previous else {
+            // Only the chat this creation opened, while it is still open.
+            guard let created = await createNewSession(), activeSessionId == created else {
                 guard isConnected else { return false }
                 // Kept, not dropped: tried again once the connection settles.
                 // A profile that couldn't open is tried again too.

@@ -515,6 +515,26 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertFalse(appState.isStartingNewChat)
     }
 
+    func testAHermesWatchPromptNeverLandsInAChatAnotherCreationOpenedMeanwhile() async {
+        let appState = makeConnectedAppState { _, _ in }
+        var creations = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            creations += 1
+            if creations == 1 {
+                await appState.createNewSession()
+                return ("watch-runtime", "watch-stored", "default")
+            }
+            return ("voice-runtime", "voice-stored", "default")
+        }
+
+        await appState.startHermesWatch(for: "the porch light")
+
+        XCTAssertEqual(creations, 2)
+        XCTAssertEqual(appState.activeSessionId, "voice-runtime")
+        XCTAssertNil(appState.composerPrefillDraftKey, "No prompt put into the other creation's chat")
+        XCTAssertNotNil(appState.errorMessage, "The watch chat that didn't start says so")
+    }
+
     func testAMessageSentDisconnectedSaysToConnectOverAnOlderMessage() async {
         var created = 0
         let appState = makeConnectedAppState { _, _ in }

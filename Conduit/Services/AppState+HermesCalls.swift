@@ -124,9 +124,9 @@ extension AppState {
 
     /// A new chat with `prefill` in the composer, for the user to send.
     private func startHermesCallsChat(prefill: String) async {
-        let previous = activeSessionId
-        await createNewSession()
-        guard let created = activeSessionId, created != previous else {
+        // Only the chat this creation opened, while it is still open: the
+        // prompt never lands in a chat another creation opened meanwhile.
+        guard let created = await createNewSession(), activeSessionId == created else {
             // Settings has closed: a chat that didn't start says so.
             if errorMessage == nil {
                 errorMessage = AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
