@@ -473,6 +473,24 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertFalse(appState.isStartingNewChat, "a failed start leaves New Chat and the next send free")
     }
 
+    func testAMessageWhoseChatDidntStartNeverGoesIntoAChatOpenedMeanwhile() async {
+        struct CreateRefused: Error {}
+        var prompts: [String] = []
+        let appState = makeConnectedAppState { sessionID, _ in prompts.append(sessionID) }
+        let other = makeSession(id: "other-stored", alternateIDs: [], profile: appState.activeProfile)
+        appState.sessions = [other]
+        appState.widgetSessionCreatorOverride = { _, _ in
+            // The user opens another chat while Hermes creates this one.
+            appState.activeSessionId = other.id
+            throw CreateRefused()
+        }
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertFalse(sent, "The composer keeps the message")
+        XCTAssertTrue(prompts.isEmpty, "Never sent into the chat opened meanwhile: \(prompts)")
+    }
+
     func testAMessageSentDisconnectedSaysToConnectOverAnOlderMessage() async {
         var created = 0
         let appState = makeConnectedAppState { _, _ in }

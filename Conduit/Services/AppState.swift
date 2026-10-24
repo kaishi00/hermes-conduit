@@ -22997,7 +22997,10 @@ final class AppState: ObservableObject {
         }
         await createNewSessionMarkingStart()
         // A chat that didn't start has already said why (createNewSession).
-        guard activeSessionId != nil else { return nil }
+        // Only the chat it created takes the message: another the user
+        // opened while it was created (newChatOpenedSessionID clears when
+        // one replaces it) gets nothing, and the composer keeps the words.
+        guard let created = newChatOpenedSessionID, activeSessionId == created else { return nil }
         return composerSubmissionContext()
     }
 
