@@ -442,6 +442,9 @@ struct V2PulsePage: View {
                     clearedUndoButton(card)
                 }
                 .padding(.vertical, 4)
+                if appState.pulseCardHasChat(card) {
+                    chatLink(card)
+                }
             } else {
                 topicLine(card)
                 Text(card.formattedNews)
