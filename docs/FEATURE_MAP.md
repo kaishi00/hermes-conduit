@@ -825,6 +825,31 @@ speech-server transcription stream (listening, not speaking)
 
 **Checked:** 2026-10-24, at #1190.
 
+## Chats top bar and search
+
+The Chats screen's controls: the profile row, the filter, Projects,
+Artifacts, New chat and the search field, and how they lay out when the
+profiles don't fit beside the controls.
+
+**Siblings:** the chats list · the Projects view (same bar and field) · the
+one-row bar (every profile fits) and the stacked bar (profiles on their own
+row) · iPad and Mac (same view) · searching messages ("In messages")
+
+**Code**
+- Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, filterPill, barSearchField, searchField, searchCapsule)
+- Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionIcon)
+
+**Rulings**
+- The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
+- In the stacked bar, search is a magnifier leading the controls. Tapping it turns the filter row into the field with Cancel, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, Eric).
+- A typed chat's row keeps its grey bubble; the icon shows the source, the unread dot and, in All, the profile badge (2026-10-24, Eric).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-24, at 1c386c4.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
