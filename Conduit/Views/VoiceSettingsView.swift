@@ -1822,6 +1822,9 @@ private struct WakePhraseSettingsSection: View {
     @State private var isEnabled: Bool
     @State private var isRequestingPermission = false
     @State private var permissionDenied = false
+    /// What's said beside each phrase about its language, worked out when
+    /// the phrases change: it builds speech recognizers to ask.
+    @State private var languageNotes: [String: (text: String, isUnheard: Bool)] = [:]
 
     init(model: WakePhraseSettingsModel) {
         self.model = model
@@ -1865,9 +1868,8 @@ private struct WakePhraseSettingsSection: View {
                 }
                 // A phrase in another writing system is heard by a
                 // recognizer for its own language, when this iPhone has one.
-                let usable = phrases.filter(WakePhraseMatcher.isUsable)
-                ForEach(usable, id: \.self) { phrase in
-                    if let note = WakeSpeechLocale.note(for: phrase, among: usable) {
+                ForEach(phrases.filter(WakePhraseMatcher.isUsable), id: \.self) { phrase in
+                    if let note = languageNotes[phrase] {
                         Label(note.text, systemImage: note.isUnheard ? "exclamationmark.circle" : "globe")
                             .font(.caption)
                             .foregroundStyle(note.isUnheard ? Color.orange : Color.secondary)
@@ -1919,6 +1921,8 @@ private struct WakePhraseSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .onAppear { updateLanguageNotes() }
+        .onChange(of: phrases) { _, _ in updateLanguageNotes() }
         // Follow changes made elsewhere while this page stays open.
         .onChange(of: model.phrases) { _, newPhrases in
             guard !isRequestingPermission, newPhrases != phrases else { return }
@@ -1934,6 +1938,15 @@ private struct WakePhraseSettingsSection: View {
         .onChange(of: model.listensOverOtherAudio) { _, value in
             listensOverOtherAudio = value
         }
+    }
+
+    private func updateLanguageNotes() {
+        let usable = phrases.filter(WakePhraseMatcher.isUsable)
+        var notes: [String: (text: String, isUnheard: Bool)] = [:]
+        for phrase in usable {
+            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: usable)
+        }
+        languageNotes = notes
     }
 
     private func enable() {

@@ -26,8 +26,12 @@ enum ProfileConfigWriteQueue {
             await previous?.value
             return Handoff(value: await operation())
         }
-        tail = Task { _ = await task.value }
-        return await task.value.value
+        let done = Task { _ = await task.value }
+        tail = done
+        let result = await task.value.value
+        // Drained: nothing to keep waiting on.
+        if tail == done { tail = nil }
+        return result
     }
 
     /// `run`, for an operation that throws.

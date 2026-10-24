@@ -82,8 +82,10 @@ enum WakeSpeechLocale {
         supported: Set<Locale> = SpeechRecognitionLocale.recognizerLocales,
         onDevice: (Locale) -> Bool = SpeechRecognitionLocale.recognizesOnDevice
     ) -> Locale? {
-        guard let script = Self.script(of: phrase) else { return appLocale }
-        if writes(script, appLocale.identifier) { return appLocale }
+        // The app's locale hears Latin letters and its own script, when it
+        // has an on-device model.
+        guard let script = Self.script(of: phrase) else { return onDevice(appLocale) ? appLocale : nil }
+        if writes(script, appLocale.identifier) { return onDevice(appLocale) ? appLocale : nil }
         let own = preferredLanguages.filter { writes(script, $0) }
         for language in own + script.defaultLanguages {
             let wanted = Locale(identifier: language)
@@ -144,11 +146,15 @@ enum WakeSpeechLocale {
         if !heard, localeFor(phrase) != nil {
             return (AppLocalization.string("“\(phrase)” isn't heard: wake listens in three languages at most."), true)
         }
-        guard let script = Self.script(of: phrase), !writes(script, appLocale.identifier) else { return nil }
+        let script = Self.script(of: phrase)
+        let inAppLocale = script.map { writes($0, appLocale.identifier) } ?? true
         guard let locale = localeFor(phrase) else {
-            let language = script.defaultLanguages.first.map { languageName(Locale(identifier: $0)) } ?? phrase
+            let language = inAppLocale
+                ? languageName(appLocale)
+                : script?.defaultLanguages.first.map { languageName(Locale(identifier: $0)) } ?? phrase
             return (AppLocalization.string("“\(phrase)” can't be heard: this iPhone has no on-device speech recognition for \(language)."), true)
         }
+        guard !inAppLocale else { return nil }
         return (AppLocalization.string("Conduit listens for “\(phrase)” in \(languageName(locale))."), false)
     }
 

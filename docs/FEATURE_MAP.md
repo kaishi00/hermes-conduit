@@ -1060,14 +1060,15 @@ old config and the later one puts back what the earlier one changed.
 **Siblings:** voice settings (providers, typed fields, live transcription) ·
 the speech server page · Local Live settings · the toolset provider endpoint
 (Hermes writes the config) · the Model page's savers and fallback models ·
-display preferences · Capabilities' skill and toolset switches, backends,
+the main and voice reply models (`/api/model/set`, Hermes writes the
+config) · display preferences · Capabilities' skill and toolset switches, backends,
 terminal backend, connectors and installs (Hermes writes the config; see
 Skill and tool switches)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
-- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, toggleSkill, toggleToolset)
+- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setVoiceReplyModel, toggleSkill, toggleToolset)
 - Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
 

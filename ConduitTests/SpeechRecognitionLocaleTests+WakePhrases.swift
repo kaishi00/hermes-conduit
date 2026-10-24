@@ -61,7 +61,8 @@ extension SpeechRecognitionLocaleTests {
     func testAWakePhraseNoOnDeviceRecognizerWritesIsNotHeard() {
         XCTAssertNil(wakeLocale("小爱同学", onDevice: { $0.language.languageCode != "zh" && $0.language.languageCode != "ja" }))
         XCTAssertNil(wakeLocale("Γεια σου Ερμή"), "no Greek recognizer is offered here")
-        XCTAssertNil(WakeSpeechLocale.note(for: "Hey Hermes", among: ["Hey Hermes"], appLocale: Locale(identifier: "en_US")))
+        XCTAssertNil(WakeSpeechLocale.note(for: "Hey Hermes", among: ["Hey Hermes"], appLocale: Locale(identifier: "en_US"), localeFor: { _ in Locale(identifier: "en_US") }))
+        XCTAssertEqual(WakeSpeechLocale.note(for: "Hey Hermes", among: ["Hey Hermes"], appLocale: Locale(identifier: "en_US"), localeFor: { _ in nil })?.isUnheard, true, "no on-device model for the app locale")
         XCTAssertNil(WakeSpeechLocale.note(for: "小爱同学", among: ["小爱同学"], appLocale: Locale(identifier: "zh_CN"), localeFor: { _ in Locale(identifier: "zh_CN") }))
         XCTAssertEqual(WakeSpeechLocale.script(of: "ﾊﾅｺ"), .kana, "halfwidth katakana")
     }

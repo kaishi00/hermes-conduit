@@ -2382,11 +2382,15 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return false }
         let dashboardTicketBridge = owner.bridge
         do {
-            let result = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/model/set", profile: profile),
-                method: "POST",
-                body: setting.assignmentBody(profile: profile)
-            )
+            // Hermes writes the profile config for it: in turn with every
+            // other config save.
+            let result = try await ProfileConfigWriteQueue.runThrowing { [self] in
+                try await dashboardTicketBridge.requestJSON(
+                    path: dashboardPath("/api/model/set", profile: profile),
+                    method: "POST",
+                    body: setting.assignmentBody(profile: profile)
+                )
+            }
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
@@ -30448,11 +30452,15 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return false }
         let dashboardTicketBridge = owner.bridge
         do {
-            let result = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/model/set", profile: profile),
-                method: "POST",
-                body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
-            )
+            // Hermes writes the profile config for it: in turn with every
+            // other config save.
+            let result = try await ProfileConfigWriteQueue.runThrowing { [self] in
+                try await dashboardTicketBridge.requestJSON(
+                    path: dashboardPath("/api/model/set", profile: profile),
+                    method: "POST",
+                    body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
+                )
+            }
             // Another dashboard took over: stop. A profile switch on this
             // dashboard doesn't stop the save: the model change already
             // reached Hermes, and the captured profile's config must follow
