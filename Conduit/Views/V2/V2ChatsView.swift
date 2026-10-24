@@ -288,6 +288,9 @@ struct V2ChatsView: View, Equatable {
     @State private var barStacked = false
     /// The magnifier was tapped: the stacked bar shows the field.
     @State private var barSearchOpen = false
+    /// The tap that opened the field also focuses it, once; coming back
+    /// from a chat leaves the keyboard down.
+    @State private var barSearchFocusPending = false
     /// Hermes' full-text search behind the field, for chats whose messages
     /// match ("In messages").
     @StateObject private var contentSearch = SessionContentSearchModel()
@@ -593,6 +596,7 @@ struct V2ChatsView: View, Equatable {
             if stacked {
                 Button {
                     Haptics.selection()
+                    barSearchFocusPending = true
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
                 } label: {
                     V2CapsuleIcon(systemImage: "magnifyingglass")
@@ -738,8 +742,11 @@ struct V2ChatsView: View, Equatable {
         .frame(maxWidth: .infinity)
         .onAppear {
             // Opened by the magnifier: straight to typing. Not when a
-            // running search moved here because the bar stacked.
-            if barSearchOpen && searchText.isEmpty { searchFocused = true }
+            // running search moved here or the list came back into view.
+            if barSearchFocusPending {
+                barSearchFocusPending = false
+                searchFocused = true
+            }
         }
     }
 
@@ -1532,7 +1539,6 @@ struct V2ChatsView: View, Equatable {
                 Button(AppLocalization.string("Cancel")) {
                     searchText = ""
                     searchFocused = false
-                    barSearchOpen = false
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
