@@ -34,7 +34,8 @@ struct GroupChatView: View {
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
         .toolbar { toolbarContent }
-        .modifier(GroupRoomPicturePicker(request: $choosingPicture))
+        // V2's screen hosts this view and owns the room menu and picker.
+        .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
         .confirmationDialog(
             AppLocalization.string("Disband this group chat?"),
             isPresented: $showingDisbandConfirmation,
@@ -843,10 +844,20 @@ enum GroupRoomPictureRequest: String, Identifiable {
 struct GroupRoomPicturePicker: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var request: GroupRoomPictureRequest?
+    var isEnabled = true
     @State private var picked: UIImage?
     @State private var room: GroupRoom?
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if isEnabled {
+            picker(content)
+        } else {
+            content
+        }
+    }
+
+    private func picker(_ content: Content) -> some View {
         content
             .sheet(item: $request) { request in
                 switch request {

@@ -20282,13 +20282,14 @@ final class AppState: ObservableObject {
 
     /// Asks Hermes whether it can generate pictures (`image.generate`
     /// probe). Asked each time a picture screen opens: the owner may set a
-    /// backend up meanwhile.
+    /// backend up meanwhile. Nil when Hermes wasn't asked (offline, or the
+    /// server changed), so no screen says to set a backend up.
     @discardableResult
-    func refreshPictureGeneration() async -> Bool {
-        guard let client, isConnected else { return false }
+    func refreshPictureGeneration() async -> Bool? {
+        guard let client, isConnected else { return nil }
         let available = await client.imageGenerationAvailable()
         // The answer belongs to the server it came from.
-        guard self.client === client else { return false }
+        guard self.client === client else { return nil }
         if canGeneratePictures != available { canGeneratePictures = available }
         return available
     }
