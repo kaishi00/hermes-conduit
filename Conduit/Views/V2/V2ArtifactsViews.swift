@@ -116,6 +116,9 @@ private struct ArtifactsList: View {
     /// Cancelled when the list goes, so a slow fetch can't present a viewer
     /// over whatever screen the user moved on to.
     @State private var openTask: Task<Void, Never>?
+    /// The open in flight: a cancelled one finishing late can't clear a
+    /// newer open's spinner, even of the same item.
+    @State private var openToken: UUID?
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -492,10 +495,18 @@ private struct ArtifactsList: View {
         }
         Haptics.light()
         openingID = item.id
+        let token = UUID()
+        openToken = token
         let resolver = appState.gatewayMediaResolver
         openTask = Task { @MainActor in
-            // A cancelled open unwinding late leaves a newer open's spinner.
-            defer { if openingID == item.id { openingID = nil } }
+            // A cancelled open unwinding late leaves a newer open's spinner,
+            // also one of the same item on another dashboard.
+            defer {
+                if openToken == token {
+                    openingID = nil
+                    openToken = nil
+                }
+            }
             if item.kind == .page {
                 guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
                 guard let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
@@ -551,6 +562,7 @@ private struct ArtifactsList: View {
             openTask?.cancel()
             openTask = nil
             openingID = nil
+            openToken = nil
         }
         guard appState.supportsArtifacts else { return }
         generation &+= 1
