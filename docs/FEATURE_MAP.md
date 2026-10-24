@@ -266,7 +266,8 @@ answered.
 **Siblings:** CallKit on the phone (unlocked, locked, in another app) ·
 CarPlay · the Apple Watch · each voice mode that answers (Classic, Gemini,
 Grok, GPT-Live; Local Live opens Classic) · the missed-call notification ·
-Bot Chat calls · the call trace · the notifier's call tool and skill
+Bot Chat calls · the call trace · the notifier's call tool and skill ·
+Pulse (it may call only once the user opts in)
 
 **Code**
 - Ringing and answering: `Conduit/Voice/HermesNativeCalls.swift` (receive, stopsWatchRing, startWatchCall), `Conduit/Voice/HermesCalls.swift`, `Conduit/Services/AppState+HermesCalls.swift` (answerHermesCall, hermesCallAudioActivated)
@@ -289,7 +290,7 @@ Bot Chat calls · the call trace · the notifier's call tool and skill
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1180 (Siblings only).
 
 ## Audio route, Speaker and mute
 
@@ -453,9 +454,10 @@ beta, so its app side is only on the `pulse` branch.
 
 **Siblings:** the Pulse screen (cards, New and Earlier, thumbs and the
 one-tap reason, Not now, Done and Undo, Do it) · Settings > Pulse (on and
-off, model, nudge, budgets, home chat) · Pulse pushes (titled from
-pulse.noticed, pulse.brief and pulse.followup, opening the Pulse screen) ·
-the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
+off, model, nudge, budgets, home chat) · Pulse pushes (kinds
+pulse.noticed, pulse.brief and pulse.followup, titled per the Notifications
+rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
+once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
 memory), its routes under /pulse and its capabilities · the
 `hermes conduit-push pulse` commands
 
