@@ -361,7 +361,7 @@ extension NotificationE2ETests {
             PushNotificationService.encryptionAssurance(gatewayID: Self.gatewayID, installationID: Self.installationID,
                                                         records: records, confirmation: confirmation, now: date ?? now)
         }
-        let confirmed = Confirmation(kid: Self.kid, rotates: true, confirmedAt: now)
+        let confirmed = Confirmation(kid: Self.kid, rotates: true)
         XCTAssertEqual(assurance([record], confirmed), .ensured(keyCreatedAt: record.createdAt, rotates: true, quantumSafe: false))
         var pq = record
         pq.suite = NotificationKeyRotation.suitePQ
@@ -377,7 +377,7 @@ extension NotificationE2ETests {
         let late = now.addingTimeInterval(NotificationE2E.keyMaxAge + NotificationE2E.previousKeyGrace)
         XCTAssertEqual(assurance([record], confirmed, at: late), .overdue(keyCreatedAt: record.createdAt))
         // A host that can't rotate isn't overdue: nothing could be done.
-        let keeps = Confirmation(kid: Self.kid, rotates: false, confirmedAt: now)
+        let keeps = Confirmation(kid: Self.kid, rotates: false)
         XCTAssertEqual(assurance([record], keeps, at: late), .ensured(keyCreatedAt: record.createdAt, rotates: false, quantumSafe: false))
     }
 
