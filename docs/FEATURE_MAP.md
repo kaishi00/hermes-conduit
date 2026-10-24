@@ -17,9 +17,10 @@ rules.
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
 has Siblings, Code, Rulings, Open gaps and a Checked line (the date of the
-last check against the code, and the PR or commit it was checked at).
-`scripts/check-feature-map.py` runs in CI: it checks that shape and that
-every path in backticks exists. A path that starts with notifier/ is in
+last check against the code, and the PR that checked it; an entry seeded from
+main may name a commit). `scripts/check-feature-map.py` runs in CI: it checks
+that shape, that every path in backticks exists, and that an entry a PR adds
+or edits names that PR on its Checked line. A path that starts with notifier/ is in
 [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier),
 checked against its main.
 
@@ -93,11 +94,12 @@ the host answers with the user's words (`_local_live_call_answer`).
 - CarPlay shows no card: Apple allows only the voice control template while voice runs, so the ask is spoken and the listening window takes the answer (2026-10-24, #1194).
 - Classic's notice tells the user to hold to talk under push to talk, and to answer on the card while the microphone is paused (2026-10-24, #1194).
 - The resume jump and its button go to the newest question or approval waiting on the user (2026-10-24, #1194).
+- A voice mode says an approval went only once Hermes took it: the phone's modes read the gateway's `resolved` count (expired otherwise), and the Watch's `answer_call` and Local Live wait up to 10 seconds for the plugin's follower to settle it, saying it didn't go through when no pending request was the one read out, and taking back an answer nothing picked up (2026-10-24, notifier 0.70.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1194 (after #1188, the approval card's shield).
+**Checked:** 2026-10-24, at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran.
 
 ## Voice follow-ups
 
@@ -500,7 +502,7 @@ Dashboards and the Profiles sheet)
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
-**Checked:** 2026-10-24, at main 8a96d80 (encryption keys and padlock).
+**Checked:** 2026-10-24, at #1197 (encryption keys and padlock; fork CI #82).
 
 ## Pulse
 
@@ -545,6 +547,35 @@ memory), its routes under /pulse and its capabilities · the
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
 **Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
+
+## Artifacts
+
+The files, pages and links Hermes made, listed for every chat (the Chats
+bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
+viewers, with Show in Chat.
+
+**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
+(kept in the bot's own profile) · All (every included profile's chats) ·
+group rooms (no Artifacts list) · the notifier's artifacts route · README.md
+
+**Code**
+- List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
+- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
+- A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
+- Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
+
+**Rulings**
+- A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
+- Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
+- A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
+- The profile in use is always read, even when All leaves it out.
+- One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
+
+**Open gaps**
+- Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
+
+**Checked:** 2026-10-24, at #1203.
 
 ## Bots: create and edit
 
@@ -869,17 +900,18 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
-- Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, filterPill, barSearchField, searchField, searchCapsule)
+- Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, setBarStacked, filterPill, barSearchField, searchField, searchCapsule)
 
 **Rulings**
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
 - In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
 - Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
+- The list's search row follows the bar's layout, starting from the last layout seen (`barStackedKey`). Before any layout is known (first launch) the row stays out until the one-row bar appears; a change of layout (rotation, a profile added) animates it in or out (2026-10-24, #1206: implementation of #1199's open gap).
 
 **Open gaps**
-- The bar reports its layout from whichever row appears (onAppear), so on launch or rotation into the stacked bar the list can show its search row for a frame before it moves into the bar.
+- A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1199.
+**Checked:** 2026-10-24, at #1206.
 
 ## Plan card
 
@@ -936,6 +968,38 @@ bubble, the accent swatch check)
 
 **Checked:** 2026-10-24, at #1188.
 
+## Phone data sync with the host
+
+The phone sending calendar, reminders, alarms, contacts and phone status,
+health data and location to the notifier, each under its own agreed key, and
+what it does when the host refuses.
+
+**Siblings:** phone sync (calendar, reminders, alarms, contacts, Focus and
+status) · health sync · location sharing · the voice reads that use the same
+keys · each one's pause message in Settings · a locate answered from the push
+extension · the notifier's three stores and their refusals
+
+**Code**
+- Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
+- Health: `Conduit/Health/HealthSyncEngine.swift`, `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause)
+- Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause), `Conduit/Location/LocationSharingController.swift` (sendNow: keeps the batch on `.failed`), `ConduitLocationPush/LocationPushService.swift` (a locate answered from the push extension)
+- Which 409 means what: `Conduit/Services/HostKeyConflict.swift`
+- Voice reads: `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Phone/PhoneVoiceTools.swift`
+- Notifier: `notifier/phone_store.py`, `notifier/health_store.py`, `notifier/location_store.py`, `notifier/dashboard/plugin_api.py` (_store_refusal)
+- Tests: `ConduitTests/PhoneSyncTests.swift`, `ConduitTests/HealthSyncTests.swift`, `ConduitTests/LocationSharingTests.swift`
+
+**Rulings**
+- Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
+- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, #1196).
+- A later refusal, timeout or 404 replaces that plugin-update pause with its own message, as for any other pause (2026-10-24, #1196).
+
+**Open gaps**
+- The dashboard sends the store's code beside its message, but the phone keeps only the message: a reworded notifier message is missed until `Conduit/Services/HostKeyConflict.swift` learns it. Phone and health then pause with the host's reason; location drops the waiting fix and events as refused.
+- A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
+- A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
+
+**Checked:** 2026-10-24, at main e9d9592.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
@@ -950,7 +1014,7 @@ point at the map and its check
 - Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
 - Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
-- Map check: `scripts/check-feature-map.py` (paths and entry shape), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist)
+- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist), its PR number and base map pinned by `scripts/tests/test_ci_workflow_contract.py`
 - Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
 
 **Rulings**
@@ -958,9 +1022,11 @@ point at the map and its check
 - Nobody tends the map separately: the PR that changes a feature updates its entry, adds one for a connected feature that has none, adds a sibling an earlier change missed, and records the maintainer's rulings with the date and the PR (2026-10-24, #1178, Eric).
 - CONTRIBUTING.md holds the full rules. The intro, the PR templates and the reviewer prompts each carry the part their reader needs, so a rule change starts in CONTRIBUTING.md and then reaches each copy (2026-10-24, #1178).
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
+- An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
+- A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
 
-**Checked:** 2026-10-24, at #1178.
+**Checked:** 2026-10-24, at #1209.

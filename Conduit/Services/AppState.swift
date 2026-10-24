@@ -7322,9 +7322,10 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// Opens a bot's chat from a link or card Conduit wrote. The roster is
-    /// read once when it doesn't list the bot yet (just after launch).
-    private func openLinkedBotChat(_ profile: String) {
+    /// Opens a bot's chat from a link or card Conduit wrote, or from one of
+    /// its artifacts. The roster is read once when it doesn't list the bot
+    /// yet (just after launch).
+    func openLinkedBotChat(_ profile: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             // Offline, the roster can't say whether the bot is still there.
@@ -21823,6 +21824,13 @@ final class AppState: ObservableObject {
     /// Chat outgrew the socket and dropped the connection after every send.
     private func persistedTailProfile(for sessionID: String) -> String {
         botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile) ?? activeProfile
+    }
+
+    /// The bot whose store keeps a conversation (`botScopeProfile`), nil
+    /// for the workspace's own chats: a Bot Chat's files are listed from
+    /// there.
+    func botStoreProfile(forSessionIDs sessionIDs: [String]) -> String? {
+        botScopeProfile(forSessionIDs: Set(sessionIDs), workspaceProfile: activeProfile)
     }
 
     /// The presentation-cache namespace for a conversation. Canonical Bot

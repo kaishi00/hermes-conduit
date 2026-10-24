@@ -186,8 +186,9 @@ jobs:
               without a reason; a change against a ruling; a ruling the PR
               changes without naming the maintainer's decision; a sibling, code
               path or gap the PR adds or moves that its entry doesn't record. A
-              PR that changes a mapped feature without updating its entry's
-              Checked line is a minor finding. If no entry covers what the PR
+              PR that changes a mapped feature's code without editing its
+              entry, at least its Checked line, is a minor finding (CI checks
+              that an edited entry's Checked line names the PR). If no entry covers what the PR
               changes but the change has siblings (ones its Siblings section
               names, or one you can name with its file), the PR must add an
               entry that lists them, and its Siblings section says for each

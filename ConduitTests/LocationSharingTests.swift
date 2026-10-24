@@ -410,6 +410,79 @@ extension NotificationE2ETests {
         ] {
             XCTAssertFalse(LocationSyncEngine.needsNewKey(detail), detail)
         }
+        // A store from a newer plugin (`schema`) asks for a plugin update.
+        for detail in [
+            "This calendar store was written by a newer plugin; update the plugin",
+            "This location store was written by a newer plugin; update the plugin",
+            "This health store was written by a newer plugin; update the plugin",
+            "schema",
+        ] {
+            XCTAssertTrue(HostKeyConflict.isNewerPluginStore(detail), detail)
+            XCTAssertFalse(HostKeyConflict.isKeyLoss(detail), detail)
+        }
+        for detail in ["unknown_key", "This profile already keeps location from 8 devices; delete one from Conduit first",
+                       "The calendar store is being upgraded; try again in a moment"] {
+            XCTAssertFalse(HostKeyConflict.isNewerPluginStore(detail), detail)
+        }
+    }
+
+    /// A store written by a newer plugin (409 `schema`) waits for a plugin
+    /// update: the batch stays to send after it, and the key stays.
+    func testANewerPluginsStoreKeepsTheBatchAndAsksForAPluginUpdate() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
+        var keyRequests = 0
+        let newer = "This location store was written by a newer plugin; update the plugin"
+        var ingestDetail = newer
+        var ingestFailure: Error?
+        let request: LocationSyncEngine.Request = { path, _, body in
+            if path.hasSuffix("/key") {
+                keyRequests += 1
+                let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+                return [
+                    "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
+                    "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
+                ]
+            }
+            if path.contains("/status") { return ["ok": true] }
+            throw ingestFailure ?? DashboardTicketBridgeError.http(status: 409, detail: ingestDetail)
+        }
+        let keys = LocationKeyStore.memory()
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
+        let config = LocationFixtures.config()
+        let batch = LocationBatch(sentAt: LocationFixtures.at, settings: config.settings)
+
+        let outcome = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(outcome, .failed, "Kept to send once the plugin is updated, not dropped as refused")
+        XCTAssertEqual(engine.state.pause, .pluginMissing)
+        XCTAssertNotNil(keys.load())
+        XCTAssertEqual(keyRequests, 1)
+
+        // A later timeout, or a 404 while the plugin's status route answers,
+        // replaces the pause so its own error shows.
+        ingestFailure = URLError(.timedOut)
+        let timedOut = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(timedOut, .failed)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertNotNil(engine.lastError)
+        ingestFailure = nil
+        _ = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(engine.state.pause, .pluginMissing)
+        ingestFailure = DashboardTicketBridgeError.http(status: 404, detail: "Not found")
+        let notFound = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(notFound, .failed)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(engine.lastError, "Not found")
+        ingestFailure = nil
+
+        // Once the plugin is updated, a different refusal replaces the
+        // pause: it no longer asks for an update.
+        ingestDetail = "Background location is off on this profile"
+        let next = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(next, .refused)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(engine.lastError, ingestDetail)
     }
 
     func testAnIngest404KeepsTheKeyAndIsThePluginMissingOnlyWhenStatusIsGoneToo() async throws {

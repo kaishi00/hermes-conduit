@@ -333,9 +333,14 @@ final class HealthSyncEngine: ObservableObject {
                 keys.clear()
                 lastError = detail
                 return .unfinished
+            case .http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail):
+                // A store written by a newer plugin: updating the plugin
+                // fixes it, a new key wouldn't. The key and cursors stay.
+                state.pause = .pluginMissing
+                return .paused(.pluginMissing)
             case .http(let status, let detail) where status == 400 || status == 409 || status == 413:
-                // Any other 409 (too many devices, a store from a newer
-                // plugin) isn't fixed by a new key: the key stays.
+                // Any other 409 (too many devices) isn't fixed by a new key:
+                // the key stays.
                 state.pause = .refused(detail)
                 return .paused(.refused(detail))
             default:
