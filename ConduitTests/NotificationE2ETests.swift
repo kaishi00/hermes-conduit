@@ -351,7 +351,7 @@ extension NotificationE2ETests {
         let keeps = PushNotificationService.EncryptionConfirmation(kid: Self.kid, rotates: false)
         XCTAssertEqual(PushNotificationService.encryptionAssurance(gatewayID: Self.gatewayID, installationID: Self.installationID,
                                                                    records: [record], confirmation: keeps, now: years),
-                       .ensured(keyCreatedAt: record.createdAt, rotates: false))
+                       .ensured(keyCreatedAt: record.createdAt, rotates: false, quantumSafe: false))
     }
 
     func testRetiredAtIsOptionalInStoredRecords() throws {
