@@ -1163,13 +1163,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return closingCutFence(String(markdown.prefix(maximumScreenCardCharacters - 16)))
     }
 
-    /// `cut`, the start of longer markdown, with its last line dropped (it
-    /// may be half a fence) and a code fence it leaves open closed. Never
+    /// `cut`, the start of longer markdown, with its last line dropped when
+    /// it may be half a fence and a code fence it leaves open closed. Never
     /// longer than `cut` plus a newline and a three-character fence.
     static func closingCutFence(_ cut: String) -> String {
         var lines = cut.components(separatedBy: "\n")
-        // A last line cut mid-way may be half a fence; drop it.
-        if lines.count > 1 { lines.removeLast() }
+        // A last line cut mid-way may be half a fence; drop it then, and
+        // only then: a long paragraph is one line, and dropping it would
+        // leave little more than the heading.
+        if lines.count > 1,
+           let first = lines.last?.trimmingCharacters(in: .whitespaces).first,
+           first == "`" || first == "~" {
+            lines.removeLast()
+        }
         // Read fences as MarkdownText does: a line starting ``` or ~~~
         // opens one, and the next line starting the same way closes it.
         var openFence: String?
