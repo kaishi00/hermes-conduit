@@ -319,6 +319,13 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(keys.key, "A newer store is no reason to give up the key")
         XCTAssertEqual(host.keyRequests, 1)
 
+        // The bare code, should a host send it.
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: "schema")
+        let code = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(code, .paused(.pluginMissing))
+        XCTAssertNotNil(keys.key)
+        XCTAssertEqual(host.keyRequests, 1)
+
         let full = "This profile already keeps health data from 4 devices; delete one from Conduit first"
         host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: full)
         let refused = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
