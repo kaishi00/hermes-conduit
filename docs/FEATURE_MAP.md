@@ -919,7 +919,7 @@ their refusals
 - A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
 - A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
 
-**Checked:** 2026-10-24, at main 35dffc3.
+**Checked:** 2026-10-24, at main e9d9592.
 
 ## Feature map rules
 

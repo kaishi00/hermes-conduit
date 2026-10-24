@@ -41,11 +41,13 @@ enum HostKeyConflict {
     /// written by a newer plugin; update the plugin". Updating the plugin
     /// fixes it; a new key wouldn't.
     static func isNewerPluginStore(_ detail: String) -> Bool {
-        let normalized = normalize(detail).trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = normalize(detail)
         return normalized == "schema" || normalized.contains("written by a newer plugin")
     }
 
     private static func normalize(_ detail: String) -> String {
-        detail.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        detail.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
