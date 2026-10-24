@@ -9774,6 +9774,252 @@
           }
         }
       }
+    },
+    "Notifications encrypted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen verschlüsselt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones cifradas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications chiffrées"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi terenkripsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche cifrate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知は暗号化済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 암호화됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia zaszyfrowane"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações criptografadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления зашифрованы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler şifreli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已加密"
+          }
+        }
+      }
+    },
+    "Notifications quantum-safe" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen quantensicher"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones resistentes a la computación cuántica"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications post-quantiques"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi aman kuantum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche a prova di quantum"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知は耐量子暗号で保護"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 양자 내성 암호화됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia odporne na komputery kwantowe"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações com segurança pós-quântica"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления с постквантовой защитой"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler kuantuma dayanıklı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已抗量子加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已抗量子加密"
+          }
+        }
+      }
+    },
+    "Your active dashboard's notifications are end-to-end encrypted: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Mitteilungen deines aktiven Dashboards sind Ende-zu-Ende-verschlüsselt: Das Relay sieht, wann sie eintreffen, aber nicht, was sie sagen. Details findest du in Conduit auf deinem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las notificaciones de tu panel activo están cifradas de extremo a extremo: el relé ve cuándo llegan, no lo que dicen. Conduit en tu iPhone tiene los detalles."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les notifications de ton tableau de bord actif sont chiffrées de bout en bout : le relais voit quand elles arrivent, pas ce qu'elles disent. Conduit sur ton iPhone donne les détails."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi dasbor aktifmu terenkripsi ujung ke ujung: relai melihat kapan notifikasi tiba, bukan isinya. Conduit di iPhone-mu punya detailnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le notifiche della tua dashboard attiva sono cifrate end-to-end: il relay vede quando arrivano, non cosa dicono. Conduit sul tuo iPhone ha i dettagli."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブなダッシュボードの通知はエンドツーエンドで暗号化されています。リレーには届いた時刻だけが見え、内容は見えません。詳細は iPhone の Conduit で確認できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성 대시보드의 알림은 종단 간 암호화됩니다. 릴레이는 알림이 도착한 시점만 볼 수 있고 내용은 볼 수 없습니다. 자세한 내용은 iPhone의 Conduit에서 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia aktywnego pulpitu są szyfrowane end-to-end: przekaźnik widzi, kiedy przychodzą, ale nie, co zawierają. Szczegóły znajdziesz w Conduit na iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As notificações do seu painel ativo são criptografadas de ponta a ponta: o relay vê quando chegam, não o que dizem. O Conduit no seu iPhone tem os detalhes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления активной панели зашифрованы сквозным шифрованием: ретранслятор видит, когда они приходят, но не их содержание. Подробности — в Conduit на iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etkin panonun bildirimleri uçtan uca şifrelidir: aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Ayrıntılar iPhone'undaki Conduit'te."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你当前仪表板的通知已端到端加密：中继只能看到通知何时到达，看不到内容。详情请在 iPhone 上的 Conduit 中查看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你目前儀表板的通知已端對端加密：轉送伺服器只看得到通知何時送達，看不到內容。詳情請在 iPhone 上的 Conduit 中查看。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

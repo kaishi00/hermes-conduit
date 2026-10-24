@@ -218,8 +218,9 @@ extension AppState {
 
     /// The Watch app says what to set up when its voice can't start, and
     /// that calls then ring only the iPhone.
-    /// Also how a call ringing on the Watch names the main profile, and the
-    /// accent the Watch app draws in.
+    /// Also how a call ringing on the Watch names the main profile, the
+    /// accent the Watch app draws in, and whether the active dashboard's
+    /// notifications are end-to-end encrypted (the Watch's Settings).
     func shareWatchCallVoices() {
         let notifications = PushNotificationService.shared
         WatchVoiceLink.shared.share(WatchPhoneContext(
@@ -231,8 +232,15 @@ extension AppState {
             callsRing: supportsHermesCalls && notifications.voipToken != nil,
             mainProfileNames: mainProfileNamesByDashboard,
             activeDashboardID: activeDashboardID?.uuidString,
-            accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue
+            accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
+            notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
         ))
+    }
+
+    /// The Watch's word for a dashboard's notifications encryption: nil
+    /// when not encrypted, as on the iPhone's dashboard row.
+    nonisolated static func watchNotificationsEncryption(_ quantumSafe: Bool?) -> String? {
+        quantumSafe.map { ($0 ? WatchPhoneContext.NotificationsEncryption.quantumSafe : .encrypted).rawValue }
     }
 
     /// The Watch voices' readiness the Watch app is told: this profile's

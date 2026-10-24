@@ -334035,6 +334035,908 @@
           }
         }
       }
+    },
+    "Rotate encryption keys" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschlüsselungsschlüssel erneuern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renovar claves de cifrado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renouveler les clés de chiffrement"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui kunci enkripsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rinnova le chiavi di crittografia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暗号化キーを更新"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호화 키 갱신"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odnów klucze szyfrowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renovar chaves de criptografia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновить ключи шифрования"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şifreleme anahtarlarını yenile"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轮换加密密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輪換加密金鑰"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted, but the key is overdue for rotation. Open this host's dashboard in Conduit so it can hand over a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt, aber der Schlüssel hätte längst erneuert werden sollen. Öffne das Dashboard dieses Hosts in Conduit, damit es einen neuen übergeben kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo, pero la clave debería haberse renovado. Abre el panel de este host en Conduit para que pueda entregar una nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout, mais la clé aurait dû être renouvelée. Ouvrez le tableau de bord de cet hôte dans Conduit pour qu’il puisse en remettre une nouvelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end, tetapi kuncinya sudah lewat waktu untuk diperbarui. Buka dasbor host ini di Conduit agar host bisa menerima kunci baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end, ma la chiave andava rinnovata da tempo. Apri la dashboard di questo host in Conduit perché possa consegnarne una nuova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化済みですが、キーの更新期限を過ぎています。新しいキーを渡せるよう、Conduitでこのホストのダッシュボードを開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종단 간 암호화되어 있지만 키 갱신 기한이 지났습니다. 새 키를 전달할 수 있도록 Conduit에서 이 호스트의 대시보드를 여세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end, ale klucz powinien był już zostać odnowiony. Otwórz panel tego hosta w Conduit, aby mógł przekazać nowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta, mas a chave já deveria ter sido renovada. Abra o painel deste host no Conduit para que ele possa entregar uma nova."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование, но ключ давно пора обновить. Откройте панель этого хоста в Conduit, чтобы он мог передать новый."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreli, ancak anahtarın yenilenme zamanı çoktan geçti. Yeni bir anahtar verebilmesi için bu ana bilgisayarın panosunu Conduit’te açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端到端加密，但密钥早已过了轮换期限。请在 Conduit 中打开此主机的仪表板，以便它交出新密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端對端加密，但金鑰早已超過輪換期限。請在 Conduit 中開啟此主機的儀表板，讓它交出新金鑰。"
+          }
+        }
+      }
+    },
+    "This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Verschlüsselungsschlüssel dieses Hosts passt nicht zu dem dieses iPhones, daher zeigen seine Mitteilungen nur allgemeinen Text. Conduit richtet beim nächsten Verbinden mit diesem Dashboard einen neuen Schlüssel ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clave de cifrado de este host no coincide con la de este iPhone, así que sus notificaciones solo muestran texto genérico. Conduit crea una clave nueva la próxima vez que se conecte a este panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clé de chiffrement de cet hôte ne correspond pas à celle de cet iPhone : ses notifications n’affichent donc qu’un texte générique. Conduit crée une nouvelle clé à sa prochaine connexion à ce tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci enkripsi host ini tidak cocok dengan kunci iPhone ini, jadi notifikasinya hanya menampilkan teks umum. Conduit menyiapkan kunci baru saat berikutnya terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La chiave di crittografia di questo host non corrisponde a quella di questo iPhone, quindi le sue notifiche mostrano solo testo generico. Conduit imposta una nuova chiave alla prossima connessione a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの暗号化キーがこのiPhoneのキーと一致しないため、通知には一般的なテキストだけが表示されます。Conduitは次にこのダッシュボードに接続したときに新しいキーを設定します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 암호화 키가 이 iPhone의 키와 일치하지 않아 알림에 일반 텍스트만 표시됩니다. Conduit는 다음에 이 대시보드에 연결할 때 새 키를 설정합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucz szyfrowania tego hosta nie pasuje do klucza tego iPhone’a, więc jego powiadomienia pokazują tylko ogólny tekst. Conduit ustawi nowy klucz przy następnym połączeniu z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A chave de criptografia deste host não corresponde à deste iPhone, então as notificações dele mostram só texto genérico. O Conduit configura uma nova chave na próxima vez que se conectar a este painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключ шифрования этого хоста не совпадает с ключом этого iPhone, поэтому его уведомления показывают только общий текст. Conduit создаст новый ключ при следующем подключении к этой панели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana bilgisayarın şifreleme anahtarı bu iPhone’unkiyle eşleşmiyor, bu yüzden bildirimleri yalnızca genel metin gösteriyor. Conduit bu panoya bir sonraki bağlanışında yeni bir anahtar kurar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的加密密钥与这台 iPhone 的不一致，因此它的通知只显示通用文本。Conduit 下次连接此仪表板时会设置新密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的加密金鑰與這支 iPhone 的不一致，因此它的通知只顯示一般文字。Conduit 下次連線到此儀表板時會設定新金鑰。"
+          }
+        }
+      }
+    },
+    "End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Ende-zu-Ende-Verschlüsselung ist auf diesem iPhone eingerichtet. Conduit prüft sie mit dem Host beim nächsten Verbinden mit diesem Dashboard."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El cifrado de extremo a extremo está configurado en este iPhone. Conduit lo comprueba con el host la próxima vez que se conecte a este panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiffrement de bout en bout est configuré sur cet iPhone. Conduit le vérifie avec l’hôte à sa prochaine connexion à ce tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enkripsi end-to-end sudah disiapkan di iPhone ini. Conduit memeriksanya dengan host saat berikutnya terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La crittografia end-to-end è configurata su questo iPhone. Conduit la verifica con l’host alla prossima connessione a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneでエンドツーエンド暗号化が設定されています。Conduitは次にこのダッシュボードに接続したときにホストと確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone에 종단 간 암호화가 설정되었습니다. Conduit는 다음에 이 대시보드에 연결할 때 호스트와 확인합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end jest skonfigurowane na tym iPhonie. Conduit sprawdzi je z hostem przy następnym połączeniu z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A criptografia de ponta a ponta está configurada neste iPhone. O Conduit a confere com o host na próxima vez que se conectar a este painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование настроено на этом iPhone. Conduit проверит его с хостом при следующем подключении к этой панели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreleme bu iPhone’da kuruldu. Conduit bunu bu panoya bir sonraki bağlanışında ana bilgisayarla doğrular."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPhone 上已设置端到端加密。Conduit 下次连接此仪表板时会与主机核对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支 iPhone 已設定端對端加密。Conduit 下次連線到此儀表板時會與主機核對。"
+          }
+        }
+      }
+    },
+    "Notifications end-to-end encrypted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen Ende-zu-Ende-verschlüsselt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones cifradas de extremo a extremo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications chiffrées de bout en bout"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi terenkripsi end-to-end"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche con crittografia end-to-end"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知はエンドツーエンド暗号化済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 종단 간 암호화됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia szyfrowane end-to-end"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações criptografadas de ponta a ponta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления со сквозным шифрованием"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler uçtan uca şifreli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端到端加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端對端加密"
+          }
+        }
+      }
+    },
+    "Conduit gives this dashboard's hosts new keys by itself every 7 days. The old keys still open notifications already on their way for 7 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit gibt den Hosts dieses Dashboards alle 7 Tage von selbst neue Schlüssel. Die alten Schlüssel öffnen bereits unterwegs befindliche Mitteilungen noch 7 Tage lang."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit da nuevas claves a los hosts de este panel cada 7 días por sí solo. Las claves antiguas siguen abriendo durante 7 días las notificaciones que ya están en camino."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit donne de nouvelles clés aux hôtes de ce tableau de bord tous les 7 jours, de lui-même. Les anciennes clés ouvrent encore pendant 7 jours les notifications déjà en route."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memberi host dasbor ini kunci baru dengan sendirinya setiap 7 hari. Kunci lama masih membuka notifikasi yang sudah dalam perjalanan selama 7 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit dà da solo nuove chiavi agli host di questa dashboard ogni 7 giorni. Le vecchie chiavi aprono ancora per 7 giorni le notifiche già in arrivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはこのダッシュボードのホストに7日ごとに自動で新しいキーを渡します。古いキーは、すでに配信中の通知を7日間引き続き開けます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit는 7일마다 이 대시보드의 호스트에 자동으로 새 키를 줍니다. 이전 키는 이미 전송 중인 알림을 7일 동안 계속 열 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sam co 7 dni daje hostom tego panelu nowe klucze. Stare klucze jeszcze przez 7 dni otwierają powiadomienia, które są już w drodze."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit dá novas chaves aos hosts deste painel a cada 7 dias, sozinho. As chaves antigas ainda abrem por 7 dias as notificações que já estão a caminho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit сам выдаёт хостам этой панели новые ключи каждые 7 дней. Старые ключи ещё 7 дней открывают уведомления, которые уже в пути."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu panonun ana bilgisayarlarına her 7 günde bir kendiliğinden yeni anahtarlar verir. Eski anahtarlar, yolda olan bildirimleri 7 gün daha açar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 每 7 天会自动为此仪表板的主机提供新密钥。旧密钥在 7 天内仍可打开已在途中的通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 每 7 天會自動為此儀表板的主機提供新金鑰。舊金鑰在 7 天內仍可開啟已在途中的通知。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted with a key from %@. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt mit einem Schlüssel vom %@. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Der Schlüssel wechselt alle 7 Tage."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo con una clave del %@. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. La clave cambia cada 7 días."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout avec une clé du %@. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. La clé change tous les 7 jours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end dengan kunci dari %@. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Kunci berganti setiap 7 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end con una chiave del %@. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. La chiave cambia ogni 7 giorni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のキーでエンドツーエンド暗号化済み。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーは7日ごとに変わります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 만든 키로 종단 간 암호화됨. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키는 7일마다 바뀝니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end kluczem z %@. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Klucz zmienia się co 7 dni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta com uma chave de %@. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. A chave muda a cada 7 dias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование ключом от %@. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Ключ меняется каждые 7 дней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tarihli bir anahtarla uçtan uca şifreli. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtar her 7 günde bir değişir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的密钥进行端到端加密。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。密钥每 7 天更换一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的金鑰進行端對端加密。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。金鑰每 7 天更換一次。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 7 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Aktualisiere den Notifier dieses Hosts, damit der Schlüssel alle 7 Tage wechselt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. Actualiza el notificador de este host para que la clave cambie cada 7 días."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. Mettez à jour le notificateur de cet hôte pour que la clé change tous les 7 jours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Perbarui notifier host ini agar kunci berganti setiap 7 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. Aggiorna il notifier di questo host perché la chiave cambi ogni 7 giorni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化済み。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーが7日ごとに変わるよう、このホストの通知プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종단 간 암호화됨. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키가 7일마다 바뀌도록 이 호스트의 알림 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Zaktualizuj notifier tego hosta, aby klucz zmieniał się co 7 dni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. Atualize o notificador deste host para que a chave mude a cada 7 dias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Обновите notifier этого хоста, чтобы ключ менялся каждые 7 дней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreli. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtarın her 7 günde bir değişmesi için bu ana bilgisayarın bildiricisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端到端加密。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。请更新此主机的通知插件，让密钥每 7 天更换一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端對端加密。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。請更新此主機的通知外掛，讓金鑰每 7 天更換一次。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted and quantum-safe, with a key from %@. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt und quantensicher, mit einem Schlüssel vom %@. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Der Schlüssel wechselt alle 7 Tage."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo y resistente a la computación cuántica, con una clave del %@. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. La clave cambia cada 7 días."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout et résistant aux ordinateurs quantiques, avec une clé du %@. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. La clé change tous les 7 jours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end dan tahan komputer kuantum, dengan kunci dari %@. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Kunci berganti setiap 7 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end resistente ai computer quantistici, con una chiave del %@. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. La chiave cambia ogni 7 giorni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のキーでエンドツーエンド暗号化済み、量子コンピュータにも安全です。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーは7日ごとに変わります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 만든 키로 종단 간 암호화되었으며 양자 컴퓨터에도 안전합니다. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키는 7일마다 바뀝니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end odporne na komputery kwantowe, kluczem z %@. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Klucz zmienia się co 7 dni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta e resistente a computadores quânticos, com uma chave de %@. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. A chave muda a cada 7 dias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование, устойчивое к квантовым компьютерам, ключом от %@. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Ключ меняется каждые 7 дней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tarihli bir anahtarla uçtan uca şifreli ve kuantuma dayanıklı. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtar her 7 günde bir değişir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的密钥进行端到端加密，并可抵御量子计算机。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。密钥每 7 天更换一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的金鑰進行端對端加密，並可抵禦量子電腦。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。金鑰每 7 天更換一次。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted with a key from %@. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days; update to iOS 26 to make it quantum-safe." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt mit einem Schlüssel vom %@. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Der Schlüssel wechselt alle 7 Tage; aktualisiere auf iOS 26, damit er quantensicher wird."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo con una clave del %@. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. La clave cambia cada 7 días; actualiza a iOS 26 para que sea resistente a la computación cuántica."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout avec une clé du %@. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. La clé change tous les 7 jours ; passez à iOS 26 pour la rendre résistante aux ordinateurs quantiques."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end dengan kunci dari %@. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Kunci berganti setiap 7 hari; perbarui ke iOS 26 agar tahan komputer kuantum."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end con una chiave del %@. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. La chiave cambia ogni 7 giorni; aggiorna a iOS 26 per renderla resistente ai computer quantistici."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のキーでエンドツーエンド暗号化済み。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーは7日ごとに変わります。量子コンピュータにも安全にするには、iOS 26にアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 만든 키로 종단 간 암호화됨. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키는 7일마다 바뀝니다. 양자 컴퓨터에도 안전하게 하려면 iOS 26으로 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end kluczem z %@. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Klucz zmienia się co 7 dni; zaktualizuj do iOS 26, aby był odporny na komputery kwantowe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta com uma chave de %@. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. A chave muda a cada 7 dias; atualize para o iOS 26 para torná-la resistente a computadores quânticos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование ключом от %@. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Ключ меняется каждые 7 дней; обновитесь до iOS 26, чтобы он стал устойчивым к квантовым компьютерам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tarihli bir anahtarla uçtan uca şifreli. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtar her 7 günde bir değişir; kuantuma dayanıklı olması için iOS 26’ya güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的密钥进行端到端加密。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。密钥每 7 天更换一次；更新到 iOS 26 即可抵御量子计算机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的金鑰進行端對端加密。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。金鑰每 7 天更換一次；更新到 iOS 26 即可抵禦量子電腦。"
+          }
+        }
+      }
+    },
+    "Notifications end-to-end encrypted and quantum-safe" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen Ende-zu-Ende-verschlüsselt und quantensicher"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones cifradas de extremo a extremo y resistentes a la computación cuántica"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications chiffrées de bout en bout et résistantes aux ordinateurs quantiques"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi terenkripsi end-to-end dan tahan komputer kuantum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche con crittografia end-to-end resistente ai computer quantistici"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知はエンドツーエンド暗号化済みで量子コンピュータにも安全"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 종단 간 암호화 및 양자 내성"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia szyfrowane end-to-end, odporne na komputery kwantowe"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações criptografadas de ponta a ponta e resistentes a computadores quânticos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления со сквозным шифрованием, устойчивым к квантовым компьютерам"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler uçtan uca şifreli ve kuantuma dayanıklı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端到端加密，可抵御量子计算机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端對端加密，可抵禦量子電腦"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

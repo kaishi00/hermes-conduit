@@ -39,6 +39,30 @@ enum NotificationE2E {
         return Keys(push: derive(pushInfo), answer: derive(answerInfo))
     }
 
+    /// A key this old is rotated on the next dashboard connect, by hosts
+    /// whose plugin keeps the replaced key (notifier 0.71+); the host asks
+    /// with `rotate` and says the same age (plugin E2E_KEY_MAX_AGE_S).
+    static let keyMaxAge: TimeInterval = 7 * 24 * 60 * 60
+    /// How long a replaced key is kept, here and on the host: pushes and
+    /// answers sealed with it before the rotation still open. Same as the
+    /// plugin's e2e.PREVIOUS_KEY_GRACE_S.
+    static let previousKeyGrace: TimeInterval = 7 * 24 * 60 * 60
+
+    /// The key this iPhone seals a pairing's answers with: the newest one
+    /// not replaced by a rotation.
+    static func currentRecord(gatewayID: String, installationID: String?, records: [E2EKeyRecord]) -> E2EKeyRecord? {
+        records
+            .filter { $0.gatewayID == gatewayID && $0.installationID == installationID && $0.retiredAt == nil }
+            .max { $0.createdAt < $1.createdAt }
+    }
+
+    /// Replaced keys past the grace period, which nothing opens with anymore.
+    static func expiredRecords(_ records: [E2EKeyRecord], now: Date = Date()) -> [E2EKeyRecord] {
+        records.filter { record in
+            record.retiredAt.map { now.timeIntervalSince($0) >= previousKeyGrace } ?? false
+        }
+    }
+
     /// A new pairing key: a random secret and an unrelated random key id.
     static func newRecord(installationID: String, gatewayID: String, dashboardID: String?, profile: String?, now: Date = Date()) -> E2EKeyRecord {
         E2EKeyRecord(
@@ -273,6 +297,18 @@ struct E2EKeyRecord: Codable, Equatable {
     let dashboardID: String?
     let profile: String?
     let createdAt: Date
+    /// When a rotation replaced this key. It still opens pushes and seals
+    /// nothing; it is deleted after `NotificationE2E.previousKeyGrace`.
+    var retiredAt: Date? = nil
+    /// How the key was made: nil for one handed over through the dashboard,
+    /// else the inline rotation suite (`NotificationKeyRotation`).
+    var suite: String? = nil
+
+    func retired(at date: Date?) -> E2EKeyRecord {
+        var copy = self
+        copy.retiredAt = date
+        return copy
+    }
 }
 
 protocol E2EKeyStoring {

@@ -185,6 +185,7 @@ struct SavedDashboardRowModel: Identifiable {
 struct SavedDashboardRowLabel: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var notifications = PushNotificationService.shared
     let row: SavedDashboardRowModel
     let isSwitching: Bool
 
@@ -194,8 +195,18 @@ struct SavedDashboardRowLabel: View {
                 .fill(statusColor)
                 .frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: row.dashboard.label)
-                    .font(.subheadline.weight(.semibold))
+                HStack(spacing: 4) {
+                    Text(verbatim: row.dashboard.label)
+                        .font(.subheadline.weight(.semibold))
+                    if let quantumSafe = notificationsEncryption {
+                        Image(systemName: quantumSafe ? "lock.shield.fill" : "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(quantumSafe
+                                ? AppLocalization.string("Notifications end-to-end encrypted and quantum-safe")
+                                : AppLocalization.string("Notifications end-to-end encrypted"))
+                    }
+                }
                 Text(verbatim: row.dashboard.normalizedURL)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -229,6 +240,13 @@ struct SavedDashboardRowLabel: View {
         return row.hasReusableAuth
             ? AppLocalization.string("Saved")
             : AppLocalization.string("Sign In required")
+    }
+
+    /// Nil unless this dashboard's notifications are end-to-end encrypted;
+    /// true when also quantum-safe (AppState.notificationsEncryption).
+    /// Observing `notifications` redraws it when a key changes.
+    private var notificationsEncryption: Bool? {
+        appState.notificationsEncryption(of: row.dashboard.id)
     }
 
     private var actionText: String {

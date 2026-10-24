@@ -293,4 +293,227 @@ extension NotificationE2ETests {
         XCTAssertEqual(PushNotificationService.decisionError(status: 400, data: Data(#"{"error":"invalid_answer"}"#.utf8)).errorDescription,
                        PushNotificationService.RelayDecisionError.server(400).errorDescription)
     }
+
+    // MARK: Key rotation and the padlock
+
+    func testHostKeepsReplacedKeysReadsTheRotateFieldFromJSON() throws {
+        func status(_ json: String) throws -> [String: Any] {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        }
+        XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":false}"#)))
+        XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":true}"#)))
+        // Before notifier 0.71 the field is missing.
+        XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true}"#)))
+        XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":null}"#)))
+    }
+
+    private func rotated(kid: String, createdAt: Date, retiredAt: Date? = nil) -> E2EKeyRecord {
+        E2EKeyRecord(
+            kid: kid, secret: Data(repeating: 7, count: 32), installationID: Self.installationID, gatewayID: Self.gatewayID,
+            dashboardID: Self.dashboardID, profile: "coder", createdAt: createdAt, retiredAt: retiredAt
+        )
+    }
+
+    func testAnswersAreSealedWithTheNewestKeyNotReplacedByARotation() throws {
+        let newer = rotated(kid: String(repeating: "b", count: 32), createdAt: now)
+        let pending = rotated(kid: String(repeating: "c", count: 32), createdAt: now.addingTimeInterval(60), retiredAt: now)
+        let old = record.retired(at: now)
+        XCTAssertEqual(NotificationE2E.currentRecord(gatewayID: Self.gatewayID, installationID: Self.installationID, records: [old, newer, pending]), newer)
+        XCTAssertNil(NotificationE2E.currentRecord(gatewayID: Self.gatewayID, installationID: Self.installationID, records: [old]))
+
+        let body = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "Yes", relayGatewayID: Self.gatewayID)
+        let sealed = try PushNotificationService.sealedRespondBody(body, requestID: "conduit-push-abc123def456", installationID: Self.installationID, records: [old, newer])
+        XCTAssertTrue(sealed["answer"]?.hasPrefix("e2e1.\(newer.kid).") == true)
+    }
+
+    func testAReplacedKeyStillOpensPushesUntilItExpires() throws {
+        let old = record.retired(at: now)
+        guard case .verified = NotificationE2E.evaluate(delivered(), records: [old], knownGatewayIDs: [], keysProvisioned: true, now: now) else {
+            return XCTFail("A replaced key still opens pushes sealed before the rotation")
+        }
+        XCTAssertEqual(NotificationE2E.expiredRecords([old], now: now.addingTimeInterval(NotificationE2E.previousKeyGrace - 1)), [])
+        XCTAssertEqual(NotificationE2E.expiredRecords([old, rotated(kid: String(repeating: "b", count: 32), createdAt: now)],
+                                                     now: now.addingTimeInterval(NotificationE2E.previousKeyGrace)), [old])
+    }
+
+    func testAPairingThatNeverRotatesKeepsWorking() throws {
+        // An older app or notifier never rotates: its one key keeps opening
+        // pushes, sealing answers and closing the padlock, at any age.
+        guard case .verified = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: true, now: now) else {
+            return XCTFail("A key that was never rotated still opens pushes")
+        }
+        let years = now.addingTimeInterval(3 * 365 * 24 * 3600)
+        XCTAssertEqual(NotificationE2E.expiredRecords([record], now: years), [], "Only a replaced key expires")
+        XCTAssertEqual(NotificationE2E.currentRecord(gatewayID: Self.gatewayID, installationID: Self.installationID, records: [record]), record)
+        let body = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "Yes", relayGatewayID: Self.gatewayID)
+        let sealed = try PushNotificationService.sealedRespondBody(body, requestID: "conduit-push-abc123def456", installationID: Self.installationID, records: [record])
+        XCTAssertTrue(sealed["answer"]?.hasPrefix("e2e1.\(Self.kid).") == true)
+        let keeps = PushNotificationService.EncryptionConfirmation(kid: Self.kid, rotates: false)
+        XCTAssertEqual(PushNotificationService.encryptionAssurance(gatewayID: Self.gatewayID, installationID: Self.installationID,
+                                                                   records: [record], confirmation: keeps, now: years),
+                       .ensured(keyCreatedAt: record.createdAt, rotates: false))
+    }
+
+    func testRetiredAtIsOptionalInStoredRecords() throws {
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any] ?? [:]
+        json.removeValue(forKey: "retiredAt")
+        let decoded = try JSONDecoder().decode(E2EKeyRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(decoded.retiredAt)
+        XCTAssertEqual(decoded, record)
+    }
+
+    func testTheHostConfirmsOnlyAKeyThisIPhoneHolds() {
+        let status: [String: Any] = ["ok": true, "paired": true, "installation_id": Self.installationID, "gateway_id": Self.gatewayID,
+                                     "e2e": ["kid": Self.kid, "created_at": "2026-10-24T00:00:00Z"], "crypto": true, "rotate": false]
+        XCTAssertEqual(PushNotificationService.confirmedKey(status: status, installationID: Self.installationID, records: [record]), record)
+        XCTAssertNil(PushNotificationService.confirmedKey(status: status, installationID: Self.installationID, records: []))
+        XCTAssertNil(PushNotificationService.confirmedKey(status: status, installationID: "other", records: [record]))
+        var noKey = status
+        noKey["e2e"] = NSNull()
+        XCTAssertNil(PushNotificationService.confirmedKey(status: noKey, installationID: Self.installationID, records: [record]))
+    }
+
+    func testThePadlockClosesOnlyForAKeyTheHostConfirmed() {
+        typealias Confirmation = PushNotificationService.EncryptionConfirmation
+        func assurance(_ records: [E2EKeyRecord], _ confirmation: Confirmation?, at date: Date? = nil) -> PushNotificationService.EncryptionAssurance {
+            PushNotificationService.encryptionAssurance(gatewayID: Self.gatewayID, installationID: Self.installationID,
+                                                        records: records, confirmation: confirmation, now: date ?? now)
+        }
+        let confirmed = Confirmation(kid: Self.kid, rotates: true)
+        XCTAssertEqual(assurance([record], confirmed), .ensured(keyCreatedAt: record.createdAt, rotates: true, quantumSafe: false))
+        var pq = record
+        pq.suite = NotificationKeyRotation.suitePQ
+        XCTAssertEqual(assurance([pq], confirmed), .ensured(keyCreatedAt: record.createdAt, rotates: true, quantumSafe: true))
+        XCTAssertEqual(assurance([], nil), .notEncrypted)
+        XCTAssertEqual(assurance([record], nil), .unconfirmed)
+        // The host seals with a key this iPhone lost, or holds for another installation.
+        XCTAssertEqual(assurance([], confirmed), .mismatched)
+        let otherInstallation = E2EKeyRecord(kid: Self.kid, secret: Self.secret, installationID: "other", gatewayID: Self.gatewayID,
+                                             dashboardID: nil, profile: nil, createdAt: record.createdAt)
+        XCTAssertEqual(assurance([otherInstallation], confirmed), .mismatched)
+        // Rotation kept failing past the grace period.
+        let late = now.addingTimeInterval(NotificationE2E.keyMaxAge + NotificationE2E.previousKeyGrace)
+        XCTAssertEqual(assurance([record], confirmed, at: late), .overdue(keyCreatedAt: record.createdAt))
+        // A host that can't rotate isn't overdue: nothing could be done.
+        let keeps = Confirmation(kid: Self.kid, rotates: false)
+        XCTAssertEqual(assurance([record], keeps, at: late), .ensured(keyCreatedAt: record.createdAt, rotates: false, quantumSafe: false))
+    }
+
+    // MARK: Inline rotation (conduit-e2e/2)
+
+    func testRotationDerivationMatchesThePlugin() {
+        // tests/test_e2e.py ROTATION_VECTOR in hermes-conduit-notifier.
+        let info = NotificationKeyRotation.info(
+            kid: Self.kid, kidNew: "fedcba9876543210fedcba9876543210", installationID: Self.installationID, gatewayID: "gw-1",
+            suite: NotificationKeyRotation.suitePQ, ek: Data(0..<16), xpub: Data(count: 32), hostXpub: Data(repeating: 1, count: 32),
+            ct: Data(0..<8)
+        )
+        let secret = NotificationKeyRotation.rotatedSecret(
+            ssPQ: Data(repeating: 2, count: 32), ssX: Data(repeating: 3, count: 32), oldSecret: Self.secret, info: info
+        )
+        XCTAssertEqual(secret.map { String(format: "%02x", $0) }.joined(),
+                       "3e1d41576dbc23aae71465d40df6185ddc2dedef720e3f6da49a767b2f89b1fd")
+    }
+
+    func testTheBestSuiteBothSidesRunIsChosen() {
+        let both = [NotificationKeyRotation.suitePQ, NotificationKeyRotation.suiteClassical]
+        XCTAssertEqual(NotificationKeyRotation.suite(hostSuites: both, supportsPQ: true), NotificationKeyRotation.suitePQ)
+        XCTAssertEqual(NotificationKeyRotation.suite(hostSuites: both, supportsPQ: false), NotificationKeyRotation.suiteClassical)
+        XCTAssertEqual(NotificationKeyRotation.suite(hostSuites: [NotificationKeyRotation.suiteClassical], supportsPQ: true),
+                       NotificationKeyRotation.suiteClassical)
+        XCTAssertNil(NotificationKeyRotation.suite(hostSuites: [], supportsPQ: true))
+    }
+
+    func testHandedOverAndClassicalKeysAreReplacedInline() {
+        var key = record
+        XCTAssertTrue(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suiteClassical, hostAsks: false),
+                      "A key handed over through the dashboard is replaced at once")
+        key.suite = NotificationKeyRotation.suiteClassical
+        XCTAssertFalse(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suiteClassical, hostAsks: false))
+        XCTAssertTrue(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suitePQ, hostAsks: false),
+                      "After an update to iOS 26 the next rotation is quantum-safe")
+        XCTAssertTrue(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suiteClassical, hostAsks: true))
+        key.suite = NotificationKeyRotation.suitePQ
+        XCTAssertFalse(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suitePQ, hostAsks: false))
+    }
+
+    /// The host's side, as e2e.answer_rotation does it.
+    private func hostAnswer(_ request: [String: Any], current: E2EKeyRecord) throws -> (reply: [String: Any], secret: Data) {
+        let suite = try XCTUnwrap(request["suite"] as? String)
+        let sealed = try XCTUnwrap(request["sealed"] as? [String: String])
+        let combined = try XCTUnwrap(sealed["ct"].flatMap(NotificationE2E.base64URLDecoded))
+        let box = try ChaChaPoly.SealedBox(
+            nonce: ChaChaPoly.Nonce(data: try XCTUnwrap(sealed["n"].flatMap(NotificationE2E.base64URLDecoded))),
+            ciphertext: combined.prefix(combined.count - 16), tag: combined.suffix(16)
+        )
+        let plain = try ChaChaPoly.open(box, using: NotificationE2E.keys(secret: current.secret).answer, authenticating:
+            NotificationKeyRotation.requestAAD(kid: current.kid, installationID: current.installationID, gatewayID: current.gatewayID, suite: suite))
+        let inner = try XCTUnwrap(JSONSerialization.jsonObject(with: plain) as? [String: String])
+        let kidNew = try XCTUnwrap(inner["kid_new"])
+        let xpub = try XCTUnwrap(inner["xpub"].flatMap(NotificationE2E.base64URLDecoded))
+        let host = Curve25519.KeyAgreement.PrivateKey()
+        let ssX = try host.sharedSecretFromKeyAgreement(with: Curve25519.KeyAgreement.PublicKey(rawRepresentation: xpub)).withUnsafeBytes { Data($0) }
+        var ek = Data(), ct = Data(), ssPQ = Data()
+        var content: [String: String] = ["kid_new": kidNew, "suite": suite, "host_xpub": NotificationE2E.base64URL(host.publicKey.rawRepresentation)]
+        if suite == NotificationKeyRotation.suitePQ {
+            guard #available(iOS 26.0, *) else { throw XCTSkip("ML-KEM needs iOS 26") }
+            ek = try XCTUnwrap(inner["ek"].flatMap(NotificationE2E.base64URLDecoded))
+            XCTAssertEqual(ek.count, NotificationKeyRotation.mlkemEncapsulationKeyBytes)
+            let result = try MLKEM768.PublicKey(rawRepresentation: ek).encapsulate()
+            ct = result.encapsulated
+            ssPQ = result.sharedSecret.withUnsafeBytes { Data($0) }
+            content["ct"] = NotificationE2E.base64URL(ct)
+        }
+        let secret = NotificationKeyRotation.rotatedSecret(
+            ssPQ: ssPQ, ssX: ssX, oldSecret: current.secret,
+            info: NotificationKeyRotation.info(kid: current.kid, kidNew: kidNew, installationID: current.installationID,
+                                               gatewayID: current.gatewayID, suite: suite, ek: ek, xpub: xpub,
+                                               hostXpub: host.publicKey.rawRepresentation, ct: ct)
+        )
+        let nonce = ChaChaPoly.Nonce()
+        let replyBox = try ChaChaPoly.seal(
+            try JSONSerialization.data(withJSONObject: content), using: NotificationE2E.keys(secret: current.secret).push, nonce: nonce,
+            authenticating: NotificationKeyRotation.replyAAD(kid: current.kid, kidNew: kidNew, installationID: current.installationID,
+                                                             gatewayID: current.gatewayID, suite: suite)
+        )
+        let reply: [String: Any] = [
+            "kid": current.kid, "kid_new": kidNew, "suite": suite,
+            "sealed": ["n": NotificationE2E.base64URL(nonce.withUnsafeBytes { Data($0) }),
+                       "ct": NotificationE2E.base64URL(replyBox.ciphertext + replyBox.tag)],
+        ]
+        return (reply, secret)
+    }
+
+    func testAClassicalRotationDerivesTheHostsSecret() throws {
+        let pending = try NotificationKeyRotation.start(current: record, suite: NotificationKeyRotation.suiteClassical)
+        let (reply, secret) = try hostAnswer(pending.request, current: record)
+        let rotated = try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil)
+        XCTAssertEqual(rotated.secret, secret)
+        XCTAssertEqual(rotated.suite, NotificationKeyRotation.suiteClassical)
+        XCTAssertNotEqual(rotated.kid, record.kid)
+        XCTAssertEqual(rotated.gatewayID, record.gatewayID)
+    }
+
+    func testAQuantumSafeRotationDerivesTheHostsSecret() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("ML-KEM needs iOS 26") }
+        let pending = try NotificationKeyRotation.start(current: record, suite: NotificationKeyRotation.suitePQ)
+        let (reply, secret) = try hostAnswer(pending.request, current: record)
+        let rotated = try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil)
+        XCTAssertEqual(rotated.secret, secret)
+        XCTAssertEqual(rotated.suite, NotificationKeyRotation.suitePQ)
+    }
+
+    func testARotationReplyThatIsTamperedOrForAnotherRequestIsRefused() throws {
+        let pending = try NotificationKeyRotation.start(current: record, suite: NotificationKeyRotation.suiteClassical)
+        var (reply, _) = try hostAnswer(pending.request, current: record)
+        var wrongKid = reply
+        wrongKid["kid_new"] = String(repeating: "c", count: 32)
+        XCTAssertThrowsError(try NotificationKeyRotation.finish(pending, reply: wrongKid, dashboardID: nil, profile: nil))
+        var sealed = try XCTUnwrap(reply["sealed"] as? [String: String])
+        let ct = try XCTUnwrap(sealed["ct"])
+        sealed["ct"] = String(ct.dropLast(2)) + (ct.hasSuffix("AA") ? "BB" : "AA")
+        reply["sealed"] = sealed
+        XCTAssertThrowsError(try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil))
+    }
 }
+
