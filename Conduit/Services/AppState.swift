@@ -20478,6 +20478,22 @@ final class AppState: ObservableObject {
         // SOUL is only editable once `profiles.describe` answered, so an
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
+        let capabilitySections = loadedDetails.flatMap { details in
+            draft.capabilities.map { BotCapabilities.configureParams(original: details.capabilities, edited: $0) }
+        } ?? [:]
+        let modelChanged = loadedDetails.map { details in
+            !draft.provider.isEmpty && !draft.model.isEmpty
+                && (draft.provider != details.provider || draft.model != details.model)
+        } ?? false
+        /// The later writes a save that stops early never reaches.
+        func laterWritesSkipped() -> [String] {
+            var skipped: [String] = []
+            if !capabilitySections.isEmpty {
+                skipped.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+            }
+            if modelChanged { skipped.append(AppLocalization.string("The model was not saved.")) }
+            return skipped
+        }
 
         /// The warnings for a meta write that did not land.
         func metaNotSaved() -> [String] {
@@ -20507,7 +20523,7 @@ final class AppState: ObservableObject {
                 guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
                     // The server changed mid-save: the meta write's outcome
                     // is unknown, so a pending removal never runs.
-                    problems += metaNotSaved()
+                    problems += metaNotSaved() + laterWritesSkipped()
                     return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
                 }
                 var sections: [String] = []
@@ -20535,6 +20551,7 @@ final class AppState: ObservableObject {
                 if descriptionChanged || soulChanged {
                     problems.append(AppLocalization.string("The description or personality was not saved."))
                 }
+                problems += laterWritesSkipped()
                 await refreshBotRosterAfterWrite()
                 return .saved(warning: problems.joined(separator: " "))
             }
@@ -20551,24 +20568,22 @@ final class AppState: ObservableObject {
         }
         // Skills, tools and MCP: only the sections the user changed, and
         // only once the editor loaded them from the bot itself.
-        if let loadedDetails, let edited = draft.capabilities {
-            let sections = BotCapabilities.configureParams(original: loadedDetails.capabilities, edited: edited)
-            if !sections.isEmpty {
-                do {
-                    let result = try await client.configureBotProfile(name: bot.name, sections: sections)
-                    if !BotConfigureSections.failed(in: result, among: BotCapabilities.appliedSections(for: sections)).isEmpty {
-                        problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
-                    }
-                } catch {
+        if !capabilitySections.isEmpty {
+            do {
+                let result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                if !BotConfigureSections.failed(
+                    in: result,
+                    among: BotCapabilities.appliedSections(for: capabilitySections)
+                ).isEmpty {
                     problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
                 }
+            } catch {
+                problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
             }
         }
         // The model goes last and on its own: a pick the gateway wants
         // confirmed must not hold back the rest of the save.
-        if let loadedDetails,
-           !draft.provider.isEmpty, !draft.model.isEmpty,
-           draft.provider != loadedDetails.provider || draft.model != loadedDetails.model {
+        if modelChanged {
             switch await saveBotModel(
                 bot,
                 provider: draft.provider,

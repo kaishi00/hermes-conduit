@@ -51,13 +51,17 @@ struct BotCapabilitiesView: View {
                             // Hermes reads no tools as its default tools, so
                             // the last one on stays on.
                             .disabled(!capabilities.canTurnOffToolset(at: index))
+                            .accessibilityHint(capabilities.canTurnOffToolset(at: index)
+                                ? Text(verbatim: "")
+                                : Text(AppLocalization.string("At least one tool stays on.")))
                     }
                 }
             } header: {
                 Text(AppLocalization.string("Tools"))
             } footer: {
-                Text(verbatim: AppLocalization.string("With every tool on, the bot follows Hermes' default tools.")
-                    + " " + AppLocalization.string("At least one tool stays on."))
+                if !capabilities.toolsets.isEmpty {
+                    Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
+                }
             }
             Section {
                 if capabilities.mcpServers.isEmpty {

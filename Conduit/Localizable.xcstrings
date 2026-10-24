@@ -327886,88 +327886,6 @@
         }
       }
     },
-    "With every tool on, the bot follows Hermes' default tools." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sind alle Tools an, folgt der Bot den Standard-Tools von Hermes."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Con todas las herramientas activadas, el bot sigue las herramientas predeterminadas de Hermes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Avec tous les outils activés, le bot suit les outils par défaut de Hermes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jika semua alat aktif, bot mengikuti alat bawaan Hermes."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Con tutti gli strumenti attivi, il bot segue gli strumenti predefiniti di Hermes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "すべてのツールをオンにすると、ボットは Hermes の既定のツールに従います。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모든 도구를 켜면 봇은 Hermes 기본 도구를 따릅니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gdy wszystkie narzędzia są włączone, bot korzysta z domyślnych narzędzi Hermesa."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Com todas as ferramentas ativadas, o bot segue as ferramentas padrão do Hermes."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Если включены все инструменты, бот использует инструменты Hermes по умолчанию."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tüm araçlar açıkken bot Hermes'in varsayılan araçlarını kullanır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部工具开启时，机器人使用 Hermes 的默认工具。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部工具開啟時，機器人使用 Hermes 的預設工具。"
-          }
-        }
-      }
-    },
     "At least one tool stays on." : {
       "localizations" : {
         "de" : {
@@ -328128,6 +328046,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新設定檔以 Hermes 內建技能和預設工具開始。之後可編輯機器人來更改。"
+          }
+        }
+      }
+    },
+    "With every tool on, the bot follows Hermes' default tools. At least one tool stays on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sind alle Tools an, folgt der Bot den Standard-Tools von Hermes. Mindestens ein Tool bleibt an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con todas las herramientas activadas, el bot sigue las herramientas predeterminadas de Hermes. Al menos una herramienta sigue activada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec tous les outils activés, le bot suit les outils par défaut de Hermes. Au moins un outil reste activé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika semua alat aktif, bot mengikuti alat bawaan Hermes. Setidaknya satu alat tetap aktif."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con tutti gli strumenti attivi, il bot segue gli strumenti predefiniti di Hermes. Almeno uno strumento resta attivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのツールをオンにすると、ボットは Hermes の既定のツールに従います。少なくとも 1 つのツールはオンのままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 도구를 켜면 봇은 Hermes 기본 도구를 따릅니다. 도구는 하나 이상 켜져 있어야 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy wszystkie narzędzia są włączone, bot korzysta z domyślnych narzędzi Hermesa. Co najmniej jedno narzędzie pozostaje włączone."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com todas as ferramentas ativadas, o bot segue as ferramentas padrão do Hermes. Pelo menos uma ferramenta fica ativada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если включены все инструменты, бот использует инструменты Hermes по умолчанию. Хотя бы один инструмент остаётся включённым."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tüm araçlar açıkken bot Hermes'in varsayılan araçlarını kullanır. En az bir araç açık kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部工具开启时，机器人使用 Hermes 的默认工具。至少保留一个工具开启。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部工具開啟時，機器人使用 Hermes 的預設工具。至少保留一個工具開啟。"
           }
         }
       }
