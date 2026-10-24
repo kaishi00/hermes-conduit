@@ -95,7 +95,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 - The resume jump and its button go to the newest question or approval waiting on the user (2026-10-24, #1194).
 
 **Open gaps**
-- None known.
+- A Watch on Local Live ringing for calls from Hermes waits on Eric's decision (#1194).
 
 **Checked:** 2026-10-24, at #1194.
 

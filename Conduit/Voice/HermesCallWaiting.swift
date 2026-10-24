@@ -85,9 +85,11 @@ struct HermesCallWaiting: Equatable {
     init?(host waiting: [String: Any]) {
         switch waiting["kind"] as? String {
         case "approval":
-            guard waiting["answered"] as? Bool != true,
-                  let description = waiting["description"] as? String, !description.isEmpty else { return nil }
+            let description = waiting["description"] as? String ?? ""
             let command = waiting["command"] as? String ?? ""
+            // Something to say: the why, or at least the command, as the
+            // chat's card would show it.
+            guard waiting["answered"] as? Bool != true, !(description.isEmpty && command.isEmpty) else { return nil }
             self.init(item: .approval(
                 command: Self.clipped(command, to: Self.maximumCommandCharacters) ?? "",
                 description: Self.clipped(description, to: Self.maximumTextCharacters) ?? ""
