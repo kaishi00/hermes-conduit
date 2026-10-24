@@ -61,7 +61,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 "Deny:" and "Answer:" on GPT-Live.
 
 **Code**
-- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard), `Conduit/Services/ApprovalDisplayText.swift`
+- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard), `Conduit/Services/ApprovalDisplayText.swift`, `Conduit/Services/AppState.swift` (respondToApproval, legacyApprovalTarget)
 - Classic and Local Live: `Conduit/Services/AppState+SpokenApprovals.swift`, `Conduit/Voice/SpokenApprovals.swift`, `Conduit/Voice/VoiceConversationController.swift` (noteApprovalWaiting), `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (approvalLine)
 - Live modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (waitingNotice, answerJobApproval), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (jobApprovalRule), `Conduit/Views/LiveVoiceCallJobs.swift`
 - Call from Hermes: `Conduit/Services/AppState+HermesCalls.swift` (answerHermesCallApproval, answerHermesCallQuestion)
@@ -84,8 +84,9 @@ A call Hermes made about an approval or question takes the answer by voice:
 - Live call screens show no approval card, only "Waiting for you" on the job row, while Classic and the Watch show one (found seeding this map).
 - The resume jump finds clarify cards, not approvals (#486).
 - Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
+- Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 
-**Checked:** 2026-10-24, at 78f21da: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review).
+**Checked:** 2026-10-24, at 78f21da: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups.
 
 ## Voice follow-ups
 
@@ -401,7 +402,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
-- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Services/AppState+PinnedReplies.swift`
+- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 
 **Rulings**
@@ -413,8 +414,9 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
+- Deleting a bot drops its Bot Chat pins only under the profile in use; pins made there under another profile stay (#982 follow-up).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups.
 
 ## Notifications
 
