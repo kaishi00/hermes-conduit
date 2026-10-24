@@ -840,13 +840,13 @@ speech-server transcription stream (listening, not speaking)
 - Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
 
 **Rulings**
-- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- A dead Hermes speech stream is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190). The speech-server speech stream can't tell yet (Open gaps); listening on a speech server says "Lost the connection to your speech server." when a send fails or the server closes early.
 - Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
 
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1190.
+**Checked:** 2026-10-24, at 3be6699c.
 
 ## Chats top bar and search
 
@@ -892,8 +892,8 @@ reading of the line and its new-plan announcement
 
 **Rulings**
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
-- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, salvage of the #1135 review).
-- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, salvage of the #1135 review).
+- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
+- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
@@ -912,20 +912,23 @@ to 4.5:1 under white in both modes.
 cards · the numbered or symbol marker on a rich card's place rows · the
 step numbers of the notification setup commands · the Gemini Live setup
 step number · marks picked by `markColor(on:)` (text selection on a sent
-bubble, the accent swatch check)
+bubble, the accent swatch check) · the primary buttons (the sign-in flow's
+Continue and Sign in, Settings' Save and Apply), white only in light mode
 
 **Code**
 - Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
 - Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Primary buttons: `Conduit/Views/Login/LoginScreens.swift` (LoginPrimaryButton), `Conduit/Views/AuxiliaryViews.swift` (SettingsButtonLabel)
 - Tests: `ConduitTests/AccentContrastTests.swift`
 
 **Rulings**
 - White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+- The primary buttons need no change: their white label is light mode only, where the accent is the sent-bubble colour, and dark mode draws a black label (2026-10-24, from #1188's late review).
 
 **Open gaps**
-- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule, the primary buttons' dark-mode label) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge, a rich card's prominent action in `Conduit/Cards/RichMediaCardViews.swift`) aren't checked against a custom accent.
 
-**Checked:** 2026-10-24, at #1188.
+**Checked:** 2026-10-24, at 3be6699c.
 
 ## Feature map rules
 

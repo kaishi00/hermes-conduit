@@ -126614,84 +126614,84 @@
         }
       }
     },
-    "Press Return to send. Use Shift-Return for a new line." : {
+    "When on, Return sends and Shift-Return starts a new line." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drücke die Eingabetaste zum Senden. Verwende Umschalt-Eingabetaste für eine neue Zeile."
+            "value" : "Wenn aktiviert, sendet die Eingabetaste und Umschalt-Eingabetaste beginnt eine neue Zeile."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pulsa Intro para enviar. Usa Mayúsculas + Intro para una nueva línea."
+            "value" : "Si está activado, Intro envía y Mayúsculas + Intro crea una nueva línea."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appuyez sur Retour pour envoyer. Utilisez Maj + Retour pour aller à la ligne."
+            "value" : "Une fois activé, Retour envoie et Maj + Retour va à la ligne."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tekan Return untuk mengirim. Gunakan Shift-Return untuk baris baru."
+            "value" : "Jika aktif, Return mengirim dan Shift-Return membuat baris baru."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Premi Invio per inviare. Usa Maiusc-Invio per andare a capo."
+            "value" : "Se attivo, Invio invia e Maiusc-Invio va a capo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Returnキーで送信します。改行するにはShift-Returnキーを使用します。"
+            "value" : "オンにすると、Returnキーで送信し、Shift-Returnキーで改行します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Return 키를 누르면 보내요. 줄을 바꾸려면 Shift-Return을 사용하세요."
+            "value" : "켜면 Return 키로 보내고 Shift-Return으로 줄을 바꿔요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Naciśnij Return, aby wysłać. Użyj Shift-Return, aby wstawić nowy wiersz."
+            "value" : "Gdy włączone, Return wysyła, a Shift-Return wstawia nowy wiersz."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pressione Retorno para enviar. Use Shift-Retorno para uma nova linha."
+            "value" : "Quando ativado, Retorno envia e Shift-Retorno cria uma nova linha."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Нажмите Return, чтобы отправить. Для новой строки используйте Shift-Return."
+            "value" : "Если включено, Return отправляет, а Shift-Return начинает новую строку."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Göndermek için Return'e basın. Yeni satır için Shift-Return kullanın."
+            "value" : "Açıkken Return gönderir, Shift-Return yeni satır başlatır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按 Return 发送。按 Shift-Return 换行。"
+            "value" : "开启后，按 Return 发送，按 Shift-Return 换行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按 Return 鍵傳送。使用 Shift-Return 換行。"
+            "value" : "開啟後，按 Return 鍵傳送，按 Shift-Return 換行。"
           }
         }
       }

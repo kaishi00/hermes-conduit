@@ -1774,7 +1774,7 @@ private struct ComposerReturnKeySettings: View {
             symbol: "keyboard",
             tint: .conduitAura
         ) {
-            Text("Press Return to send. Use Shift-Return for a new line.")
+            Text("When on, Return sends and Shift-Return starts a new line.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Text(ComposerReturnKey.defaultFootnote(onMac: onMac))
