@@ -62,7 +62,7 @@ struct GeneratePictureSheet: View {
                     }
                     .disabled(isGenerating)
                 } footer: {
-                    Text(AppLocalization.string("Each picture takes up to a minute. Each tap of Generate adds one; pick one, then tap Use."))
+                    Text(AppLocalization.string("A picture can take a minute or more. Each tap of Generate adds one; pick one, then tap Use."))
                 }
                 if let error {
                     Section {

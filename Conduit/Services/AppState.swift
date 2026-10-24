@@ -20314,13 +20314,16 @@ final class AppState: ObservableObject {
         case .image(let bytes):
             data = bytes
         case .remote(let url):
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 60
-            guard let download = try? await URLSession.shared.data(for: request),
-                  (download.1 as? HTTPURLResponse)?.statusCode == 200 else {
+            // Bounded like any picture Conduit fetches: the backend's URL
+            // could answer with anything.
+            guard case .downloaded(let bytes, _) = await MediaPreviewPresenter.boundedDownloadResult(url) else {
                 throw PictureGenerationError(message: AppLocalization.string("The picture was made but could not be downloaded."))
             }
-            data = download.0
+            // The server may have changed during the download.
+            guard !Task.isCancelled, self.client === client, isConnected else {
+                throw PictureGenerationError(message: AppLocalization.string("Connect to Hermes to generate pictures."))
+            }
+            data = bytes
         case .failed(let reason):
             if let reason {
                 throw PictureGenerationError(message: AppLocalization.string("Could not generate a picture: \(reason)"))

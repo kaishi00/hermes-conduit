@@ -891,7 +891,7 @@ struct GroupRoomPicturePicker: ViewModifier {
             }
             // Whether the menu offers Generate Group Picture: asked only
             // where a room is open, again for each room.
-            .task(id: appState.activeRoomSurface?.room.roomID) {
+            .task(id: "\(appState.activeRoomSurface?.room.roomID ?? "")|\(appState.canSetGroupRoomPictures)") {
                 guard appState.activeRoomSurface != nil, appState.canSetGroupRoomPictures else { return }
                 await appState.refreshPictureGeneration()
             }
