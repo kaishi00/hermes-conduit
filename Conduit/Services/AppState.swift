@@ -28928,6 +28928,9 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client,
                   let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // The next command replaced the card while the queue was read:
+            // a session-queue answer would go to it. Nothing is sent.
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
             switch target {
             case .sessionQueue:
                 break
@@ -28977,6 +28980,12 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client else { return }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // A legacy card the next command replaced in flight asks
+            // something this answer never saw.
+            if rearmIfReplaced(at: updatedIndex, asking: current) {
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            }
             if accepted {
                 messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
             } else {
@@ -28990,6 +28999,7 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client else { return }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
             if Self.isExpiredPromptError(error) {
@@ -29026,6 +29036,20 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// When the legacy card at `index` no longer asks what `answered`
+    /// asked (it is updated in place by the next command), it goes back to
+    /// pending for the new question, and true is returned. An identified
+    /// card is the same request whatever its text says now.
+    private func rearmIfReplaced(at index: Int, asking answered: ApprovalActivity) -> Bool {
+        guard answered.requestId == nil,
+              let approval = messages[index].approval, !approval.asksSameAs(answered) else { return false }
+        messages[index].approval?.status = .pending
+        messages[index].approval?.choice = nil
+        messages[index].approval?.error = nil
+        cacheMessagePresentation()
+        return true
     }
 
     /// Project navigation is always present in the drawer because every current
