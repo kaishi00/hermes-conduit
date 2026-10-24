@@ -30480,12 +30480,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private var profileConfigWrites: Task<Void, Never>?
-
     /// One GET, change and PUT of the whole profile config, run after any
-    /// earlier one finishes. Settings pages save independently (the Model
-    /// page has three savers), and two overlapping round trips would let
-    /// the later PUT put back what the earlier one changed.
+    /// earlier one finishes (ProfileConfigWriteQueue, shared with the
+    /// voice settings' own service). Settings pages save independently
+    /// (the Model page has three savers), and two overlapping round trips
+    /// would let the later PUT put back what the earlier one changed.
     private func updateProfileConfig(
         profile: String,
         _ change: @escaping @MainActor (inout [String: Any]) -> Void
@@ -30494,9 +30493,7 @@ final class AppState: ObservableObject {
         // write that outlives a switch must not reach the next dashboard's
         // profile of the same name.
         let owner = currentDashboardRuntimeOwner()
-        let previous = profileConfigWrites
-        let write = Task { @MainActor [weak self] in
-            await previous?.value
+        try await ProfileConfigWriteQueue.runThrowing { @MainActor [weak self] in
             guard let self, let owner, self.ownsDashboardRuntime(owner) else { throw CancellationError() }
             let bridge = owner.bridge
             var config = try await bridge.requestJSON(path: self.dashboardPath("/api/config", profile: profile))
@@ -30508,8 +30505,6 @@ final class AppState: ObservableObject {
                 body: ["config": config, "profile": profile]
             )
         }
-        profileConfigWrites = Task { _ = try? await write.value }
-        try await write.value
     }
 
     /// The profile's default reasoning effort. Hermes keeps it at
@@ -30682,22 +30677,17 @@ final class AppState: ObservableObject {
             displayPreferences = previous
             return false
         }
-        let dashboardTicketBridge = owner.bridge
 
         do {
-            var config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            var display = config["display"] as? [String: Any] ?? [:]
-            switch key {
-            case .reasoning: display["show_reasoning"] = enabled
-            case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
-            case .expandTools: display["expand_tools"] = enabled
+            try await updateProfileConfig(profile: profile) { config in
+                var display = config["display"] as? [String: Any] ?? [:]
+                switch key {
+                case .reasoning: display["show_reasoning"] = enabled
+                case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
+                case .expandTools: display["expand_tools"] = enabled
+                }
+                config["display"] = display
             }
-            config["display"] = display
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/config", profile: profile),
-                method: "PUT",
-                body: ["config": config, "profile": profile]
-            )
             return true
         } catch {
             // After a dashboard switch the preferences on screen are the next

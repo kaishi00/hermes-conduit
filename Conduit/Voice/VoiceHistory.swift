@@ -397,6 +397,13 @@ final class VoiceTranscriptRecorder {
     private(set) var isDisabled = false
 
     private var recordedEntries: Set<UUID> = []
+    /// How far into the engine's transcript the last capture got, and the
+    /// entry there: the next capture starts after it, so a long call isn't
+    /// rescanned from its first line on every update (#1004). An engine
+    /// that removed or replaced an earlier line moves the entry, and that
+    /// capture scans from the start.
+    private var capturedPrefix = 0
+    private var capturedPrefixEnd: UUID?
     private let save: Save
     /// The title a new row gets, asked for when the first save creates it.
     private let title: @MainActor (_ turns: [VoiceTranscriptTurn]) async -> String
@@ -455,12 +462,21 @@ final class VoiceTranscriptRecorder {
     /// Takes the settled prefix of the engine's transcript: every entry up
     /// to the first one still streaming.
     func capture(_ entries: [VoiceConversationTranscriptEntry], unsettled: Set<UUID>) {
-        for entry in entries {
+        var index = 0
+        if capturedPrefix > 0, capturedPrefix <= entries.count,
+           entries[capturedPrefix - 1].id == capturedPrefixEnd {
+            index = capturedPrefix
+        }
+        while index < entries.count {
+            let entry = entries[index]
             if unsettled.contains(entry.id) { break }
+            index += 1
             guard !recordedEntries.contains(entry.id) else { continue }
             recordedEntries.insert(entry.id)
             append(entry.speaker == .user ? .user : .assistant, entry.text)
         }
+        capturedPrefix = index
+        capturedPrefixEnd = index > 0 ? entries[index - 1].id : nil
     }
 
     /// A line the call itself adds (a started job, the resume marker).

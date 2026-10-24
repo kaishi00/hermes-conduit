@@ -1863,6 +1863,15 @@ private struct WakePhraseSettingsSection: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
+                // A phrase in another writing system is heard by a
+                // recognizer for its own language, when this iPhone has one.
+                ForEach(phrases.filter(WakePhraseMatcher.isUsable), id: \.self) { phrase in
+                    if let note = WakeSpeechLocale.note(for: phrase) {
+                        Label(note.text, systemImage: note.isUnheard ? "exclamationmark.circle" : "globe")
+                            .font(.caption)
+                            .foregroundStyle(note.isUnheard ? Color.orange : Color.secondary)
+                    }
+                }
                 Toggle("Start a new conversation", isOn: Binding(
                     get: { startsFresh },
                     set: { value in

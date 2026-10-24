@@ -45,14 +45,25 @@ final class ComposerDictationService: ObservableObject {
     private var audioObservers: [NSObjectProtocol] = []
     private var recognizer: (any DictationRecognizer)?
     private var finishTask: Task<Void, Never>?
+    /// Stops a dictation left running at `maximumDuration`.
+    private var limitTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var producedText = false
     /// Bumped by `cancel()` so a reserved start that hasn't run, or is
     /// still awaiting permission, gives up.
     private var startToken: UInt64 = 0
 
-    init(audioCoordinator: VoiceAudioSessionCoordinator? = nil) {
+    /// The longest dictation, as for a voice message: past this it stops
+    /// by itself, as if tapped, and keeps its words (#1004). The Hermes
+    /// engine keeps the whole recording for its upload, about 29 MB here,
+    /// so one left running can't grow until iOS ends the app.
+    static let maximumDuration: Duration = .seconds(VoiceMessageRecorder.maximumDuration)
+
+    private let maximumDuration: Duration
+
+    init(audioCoordinator: VoiceAudioSessionCoordinator? = nil, maximumDuration: Duration = ComposerDictationService.maximumDuration) {
         self.audioCoordinator = audioCoordinator ?? .shared
+        self.maximumDuration = maximumDuration
     }
 
     /// Reserves a start, synchronously: a `cancel()` that lands before
@@ -134,6 +145,11 @@ final class ComposerDictationService: ObservableObject {
         audioSink.replace(with: input)
         isCapturing = true
         isDictating = true
+        limitTask = Task { @MainActor [weak self, maximumDuration] in
+            try? await Task.sleep(for: maximumDuration)
+            guard let self, !Task.isCancelled, self.generation == generation else { return }
+            self.stop()
+        }
     }
 
     /// Permission, language and the model, before the microphone opens.
@@ -170,6 +186,8 @@ final class ComposerDictationService: ObservableObject {
     /// last words, briefly. The microphone is let go at once.
     func stop() {
         guard isCapturing else { return }
+        limitTask?.cancel()
+        limitTask = nil
         isCapturing = false
         stopAudio()
         releaseAudio()
@@ -257,6 +275,8 @@ final class ComposerDictationService: ObservableObject {
         generation &+= 1
         finishTask?.cancel()
         finishTask = nil
+        limitTask?.cancel()
+        limitTask = nil
         recognizer?.cancel()
         recognizer = nil
         audioSink.replace(with: nil)
