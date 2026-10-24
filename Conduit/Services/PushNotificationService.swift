@@ -834,9 +834,9 @@ final class PushNotificationService: ObservableObject {
     }
 
     func encryptionAssurance(gatewayID: String) -> EncryptionAssurance {
-        guard let records = encryptionRecords else {
-            return encryptionConfirmations[gatewayID] == nil ? .notEncrypted : .unconfirmed
-        }
+        // Keys that can't be read can't open anything: the row explains
+        // that instead of waiting on a host check.
+        guard let records = encryptionRecords else { return .notEncrypted }
         return Self.encryptionAssurance(
             gatewayID: gatewayID,
             installationID: registration?.installationID,
@@ -1143,7 +1143,10 @@ final class PushNotificationService: ObservableObject {
             // the host reports it.
             return false
         }
-        guard response["ok"] as? Bool == true, response["kid"] as? String == record.kid else {
+        // Unregistered or moved relays while the request was out (as for a
+        // first key): the key belongs to a pairing this iPhone no longer has.
+        guard response["ok"] as? Bool == true, response["kid"] as? String == record.kid,
+              registration?.installationID == record.installationID else {
             Self.e2eKeyStore.remove(kid: record.kid)
             records.removeAll { $0.kid == record.kid }
             return false
