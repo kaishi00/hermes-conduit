@@ -214,7 +214,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Starting a call
 
@@ -780,7 +780,7 @@ calls reading a job's chat · the Watch's answer to a call from Hermes
 **Open gaps**
 - The same message sent twice and answered in the same words, read once from saved history and once from the open chat, still can't be told apart.
 
-**Checked:** 2026-10-24, at #1185.
+**Checked:** 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
 
 ## Following the latest message
 
