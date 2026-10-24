@@ -293,6 +293,7 @@ final class BotMentionTests: XCTestCase {
             BotTeammateMessages.Inbound(sender: "Atlas", handle: "atlas", body: "Found three flights.\nThe cheapest is Tuesday.")
         )
         XCTAssertEqual(BotTeammateMessages.inbound("Message from 🤖 Atlas: hi")?.handle, "Atlas")
+        XCTAssertEqual(BotTeammateMessages.inbound("Message from 🤖 Atlas (@Atlas): hi")?.body, "hi", "a capitalised handle still signs")
         XCTAssertEqual(BotTeammateMessages.inbound("Message from Scout (@scout@laptop): yo")?.handle, "scout")
         XCTAssertEqual(
             BotTeammateMessages.inbound("[Message from agent 'scout'] hello"),

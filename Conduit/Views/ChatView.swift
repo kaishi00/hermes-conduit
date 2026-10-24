@@ -1347,7 +1347,7 @@ struct TeammateMessageNote: View {
             guard let bot, bot.hasAvatar, image == nil else { return }
             await appState.loadBotAvatarRetrying(bot)
             // The roster may have named another bot meanwhile.
-            guard !Task.isCancelled, self.bot == bot else { return }
+            guard !Task.isCancelled, self.bot?.name == bot.name else { return }
             image = appState.botAvatarImage(for: bot)
         }
     }

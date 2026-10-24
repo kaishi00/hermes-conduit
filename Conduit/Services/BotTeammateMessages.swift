@@ -105,7 +105,8 @@ enum BotTeammateMessages {
     // Groups: 1 the robot, 2 the signed name, 3 the handle, 4 the bracket
     // form's name, 5 the message.
     private static let inboundRegex = try? NSRegularExpression(
-        pattern: #"^(?:Message from (🤖\s*)?([^:\n(]{1,64}?)(?:\s*\(@([a-z0-9][a-z0-9_-]{0,63})(?:@[a-zA-Z0-9][a-zA-Z0-9_-]{0,63})?\))?:\s*|\[Message from agent '([^']{1,64})'\]\s*)([\s\S]*)$"#
+        pattern: #"^(?:Message from (🤖\s*)?([^:\n(]{1,64}?)(?:\s*\(@([a-z0-9][a-z0-9_-]{0,63})(?:@[a-zA-Z0-9][a-zA-Z0-9_-]{0,63})?\))?:\s*|\[Message from agent '([^']{1,64})'\]\s*)([\s\S]*)$"#,
+        options: [.caseInsensitive]
     )
 
     private static let deliveryCommandRegex = try? NSRegularExpression(
