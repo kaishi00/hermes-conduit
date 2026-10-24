@@ -29,7 +29,7 @@
 //
 //  With asking first on (#451), a new request waits as the call's draft:
 //  start_job and ask_thread answer waiting_for_ok, the model asks the user,
-//  and send_request sends it once the user spoke after the ask. The latest
+//  and send_request sends it once the user answered the ask with a yes. The latest
 //  request replaces the draft; "send it to Hermes" sends at once.
 //
 //  call_me_when_done (#449, offered when the Hermes host takes call
@@ -551,7 +551,7 @@ final class GeminiLiveToolBridge {
     private var withdrawnCallIDs: Set<String> = []
     /// A new request held for the user's OK while asking first is on
     /// (#451). The latest replaces it.
-    private struct Draft {
+    private struct Draft: Equatable {
         let request: String
         let profile: String
         let toChat: Bool
@@ -566,7 +566,7 @@ final class GeminiLiveToolBridge {
     /// request goes at once.
     private var sendNowAt: Date?
     /// When the user last spoke, on the controller's clock. A draft is sent
-    /// only once they spoke after it was held.
+    /// only on words they said after it was held.
     var lastUserSpeechAt: @MainActor () -> Date? = { nil }
     /// The user's last line in the call, as transcribed: an approval goes
     /// through only on their own yes (#449 step 4).
@@ -580,6 +580,8 @@ final class GeminiLiveToolBridge {
     /// Words this soon after the request's own are still the request (its
     /// transcript can trail the call), not an answer to the question.
     static let answerGap: TimeInterval = 1
+    /// Not UI copy, so not localized.
+    static let notAnsweredYet = "Not sent: the user hasn't answered yet. Wait for their OK, then call send_request."
 
     init(
         supervisor: GeminiLiveJobSupervising,
@@ -725,7 +727,32 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "Nothing is waiting to be sent. Ask the user what they want Hermes to do."], scheduling: .whenIdle)]
             }
             guard let spoke = lastUserSpeechAt(), spoke.timeIntervalSince(waiting.heardUntil ?? .distantPast) > Self.answerGap else {
-                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user hasn't answered yet. Wait for their OK, then call send_request."], scheduling: .silent)]
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": Self.notAnsweredYet], scheduling: .silent)]
+            }
+            // The user's own answer sends it, as on GPT-Live, never the
+            // model's reading of it (#1007): any words after the ask, a
+            // "wait" or a no included, used to send it.
+            let answer = await heardAnswer()
+            guard !isEnding else { return [] }
+            // Another request replaced it meanwhile: that one waits for its
+            // own answer.
+            guard draft == waiting else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": Self.notAnsweredYet], scheduling: .silent)]
+            }
+            let request: String
+            switch answer {
+            case .yes(let addition):
+                request = GPTLiveDelegationBridge.adding(addition, to: waiting.request)
+            case .no(nil):
+                draft = nil
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "dropped", "message": "Not sent: the user said no, so it won't go to Hermes. Tell them in a few words."], scheduling: .whenIdle)]
+            case .no(let change?), .notYet(let change?):
+                draft = nil
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "changed", "message": "Not sent: the user changed it (\"\(change)\"). Call \(waiting.toChat ? Tool.askThread.rawValue : Tool.startJob.rawValue) again with the request as they want it now."], scheduling: .whenIdle)]
+            case .notYet(nil):
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user isn't ready yet. Wait for their OK, then call send_request."], scheduling: .silent)]
+            case .other:
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user's answer wasn't a yes. If they changed the request, call \(waiting.toChat ? Tool.askThread.rawValue : Tool.startJob.rawValue) again with it; otherwise ask whether to send it, and call send_request once they say yes."], scheduling: .whenIdle)]
             }
             draft = nil
             let approved = GeminiLiveProtocol.FunctionCall(
@@ -734,9 +761,9 @@ final class GeminiLiveToolBridge {
                 arguments: call.arguments.merging(waiting.kind.map { ["kind": $0] } ?? [:]) { _, kind in kind }
             )
             if waiting.toChat {
-                return await sendToThread(approved, request: waiting.request, confirmed: true)
+                return await sendToThread(approved, request: request, confirmed: true)
             }
-            return await startBackgroundJob(approved, instructions: waiting.request, profile: waiting.profile)
+            return await startBackgroundJob(approved, instructions: request, profile: waiting.profile)
         case .setAskFirst:
             let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
             guard mode == "on" || mode == "off" else {
@@ -953,6 +980,18 @@ final class GeminiLiveToolBridge {
     private(set) var isEnding = false
 
     // MARK: Asking first (#451)
+
+    /// The user's answer to sending the draft. Their words reach the
+    /// transcript a moment after the model heard them, so words that don't
+    /// read as an answer yet are given `lateYesWait` to become one.
+    private func heardAnswer() async -> VoiceThreadRouting.HeldRequestAnswer {
+        let deadline = ContinuousClock.now + lateYesWait
+        while true {
+            let answer = VoiceThreadRouting.heldRequestAnswer(lastUserWords())
+            guard !answer.isAnswer, ContinuousClock.now < deadline else { return answer }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
+        }
+    }
 
     /// The user said to send it to Hermes: the next new request goes at
     /// once, even while asking first is on.

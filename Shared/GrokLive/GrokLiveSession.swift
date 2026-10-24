@@ -54,7 +54,13 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// `Task.yield` settles cannot always cover on a loaded runner.
     private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
-    private var socket: GeminiLiveSocket?
+    private var socket: GeminiLiveSocket? {
+        // Frames queued for a socket that's no longer the session's fail
+        // instead of going out on it.
+        didSet { if writer?.socket !== socket { writer?.close(); writer = nil } }
+    }
+    /// Sends the current socket's frames in order, with bounded audio.
+    private var writer: LiveVoiceSocketWriter?
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
     /// The connection's capture, upsampled as one stream.
@@ -151,12 +157,11 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             return
         }
         let id = connectionID
-        Task { [weak self] in
-            do {
-                for text in texts { try await socket.send(text) }
-            } catch {
+        let writer = socketWriter(for: socket)
+        let queued = writer.enqueue(texts, isAudio: message.isAudio) { [weak self] error in
+            if let error {
                 onFailure?()
-                self?.connectionFailed(id, error: error)
+                self?.writeFailed(id, error: error)
                 return
             }
             guard wantsResponse else {
@@ -169,11 +174,10 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             // update is requeued instead of dropped.
             switch self?.takeResponseRequest(on: id, turn: (sent: onSent, failed: onFailure)) {
             case .send(let create)?:
-                do {
-                    try await socket.send(create)
-                } catch {
-                    // Settles the turn with the rest of the connection's.
-                    self?.connectionFailed(id, error: error)
+                // A failure settles the turn with the rest of the
+                // connection's.
+                writer.enqueue([create], isAudio: false) { error in
+                    if let error { self?.writeFailed(id, error: error) }
                 }
             case .queued?:
                 break
@@ -183,6 +187,21 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 onFailure?()
             }
         }
+        if !queued { onFailure?() }
+    }
+
+    private func socketWriter(for socket: GeminiLiveSocket) -> LiveVoiceSocketWriter {
+        if let writer, writer.socket === socket { return writer }
+        let writer = LiveVoiceSocketWriter(socket: socket)
+        self.writer = writer
+        return writer
+    }
+
+    /// A send that failed on the socket loses the connection; one a closed
+    /// writer cancelled belongs to a connection already gone.
+    private func writeFailed(_ id: UUID, error: Error) {
+        guard !(error is CancellationError) else { return }
+        connectionFailed(id, error: error)
     }
 
     // MARK: Responses
@@ -228,12 +247,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         queuedTurns = []
         beginRequest(with: turns)
         let id = connectionID
-        Task { [weak self] in
-            do {
-                try await socket.send(text)
-            } catch {
-                self?.connectionFailed(id, error: error)
-            }
+        socketWriter(for: socket).enqueue([text], isAudio: false) { [weak self] error in
+            if let error { self?.writeFailed(id, error: error) }
         }
     }
 

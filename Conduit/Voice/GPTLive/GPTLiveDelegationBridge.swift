@@ -767,6 +767,7 @@ final class GPTLiveDelegationBridge {
         lastTaker = nil
         lastUntaken = nil
         releaseCallsBack = false
+        returnRepliesOnTheirWay()
         isEnding = false
     }
 
@@ -781,7 +782,17 @@ final class GPTLiveDelegationBridge {
         lastTaker = nil
         lastUntaken = nil
         releaseCallsBack = false
+        returnRepliesOnTheirWay()
         isEnding = true
+    }
+
+    /// Answers still on their way belong to a conversation that's gone:
+    /// their outcomes become pending again, and a delegation id the next
+    /// conversation reuses can't settle the old job's (#1007).
+    private func returnRepliesOnTheirWay() {
+        let onTheirWay = deliveredReplies
+        deliveredReplies = [:]
+        for jobID in onTheirWay.values { supervisor.returnUndeliveredNotice(jobID: jobID) }
     }
 
     // MARK: Asking first (#451)

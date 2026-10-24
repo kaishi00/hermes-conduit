@@ -3245,3 +3245,134 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 1)
     }
 }
+
+// MARK: - A start's late answers (#999)
+
+/// Holds each availability check until the test answers it, so a stopped
+/// start's answer can land after a newer start began.
+@MainActor
+final class HeldLiveAvailability<Answer> {
+    private(set) var waiting: [CheckedContinuation<Answer, Error>] = []
+
+    func next() async throws -> Answer {
+        try await withCheckedThrowingContinuation { waiting.append($0) }
+    }
+
+    func answer(_ index: Int, with value: Answer) {
+        waiting[index].resume(returning: value)
+    }
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveStoppedStartsLateAnswerLeavesTheNewerStartAlone() async {
+        let held = HeldLiveAvailability<GeminiLiveAvailability>()
+        let session = FakeGeminiLiveSessionControl()
+        var sessionsMade = 0
+        let supervisor = VoiceBackgroundJobSupervisor(backend: FakeVoiceJobBackend().backend, pollInterval: .seconds(3_600))
+        let controller = GeminiLiveConversationController(
+            makeSession: { sessionsMade += 1; return session },
+            availability: { try await held.next() },
+            tools: GeminiLiveToolBridge(supervisor: supervisor),
+            input: FakeGeminiLiveInput(),
+            output: FakeGeminiLiveOutput(),
+            routePolicy: { .fullDuplex },
+            headsetMute: HeadsetMicrophoneMute(system: FakeSystemInputMute())
+        )
+
+        let first = Task { await controller.start() }
+        await settle(until: { held.waiting.count == 1 })
+        // Stop, then Start again: both leave the controller `.connecting`.
+        controller.stop()
+        let second = Task { await controller.start() }
+        await settle(until: { held.waiting.count == 2 })
+
+        // The stopped start hears back late, that Gemini isn't there.
+        held.answer(0, with: .unavailable(reason: "old answer"))
+        await first.value
+        XCTAssertEqual(controller.phase, .connecting, "the old answer doesn't fail the newer start")
+        XCTAssertEqual(sessionsMade, 0)
+
+        held.answer(1, with: .available(model: "gemini-3.8-live"))
+        await second.value
+        XCTAssertEqual(sessionsMade, 1, "only the newer start connects")
+        XCTAssertEqual(session.started, 1)
+        controller.stop()
+    }
+}
+
+// MARK: - Microphone sends on a slow connection (#999)
+
+/// A socket whose first send stalls until released, as a connection that
+/// stopped taking frames.
+@MainActor
+final class StallingLiveSocket: GeminiLiveSocket {
+    private(set) var sent: [String] = []
+    private var stalled: CheckedContinuation<Void, Error>?
+    private var stalls = true
+
+    func send(_ text: String) async throws {
+        if stalls {
+            stalls = false
+            try await withCheckedThrowingContinuation { stalled = $0 }
+        }
+        sent.append(text)
+    }
+
+    var isStalled: Bool { stalled != nil }
+
+    func release() {
+        let waiting = stalled
+        stalled = nil
+        waiting?.resume()
+    }
+
+    func receive() async throws -> Data { throw URLError(.cancelled) }
+    func close() {}
+}
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testLiveVoiceSocketWriterKeepsOrderAndBoundsAudioOnAStalledSocket() async {
+        let socket = StallingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket, maxQueuedAudio: 2)
+        var outcomes: [String: Bool] = [:]
+        func note(_ name: String) -> @MainActor (Error?) -> Void { { outcomes[name] = $0 == nil } }
+
+        XCTAssertTrue(writer.enqueue(["turn"], isAudio: false, done: note("turn")))
+        await settle(until: { socket.isStalled })
+        XCTAssertTrue(writer.enqueue(["a1"], isAudio: true, done: note("a1")))
+        XCTAssertTrue(writer.enqueue(["a2"], isAudio: true, done: note("a2")))
+        XCTAssertFalse(writer.enqueue(["a3"], isAudio: true, done: note("a3")), "audio past the bound is dropped")
+        XCTAssertTrue(writer.enqueue(["tool", "answer"], isAudio: false, done: note("tool")), "anything else always queues")
+        XCTAssertEqual(writer.droppedAudio, 1)
+
+        socket.release()
+        await settle(until: { outcomes.count == 4 })
+        XCTAssertEqual(socket.sent, ["turn", "a1", "a2", "tool", "answer"], "one at a time, in order")
+        XCTAssertEqual(outcomes, ["turn": true, "a1": true, "a2": true, "tool": true])
+
+        // Audio is taken again once the queue drained.
+        XCTAssertTrue(writer.enqueue(["a4"], isAudio: true, done: note("a4")))
+        await settle(until: { outcomes["a4"] != nil })
+        XCTAssertEqual(socket.sent.last, "a4")
+    }
+
+    func testClosedLiveVoiceSocketWriterFailsWhatItStillHeld() async {
+        let socket = StallingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket)
+        var errors: [String: Error?] = [:]
+        writer.enqueue(["first"], isAudio: true) { errors["first"] = $0 }
+        await settle(until: { socket.isStalled })
+        writer.enqueue(["queued"], isAudio: true) { errors["queued"] = $0 }
+
+        writer.close()
+        XCTAssertTrue(errors["queued"].flatMap { $0 } is CancellationError, "what never went out fails")
+        writer.enqueue(["late"], isAudio: false) { errors["late"] = $0 }
+        XCTAssertTrue(errors["late"].flatMap { $0 } is CancellationError)
+
+        socket.release()
+        await settle(until: { errors["first"] != nil })
+        XCTAssertEqual(socket.sent, ["first"], "nothing after the close goes out")
+    }
+}
