@@ -656,7 +656,85 @@ voice reply model pickers · the Kanban task composer's catalog
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-24, at 78f21daa.
+**Checked:** 2026-10-24, at #1190.
+
+## Files over the size limit
+
+What Conduit says when a file is too large to attach, and which limit it
+names.
+
+**Siblings:** the chat composer (picker, drop, camera) · pasting into the
+composer · the share extension · Ask Hermes About Screen · a recorded voice
+message · the group room composer · the Settings caption for the limit
+
+**Code**
+- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift`
+- Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
+- Share extension: `Conduit/Services/AppState+ShareDraft.swift`
+- Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
+- Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
+
+**Rulings**
+- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB), it names that cap and offers no setting (2026-10-24, from #935's review, #1190).
+
+**Open gaps**
+- The voice message says "larger than your attachment size limit" without the size or where to change it.
+- The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Phone change errors
+
+What Hermes and the user are told when a calendar, reminder or alarm change
+can't be made on the phone.
+
+**Siblings:** a change from a voice call (PhoneVoiceTools) · a change queued
+by Hermes through the notifier (its result note) · the phone sync status line
+· alarms and timers · the wording the notifier's tools give models
+
+**Code**
+- Calendar and reminder errors: `Conduit/Phone/EventKitPhoneSource.swift` (PhoneCalendarSourceError, apply, moveDestination)
+- Alarm errors: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmError)
+- Voice tools: `Conduit/Phone/PhoneVoiceTools.swift` (the add, change, delete and alarm tools' catches)
+- Queued changes and status: `Conduit/Phone/PhoneSyncEngine.swift` (record, lastError, describe)
+- Notifier: `notifier/phone_tool.py` (the wording models read)
+
+**Rulings**
+- An error names what is missing: the item ("That item isn't on this iPhone any more."), or the calendar or list it was to move to, which leaves the item in place (2026-10-24, from #876's review, #1190).
+- Voice tools turn only a missing item on a change or delete into "read the calendar again for its id"; every other error reaches the model as "It couldn't be changed: <reason>" (or added, deleted, set, cancelled) with the error's own text (2026-10-24, #1190).
+
+**Open gaps**
+- Adding an event or reminder when the phone has no default calendar or list (and the one named is gone) says "That item isn't on this iPhone any more."
+
+**Checked:** 2026-10-24, at #1190.
+
+## Speech stream failures
+
+What a spoken reply says when its speech stream fails partway: Classic voice
+and Read Aloud speak through Hermes's speech stream or the user's speech
+server.
+
+**Siblings:** the Hermes speech stream · the speech-server speech stream ·
+the one-shot fallback a Hermes stream falls back to before any audio · the
+speech-server transcription stream (listening, not speaking)
+
+**Code**
+- Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
+- Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
+- Listening: `Conduit/Voice/SpeechServerTranscription.swift`
+- Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
+
+**Rulings**
+- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
+
+**Open gaps**
+- The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
+
+**Checked:** 2026-10-24, at #1190.
 
 ## Feature map rules
 
