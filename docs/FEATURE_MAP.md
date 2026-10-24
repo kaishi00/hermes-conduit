@@ -413,12 +413,12 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Double-tap and long-press on text stay text selection; reactions come from React or a reaction chip (2026-10-07, #437).
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
 - A quoted reply travels in the message text, since Hermes has no field for hidden context (2026-10-04, #387).
+- Deleting a bot drops its Bot Chat pins under every profile, not only the one in use (#982 follow-up, #1191).
 
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
-- Deleting a bot drops its Bot Chat pins only under the profile in use; pins made there under another profile stay (#982 follow-up).
 
-**Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups.
+**Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -787,6 +787,7 @@ signed-in check
 
 **Open gaps**
 - The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
+- The hidden page doesn't follow that upgrade either: its navigation policy cancels an http to https move to an ordinary page as a failed load (no longer as sign-in), so a dashboard behind a TLS-forcing edge must be saved on https. Following it would take the page's landing and script-message checks and the socket off the saved origin, so it was left as is (#1191 review).
 
 **Checked:** 2026-10-24, at #1191.
 
