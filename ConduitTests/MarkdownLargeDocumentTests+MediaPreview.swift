@@ -66,6 +66,13 @@ extension MarkdownLargeDocumentTests {
         }
     }
 
+    func testRemoteImage_APastedLinkOfHugeDimensionsIsNotAttached() {
+        // The composer uploads a pasted picture link to the gateway: one
+        // whose header claims 81 megapixels is refused as a markdown image is.
+        XCTAssertNil(PastedRemoteImage.image(from: remoteTestPNGBomb(side: 9_000)))
+        XCTAssertNotNil(PastedRemoteImage.image(from: remoteTestPNG(width: 300, height: 200)))
+    }
+
     func testRemoteImage_APageThatIsNotAPictureIsUnavailable() {
         guard case .unavailable = BoundedRemoteImage.decode(Data("<html><body>Not found</body></html>".utf8), maxPixelSize: 600) else {
             return XCTFail("Not a picture")
