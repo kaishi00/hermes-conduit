@@ -2602,6 +2602,35 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(card?.error)
     }
 
+    /// A queue read that fails sent nothing, so the card says why it
+    /// failed (not that Hermes refused) and the queue is read again.
+    func testLegacyCardWhoseQueueReadFailsSaysWhyAndRefreshes() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let failure = URLError(.timedOut)
+        var queueReads = 0
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in
+                queueReads += 1
+                throw failure
+            },
+            respondToApproval: { _, _, _, choice, _ in
+                responses.choices.append(choice)
+                return true
+            }
+        ))
+        installShownApproval(shown, in: appState)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+        for _ in 0..<1_000 where queueReads < 2 { await Task.yield() }
+
+        let card = appState.messages.first?.approval
+        XCTAssertEqual(responses.choices, [])
+        XCTAssertEqual(card?.status, .error)
+        XCTAssertEqual(card?.error, UserFacingError.message(for: failure))
+        XCTAssertGreaterThanOrEqual(queueReads, 2, "the queue is read again to recover the card")
+    }
+
     private func installShownApproval(_ approval: ApprovalActivity, in appState: AppState) {
         appState.activeSessionId = approval.sessionId
         appState.client = makeReplacementClient(baseURL: "https://one.example")

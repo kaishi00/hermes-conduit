@@ -28795,8 +28795,9 @@ final class AppState: ObservableObject {
         /// A card without its command matches queued requests that run
         /// different commands: the queue's own cards are shown instead.
         case ambiguous
-        /// The queue could not be read; nothing is sent.
-        case unknown
+        /// The queue could not be read; nothing is sent. Carries why, for
+        /// the card.
+        case unknown(String)
     }
 
     /// A card without a request id (one a push restored, or one from a
@@ -28827,7 +28828,7 @@ final class AppState: ObservableObject {
             if HermesClient.isMissingRPCMethod(error) { return .sessionQueue }
             // The card's runtime is gone, and with it the wait.
             if HermesClient.isSessionNotFoundError(error) { return .noLongerPending }
-            return .unknown
+            return .unknown(UserFacingError.message(for: error))
         }
         return Self.legacyApprovalTarget(for: card, in: queued)
     }
@@ -28951,11 +28952,18 @@ final class AppState: ObservableObject {
                 cacheMessagePresentation()
                 schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
                 return
-            case .unknown:
+            case .unknown(let reason):
+                // Nothing was sent, so not "Hermes did not accept": why
+                // the queue couldn't be read, and another read to recover.
                 messages[updatedIndex].approval?.status = .error
                 messages[updatedIndex].approval?.choice = nil
-                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
+                messages[updatedIndex].approval?.error = reason
                 cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(
+                    sessionId: current.sessionId,
+                    using: client,
+                    replacingLegacyErrorMessageID: messageId
+                )
                 return
             }
         }
