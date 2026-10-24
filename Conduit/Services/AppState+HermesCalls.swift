@@ -84,11 +84,13 @@ extension AppState {
         let key = hermesCallsKey(profile: profile)
         do {
             let saved = try await hermesCallsClient.save(settings, profile: profile)
-            // Saved; shown only while that profile still is.
-            guard key == hermesCallsKey(profile: activeProfile) else { return true }
-            // Reads still out were asked before this save.
+            // Reads still out were asked before this save, whichever profile
+            // is shown now: one of the saved profile mustn't land after it
+            // when the user comes back to it.
             hermesCallsStatusGeneration &+= 1
             hermesCallsStatusAcceptedGeneration = hermesCallsStatusGeneration
+            // Saved; shown only while that profile still is.
+            guard key == hermesCallsKey(profile: activeProfile) else { return true }
             if var status = activeHermesCallsStatus {
                 status.settings = saved
                 hermesCallsStatus = status
