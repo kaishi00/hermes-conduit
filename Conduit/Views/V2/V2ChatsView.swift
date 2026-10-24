@@ -452,6 +452,7 @@ struct V2ChatsView: View, Equatable {
             V2TopBar(lowerLeading: { stackedLeading(waitingApprovalCount: waitingApprovalCount) }) { stacked in
                 if !(stacked && showsBarSearch) {
                     trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
+                        .onAppear { if !stacked { barUnstacked() } }
                 }
             }
                 .withAllProfilesChip()
@@ -694,13 +695,16 @@ struct V2ChatsView: View, Equatable {
                     .transition(.opacity)
             }
         }
+        // Set by the layout that shows, never on disappearing: a chat
+        // pushed over the list hides both, and the list keeps its rows.
         .onAppear { barStacked = true }
-        .onDisappear {
-            // A query carries over to the list's field; an empty open one
-            // doesn't come back on the next stack.
-            barStacked = false
-            barSearchOpen = false
-        }
+    }
+
+    /// The one-row bar took over. A query carries over to the list's
+    /// field; an empty open one doesn't come back on the next stack.
+    private func barUnstacked() {
+        barStacked = false
+        barSearchOpen = false
     }
 
     /// A query keeps the field up after the keyboard goes away; Cancel
