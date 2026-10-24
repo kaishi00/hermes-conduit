@@ -720,6 +720,36 @@ much history an open transcript keeps
 
 **Checked:** 2026-10-24, at #1184.
 
+## Phone data sync with the host
+
+The phone sending calendar, reminders, alarms, contacts and phone status,
+health data and location to the notifier, each under its own agreed key, and
+what it does when the host refuses.
+
+**Siblings:** phone sync (calendar, reminders, alarms, contacts, Focus and
+status) · health sync · location sharing · the voice reads that use the same
+keys · each one's pause message in Settings · the notifier's three stores and
+their refusals
+
+**Code**
+- Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
+- Health: `Conduit/Health/HealthSyncEngine.swift`, `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause)
+- Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause)
+- Which 409 means what: `Conduit/Services/HostKeyConflict.swift`
+- Voice reads: `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Phone/PhoneVoiceTools.swift`
+- Notifier: `notifier/phone_store.py`, `notifier/health_store.py`, `notifier/location_store.py`, `notifier/dashboard/plugin_api.py` (_store_refusal)
+- Tests: `ConduitTests/PhoneSyncTests.swift`, `ConduitTests/HealthSyncTests.swift`, `ConduitTests/LocationSharingTests.swift`
+
+**Rulings**
+- Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
+- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, from the notifier #342 review).
+
+**Open gaps**
+- The dashboard sends the store's code beside its message, but the phone keeps only the message: a reworded notifier message is missed until `Conduit/Services/HostKeyConflict.swift` learns it.
+- A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
+
+**Checked:** 2026-10-24, at main 35dffc3.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

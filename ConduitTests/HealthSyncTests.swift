@@ -303,18 +303,27 @@ extension HermesVoiceGatewayTimeoutTests {
 
     /// Only a 409 that says the host lost the key clears it. The notifier's
     /// other 409s (too many devices, a store from a newer plugin) can't be
-    /// fixed by a new key: they pause with the host's reason and keep it.
+    /// fixed by a new key: they keep it. A newer plugin's store asks for a
+    /// plugin update; the others pause with the host's reason.
     func testOnlyAKeyLoss409ForgetsTheKey() async {
         let host = FakeHealthHost()
         let keys = HealthKeyBox()
         let engine = makeHealthEngine(source: FakeHealthSource(), keys: keys)
         let preferences = healthPreferences(history: .days30)
         // The key is agreed, then the first batch is refused.
-        let newerStore = "This health store was written by a newer plugin; update the plugin"
-        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: newerStore)
-        let refused = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(refused, .paused(.refused(newerStore)))
+        host.ingestError = DashboardTicketBridgeError.http(
+            status: 409, detail: "This health store was written by a newer plugin; update the plugin"
+        )
+        let newer = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(newer, .paused(.pluginMissing))
         XCTAssertNotNil(keys.key, "A newer store is no reason to give up the key")
+        XCTAssertEqual(host.keyRequests, 1)
+
+        let full = "This profile already keeps health data from 4 devices; delete one from Conduit first"
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: full)
+        let refused = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(refused, .paused(.refused(full)))
+        XCTAssertNotNil(keys.key)
         XCTAssertEqual(host.keyRequests, 1)
 
         host.ingestError = DashboardTicketBridgeError.http(

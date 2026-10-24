@@ -118,8 +118,9 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     /// Only a 409 that says the host lost the key clears it. The notifier's
-    /// other 409s (a store from a newer plugin, too many devices) can't be
-    /// fixed by a new key: they pause with the host's reason and keep it.
+    /// other 409s (too many devices, a store from a newer plugin) can't be
+    /// fixed by a new key: they keep it, and a full host pauses with its
+    /// reason.
     func testOnlyAKeyLoss409ForgetsThePhoneKey() async {
         let source = FakePhoneCalendarSource()
         source.events = [phoneEvent("e_1", "Dentist")]
@@ -128,11 +129,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let engine = makePhoneEngine(source: source, keys: keys)
         engine.savePreferences(phonePreferences())
         // The key is agreed, then the first batch is refused.
-        let newerStore = "This was written by a newer plugin; update Conduit."
-        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: newerStore)
+        let full = "This profile already keeps calendar data from 4 devices; delete one from Conduit first"
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: full)
         let refused = await engine.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(refused, .paused(.refused(newerStore)))
-        XCTAssertNotNil(keys.key, "A newer store is no reason to give up the key")
+        XCTAssertEqual(refused, .paused(.refused(full)))
+        XCTAssertNotNil(keys.key, "A full host is no reason to give up the key")
         XCTAssertEqual(host.keyRequests, 1)
 
         host.ingestError = DashboardTicketBridgeError.http(
@@ -147,6 +148,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(rekeyed, .synced)
         XCTAssertEqual(host.keyRequests, 2)
         XCTAssertNotNil(keys.key)
+    }
+
+    /// A store written by a newer plugin (`phone_store.py`'s 409 `schema`)
+    /// is fixed by updating the plugin, not by a new key: sharing pauses
+    /// with the update-the-plugin message and the key stays. A lost key
+    /// still sets up again (notifier #342 review).
+    func testANewerPluginsStoreAsksForAPluginUpdateAndKeepsTheKey() async {
+        let source = FakePhoneCalendarSource()
+        source.events = [phoneEvent("e_1", "Dentist")]
+        let host = FakePhoneHost()
+        let keys = PhoneKeyBox()
+        let engine = makePhoneEngine(source: source, keys: keys)
+        engine.savePreferences(phonePreferences())
+        host.ingestError = DashboardTicketBridgeError.http(
+            status: 409, detail: "This calendar store was written by a newer plugin; update the plugin"
+        )
+        let newer = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(newer, .paused(.pluginMissing))
+        XCTAssertEqual(engine.state.pause?.message,
+                       AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status."))
+        XCTAssertNotNil(keys.key, "A newer plugin's store is no reason to give up the key")
+        XCTAssertEqual(host.keyRequests, 1)
+
+        // The bare code, should a host send it.
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: "schema")
+        let code = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(code, .paused(.pluginMissing))
+        XCTAssertNotNil(keys.key)
+        XCTAssertEqual(host.keyRequests, 1)
+
+        host.ingestError = DashboardTicketBridgeError.http(status: 409, detail: "unknown_key")
+        let lost = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(lost, .unfinished)
+        XCTAssertNil(keys.key, "The host lost the key: the next pass agrees a new one")
+
+        host.ingestError = nil
+        let rekeyed = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(rekeyed, .synced)
+        XCTAssertEqual(host.keyRequests, 2)
     }
 
     func testALargePhoneSnapshotGoesInPartsTheHostTakes() async throws {
