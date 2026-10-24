@@ -1639,6 +1639,7 @@ struct ChatSettingsDetail: View {
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
+                    StepSummarySettings()
                     DeviceHapticsSettings()
                 }
             ),
@@ -1850,6 +1851,31 @@ private struct ChatTakeoverSettings: View {
             Toggle("Take over automatically", isOn: $automatic)
                 .tint(.conduitAccent)
                 .accessibilityHint("Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host.")
+        }
+    }
+}
+
+/// Device-only and off by default: one sentence for a finished run of
+/// steps, asked of Hermes with a hidden /btw (ChatStepSummaries).
+private struct StepSummarySettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatStepSummaries.preferenceKey) private var enabled = ChatStepSummaries.defaultEnabled
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Step summaries"),
+            symbol: "text.line.first.and.arrowtriangle.forward",
+            tint: .conduitAura
+        ) {
+            Text("When a reply took several steps, Hermes writes one sentence about what they did, shown on the folded steps.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("Each sentence is one more short request to your model. It reuses the chat's prompt cache and never changes the chat.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Describe finished steps", isOn: $enabled)
+                .tint(.conduitAccent)
+                .accessibilityHint("Sentences are kept on this device.")
         }
     }
 }

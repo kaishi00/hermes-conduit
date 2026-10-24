@@ -161,6 +161,12 @@ struct ChatView: View {
         return Self.runningToolName(in: appState.messages)
     }
 
+    /// Its input, so a Tool Search batch names what it runs.
+    private var runningToolInput: String? {
+        guard appState.isBusy else { return nil }
+        return Self.runningTool(in: appState.messages)?.input
+    }
+
     /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
     /// says; nil for any other tool.
     private var runningToolTitle: String? {
@@ -480,6 +486,7 @@ struct ChatView: View {
                     isBusy: appState.isBusy,
                     author: appState.activeProfile,
                     currentToolName: runningToolName,
+                    currentToolInput: runningToolInput,
                     currentToolTitle: runningToolTitle,
                     turnStartedAt: turnStartedAt,
                     repliesElsewhere: appState.activeChatRepliesElsewhere
@@ -594,6 +601,10 @@ struct ChatView: View {
                 pinnedRevealFallbackTask = nil
                 pinnedRevealFallbackReveal = nil
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
+            }
+            // Names for the steps Conduit has no words of its own for.
+            .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.dashboardTicketBridge != nil)") {
+                await appState.loadToolCatalogIfNeeded()
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
                 guard let request = appState.chatResumeRestorationRequest else { return }
@@ -2906,6 +2917,9 @@ enum MessageTimestampFormatter {
 /// streaming publishes skip its SelectableTextView measurement work.
 private struct SettledToolCardContent: View, Equatable {
     let message: ChatMessage
+    /// The step's words, named from Hermes' tools catalog when Conduit has
+    /// none of its own.
+    let label: ChatStepLabel
     let expandToolsByDefault: Bool
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
@@ -2930,6 +2944,7 @@ private struct SettledToolCardContent: View, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
+            && lhs.label == rhs.label
             && lhs.expandToolsByDefault == rhs.expandToolsByDefault
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.grouped == rhs.grouped
@@ -2956,10 +2971,9 @@ private struct SettledToolCardContent: View, Equatable {
     /// it; otherwise the step's own words.
     private func stepTitle(
         _ delivery: BotTeammateMessages.Delivery?,
-        style: ChatStepStyle,
         running: Bool
     ) -> String {
-        guard let delivery else { return running ? style.runningTitle : style.doneTitle }
+        guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
             ? AppLocalization.string("Messaging \(name)…")
@@ -2996,7 +3010,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(delivery, style: style, running: running))
+                                Text(stepTitle(delivery, running: running))
                                     .font(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
@@ -3010,6 +3024,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // A delivery's subject is what was said, not the
                             // command that sent it.
                             if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                                ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
@@ -3047,6 +3062,12 @@ private struct SettledToolCardContent: View, Equatable {
                         Text(tool.name)
                             .font(.system(.caption2, design: .monospaced).weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        if let detail = label.detail {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                         let presentation = self.presentation
                         if let presentation {
                             ToolResultBodyView(presentation: presentation, gatewayResolver: gatewayResolver)
@@ -3110,6 +3131,11 @@ struct ToolCard: View {
         if rowState.displayPreferences.showToolProgress, message.tool != nil {
             SettledToolCardContent(
                 message: message,
+                label: ChatStepLabel(
+                    toolName: message.tool?.name ?? "",
+                    input: message.tool?.input,
+                    catalog: rowState.toolCatalog
+                ),
                 expandToolsByDefault: rowState.displayPreferences.expandToolsByDefault,
                 sizeCategory: sizeCategory,
                 grouped: grouped,
@@ -4044,6 +4070,8 @@ struct ChatLiveTurnRows: View {
     let author: String
     /// The tool running now, named on the working line.
     var currentToolName: String?
+    /// Its input, for a batch's names.
+    var currentToolInput: String?
     /// Its own words for it, when it has them ("Messaging Atlas…").
     var currentToolTitle: String?
     /// When the turn began, for the working line's timer.
@@ -4081,6 +4109,7 @@ struct ChatLiveTurnRows: View {
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
             ChatWorkingLine(
                 currentToolName: currentToolName,
+                currentToolInput: currentToolInput,
                 currentToolTitle: currentToolTitle,
                 isThinking: projection.reasoningSegment != nil,
                 startedAt: turnStartedAt,

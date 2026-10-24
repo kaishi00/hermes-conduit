@@ -991,6 +991,41 @@ extension · the notifier's three stores and their refusals
 
 **Checked:** 2026-10-24, at main e9d9592.
 
+## Steps in a turn
+
+How a turn's thinking and tool calls read in the chat while it runs and
+once it is done.
+
+**Siblings:** the step rows (chats, project chats, Bot Chats, the saved
+offline copy) · the collapsed run of steps ("7 steps · 12s") · the working
+line ("Home · Searching the web") · the Live Activity's tool line · the
+notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row) ·
+the run's one-sentence summary and its switch in Settings > Chat · /btw
+
+**Code**
+- Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent)
+- Hermes' tools catalog: `Conduit/Models/ToolCatalog.swift`, toolset names shared with Settings > Capabilities in `Conduit/Models/CapabilityCatalogModels.swift` (CapabilityToolsetOrdering.label), `Conduit/Services/AppState.swift` (loadToolCatalogIfNeeded), `Conduit/Views/ChatRowState.swift` (toolCatalog)
+- Tool Search wrapper: `Conduit/Models/ToolSearchBridge.swift`
+- Run summaries: `Conduit/Services/ChatStepSummaries.swift`, `Conduit/Services/AppState+StepSummaries.swift`, `Conduit/Views/AuxiliaryViews.swift` (StepSummarySettings), sent with `Conduit/Services/HermesClient.swift` (startSideAgent)
+- Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`)
+- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`, `ConduitTests/ChatTypographyTests+StepSummaries.swift`
+
+**Rulings**
+- A step Conduit has words for keeps them, translated ("Searched the web"). Any other step is named: an MCP or connector tool by its app with the action as its subject line (a Tool Search batch: its apps' names with the connector icon, then every action it ran), else by the toolset Hermes' catalog (`/api/tools/toolsets`) puts it in, else by its own name made readable. "Used a tool" is only for a call with no name. Names are shown as Hermes writes them (2026-10-24, #1201).
+- The catalog is read once per profile per run and saved on the device, so a chat opened offline or before the dashboard answers still names its steps. An empty answer keeps the saved catalog and is asked again (2026-10-24, #1201).
+- The Live Activity stays on categories: its state goes through the push relay, which never sees tool names, so neither it nor the notifier's `tool_category` names tools (2026-10-24, #1201).
+- A run's summary is opt-in and device-only, off by default. Once a turn has settled (its reply in place, nothing running) with 3 or more tool calls in its last run, Conduit asks a hidden `/btw` (Hermes' cache-sharing fork, no tools, the chat untouched) for one sentence in the app's language, and shows it folded over "7 steps · 12s". It is kept per dashboard and profile, by the run's first tool call, so only a run whose call ids are its own is described (not ids numbered per turn, like `functions.web_search:0`); switching off hides the kept ones at once. Unanswered questions are forgotten after two minutes; that run keeps the count. In Conduit its answer never shows as a /btw note, late, replayed or asked by another device, and the user's own /btw is never taken for one (only the exact question is) (2026-10-24, #1202).
+
+**Open gaps**
+- Summaries are kept on the device that saw the turn end: other devices, the Watch and turns that ended elsewhere show the count only. Sharing them would need the plugin to store them.
+- A Hermes that routes `auxiliary.side_question` to another model answers from a transcript digest, not the cached prefix.
+- Other clients on the same chat (Hermes Desktop, the TUI, an older Conduit) show the hidden question and its answer as a `[btw …]` note.
+- Runs from a provider that numbers its tool call ids per turn (`functions.web_search:0`) get no sentence; keying them would need the chat's durable id.
+- The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
+- An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
+
+**Checked:** 2026-10-24, at #1202.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
