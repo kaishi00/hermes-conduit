@@ -24227,6 +24227,14 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Settings > Notifications > Rotate: runs provisioning now on this
+    /// dashboard's connection (a rotation waits for the next connect when
+    /// there is none).
+    func provisionNotificationEncryptionNow() async {
+        guard let bridge = dashboardTicketBridge else { return }
+        await provisionNotificationEncryption(bridge: bridge)
+    }
+
     lazy var chatTakeoverClient = ChatTakeoverClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
