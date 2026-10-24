@@ -734,7 +734,7 @@ their refusals
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
 - Health: `Conduit/Health/HealthSyncEngine.swift`, `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause)
-- Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause)
+- Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause), `Conduit/Location/LocationSharingController.swift` (sendNow: keeps the batch on `.failed`), `ConduitLocationPush/LocationPushService.swift` (a locate answered from the push extension)
 - Which 409 means what: `Conduit/Services/HostKeyConflict.swift`
 - Voice reads: `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Phone/PhoneVoiceTools.swift`
 - Notifier: `notifier/phone_store.py`, `notifier/health_store.py`, `notifier/location_store.py`, `notifier/dashboard/plugin_api.py` (_store_refusal)
@@ -742,10 +742,11 @@ their refusals
 
 **Rulings**
 - Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
-- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, from the notifier #342 review).
+- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, #1196).
 
 **Open gaps**
-- The dashboard sends the store's code beside its message, but the phone keeps only the message: a reworded notifier message is missed until `Conduit/Services/HostKeyConflict.swift` learns it.
+- The dashboard sends the store's code beside its message, but the phone keeps only the message: a reworded notifier message is missed until `Conduit/Services/HostKeyConflict.swift` learns it. Phone and health then pause with the host's reason; location drops the waiting fix and events as refused.
+- A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
 - A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
 
 **Checked:** 2026-10-24, at main 35dffc3.
