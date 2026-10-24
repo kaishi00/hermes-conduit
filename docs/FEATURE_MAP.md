@@ -833,7 +833,8 @@ profiles don't fit beside the controls.
 
 **Siblings:** the chats list · the Projects view (same bar and field) · the
 one-row bar (every profile fits) and the stacked bar (profiles on their own
-row) · iPad and Mac (same view) · searching messages ("In messages")
+row) · iPad and Mac (same view) · searching messages ("In messages") · the
+chat rows' icon, whose corner carries the unread dot and the All profile badge
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
