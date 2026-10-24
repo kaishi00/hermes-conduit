@@ -680,7 +680,22 @@ final class ChatSyncTests: XCTestCase {
         }
         XCTAssertEqual(waits, [4, 8, 15], "The bot's turn leaves the list to back off")
 
+        // The bot's turn ends and a listed chat opens, idle: still backs off.
+        appState.handleStreamEvent(.sessionBusy(sessionId: "bot-chat", busy: false))
+        XCTAssertFalse(appState.turnState.isRunning)
         appState.activeSessionId = "listed"
+        appState.noteChatListInteraction()
+        waits = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "An idle listed chat leaves the list to back off")
+
+        // Its own turn starts: that keeps the list quick.
+        appState.handleStreamEvent(.sessionBusy(sessionId: "listed", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
         appState.noteChatListInteraction()
         waits = []
         for _ in 0..<3 {
