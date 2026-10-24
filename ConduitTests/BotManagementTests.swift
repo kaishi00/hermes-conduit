@@ -453,4 +453,72 @@ extension BotModeTests {
         XCTAssertEqual(params["clone_from"] as? String, "scout")
         XCTAssertEqual(params["description"] as? String, "Finds trips")
     }
+
+    private func json(_ text: String) throws -> AnyCodable {
+        try JSONDecoder().decode(AnyCodable.self, from: Data(text.utf8))
+    }
+
+    func testTheCatalogOffersOnlyServersTheBotLacks() throws {
+        let catalog = BotMcpSetup.catalog(from: try json("""
+        {"result": {"servers": [
+          {"name": "github", "description": "Repos", "requires": ["GITHUB_TOKEN"], "installed": false},
+          {"name": "Linear", "description": "", "requires": [], "installed": true},
+          {"name": " "}
+        ]}}
+        """))
+        XCTAssertEqual(catalog.map(\.name), ["github", "Linear"])
+        XCTAssertEqual(catalog[0].requires, ["GITHUB_TOKEN"])
+        XCTAssertEqual(BotMcpSetup.offered(catalog, configured: ["linear"]).map(\.name), ["github"])
+    }
+
+    func testAnOAuthServerWithoutATokenNeedsASignIn() throws {
+        let servers = BotMcpSetup.servers(from: try json("""
+        {"servers": [
+          {"name": "notion", "auth": "oauth", "oauth_tokens_present": false},
+          {"name": "drive", "auth": "OAuth", "oauth_tokens_present": true},
+          {"name": "fs"}
+        ]}
+        """))
+        XCTAssertEqual(servers.map(\.needsSignIn), [true, false, false])
+        let added = BotMcpSetup.addedServer(
+            from: try json(#"{"ok": true, "name": "notion", "server": {"auth": "oauth"}}"#),
+            name: "notion"
+        )
+        XCTAssertEqual(added?.needsSignIn, true)
+    }
+
+    func testASignInOpensOnlyAPageThatComesBackToThePhone() throws {
+        let redirect = "http://127.0.0.1:50123/callback"
+        let started = try json("""
+        {"ok": true, "session_id": "flow-1", "flow": "pkce",
+         "auth_url": "https://mcp.example.com/authorize?state=s1&redirect_uri=http%3A%2F%2F127.0.0.1%3A50123%2Fcallback"}
+        """)
+        let flow = try XCTUnwrap(BotMcpSetup.startedFlow(started, redirectURI: redirect))
+        XCTAssertEqual(flow.sessionID, "flow-1")
+        XCTAssertEqual(flow.state, "s1")
+        // An older Hermes keeps its own loopback: the phone can't finish that.
+        let old = try json("""
+        {"ok": true, "session_id": "flow-1",
+         "auth_url": "https://mcp.example.com/authorize?state=s1&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback"}
+        """)
+        XCTAssertNil(BotMcpSetup.startedFlow(old, redirectURI: redirect))
+    }
+
+    func testTheRelayedCallbackCarriesOnlyWhatHermesTakes() {
+        let params = BotMcpSetup.callbackParams(["code": "c", "state": "s", "iss": "", "extra": "x"])
+        XCTAssertEqual(params["code"] as? String, "c")
+        XCTAssertEqual(params["state"] as? String, "s")
+        XCTAssertNil(params["iss"])
+        XCTAssertNil(params["extra"])
+    }
+
+    func testMcpRepliesReadOkAndErrors() throws {
+        XCTAssertTrue(BotMcpSetup.testResult(try json(#"{"ok": true, "tools": []}"#)).ok)
+        let failed = BotMcpSetup.testResult(try json(#"{"result": {"ok": false, "error": "401"}}"#))
+        XCTAssertFalse(failed.ok)
+        XCTAssertEqual(failed.error, "401")
+        XCTAssertEqual(BotMcpSetup.failure(try json(#"{"ok": false, "error_message": "denied"}"#)), "denied")
+        XCTAssertNil(BotMcpSetup.failure(try json(#"{"ok": true}"#)))
+        XCTAssertEqual(BotMcpSetup.pollStatus(try json(#"{"ok": true, "status": "approved"}"#)), "approved")
+    }
 }

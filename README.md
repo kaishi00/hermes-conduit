@@ -39,7 +39,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 **Tasks, bots and groups**
 
 - Tasks board for Hermes' Kanban tasks
-- Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes can generate, @mentions that bring another bot in, bots messaging each other as Desktop shows it, and Duplicate, Hide, New Chat and Groups from the Bots list; gateway-hosted group chats with @mentions, files and approvals
+- Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers (added from Hermes' catalog with their keys or sign-in), pictures Hermes can generate, @mentions that bring another bot in, bots messaging each other as Desktop shows it, and Duplicate, Hide, New Chat and Groups from the Bots list; gateway-hosted group chats with @mentions, files and approvals
 - Scheduled jobs: review runs, run now, edit, mute their notifications, delete
 
 **Your phone, if you allow it**

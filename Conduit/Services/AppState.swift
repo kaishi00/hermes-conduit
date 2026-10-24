@@ -20263,6 +20263,131 @@ final class AppState: ObservableObject {
         return try? await client.describeBotProfile(name: profile).capabilities
     }
 
+    /// The MCP catalog and the bot's servers' sign-in state, for Edit Bot's
+    /// MCP page. Nil when Hermes doesn't offer them (an older gateway), so
+    /// the page keeps its plain on/off list.
+    func loadBotMcpSetup(profile: String) async -> BotMcpSetupSnapshot? {
+        guard let client, isConnected,
+              let catalog = try? await client.botMcpCatalog(profile: profile) else { return nil }
+        let servers = (try? await client.botMcpServers(profile: profile)) ?? []
+        return BotMcpSetupSnapshot(
+            catalog: catalog,
+            servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
+    /// Adds a catalog server to the bot's profile with the keys typed for
+    /// it (Desktop's Set Up): Hermes writes it at once, as on Desktop, so
+    /// it stays even when the editor is cancelled. Blank keys are skipped.
+    func addBotMcpServer(
+        profile: String,
+        entry: BotMcpCatalogEntry,
+        keys: [String: String]
+    ) async -> BotMcpInstallOutcome {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        var oauth = false
+        if !entry.installed {
+            do {
+                let added = try await client.addBotMcpServer(profile: profile, name: entry.name, preset: entry.name)
+                oauth = BotMcpSetup.addedServer(from: added, name: entry.name)?.auth?.lowercased() == "oauth"
+            } catch {
+                return .failed(AppLocalization.string("Could not add \(entry.name): \(UserFacingError.message(for: error))"))
+            }
+        } else if let summary = (try? await client.botMcpServers(profile: profile))?.first(where: { $0.name == entry.name }) {
+            oauth = summary.auth?.lowercased() == "oauth"
+        }
+        for envVar in entry.requires {
+            let value = (keys[envVar] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { continue }
+            do {
+                try await client.setBotMcpKey(profile: profile, name: entry.name, envVar: envVar, value: value)
+            } catch {
+                return .addedWithProblem(AppLocalization.string("Could not save \(envVar): \(UserFacingError.message(for: error))"))
+            }
+        }
+        if oauth { return .needsSignIn }
+        do {
+            let tested = BotMcpSetup.testResult(try await client.testBotMcpServer(profile: profile, name: entry.name))
+            return tested.ok
+                ? .ready
+                : .addedWithProblem(tested.error ?? AppLocalization.string("It did not connect."))
+        } catch {
+            return .addedWithProblem(UserFacingError.message(for: error))
+        }
+    }
+
+    /// Signs a bot's OAuth MCP server in. Hermes runs the flow and keeps the
+    /// tokens; the browser comes back to a loopback on this phone, which
+    /// hands the redirect to Hermes (`client_redirect_uri`, as Desktop does
+    /// for a remote Hermes). `open` shows the sign-in page.
+    func signInBotMcpServer(
+        profile: String,
+        name: String,
+        open: @MainActor (URL) -> Void
+    ) async -> BotMcpSignInOutcome {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
+        defer { loopback.stop() }
+        var sessionID: String?
+        var approved = false
+        defer {
+            // Release Hermes' waiting flow; best effort, and not tied to
+            // this (possibly cancelled) task.
+            if let sessionID, !approved {
+                Task { _ = try? await client.botMcpOAuth("cancel", params: ["profile": profile, "name": name, "session_id": sessionID]) }
+            }
+        }
+        do {
+            let port = try await loopback.start(timeout: 6 * 60)
+            let redirectURI = "http://127.0.0.1:\(port)/callback"
+            let started = try await client.botMcpOAuth(
+                "start",
+                params: ["profile": profile, "name": name, "client_redirect_uri": redirectURI]
+            )
+            if let problem = BotMcpSetup.failure(started) { return .failed(problem) }
+            guard let flow = BotMcpSetup.startedFlow(started, redirectURI: redirectURI) else {
+                sessionID = BotMcpSetup.payload(started)["session_id"]?.stringValue
+                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit."))
+            }
+            sessionID = flow.sessionID
+            loopback.expect(state: flow.state)
+            try Task.checkCancellation()
+            open(flow.authURL)
+            let query = try await loopback.waitForCallback()
+            var params = BotMcpSetup.callbackParams(NativeOAuthFlow.queryValues(query))
+            params["profile"] = profile
+            params["name"] = name
+            params["session_id"] = flow.sessionID
+            let relayed = try await client.botMcpOAuth("callback", params: params)
+            if let problem = BotMcpSetup.failure(relayed) { return .failed(problem) }
+            for _ in 0..<BotMcpSetup.pollAttempts {
+                try Task.checkCancellation()
+                let polled = try await client.botMcpOAuth(
+                    "poll",
+                    params: ["profile": profile, "name": name, "session_id": flow.sessionID]
+                )
+                switch BotMcpSetup.pollStatus(polled) {
+                case "approved":
+                    approved = true
+                    return .signedIn
+                case "error":
+                    return .failed(BotMcpSetup.pollError(polled))
+                default:
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+            return .failed(AppLocalization.string("Sign-in timed out. Please try again."))
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .failed(UserFacingError.message(for: error))
+        }
+    }
+
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }

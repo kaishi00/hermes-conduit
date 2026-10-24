@@ -174,6 +174,41 @@ enum NativeOAuthFlow {
         components.query = nil
         return code
     }
+
+    /// A relayed callback's parameters (MCP sign-in, where Hermes holds the
+    /// PKCE secret and Conduit only carries the redirect back): the right
+    /// path and state, and a `code` or an `error`.
+    static func callbackValues(
+        requestTarget: String,
+        expectedState: String,
+        expectedPort: UInt16
+    ) throws -> [String: String] {
+        guard let components = URLComponents(string: "http://127.0.0.1:\(expectedPort)\(requestTarget)"),
+              components.path == "/callback" else {
+            throw NativeOAuthError.callbackMalformed
+        }
+        var values: [String: String] = [:]
+        for item in components.queryItems ?? [] {
+            guard values[item.name] == nil else { throw NativeOAuthError.callbackMalformed }
+            values[item.name] = item.value ?? ""
+        }
+        guard values["state"] == expectedState else { throw NativeOAuthError.stateMismatch }
+        guard values["code"]?.isEmpty == false || values["error"]?.isEmpty == false else {
+            throw NativeOAuthError.callbackMalformed
+        }
+        return values
+    }
+
+    /// `values` as one string, the form a relayed callback travels in.
+    static func encodedQuery(_ values: [String: String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// `encodedQuery`'s values back.
+    static func queryValues(_ query: String) -> [String: String] {
+        (try? JSONSerialization.jsonObject(with: Data(query.utf8))) as? [String: String] ?? [:]
+    }
 }
 
 final class NativeOAuthAPIClient {
@@ -523,7 +558,13 @@ final class NativeOAuthSession {
 
 final class NativeOAuthLoopbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.milim.conduit.native-oauth-loopback")
-    private let expectedState: String
+    /// Nil until a relayed flow learns it from Hermes' authorization URL;
+    /// a callback before then is turned away.
+    private var expectedState: String?
+    /// MCP sign-in: the callback's parameters are the result (as
+    /// `NativeOAuthFlow.encodedQuery`), an `error` included, for Hermes to
+    /// finish the flow with.
+    private let relaysCallback: Bool
     private var listener: NWListener?
     private var startContinuation: CheckedContinuation<UInt16, Error>?
     private var callbackContinuation: CheckedContinuation<String, Error>?
@@ -535,8 +576,14 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
     /// withholding the end of its headers, which also releases its read Task.
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
 
-    init(expectedState: String) {
+    init(expectedState: String?, relaysCallback: Bool = false) {
         self.expectedState = expectedState
+        self.relaysCallback = relaysCallback
+    }
+
+    /// The state the callback must carry, once known.
+    func expect(state: String) {
+        queue.async { self.expectedState = state }
     }
 
     func start(timeout: TimeInterval = 5 * 60) async throws -> UInt16 {
@@ -678,6 +725,14 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
             finish(.failure(NativeOAuthError.listenerFailed))
             return
         }
+        guard let expectedState else {
+            sendResponse(on: connection, status: "503 Service Unavailable", message: AppLocalization.string("The sign-in callback is not ready."))
+            return
+        }
+        if relaysCallback {
+            processRelayedCallback(target: String(parts[1]), expectedState: expectedState, port: port, on: connection)
+            return
+        }
         do {
             let code = try NativeOAuthFlow.callbackCode(
                 requestTarget: String(parts[1]),
@@ -696,6 +751,27 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
         } catch {
             // Ignore malformed probes and keep listening for the real browser
             // callback until cancellation or the bounded timeout.
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid."))
+        }
+    }
+
+    private func processRelayedCallback(target: String, expectedState: String, port: UInt16, on connection: NWConnection) {
+        do {
+            let values = try NativeOAuthFlow.callbackValues(
+                requestTarget: target,
+                expectedState: expectedState,
+                expectedPort: port
+            )
+            if values["error"]?.isEmpty == false {
+                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit."))
+            } else {
+                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("✓ Signed in. You can return to Conduit."))
+            }
+            finish(.success(NativeOAuthFlow.encodedQuery(values)))
+        } catch NativeOAuthError.stateMismatch {
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response failed its security check."))
+        } catch {
+            // A favicon or other probe: keep listening.
             sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid."))
         }
     }
