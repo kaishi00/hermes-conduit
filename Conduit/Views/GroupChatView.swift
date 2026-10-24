@@ -864,17 +864,19 @@ struct GroupRoomPicturePicker: ViewModifier {
                 case .choose:
                     ImagePicker(image: $picked)
                 case .generate:
+                    // One room for the prompt and the save: the open one
+                    // (the capture below may still hold the last one while
+                    // this sheet is first built).
+                    let target = appState.activeRoomSurface?.room ?? room
                     GeneratePictureSheet(
-                        // The open room: the capture below may still hold
-                        // the last one while this sheet is first built.
                         defaultPrompt: PictureGeneration.groupPrompt(
-                            name: (appState.activeRoomSurface?.room ?? room)?.name ?? "",
-                            members: (appState.activeRoomSurface?.room ?? room)?.members
-                                .map { GroupRoomTurns.displayName(of: $0) } ?? []
+                            name: target?.name ?? "",
+                            members: target?.members.map { GroupRoomTurns.displayName(of: $0) } ?? []
                         ),
                         forGroup: true
                     ) { image in
-                        picked = image
+                        guard let roomID = target?.roomID else { return }
+                        Task { await appState.setGroupRoomPicture(image, roomID: roomID) }
                     }
                     .environmentObject(appState)
                 }
