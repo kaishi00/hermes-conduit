@@ -219,4 +219,24 @@ extension GatewayRestartTests {
         XCTAssertEqual(feed.items.map(\.id), ["/c", "/a", "/b"])
         XCTAssertEqual(feed.nextCursor, ArtifactFeed.Cursor(source: 0, before: 4))
     }
+
+    func testArtifactsNameABotChatInAProfileReadWhole() {
+        let source = ArtifactSource(profile: "atlas", sessionIDs: [], label: "Atlas Work",
+                                    botChatIDs: ["bot-chat"], botLabel: "Atlas")
+        let rows = [
+            ArtifactItem(artifactRow(["path": "/a", "session_id": "bot-chat"]))!,
+            ArtifactItem(artifactRow(["path": "/b", "session_id": "other"]))!,
+        ]
+        let items = ArtifactFeed(sources: [source], pages: [ArtifactPage(items: rows, nextBefore: nil)]).items
+        XCTAssertEqual(items.map(\.isBotChat), [true, false])
+        XCTAssertEqual(items.map(\.otherProfileLabel), ["Atlas", "Atlas Work"])
+        XCTAssertEqual(items.map(\.otherProfile), ["atlas", "atlas"])
+        // The profile in use keeps its rows unlabelled, but its Bot Chat
+        // still goes by the bot.
+        let own = ArtifactSource(profile: "default", sessionIDs: [], botChatIDs: ["bot-chat"], botLabel: "Hermes")
+        let ownItems = ArtifactFeed(sources: [own], pages: [ArtifactPage(items: rows, nextBefore: nil)]).items
+        XCTAssertEqual(ownItems.map(\.isBotChat), [true, false])
+        XCTAssertEqual(ownItems.map(\.otherProfileLabel), ["Hermes", nil])
+        XCTAssertEqual(ownItems.map(\.otherProfile), [nil, nil])
+    }
 }

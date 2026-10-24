@@ -41,10 +41,10 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
     /// use: a bot's (a Bot Chat is kept in the bot's own profile), or
     /// another profile All shows. Its files are read through that profile.
     var otherProfile: String?
-    /// That profile's name for the detail line, or the bot's.
+    /// That profile's name for the detail line, or for a Bot Chat the bot's.
     var otherProfileLabel: String?
     /// From a bot's Bot Chat: it goes by the bot's name and opens the way
-    /// Bots opens it.
+    /// Bots opens it, in its store's profile.
     var isBotChat = false
 
     /// One path or URL is one artifact, listed at its newest mention, even
@@ -142,6 +142,10 @@ struct ArtifactSource: Equatable {
     /// The profile's name, or the bot's; nil for the profile in use.
     var label: String?
     var isBotChat = false
+    /// A whole profile that is also a bot's: its Bot Chat's ids, whose
+    /// rows go by the bot's name.
+    var botChatIDs: [String] = []
+    var botLabel: String?
 }
 
 /// Several stores' pages as one list, newest first. Each store pages from
@@ -224,12 +228,19 @@ struct ArtifactFeed: Equatable {
     }
 
     private static func tagged(_ items: [ArtifactItem], from source: ArtifactSource) -> [ArtifactItem] {
-        guard let label = source.label else { return items }
+        let botChat = Set(source.botChatIDs)
+        guard source.label != nil || !botChat.isEmpty else { return items }
         return items.map { item in
             var item = item
-            item.otherProfile = source.profile
-            item.otherProfileLabel = label
-            item.isBotChat = source.isBotChat
+            if let label = source.label {
+                item.otherProfile = source.profile
+                item.otherProfileLabel = label
+                item.isBotChat = source.isBotChat
+            }
+            if botChat.contains(item.sessionID) {
+                item.isBotChat = true
+                item.otherProfileLabel = source.botLabel ?? item.otherProfileLabel
+            }
             return item
         }
     }

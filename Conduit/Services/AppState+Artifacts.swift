@@ -79,21 +79,30 @@ extension AppState {
                 listed += allProfilesIncluded.filter { !Self.profilesMatch($0, activeProfile) }
             }
             var sources = listed.map { profile in
-                ArtifactSource(profile: profile, sessionIDs: [],
-                               label: Self.profilesMatch(profile, activeProfile) ? nil : profileDisplayName(profile))
+                // A profile read whole that is also a bot's still names its
+                // Bot Chat's rows after the bot.
+                let bot = botRoster.first { Self.profilesMatch($0.name, profile) }
+                return ArtifactSource(profile: profile, sessionIDs: [],
+                                      label: Self.profilesMatch(profile, activeProfile) ? nil : profileDisplayName(profile),
+                                      botChatIDs: bot.map(Self.botChatIDs) ?? [], botLabel: bot?.displayLabel)
             }
             // A bot whose whole profile is read already has its chat listed.
             for bot in botRoster where !listed.contains(where: { Self.profilesMatch($0, bot.name) }) {
-                let ids = Set([bot.canonicalSession?.id, bot.canonicalSession?.resolvedID].compactMap { id -> String? in
-                    let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    return trimmed.isEmpty ? nil : trimmed
-                })
+                let ids = Self.botChatIDs(bot)
                 guard !ids.isEmpty else { continue }
-                sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids.sorted(), label: bot.displayLabel,
+                sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids, label: bot.displayLabel,
                                               isBotChat: true))
             }
             return sources
         }
+    }
+
+    /// A bot's Bot Chat by its registry id and lineage tip.
+    private static func botChatIDs(_ bot: BotProfile) -> [String] {
+        Set([bot.canonicalSession?.id, bot.canonicalSession?.resolvedID].compactMap { id -> String? in
+            let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }).sorted()
     }
 
     private func botLabel(_ profile: String) -> String {
@@ -110,17 +119,20 @@ extension AppState {
     /// Opens the artifact's chat (unless it's the open one) and scrolls to
     /// the message it came from.
     func showArtifactInChat(_ item: ArtifactItem, chatIsOpen: Bool) {
-        pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
+        // Another profile's chat doesn't open during a call (it says so),
+        // so nothing waits to scroll.
+        let refused = !chatIsOpen && item.otherProfile != nil && !item.isBotChat && isVoiceCallInProgress
+        if !refused {
+            pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
+        }
         guard !chatIsOpen else { return }
         dismissSidebarDrawer()
-        if let profile = item.otherProfile {
-            // A Bot Chat opens the way Bots opens it, under the bot's
-            // profile; another profile's chat the way All opens it.
-            if item.isBotChat {
-                openLinkedBotChat(profile)
-            } else {
-                openOtherProfileChat(item.sessionID, inProfile: profile)
-            }
+        if item.isBotChat {
+            // A Bot Chat opens the way Bots opens it, under the bot's profile.
+            openLinkedBotChat(item.otherProfile ?? activeProfile)
+        } else if let profile = item.otherProfile {
+            // Another profile's chat opens the way All opens it.
+            openOtherProfileChat(item.sessionID, inProfile: profile)
         } else {
             requestOpenSession(item.sessionID)
         }
