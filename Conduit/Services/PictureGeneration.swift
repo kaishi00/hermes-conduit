@@ -83,14 +83,10 @@ enum PictureGeneration {
         return .failed(nil)
     }
 
-    /// The bytes of a base64 `data:image/...` URL.
+    /// The bytes of a base64 `data:image/...` URL, within the size every
+    /// inline picture Conduit decodes is held to.
     static func imageData(fromDataURL string: String) -> Data? {
-        guard string.hasPrefix("data:image/"),
-              let comma = string.firstIndex(of: ","),
-              string[..<comma].hasSuffix(";base64") else { return nil }
-        guard let data = Data(base64Encoded: String(string[string.index(after: comma)...]), options: .ignoreUnknownCharacters),
-              !data.isEmpty else { return nil }
-        return data
+        DataURLLimits.decodeBase64DataURL(string, prefix: "data:image/")
     }
 }
 

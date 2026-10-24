@@ -20290,8 +20290,8 @@ final class AppState: ObservableObject {
         let available = await client.imageGenerationAvailable()
         // The answer belongs to the server it came from.
         guard self.client === client else { return nil }
-        let canGenerate = available == true
-        if canGeneratePictures != canGenerate { canGeneratePictures = canGenerate }
+        // No answer keeps the last one: only Hermes saying no hides Generate.
+        if let available, canGeneratePictures != available { canGeneratePictures = available }
         return available
     }
 
