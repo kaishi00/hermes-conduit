@@ -21,14 +21,23 @@ import Foundation
 enum DashboardSignInRedirect {
     /// Whether `url`, a page or redirect target for a request to the
     /// dashboard at `dashboardURL`, is a sign-in: any web address on another
-    /// origin, or a sign-in page on the dashboard's own. Nil (no address at
-    /// all) and other schemes are not evidence of anything.
+    /// origin, or a sign-in page on the dashboard's own. The dashboard's own
+    /// host moving from http to https (an edge that forces TLS) counts as
+    /// its own origin. Nil (no address at all) and other schemes are not
+    /// evidence of anything.
     static func isSignIn(_ url: URL?, forDashboard dashboardURL: URL) -> Bool {
         guard let url, let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
               let host = url.host, !host.isEmpty else { return false }
-        guard ConnectionURLPolicy.originMatches(url, expected: dashboardURL) else { return true }
+        guard ConnectionURLPolicy.originMatches(url, expected: dashboardURL)
+                || isSecureUpgrade(url, of: dashboardURL) else { return true }
         return isSignInPath(url.path)
+    }
+
+    /// The dashboard's own host on https, its http address upgraded.
+    private static func isSecureUpgrade(_ target: URL, of dashboard: URL) -> Bool {
+        dashboard.scheme?.lowercased() == "http" && target.scheme?.lowercased() == "https"
+            && target.host?.lowercased() == dashboard.host?.lowercased()
     }
 
     /// The redirect a response to `requestURL` answered with, resolved the

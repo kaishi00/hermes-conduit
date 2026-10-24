@@ -51,13 +51,8 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
         guard let status, (300...399).contains(status),
               let target = redirectTarget.map(httpEquivalent),
               let dashboard = URL(string: dashboardURL) else { return nil }
-        let signIn: Bool
-        if isSecureUpgrade(target, of: dashboard) {
-            signIn = DashboardSignInRedirect.isSignInPath(target.path)
-        } else {
-            signIn = DashboardSignInRedirect.isSignIn(target, forDashboard: dashboard)
-        }
-        return signIn ? .browserSessionRequired(status: status) : nil
+        return DashboardSignInRedirect.isSignIn(target, forDashboard: dashboard)
+            ? .browserSessionRequired(status: status) : nil
     }
 
     /// A socket address as the page address it stands for (ws as http, wss
@@ -70,12 +65,6 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
         default: break
         }
         return components.url ?? url
-    }
-
-    /// The dashboard's own host on https, its http address upgraded.
-    private static func isSecureUpgrade(_ target: URL, of dashboard: URL) -> Bool {
-        dashboard.scheme?.lowercased() == "http" && target.scheme?.lowercased() == "https"
-            && target.host?.lowercased() == dashboard.host?.lowercased()
     }
 
     var errorDescription: String? {
