@@ -324,6 +324,18 @@ extension BotModeTests {
         )
     }
 
+    func testTheLastToolOnCannotBeTurnedOff() {
+        var capabilities = BotCapabilities(
+            skills: [],
+            toolsets: [BotCapability(name: "web", enabled: true), BotCapability(name: "terminal", enabled: true)],
+            mcpServers: []
+        )
+        XCTAssertTrue(capabilities.canTurnOffToolset(at: 0))
+        capabilities.toolsets[1].enabled = false
+        XCTAssertFalse(capabilities.canTurnOffToolset(at: 0), "no tools on would save as Hermes' defaults")
+        XCTAssertTrue(capabilities.canTurnOffToolset(at: 1), "an off tool can always be turned back on")
+    }
+
     // MARK: - Avatar images
 
     func testGetAssetResultDecodesTheDataURL() {

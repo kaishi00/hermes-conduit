@@ -409,7 +409,8 @@ struct BotEditorSheet: View {
                     skillsSkipped: isCreating && draft.noSkills,
                     // A fresh profile gets the bundled skills, not the main
                     // profile's, though its lists are read from there.
-                    sourceLabel: isCreating && !draft.cloneFrom.isEmpty ? startFromLabel : nil
+                    sourceLabel: isCreating && !draft.cloneFrom.isEmpty ? startFromLabel : nil,
+                    freshProfile: isCreating && draft.cloneFrom.isEmpty
                 )
             } label: {
                 Text(AppLocalization.string("Skills, Tools and MCP"))

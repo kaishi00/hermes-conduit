@@ -328049,6 +328049,88 @@
           }
         }
       }
+    },
+    "A fresh profile gets Hermes' bundled skills. These lists show the main profile's." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein neues Profil bekommt die mitgelieferten Skills von Hermes. Diese Listen zeigen die des Hauptprofils."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un perfil nuevo recibe las habilidades incluidas de Hermes. Estas listas muestran las del perfil principal."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nouveau profil reçoit les compétences fournies avec Hermes. Ces listes montrent celles du profil principal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil baru mendapat skill bawaan Hermes. Daftar ini menampilkan milik profil utama."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un profilo nuovo riceve le skill incluse in Hermes. Questi elenchi mostrano quelle del profilo principale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいプロファイルには Hermes の同梱スキルが入ります。この一覧はメインプロファイルのものです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 프로필은 Hermes 기본 제공 스킬을 받습니다. 이 목록은 기본 프로필의 항목입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowy profil dostaje umiejętności dołączone do Hermesa. Te listy pokazują listy profilu głównego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um perfil novo recebe as habilidades incluídas do Hermes. Estas listas mostram as do perfil principal."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новый профиль получает встроенные навыки Hermes. В этих списках — данные основного профиля."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni bir profil Hermes'in paketli becerilerini alır. Bu listeler ana profilinkileri gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新配置文件会获得 Hermes 内置技能。这些列表显示的是主配置文件的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新設定檔會取得 Hermes 內建技能。這些清單顯示的是主設定檔的內容。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

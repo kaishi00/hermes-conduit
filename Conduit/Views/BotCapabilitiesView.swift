@@ -9,6 +9,9 @@ struct BotCapabilitiesView: View {
     let skillsSkipped: Bool
     /// The profile the lists were read from, for New Bot's footer.
     let sourceLabel: String?
+    /// New Bot starting fresh: the lists are the main profile's, though
+    /// the bot gets Hermes' bundled skills (as on Desktop).
+    var freshProfile = false
 
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var skillFilter = ""
@@ -26,14 +29,20 @@ struct BotCapabilitiesView: View {
                     TextField(AppLocalization.string("Filter skills"), text: $skillFilter)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    ForEach(visibleSkillIndices, id: \.self) { index in
-                        toggle($capabilities.skills[index])
+                    // Keyed by name: a filter change must not hand one
+                    // skill's row to another.
+                    ForEach(visibleSkillNames, id: \.self) { name in
+                        if let index = capabilities.skills.firstIndex(where: { $0.name == name }) {
+                            toggle($capabilities.skills[index])
+                        }
                     }
                 }
             } header: {
                 Text(AppLocalization.string("Skills"))
             } footer: {
-                if let sourceLabel, !skillsSkipped {
+                if freshProfile {
+                    Text(AppLocalization.string("A fresh profile gets Hermes' bundled skills. These lists show the main profile's."))
+                } else if let sourceLabel, !skillsSkipped {
                     Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
                 }
             }
@@ -46,7 +55,7 @@ struct BotCapabilitiesView: View {
                         toggle($capabilities.toolsets[index])
                             // Hermes reads no tools as its default tools, so
                             // the last one on stays on.
-                            .disabled(isLastToolOn(index))
+                            .disabled(!capabilities.canTurnOffToolset(at: index))
                     }
                 }
             } header: {
@@ -74,16 +83,11 @@ struct BotCapabilitiesView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func isLastToolOn(_ index: Int) -> Bool {
-        capabilities.toolsets[index].enabled && capabilities.toolsets.filter(\.enabled).count == 1
-    }
-
-    private var visibleSkillIndices: [Int] {
+    private var visibleSkillNames: [String] {
         let query = skillFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return Array(capabilities.skills.indices) }
-        return capabilities.skills.indices.filter {
-            capabilities.skills[$0].name.localizedCaseInsensitiveContains(query)
-        }
+        let names = capabilities.skills.map(\.name)
+        guard !query.isEmpty else { return names }
+        return names.filter { $0.localizedCaseInsensitiveContains(query) }
     }
 
     private func toggle(_ item: Binding<BotCapability>) -> some View {

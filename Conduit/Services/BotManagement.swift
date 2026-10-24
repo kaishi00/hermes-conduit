@@ -487,8 +487,9 @@ struct BotCapabilities: Equatable {
 
     /// The `profiles.configure` sections for what `edited` changed from
     /// `original`; an untouched section is never written. Toolsets all on
-    /// (or all off) clear the pin so the platform default applies, as
-    /// Desktop does.
+    /// clear the pin so the platform default applies, as Desktop does.
+    /// Hermes reads an empty list the same way, so all off can't be said:
+    /// the editor keeps the last tool on (`canTurnOffToolset`).
     static func configureParams(original: BotCapabilities, edited: BotCapabilities) -> [String: Any] {
         func enabledNames(_ rows: [BotCapability]) -> Set<String> { Set(rows.filter(\.enabled).map(\.name)) }
         var params: [String: Any] = [:]
@@ -503,6 +504,13 @@ struct BotCapabilities: Equatable {
             params["enabled_mcp_servers"] = edited.mcpServers.filter(\.enabled).map(\.name)
         }
         return params
+    }
+
+    /// Whether the toolset at `index` may be turned off: never the last one
+    /// on, since no tools on would save as Hermes' default tools.
+    func canTurnOffToolset(at index: Int) -> Bool {
+        guard toolsets.indices.contains(index), toolsets[index].enabled else { return true }
+        return toolsets.filter(\.enabled).count > 1
     }
 
     /// The `applied` keys `configureParams` sections report under.

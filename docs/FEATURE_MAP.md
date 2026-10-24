@@ -466,7 +466,7 @@ describes them (the editor's footers and README.md's bots line)
 - An edited bot always keeps a model of its own: Edit Bot offers no "Same as Main Profile", since `profiles.configure` pins a provider and model and has no way to clear the pin (2026-10-23).
 - On Edit Bot, a model pick the gateway guards (expensive or data-training) is saved only after the user confirms its message (2026-10-23).
 - Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile (the main profile's for a fresh one), as on Desktop (2026-10-23).
-- A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24).
+- A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
