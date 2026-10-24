@@ -432,7 +432,7 @@ Settings > Notifications
 **Code**
 - Extension: `ConduitNotificationService/NotificationService.swift`, `ConduitNotificationService/NotificationLocalization.swift`
 - Shared copy: `Shared/Notifications/NotificationCopy.swift`, `Shared/NotificationE2E.swift`
-- App: `Conduit/Services/PushNotificationService.swift` (showPreviews), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
+- App: `Conduit/Services/PushNotificationService.swift` (showPreviews; the relay registration and its updates), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
 - Missed calls: `Conduit/Voice/HermesCalls.swift`
 - Settings: `Conduit/Views/AuxiliaryViews.swift`
 - Notifier: `notifier/events.py` (push_event), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
@@ -447,8 +447,9 @@ Settings > Notifications
 **Open gaps**
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
+- A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, at #1180 (Siblings only).
+**Checked:** 2026-10-24, at #1180 (Siblings only); the registration update race at #1191.
 
 ## Pulse
 
@@ -510,7 +511,7 @@ describes them (the editor's footers and README.md's bots line)
 - Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/BotRosterView.swift`
 - Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotCapabilities, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, loadBotCapabilities, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
 - Roster: `Conduit/Services/BotModeModels.swift`
-- Generated pictures: `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Services/PictureGeneration.swift`, `Conduit/Views/GroupChatView.swift` (GroupRoomPicturePicker, GroupRoomActionItems), `Conduit/Views/V2/V2ConversationScreen.swift` (the V2 room menu's picker), `Conduit/Services/AppState.swift` (refreshPictureGeneration, generatePicture), `Conduit/Services/HermesClient.swift` (imageGenerationAvailable, generateImage)
+- Generated pictures: `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Services/PictureGeneration.swift`, `Conduit/Services/GroupRoomPictures.swift` (group pictures' list and upload), `Conduit/Views/GroupChatView.swift` (GroupRoomPicturePicker, GroupRoomActionItems), `Conduit/Views/V2/V2ConversationScreen.swift` (the V2 room menu's picker), `Conduit/Services/AppState.swift` (refreshPictureGeneration, generatePicture), `Conduit/Services/HermesClient.swift` (imageGenerationAvailable, generateImage)
 
 **Rulings**
 - A bot's look lives on Hermes: title, color and picture kind in `ui_meta['hermes-bots']`, the picture in the profile's asset store, never on the device (2026-10-02, #297; 2026-10-14, #580).
@@ -521,14 +522,16 @@ describes them (the editor's footers and README.md's bots line)
 - A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
 - MCP servers are plain on/off per server: `enabled_mcp_servers: []` turns them all off (2026-10-24, #1177).
 - Generated pictures come from Hermes' own image generation (`image.generate`). Generate shows only when Hermes says a backend is set up, and the bot editor and group pictures share one sheet (2026-10-24, #1179).
+- A group picture read or change that a dashboard or room switch overtook commits nothing and says nothing, on success and failure alike (#862 follow-up, #1191).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
 - New Bot's model pick isn't guarded: `profiles.create` pins it without the gateway's expensive-model check, the same as on Desktop.
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - No Duplicate or Hide in the Bots list.
+- The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-24, at #1181.
+**Checked:** 2026-10-24, at #1181; group pictures at #1191.
 
 ## Bot mentions and teammate messages
 
@@ -632,6 +635,130 @@ much history an open transcript keeps
 - Group rooms keep the scroll position by row id (ScrollViewReader), not by the chat engine's same-pass layout, so a follow can animate where a chat snaps.
 
 **Checked:** 2026-10-24, at #1184.
+
+## Reconnecting to Hermes
+
+How the chat connection comes back after it drops, and when it tries at
+once instead of waiting out its backoff.
+
+**Siblings:** a socket that closed (handleDisconnect) · the network path
+changing · someone waiting by voice (a call's request, CarPlay back on
+screen) · CarPlay, locked, Watch and CallKit calls with the app in the
+background · a failed sync's retry · the backoff itself
+
+**Code**
+- Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground)
+- Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket)
+- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`
+
+**Rulings**
+- A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
+- The network path changing reconnects at once without reading the path: it runs before the path monitor holds the new one, so a check there would stall recovery for the whole backoff (#1191).
+- Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
+
+**Open gaps**
+- `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
+
+**Checked:** 2026-10-24, at #1191.
+
+## Dashboard sign-in redirects
+
+When an auth proxy in front of the dashboard (an oauth2-proxy-style edge,
+a Cloudflare Access gate) sends a dashboard request to sign in instead.
+
+**Siblings:** the hidden dashboard page · requests sent without it
+(background requests and file downloads) · the background session's
+redirect rule · the dashboard socket's handshake · the login screen's
+signed-in check
+
+**Code**
+- The decision: `Conduit/Services/DashboardSignInRedirect.swift` (isSignIn, redirectIsSignIn, isSignInPath)
+- Page: `Conduit/Services/DashboardTicketBridge.swift`
+- Requests: `Conduit/Services/DashboardBackgroundRequests.swift` (the redirect rule and a returned redirect), `Conduit/Services/DashboardFileDownload.swift`
+- Socket: `Conduit/Services/DashboardWebSocketSession.swift` (DashboardSocketHandshakeError.failure)
+- Login: `Conduit/Views/LoginView.swift` (isSignedInDashboardPage)
+- Tests: `ConduitTests/DashboardProxySignOutTests.swift`
+
+**Rulings**
+- One decision for the page, the requests and the socket: any web address on another origin is sign-in, and on the dashboard's own origin only a sign-in page is (#731 follow-up, #1191).
+- The dashboard's own host moving from http to https, on https's port or the dashboard's own, counts as its own origin; another port on that host is another origin (#1191).
+- A handshake redirect is never followed, so the ticket never goes along.
+
+**Open gaps**
+- The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
+
+**Checked:** 2026-10-24, at #1191.
+
+## Skill and tool switches
+
+The installed skills' and toolsets' switches in Settings > Capabilities, and
+the lists they sit in.
+
+**Siblings:** installed skills and toolsets (AppState) · the catalog, tool
+counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
+and Tools tabs · the bot editor's skills, tools and MCP lists (see Bots:
+create and edit)
+
+**Code**
+- Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration), `Conduit/Services/CapabilityToggleWrites.swift`
+- The rest of the page: `Conduit/Services/CapabilitiesStore.swift`
+- Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`
+- Tests: `ConduitTests/KanbanTests+Capabilities.swift`
+
+**Rulings**
+- A list read that started before a switch was flipped commits nothing, in AppState and in CapabilitiesStore alike (#867; AppState's lists at #1191).
+- Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
+
+**Open gaps**
+- AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
+- Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
+
+**Checked:** 2026-10-24, at #1191.
+
+## Reply progress signals
+
+Everything that reacts to a turn's output as it arrives: the agent's text,
+and its commentary between tool calls (`message.interim`).
+
+**Siblings:** the compaction spinner's release · the Live Activity's writing
+state · a call's background jobs (follow-up, status, session) · Local Live's
+writing-again · the writing haptic
+
+**Code**
+- Events: `Conduit/Services/StreamEventParser.swift`, `Conduit/Services/AppState.swift` (handleStreamEvent, the compaction release)
+- Live Activity: `Conduit/Services/LiveTurnActivities.swift`
+- Calls: `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`
+- Haptics: `Conduit/Services/Haptics.swift` (signal)
+
+**Rulings**
+- Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along, but isn't spoken (#912 follow-up, #1191).
+
+**Open gaps**
+- `Haptics.signal` still plays the writing haptic only for `message.delta`.
+
+**Checked:** 2026-10-24, at #1191.
+
+## Large code blocks in messages
+
+A code block too big to draw at once: its collapsed preview, its line
+count and the expanded block.
+
+**Siblings:** the collapsed preview · "Show all N lines" · the expanded
+block, drawn in slices · Copy
+
+**Code**
+- Slicing: `Conduit/Views/Components/MarkdownLargeDocument.swift` (MarkdownCodeSlicer)
+- The block: `Conduit/Views/Components/MarkdownLargeDocumentView.swift` (the code block view, lineStats)
+- Tests: `ConduitTests/MarkdownLargeDocumentTests.swift`
+
+**Rulings**
+- The slices put back together are exactly the source, so Copy and round trips stay exact.
+- A line ends at a `\n` byte, so a block with Windows line endings counts each line once (#894 follow-up, #1191).
+
+**Open gaps**
+- `MarkdownCodeSlicer.slice` still splits on a Character `"\n"`, where `"\r\n"` is one Character, so a block with Windows line endings is sliced by its byte budget only.
+
+**Checked:** 2026-10-24, at #1191.
 
 ## Feature map rules
 
