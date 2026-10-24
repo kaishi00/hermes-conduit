@@ -20334,6 +20334,153 @@ final class AppState: ObservableObject {
         return try? await client.describeBotProfile(name: profile).capabilities
     }
 
+    /// The MCP catalog and the bot's servers' sign-in state, for Edit Bot's
+    /// MCP page. Nil when Hermes doesn't offer them (an older gateway), so
+    /// the page keeps its plain on/off list.
+    func loadBotMcpSetup(profile: String) async -> BotMcpSetupSnapshot? {
+        guard let client, isConnected,
+              let catalog = try? await client.botMcpCatalog(profile: profile) else { return nil }
+        let servers = (try? await client.botMcpServers(profile: profile)) ?? []
+        return BotMcpSetupSnapshot(
+            catalog: catalog,
+            servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
+    /// Adds a catalog server to the bot's profile with the keys typed for
+    /// it (Desktop's Set Up): Hermes writes it at once, as on Desktop, so
+    /// it stays even when the editor is cancelled. Blank keys are skipped.
+    func addBotMcpServer(
+        profile: String,
+        entry: BotMcpCatalogEntry,
+        keys: [String: String]
+    ) async -> BotMcpInstallOutcome {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        // Every step is checked against the Hermes it started on: after a
+        // switch, keys and tests must not go to the other one.
+        let epoch = botRosterEpoch
+        let moved = BotMcpInstallOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+        var oauth = false
+        if !entry.installed {
+            do {
+                let added = try await client.addBotMcpServer(profile: profile, name: entry.name, preset: entry.name)
+                oauth = BotMcpSetup.addedServer(from: added, name: entry.name)?.auth?.lowercased() == "oauth"
+            } catch {
+                return .failed(AppLocalization.string("Could not add \(entry.name): \(UserFacingError.message(for: error))"))
+            }
+        } else if let summary = (try? await client.botMcpServers(profile: profile))?.first(where: { $0.name == entry.name }) {
+            oauth = summary.auth?.lowercased() == "oauth"
+        }
+        for envVar in entry.requires {
+            let value = (keys[envVar] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { continue }
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
+            do {
+                try await client.setBotMcpKey(profile: profile, name: entry.name, envVar: envVar, value: value)
+            } catch {
+                return .addedWithProblem(AppLocalization.string("Could not save \(envVar): \(UserFacingError.message(for: error))"))
+            }
+        }
+        if oauth { return .needsSignIn }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
+        do {
+            let tested = BotMcpSetup.testResult(try await client.testBotMcpServer(profile: profile, name: entry.name))
+            return tested.ok
+                ? .ready
+                : .addedWithProblem(tested.error ?? AppLocalization.string("It did not connect."))
+        } catch {
+            return .addedWithProblem(UserFacingError.message(for: error))
+        }
+    }
+
+    /// Signs a bot's OAuth MCP server in. Hermes runs the flow and keeps the
+    /// tokens; the browser comes back to a loopback on this phone, which
+    /// hands the redirect to Hermes (`client_redirect_uri`, as Desktop does
+    /// for a remote Hermes). `open` shows the sign-in page.
+    func signInBotMcpServer(
+        profile: String,
+        name: String,
+        open: @MainActor (URL) -> Void
+    ) async -> BotMcpSignInOutcome {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        let epoch = botRosterEpoch
+        let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+        let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
+        defer { loopback.stop() }
+        var sessionID: String?
+        var approved = false
+        defer {
+            // Release Hermes' waiting flow; best effort, and not tied to
+            // this (possibly cancelled) task.
+            if let sessionID, !approved {
+                Task { _ = try? await client.botMcpOAuth("cancel", params: ["profile": profile, "name": name, "session_id": sessionID]) }
+            }
+        }
+        do {
+            let port = try await loopback.start(timeout: 6 * 60)
+            let redirectURI = "http://127.0.0.1:\(port)/callback"
+            let started = try await client.botMcpOAuth(
+                "start",
+                params: ["profile": profile, "name": name, "client_redirect_uri": redirectURI]
+            )
+            if let problem = BotMcpSetup.failure(started) { return .failed(problem) }
+            guard let flow = BotMcpSetup.startedFlow(started, redirectURI: redirectURI) else {
+                sessionID = BotMcpSetup.payload(started)["session_id"]?.stringValue
+                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit."))
+            }
+            sessionID = flow.sessionID
+            loopback.expect(state: flow.state)
+            try Task.checkCancellation()
+            open(flow.authURL)
+            let query = try await loopback.waitForCallback()
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
+            var params = BotMcpSetup.callbackParams(NativeOAuthFlow.queryValues(query))
+            params["profile"] = profile
+            params["name"] = name
+            params["session_id"] = flow.sessionID
+            let relayed = try await client.botMcpOAuth("callback", params: params)
+            if let problem = BotMcpSetup.failure(relayed) { return .failed(problem) }
+            var pollFailures = 0
+            for _ in 0..<BotMcpSetup.pollAttempts {
+                try Task.checkCancellation()
+                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
+                let polled: AnyCodable
+                do {
+                    polled = try await client.botMcpOAuth(
+                        "poll",
+                        params: ["profile": profile, "name": name, "session_id": flow.sessionID]
+                    )
+                    pollFailures = 0
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    pollFailures += 1
+                    if pollFailures >= BotMcpSetup.pollFailureLimit { throw error }
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
+                switch BotMcpSetup.pollStatus(polled) {
+                case "approved":
+                    approved = true
+                    return .signedIn
+                case "error":
+                    return .failed(BotMcpSetup.pollError(polled))
+                default:
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+            return .failed(AppLocalization.string("Sign-in timed out. Please try again."))
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .failed(UserFacingError.message(for: error))
+        }
+    }
+
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
@@ -20783,6 +20930,81 @@ final class AppState: ObservableObject {
         } catch {
             return AppLocalization.string("Could not update \(bot.displayLabel).")
         }
+    }
+
+    /// Hides or shows a bot in the Bots list (ui_meta `hidden`, shared with
+    /// Desktop). A hidden bot keeps working, stays mentionable and keeps its
+    /// group rooms; it just isn't offered for a new group, whose picker
+    /// lists visible bots only.
+    func setBotHidden(_ bot: BotProfile, hidden: Bool) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        let epoch = botRosterEpoch
+        let patch: [String: Any?] = ["hidden": hidden]
+        do {
+            let result = try await client.configureBotProfile(
+                name: bot.name,
+                botMeta: BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                expectedMetaRevision: bot.botMetaRevision
+            )
+            var outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+            }
+            await refreshBotRosterAfterWrite()
+            return outcome == .failed || outcome == .conflict
+                ? AppLocalization.string("Could not update \(bot.displayLabel).")
+                : nil
+        } catch {
+            return AppLocalization.string("Could not update \(bot.displayLabel).")
+        }
+    }
+
+    /// Duplicate (Desktop's `duplicateBot`): a full copy of the bot's profile
+    /// as `<name>-2`, with its look and a "(copy)" title. Returns the notice
+    /// to show: what was made, or why not.
+    func duplicateBot(_ bot: BotProfile) async -> String {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        guard let name = BotDuplicate.name(for: bot.name, taken: botRoster.map(\.name) + profiles) else {
+            return AppLocalization.string("No free name for the copy of \(bot.displayLabel).")
+        }
+        let epoch = botRosterEpoch
+        do {
+            _ = try await client.createBotProfile(params: BotDuplicate.createParams(name: name, source: bot))
+        } catch {
+            return AppLocalization.string("Could not duplicate the bot: \(UserFacingError.message(for: error))")
+        }
+        var lookSaved = false
+        var metaSaved = false
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            // A clone copies the config, not the asset store: the photo is
+            // copied first, so the look only claims one the copy holds.
+            var photoCopied = !bot.hasAvatar
+            if bot.hasAvatar, let png = try? await client.botAvatar(name: bot.name),
+               botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                photoCopied = await storeBotAvatar(png, for: name, client: client, epoch: epoch)
+            }
+            var result: AnyCodable?
+            if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                result = try? await client.configureBotProfile(
+                    name: name,
+                    botMeta: BotDuplicate.meta(from: bot, photoCopied: photoCopied)
+                )
+            }
+            metaSaved = result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
+            lookSaved = photoCopied && result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
+        }
+        await refreshBotRosterAfterWrite()
+        await loadProfiles()
+        if lookSaved {
+            return AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel).")
+        }
+        return metaSaved
+            ? AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its picture was not copied.")
+            : AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its look was not copied.")
     }
 
     /// Whether Conduit lets this bot be deleted: never the gateway's primary

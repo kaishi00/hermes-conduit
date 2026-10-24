@@ -423,4 +423,109 @@ extension BotModeTests {
         XCTAssertEqual(decoded.size.height * decoded.scale, 256)
         XCTAssertEqual(Array(png.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
     }
+
+    // MARK: - Duplicate
+
+    func testDuplicateTakesTheFirstFreeNumberAndKeepsTheSuffix() {
+        XCTAssertEqual(BotDuplicate.name(for: "scout", taken: ["scout"]), "scout-2")
+        XCTAssertEqual(BotDuplicate.name(for: "scout", taken: ["scout", "Scout-2", "scout-3"]), "scout-4")
+        let long = String(repeating: "a", count: 64)
+        XCTAssertEqual(BotDuplicate.name(for: long, taken: [long]), String(repeating: "a", count: 62) + "-2")
+        XCTAssertNil(BotDuplicate.name(for: "x", taken: (2..<100).map { "x-\($0)" }))
+    }
+
+    func testDuplicateCopiesTheLookWithACopyTitle() {
+        var source = BotProfile(
+            name: "scout", botTitle: "Trip Scout", displayName: "", profileDescription: "Finds trips",
+            model: nil, provider: nil, hasAvatar: true, isPinned: true, isHiddenByMeta: false,
+            appearanceColor: "blue", canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        source.botMeta = [
+            "title": .string("Trip Scout"), "color": .string("blue"),
+            "created": .number(1), "chat": .string("old"),
+            "hidden": .bool(true), "pinned": .bool(true), "imageKind": .string("photo")
+        ]
+        // The copy shows in the list, neither under Hidden nor pinned.
+        XCTAssertNil(BotDuplicate.meta(from: source)["hidden"])
+        XCTAssertNil(BotDuplicate.meta(from: source)["pinned"])
+        // A photo that didn't copy isn't claimed.
+        XCTAssertEqual(BotDuplicate.meta(from: source)["imageKind"] as? String, "photo")
+        XCTAssertNil(BotDuplicate.meta(from: source, photoCopied: false)["imageKind"])
+        let meta = BotDuplicate.meta(from: source)
+        XCTAssertEqual(meta["title"] as? String, "Trip Scout (copy)")
+        XCTAssertEqual(meta["color"] as? String, "blue")
+        XCTAssertNil(meta["created"])
+        XCTAssertNil(meta["chat"])
+        let params = BotDuplicate.createParams(name: "scout-2", source: source)
+        XCTAssertEqual(params["clone_from"] as? String, "scout")
+        XCTAssertEqual(params["description"] as? String, "Finds trips")
+    }
+
+    private func json(_ text: String) throws -> AnyCodable {
+        try JSONDecoder().decode(AnyCodable.self, from: Data(text.utf8))
+    }
+
+    func testTheCatalogOffersOnlyServersTheBotLacks() throws {
+        let catalog = BotMcpSetup.catalog(from: try json("""
+        {"result": {"servers": [
+          {"name": "github", "description": "Repos", "requires": ["GITHUB_TOKEN"], "installed": false},
+          {"name": "Linear", "description": "", "requires": [], "installed": true},
+          {"name": " "}
+        ]}}
+        """))
+        XCTAssertEqual(catalog.map(\.name), ["github", "Linear"])
+        XCTAssertEqual(catalog[0].requires, ["GITHUB_TOKEN"])
+        XCTAssertEqual(BotMcpSetup.offered(catalog, configured: ["linear"]).map(\.name), ["github"])
+    }
+
+    func testAnOAuthServerWithoutATokenNeedsASignIn() throws {
+        let servers = BotMcpSetup.servers(from: try json("""
+        {"servers": [
+          {"name": "notion", "auth": "oauth", "oauth_tokens_present": false},
+          {"name": "drive", "auth": "OAuth", "oauth_tokens_present": true},
+          {"name": "fs"}
+        ]}
+        """))
+        XCTAssertEqual(servers.map(\.needsSignIn), [true, false, false])
+        let added = BotMcpSetup.addedServer(
+            from: try json(#"{"ok": true, "name": "notion", "server": {"auth": "oauth"}}"#),
+            name: "notion"
+        )
+        XCTAssertEqual(added?.needsSignIn, true)
+    }
+
+    func testASignInOpensOnlyAPageThatComesBackToThePhone() throws {
+        let redirect = "http://127.0.0.1:50123/callback"
+        let started = try json("""
+        {"ok": true, "session_id": "flow-1", "flow": "pkce",
+         "auth_url": "https://mcp.example.com/authorize?state=s1&redirect_uri=http%3A%2F%2F127.0.0.1%3A50123%2Fcallback"}
+        """)
+        let flow = try XCTUnwrap(BotMcpSetup.startedFlow(started, redirectURI: redirect))
+        XCTAssertEqual(flow.sessionID, "flow-1")
+        XCTAssertEqual(flow.state, "s1")
+        // An older Hermes keeps its own loopback: the phone can't finish that.
+        let old = try json("""
+        {"ok": true, "session_id": "flow-1",
+         "auth_url": "https://mcp.example.com/authorize?state=s1&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback"}
+        """)
+        XCTAssertNil(BotMcpSetup.startedFlow(old, redirectURI: redirect))
+    }
+
+    func testTheRelayedCallbackCarriesOnlyWhatHermesTakes() {
+        let params = BotMcpSetup.callbackParams(["code": "c", "state": "s", "iss": "", "extra": "x"])
+        XCTAssertEqual(params["code"] as? String, "c")
+        XCTAssertEqual(params["state"] as? String, "s")
+        XCTAssertNil(params["iss"])
+        XCTAssertNil(params["extra"])
+    }
+
+    func testMcpRepliesReadOkAndErrors() throws {
+        XCTAssertTrue(BotMcpSetup.testResult(try json(#"{"ok": true, "tools": []}"#)).ok)
+        let failed = BotMcpSetup.testResult(try json(#"{"result": {"ok": false, "error": "401"}}"#))
+        XCTAssertFalse(failed.ok)
+        XCTAssertEqual(failed.error, "401")
+        XCTAssertEqual(BotMcpSetup.failure(try json(#"{"ok": false, "error_message": "denied"}"#)), "denied")
+        XCTAssertNil(BotMcpSetup.failure(try json(#"{"ok": true}"#)))
+        XCTAssertEqual(BotMcpSetup.pollStatus(try json(#"{"ok": true, "status": "approved"}"#)), "approved")
+    }
 }

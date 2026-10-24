@@ -140,6 +140,26 @@ final class NativeOAuthTests: XCTestCase {
         )) { XCTAssertEqual($0 as? NativeOAuthError, .stateMismatch) }
     }
 
+    func testARelayedCallbackKeepsAnErrorForHermes() throws {
+        let values = try NativeOAuthFlow.callbackValues(
+            requestTarget: "/callback?error=access_denied&state=expected&iss=https%3A%2F%2Fidp",
+            expectedState: "expected",
+            expectedPort: 49152
+        )
+        XCTAssertEqual(values["error"], "access_denied")
+        XCTAssertEqual(NativeOAuthFlow.queryValues(NativeOAuthFlow.encodedQuery(values)), values)
+        XCTAssertThrowsError(try NativeOAuthFlow.callbackValues(
+            requestTarget: "/callback?code=c&state=attacker",
+            expectedState: "expected",
+            expectedPort: 49152
+        )) { XCTAssertEqual($0 as? NativeOAuthError, .stateMismatch) }
+        XCTAssertThrowsError(try NativeOAuthFlow.callbackValues(
+            requestTarget: "/favicon.ico",
+            expectedState: "expected",
+            expectedPort: 49152
+        )) { XCTAssertEqual($0 as? NativeOAuthError, .callbackMalformed) }
+    }
+
     func testCallbackRejectsProviderErrorMissingCodeAndDuplicateState() {
         XCTAssertThrowsError(try NativeOAuthFlow.callbackCode(
             requestTarget: "/callback?error=access_denied&state=expected",

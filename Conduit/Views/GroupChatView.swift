@@ -1296,6 +1296,11 @@ struct GroupCreateSheet: View {
     @State private var attemptedInputs: GroupCreateAttempt.Inputs?
     @State private var isCreating = false
 
+    /// `preselected`: bots already picked, as from a bot's Groups menu.
+    init(preselected: Set<String> = []) {
+        _selected = State(initialValue: preselected)
+    }
+
     private var visibleBots: [BotProfile] {
         appState.botRoster.filter { !$0.isHiddenByMeta }
     }
