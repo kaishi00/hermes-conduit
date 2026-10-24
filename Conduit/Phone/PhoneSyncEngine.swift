@@ -380,6 +380,11 @@ final class PhoneSyncEngine: ObservableObject {
                 state.forgetSent()
                 lastError = detail
                 return .unfinished
+            case .http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail):
+                // A store written by a newer plugin: updating the plugin
+                // fixes it, a new key wouldn't. The key and hashes stay.
+                state.pause = .pluginMissing
+                return .paused(.pluginMissing)
             case .http(let status, let detail) where status == 400 || status == 409 || status == 413:
                 state.pause = .refused(detail)
                 return .paused(.refused(detail))
