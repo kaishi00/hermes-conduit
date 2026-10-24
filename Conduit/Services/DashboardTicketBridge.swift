@@ -251,7 +251,12 @@ enum DashboardCookiePersistence {
     /// disconnect clears. WebKit answers over IPC, so a clear outlives the
     /// Sign Out or disconnect that started it; a bridge or sign-in page on
     /// the same store waits for it first (`awaitPendingStoreClear`), or the
-    /// late clear could delete the new session's cookies (#788).
+    /// late clear could delete the new session's cookies (#788). That holds
+    /// within the 10 s bound only: a clear whose WebKit reply takes longer
+    /// is no longer waited for (and once a later clear of the store
+    /// finishes, no longer recorded here), so its reply can still delete a
+    /// session signed in after it. Sign-in not hanging on a WebKit reply
+    /// that never comes is worth that rare risk.
     private static var pendingStoreClears: [UUID?: (generation: UInt64, task: Task<Void, Never>)] = [:]
     private static var storeClearGeneration: UInt64 = 0
 
