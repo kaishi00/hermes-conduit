@@ -446,6 +446,8 @@ struct LiveVoiceJobWaitingCard: View {
     let job: VoiceBackgroundJob
     let jobs: VoiceBackgroundJobSupervisor
     @State private var sending = false
+    /// A multi-select question's picks, sent together as the chat's card does.
+    @State private var picked: Set<Int> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -491,13 +493,34 @@ struct LiveVoiceJobWaitingCard: View {
                 }
                 ForEach(Array(question.choices.enumerated()), id: \.offset) { index, choice in
                     Button {
-                        // The number picks it, as a spoken "two" does.
-                        send { await jobs.answerJobQuestion(job.id, answer: String(index + 1)) }
+                        if question.multiSelect {
+                            if picked.contains(index) { picked.remove(index) } else { picked.insert(index) }
+                        } else {
+                            // The number picks it, as a spoken "two" does.
+                            send { await jobs.answerJobQuestion(job.id, answer: String(index + 1)) }
+                        }
                     } label: {
-                        Text(verbatim: "\(index + 1). \(choice.label)")
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Text(verbatim: "\(index + 1). \(choice.label)")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if question.multiSelect, picked.contains(index) {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                     .buttonStyle(.bordered)
+                }
+                if question.multiSelect {
+                    Button {
+                        // "1, 3", as a spoken pick of several is sent.
+                        let numbers = picked.sorted().map { String($0 + 1) }.joined(separator: ", ")
+                        picked = []
+                        send { await jobs.answerJobQuestion(job.id, answer: numbers) }
+                    } label: {
+                        Text("Send")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(picked.isEmpty)
                 }
             }
         }
