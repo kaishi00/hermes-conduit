@@ -330263,6 +330263,88 @@
           }
         }
       }
+    },
+    "Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte diesen Chat nicht wieder öffnen, deshalb wurde nichts gesendet. Öffne ihn in Conduit und versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo volver a abrir ese chat, así que no se envió nada. Ábrelo en Conduit e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu rouvrir cette discussion, donc rien n'a été envoyé. Ouvrez-la dans Conduit et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat membuka kembali obrolan itu, jadi tidak ada yang terkirim. Buka obrolan itu di Conduit dan coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a riaprire quella chat, quindi non è stato inviato nulla. Aprila in Conduit e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはそのチャットを開き直せなかったため、何も送信されていません。Conduitでチャットを開いて、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 해당 채팅을 다시 열지 못해 아무것도 보내지 않았습니다. Conduit에서 채팅을 열고 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł ponownie otworzyć tego czatu, więc nic nie wysłano. Otwórz go w Conduit i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu reabrir esse chat, então nada foi enviado. Abra-o no Conduit e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог снова открыть этот чат, поэтому ничего не отправлено. Откройте его в Conduit и попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu sohbeti yeniden açamadı, bu yüzden hiçbir şey gönderilmedi. Sohbeti Conduit'te açıp tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法重新打开该聊天，因此未发送任何内容。请在 Conduit 中打开它后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法重新開啟該聊天，因此未傳送任何內容。請在 Conduit 中開啟它後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
