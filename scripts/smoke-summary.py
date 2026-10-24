@@ -41,7 +41,7 @@ def render(selection: dict) -> str:
     if selection.get("changed_unit"):
         lines += ["Added for this change: " + ", ".join(selection["changed_unit"]), ""]
     if selection.get("changed_skipped"):
-        lines += ["Touched but over the smoke budget (nightly only): "
+        lines += ["Related to this change but over the smoke budget (nightly only): "
                   + ", ".join(selection["changed_skipped"]), ""]
     lines += [
         "UI: " + ", ".join(ui),

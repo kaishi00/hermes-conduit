@@ -524,6 +524,35 @@ memory), its routes under /pulse and its capabilities · the
 
 **Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
 
+## Artifacts
+
+The files, pages and links Hermes made, listed for every chat (the Chats
+bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
+viewers, with Show in Chat.
+
+**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
+(kept in the bot's own profile) · All (every included profile's chats) ·
+group rooms (no Artifacts list) · the notifier's artifacts route · README.md
+
+**Code**
+- List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
+- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
+- A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
+- Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
+
+**Rulings**
+- A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
+- Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
+- A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
+- The profile in use is always read, even when All leaves it out.
+- One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
+
+**Open gaps**
+- Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
+
+**Checked:** 2026-10-24, at #1203.
+
 ## Bots: create and edit
 
 New Bot and Edit Bot, and what they write to the bot's Hermes profile.
@@ -835,34 +864,29 @@ speech-server transcription stream (listening, not speaking)
 
 **Checked:** 2026-10-24, at #1190.
 
-## Artifacts
+## Chats top bar and search
 
-The files, pages and links Hermes made, listed for every chat (the Chats
-bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
-viewers, with Show in Chat.
+The Chats screen's controls: the profile row, the filter, Projects,
+Artifacts, New chat and the search field, and how they lay out when the
+profiles don't fit beside the controls.
 
-**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
-(kept in the bot's own profile) · All (every included profile's chats) ·
-group rooms (no Artifacts list) · the notifier's artifacts route · README.md
+**Siblings:** the chats list · the Projects view (same bar and field) · the
+one-row bar (every profile fits) and the stacked bar (profiles on their own
+row) · iPad and Mac (same view) · searching messages ("In messages")
 
 **Code**
-- List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
-- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
-- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
-- A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
-- Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
+- Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, filterPill, barSearchField, searchField, searchCapsule)
 
 **Rulings**
-- A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
-- Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
-- A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
-- The profile in use is always read, even when All leaves it out.
-- One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
+- The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
+- In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
+- Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
 
 **Open gaps**
-- Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
+- The bar reports its layout from whichever row appears (onAppear), so on launch or rotation into the stacked bar the list can show its search row for a frame before it moves into the bar.
 
-**Checked:** 2026-10-24, at #1203.
+**Checked:** 2026-10-24, at #1199.
 
 ## Plan card
 
