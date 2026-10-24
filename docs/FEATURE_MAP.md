@@ -942,7 +942,7 @@ point at the map and its check
 - Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
 - Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
-- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist)
+- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist), its PR number and base map pinned by `scripts/tests/test_ci_workflow_contract.py`
 - Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
 
 **Rulings**
