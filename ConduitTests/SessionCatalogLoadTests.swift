@@ -447,4 +447,18 @@ final class SessionCatalogLoadTests: XCTestCase {
             return XCTFail("expected the failure, got \(placeholder(appState))")
         }
     }
+
+    /// A connect sync whose catalog read was cancelled under it says
+    /// nothing about the catalog, like a cancelled list read: no banner,
+    /// still loading, never "Couldn't Load Chats".
+    func testACancelledConnectSyncReadIsNotAFailure() async {
+        for cancellation: Error in [URLError(.cancelled), CancellationError()] {
+            let appState = makeSyncingAppState { _, _ in throw cancellation }
+            appState.activeSessionId = "a"
+            await appState.syncSession()
+            XCTAssertNil(appState.errorMessage, "\(cancellation)")
+            XCTAssertEqual(appState.sessionCatalogPhase, .notLoaded, "\(cancellation)")
+            XCTAssertEqual(placeholder(appState), .loading, "\(cancellation)")
+        }
+    }
 }

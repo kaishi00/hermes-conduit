@@ -14249,7 +14249,11 @@ final class AppState: ObservableObject {
             // is no news (as for loadSessions). The chat still did not
             // resume, so the reconnect below still runs.
             let catalogFailureIsSuperseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
-            if !catalogFailureIsSuperseded {
+            // A read cancelled under it says nothing about the catalog
+            // either (as for loadSessions): the next showing reads again.
+            let wasCancelled = error is CancellationError
+                || (error as? URLError)?.code == .cancelled || Task.isCancelled
+            if !catalogFailureIsSuperseded, !wasCancelled {
                 errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
                 sessionCatalogLoadState.markFailed(
                     UserFacingError.message(for: error),
