@@ -3032,12 +3032,33 @@ enum VoiceThreadRouting {
             words.indices.contains { words[$0...].starts(with: phrase) }
         }) { return true }
         if words.contains(where: koreanNegates) { return true }
+        // A refusal said with its verb ("reject", "deny", "refuse"): the
+        // handset's own words, whatever Hermes listed as a yes.
+        if words.contains(where: { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }) {
+            return true
+        }
         // "别" / "別" says don't when it opens a clause or comes with the
         // verb; inside "别人" or "特別" it doesn't.
         let clauses = folded.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
         if clauses.contains(where: { $0.hasPrefix("别") || $0.hasPrefix("別") }) { return true }
         return cjkRefusals.contains { folded.contains($0) }
     }
+
+    /// Verbs that refuse, in the shipped languages with word breaks
+    /// (Korean is matched by its stem, Chinese and Japanese in
+    /// `cjkRefusals`).
+    private static let answerRefusalVerbs: Set<String> = [
+        "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
+        "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",
+        "rechaza", "rechazar", "rechazo", "recházalo", "rechazalo", "deniega", "denegar", "deniégalo",
+        "refuser", "refusé", "refusez", "rejette", "rejeter", "rejetez", "décline", "décliner", "déclinez",
+        "rejeita", "rejeitar", "rejeite", "recusa", "recusar", "recuse", "recuso",
+        "отклонить", "отклони", "отклоните", "отклоняю", "откажи", "откажись", "отказать", "отказываюсь", "отказ",
+        "rifiuta", "rifiutare", "rifiuto", "respingi", "respingere",
+        "odrzuć", "odrzucić", "odrzucam", "odmów", "odmówić", "odmawiam",
+        "reddet", "reddediyorum", "reddedin", "reddetmek",
+        "tolak", "tolaklah", "menolak",
+    ]
 
     private static let answerRefusalPhraseWords = (answerNoLeads + answerNotYetLeads)
         .filter { !answerTimeWords.contains($0) }
@@ -3068,6 +3089,7 @@ enum VoiceThreadRouting {
         "不想", "不要", "不用", "不必", "不发", "不發", "不送", "别发", "別發", "别送", "別送", "没有", "沒有", "不需", "先不",
         "ないで", "なくて", "しない", "らない", "しません", "送りません", "いりません", "要りません",
         "できません", "やめ", "だめ", "ダメ", "嫌",
+        "拒绝", "拒絕", "拒否", "却下", "断る", "断って",
     ]
 
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {

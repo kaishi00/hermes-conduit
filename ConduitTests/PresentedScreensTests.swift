@@ -55,6 +55,22 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(prompt.isConfirmed(by: "yes"))
     }
 
+    func testPresentedConfirmRefusalVerbsNeverConfirmWhateverHermesListedAsAYes() {
+        // A refusal said with its verb, in each shipped language.
+        let refusals = ["reject", "Reject it.", "deny", "refuse", "decline", "I decline",
+                        "ablehnen", "lehne ab", "rechazar", "recházalo", "refuser", "je refuse", "rejeter",
+                        "recusar", "rejeita", "отклонить", "отклони", "rifiuta", "odrzuć", "reddet", "tolak",
+                        "거절", "거절해요", "拒绝", "拒絕", "拒否します"]
+        for refusal in refusals {
+            let listed = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                          spokenYes: [refusal])
+            XCTAssertFalse(listed.isConfirmed(by: refusal), refusal)
+        }
+        let prompt = PresentedConfirm(id: "p1", title: "Send to Mei?", preview: "", actionLabel: "Send",
+                                      spokenYes: ["send it"])
+        XCTAssertTrue(prompt.isConfirmed(by: "send it"))
+    }
+
     func testPresentedConfirmARefusalAnywhereInTheWordsNeverConfirms() {
         // Not at the start, or said only through the verb: still a no.
         let refusals = ["不", "不不不", "Momento", "Sekunde", "Sebentar", "send it, no wait", "yes, send it, no wait", "send it. wait", "send it later, not now", "please cancel",
