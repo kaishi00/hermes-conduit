@@ -477,3 +477,38 @@ describes them (the editor's footers and README.md's bots line)
 - No Duplicate or Hide in the Bots list.
 
 **Checked:** 2026-10-24, at #1177.
+
+## Markdown lists in messages
+
+How a reply's lists read: numbering, loose lists, and the same list in every
+view that draws Markdown.
+
+**Siblings:** chat bubbles (block views and prose runs) · very long replies
+(chunked) · selection and Copy · group rooms · tool results · call job cards ·
+Read Aloud and live voice read-back · chat list previews and quotes
+
+**Code**
+- Parser and block views: `Conduit/Views/Components/MarkdownText.swift` (MarkdownParser, MarkdownList, MarkdownSelectionFormatter)
+- Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift`
+- Long replies: `Conduit/Views/Components/MarkdownLargeDocument.swift` (splitListItems; LargeStreamPromotion while streaming), `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/StreamingText.swift` (largeStableChunks)
+- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift`
+- Copy response (copies the source): `Conduit/Views/ChatView.swift` (copyResponse)
+- Other surfaces drawing MarkdownText: `Conduit/Views/GroupChatView.swift`, `Conduit/Views/ToolResultViews.swift`, `Conduit/Views/LiveVoiceCallJobs.swift`
+- Spoken text (source lines, not parsed blocks): `Conduit/Voice/VoiceReadBack.swift`, `Conduit/Voice/SpokenTextFilter.swift`
+- Previews and quotes: `Conduit/Services/PreviewText.swift`, `Conduit/Views/Components/ChatQuote.swift`
+
+**Rulings**
+- Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
+- Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
+
+**Open gaps**
+- Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
+- Read Aloud and live read-back speak the numbers as written, so "1. 1. 1." is spoken 1, 1, 1 while the screen draws 1, 2, 3.
+- Copy response under a reply copies the Markdown source, so "1. 1. 1." copies as written while the screen draws 1, 2, 3; selection Copy matches the screen where the list is selectable text (prose runs, one text view).
+- A list drawn as a block view (outside a prose run, e.g. under VoiceOver or next to a task list) keeps its number outside the selectable text, so selection Copy leaves the number out.
+- A reply that grows past the large-document size while streaming is parsed per promoted slice, so a list cut at a slice boundary carries on from the number written on the slice's first item (right when numbered 1, 2, 3; restarts for "1. 1. 1.").
+- A marker past two digits ("100.") can crowd its column in the block view.
+- A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
+- A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
+
+**Checked:** 2026-10-23, at #1175.

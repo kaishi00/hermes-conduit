@@ -383,7 +383,7 @@ extension MarkdownBlock {
         switch self {
         case .heading(_, let text), .paragraph(let text): return text
         case .quote(let lines): return lines.map(\.text).joined(separator: "\n")
-        case .unorderedList(let items), .orderedList(let items): return items.joined(separator: "\n")
+        case .unorderedList(let items), .orderedList(let items, _): return items.joined(separator: "\n")
         case .table(let headers, _, let rows):
             return ([headers] + rows).map { $0.joined(separator: " ") }.joined(separator: "\n")
         case .code(_, let source): return source

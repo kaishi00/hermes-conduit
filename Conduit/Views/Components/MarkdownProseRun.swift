@@ -34,7 +34,7 @@ enum MarkdownProseRun {
         switch block {
         case .heading, .paragraph:
             true
-        case .unorderedList(let items), .orderedList(let items):
+        case .unorderedList(let items), .orderedList(let items, _):
             !items.contains { MarkdownParser.taskItem($0) != nil }
         default:
             false
@@ -100,7 +100,7 @@ enum MarkdownProseRun {
     private static func textViewCount(_ blocks: ArraySlice<MarkdownBlock>) -> Int {
         blocks.reduce(0) { count, block in
             switch block {
-            case .unorderedList(let items), .orderedList(let items):
+            case .unorderedList(let items), .orderedList(let items, _):
                 count + items.count
             default:
                 count + 1
@@ -205,10 +205,10 @@ enum MarkdownProseRun {
             return style
         }
 
-        func listItems(_ items: [String], ordered: Bool) -> [Paragraph] {
+        func listItems(_ items: [String], ordered: Bool, start: Int = 1) -> [Paragraph] {
             let markerColumn = ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize)
             return items.enumerated().map { (index, item) -> Paragraph in
-                let marker = ordered ? "\(index + 1)." : "•"
+                let marker = ordered ? "\(start + index)." : "•"
                 let markerAttributes: [NSAttributedString.Key: Any] = [
                     .font: markerFont,
                     .foregroundColor: markerColor
@@ -261,8 +261,8 @@ enum MarkdownProseRun {
                 )]
             case .unorderedList(let items):
                 blockParagraphs = listItems(items, ordered: false)
-            case .orderedList(let items):
-                blockParagraphs = listItems(items, ordered: true)
+            case .orderedList(let items, let start):
+                blockParagraphs = listItems(items, ordered: true, start: start)
             default:
                 assertionFailure("only blocks that join a prose run reach its text")
                 blockParagraphs = []

@@ -5,7 +5,8 @@
 //  An ordered list with blank lines between its items is one list, as in
 //  CommonMark and Hermes Desktop, so it numbers 1, 2, 3 and not 1, 1, 1
 //  (#1163). Every place that shows Markdown numbers each list block from
-//  one, so the parser keeping the list whole is the fix for all of them.
+//  its own start, so the parser keeping the list whole is the fix for all
+//  of them.
 //
 
 import SwiftUI
@@ -35,14 +36,14 @@ extension MarkdownRichContentPolicyTests {
     func testLooseOrderedListEndsAtADifferentDelimiter() {
         // CommonMark: "1." and "1)" are different lists.
         let blocks = MarkdownParser.parse("1. first\n\n2) second")
-        XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["second"])])
+        XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["second"], start: 2)])
     }
 
     func testLooseOrderedListComparesWithItsLastItem() {
         // A tight "2)" already joined the list; the blank line then needs
         // "3)" to go on, so "3." starts a new list.
         let blocks = MarkdownParser.parse("1. a\n2) b\n\n3. c")
-        XCTAssertEqual(blocks, [.orderedList(["a", "b"]), .orderedList(["c"])])
+        XCTAssertEqual(blocks, [.orderedList(["a", "b"]), .orderedList(["c"], start: 3)])
     }
 
     func testLooseOrderedListLeavesATableToTheTable() {
@@ -76,7 +77,7 @@ extension MarkdownRichContentPolicyTests {
 
     func testLooseOrderedListDrawsSequentialNumbers() {
         let blocks = MarkdownParser.parse((1...15).map { "\($0). Reference \($0)" }.joined(separator: "\n\n"))
-        guard blocks.count == 1, case .orderedList(let items) = blocks[0] else {
+        guard blocks.count == 1, case .orderedList(let items, _) = blocks[0] else {
             return XCTFail("Expected one ordered list, got \(blocks)")
         }
         XCTAssertEqual(items.count, 15)

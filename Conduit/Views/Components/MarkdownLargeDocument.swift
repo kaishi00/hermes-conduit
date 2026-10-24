@@ -432,8 +432,8 @@ enum MarkdownLargeChunkPlanner {
         switch block {
         case .unorderedList(let items):
             return splitListItems(items, ordered: false)
-        case .orderedList(let items):
-            return splitListItems(items, ordered: true)
+        case .orderedList(let items, let start):
+            return splitListItems(items, ordered: true, start: start)
         case .quote(let lines):
             return splitQuoteLines(lines)
         case .heading(let level, let text):
@@ -445,7 +445,7 @@ enum MarkdownLargeChunkPlanner {
         }
     }
 
-    private static func splitListItems(_ items: [String], ordered: Bool) -> [MarkdownLargeChunk] {
+    private static func splitListItems(_ items: [String], ordered: Bool, start: Int = 1) -> [MarkdownLargeChunk] {
         let target = MarkdownLargeDocumentPolicy.chunkTargetBytes
         var chunks: [MarkdownLargeChunk] = []
         var group: [String] = []
@@ -458,11 +458,11 @@ enum MarkdownLargeChunkPlanner {
             if ordered && emittedFirstGroup {
                 // Continuation of an ordered list: bake the real ordinals.
                 let paragraphs = group.enumerated().map { offset, item in
-                    MarkdownBlock.paragraph("\(groupStartIndex + offset + 1). \(taskStripped(item))")
+                    MarkdownBlock.paragraph("\(start + groupStartIndex + offset). \(taskStripped(item))")
                 }
                 chunks.append(.flow(blocks: paragraphs))
             } else {
-                chunks.append(.flow(blocks: [ordered ? .orderedList(group) : .unorderedList(group)]))
+                chunks.append(.flow(blocks: [ordered ? .orderedList(group, start: start) : .unorderedList(group)]))
                 emittedFirstGroup = true
             }
             group = []
@@ -482,7 +482,7 @@ enum MarkdownLargeChunkPlanner {
                 groupStartIndex = index + 1
                 let task = MarkdownParser.taskItem(item)
                 let baseText = task?.text ?? item
-                let prefix = ordered ? "\(index + 1). " : ""
+                let prefix = ordered ? "\(start + index). " : ""
                 let taskMarker = task.map { $0.complete ? "[x] " : "[ ] " } ?? ""
                 let marked = taskMarker + baseText
                 // Uniform paragraph presentation for oversized items and
@@ -615,7 +615,7 @@ extension MarkdownBlock {
         case .heading(_, let text): return text.utf8.count + 8
         case .paragraph(let text): return text.utf8.count + 2
         case .quote(let lines): return lines.reduce(0) { $0 + $1.text.utf8.count + 4 } + 4
-        case .unorderedList(let items), .orderedList(let items):
+        case .unorderedList(let items), .orderedList(let items, _):
             return items.reduce(0) { $0 + $1.utf8.count + 4 } + 4
         case .table(let headers, _, let rows):
             return headers.reduce(0) { $0 + $1.utf8.count + 4 }

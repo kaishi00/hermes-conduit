@@ -1156,7 +1156,7 @@ extension MarkdownLargeDocumentTests {
         let items = (1...900).map { "item \($0) \(String(repeating: "text ", count: 12))" }
         let source = items.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         let document = MarkdownParser.parseDocument(source)
-        guard case .orderedList(let parsed)? = document.blocks.first else {
+        guard case .orderedList(let parsed, _)? = document.blocks.first else {
             return XCTFail("expected an ordered list")
         }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(parsed)])
@@ -1752,7 +1752,7 @@ extension MarkdownLargeDocumentTests {
         let huge = String(repeating: "item prose ", count: 900) // ~10 KB
         let source = "1. \(huge)\n2. normal one\n3. normal two"
         let document = MarkdownParser.parseDocument(source)
-        guard case .orderedList(let items)? = document.blocks.first else {
+        guard case .orderedList(let items, _)? = document.blocks.first else {
             return XCTFail("expected ordered list")
         }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(items)])
@@ -2123,7 +2123,7 @@ extension MarkdownBlock {
         switch self {
         case .heading(_, let text), .paragraph(let text): return text
         case .quote(let lines): return lines.map(\.text).joined(separator: "\n")
-        case .unorderedList(let items), .orderedList(let items): return items.joined(separator: "\n")
+        case .unorderedList(let items), .orderedList(let items, _): return items.joined(separator: "\n")
         case .table(let headers, _, let rows):
             return ([headers] + rows).map { $0.joined(separator: "|") }.joined(separator: "\n")
         case .code(_, let source): return source
