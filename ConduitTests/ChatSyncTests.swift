@@ -691,6 +691,36 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(waits, [4, 4, 4], "The open listed chat's turn keeps it quick")
     }
 
+    /// A chat the catalog has but the list hides (here another profile's;
+    /// a Bot Chat is hidden the same way): its turn and its registry row
+    /// don't pace the list.
+    func testAHiddenCatalogChatsTurnDoesNotKeepTheListQuick() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.showSidebar = false
+        let profile = appState.activeProfile
+        let hidden = row("hidden", profile: "other-profile")
+        appState.sessions = [row("listed", profile: profile), hidden]
+        box.catalog = [row("listed", profile: profile), hidden]
+        XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["listed"])
+        box.live = [
+            LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "idle", messageCount: 2),
+            LiveSessionStatus(runtimeSessionId: "rt-hidden", storedSessionId: "hidden", status: "working", messageCount: 2),
+        ]
+        appState.activeSessionId = "hidden"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "hidden", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+
+        var waits: [TimeInterval] = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "The hidden chat's turn leaves the list to back off")
+    }
+
     /// The poll that was stopped while the registry read was on its way
     /// (the list left, the app gone to the background) starts no catalog
     /// read after it.

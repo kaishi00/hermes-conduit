@@ -19277,9 +19277,12 @@ final class AppState: ObservableObject {
         }
         var registry: Set<String>?
         let listed = chatListListedIDs()
+        // Only the chats the list shows pace it: not a Bot Chat or another
+        // profile's chat the catalog has but the list hides.
+        let displayed = chatListDisplayedIDs()
         // The open chat's turn paces the list only when it is one of the
         // list's chats: a Bot Chat's turn behind it isn't (see below).
-        var turnRunning = turnState.isRunning && activeSessionId.map(listed.contains) == true
+        var turnRunning = turnState.isRunning && activeSessionId.map(displayed.contains) == true
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {
             // A chat started elsewhere is about to be listed: the poll
             // stays quick to follow it.
@@ -19291,7 +19294,7 @@ final class AppState: ObservableObject {
             // runtime working all day mustn't keep it at 4 s. A chat the
             // list doesn't have yet is read above, and the read that lists
             // it changes the list.
-            let listedRows = snapshot.rows.filter { listed.contains($0.storedSessionId) }
+            let listedRows = snapshot.rows.filter { displayed.contains($0.storedSessionId) }
             registry = ChatListPollPacer.registryKeys(listedRows)
             turnRunning = turnRunning || listedRows.contains(where: ChatListPollPacer.isTurnRunning)
         } else if registryRead {
@@ -19319,10 +19322,21 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Every id the list's chats go by.
+    /// Every id the catalog's chats go by, shown or hidden: a live chat
+    /// with none of these reads the catalog again.
     private func chatListListedIDs() -> Set<String> {
+        Self.chatListIDs(of: sessions + cronSessions + archivedSessions)
+    }
+
+    /// Every id the chats the list shows go by: the profile's own, without
+    /// the Bot Chats it hides.
+    private func chatListDisplayedIDs() -> Set<String> {
+        Self.chatListIDs(of: activeProfileSessions + activeProfileCronSessions + archivedSessions)
+    }
+
+    private static func chatListIDs(of rows: [SessionSummary]) -> Set<String> {
         var listed = Set<String>()
-        for session in sessions + cronSessions + archivedSessions {
+        for session in rows {
             listed.insert(session.id)
             if let stored = session.storedSessionId { listed.insert(stored) }
             if let root = session.lineageRootId { listed.insert(root) }
