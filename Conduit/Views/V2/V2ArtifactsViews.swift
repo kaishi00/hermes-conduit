@@ -582,6 +582,13 @@ private struct ArtifactsList: View {
             openTask = nil
             openingID = nil
             openToken = nil
+        } else if loadedKey?.profile != key.profile {
+            // Another profile's rows may stay up, dimmed, but its file
+            // still opening is not presented under this one.
+            openTask?.cancel()
+            openTask = nil
+            openingID = nil
+            openToken = nil
         }
         // Every reload, also one that loads nothing, outdates the request
         // before it: the previous dashboard's page can't land under this one.
