@@ -220,6 +220,27 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(state.pulseCardHasChat(page.cards[1]))
     }
 
+    func testOpeningACardsChatShowsTheMessageItCameFrom() throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "followup", "level": "push", "news": "Deck", "chat_id": "work", "message_id": 42},
+          {"id": 2, "kind": "followup", "level": "push", "news": "Call", "chat_id": "home"},
+          {"id": 3, "kind": "brief", "level": "push", "news": "Morning", "chat_id": "pulse_chat", "message_id": 7}
+        ]}
+        """)))
+        state.applyPulseFeed(page)
+        state.openPulseCardChat(page.cards[0])
+        XCTAssertEqual(state.pendingArtifactReveal?.messageID, 42)
+        XCTAssertEqual(state.pendingArtifactReveal?.opening, "work")
+        // No message: the chat lands where it would, not at an older card's.
+        state.openPulseCardChat(page.cards[1])
+        XCTAssertNil(state.pendingArtifactReveal)
+        // Pulse's own chat opens nothing, so nothing waits to scroll.
+        state.openPulseCardChat(page.cards[2])
+        XCTAssertNil(state.pendingArtifactReveal)
+    }
+
     func testABriefShowsWithTheCardsItBroughtAndFoldsOnceHandled() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [

@@ -481,8 +481,11 @@ extension AppState {
         !card.chatID.isEmpty && card.chatID != pulseHomeChatID
     }
 
+    /// It opens at the message the card came from, as an artifact's Show
+    /// in chat does, whatever the chat would otherwise land on.
     func openPulseCardChat(_ card: PulseCard) {
         guard pulseCardHasChat(card) else { return }
+        pendingArtifactReveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
