@@ -38,8 +38,7 @@ struct WatchCallVoices: Codable, Equatable {
         guard let engine else { return true }
         // Local Live too: the call says why Hermes called and the host
         // takes the user's answer to what the chat waits on. What they say
-        // after goes to the Watch call's own chat (proposed in #1194,
-        // pending Eric's decision).
+        // after goes to the Watch call's own chat (Eric, 2026-10-24, #1194).
         return ready[engine] ?? true
     }
 
