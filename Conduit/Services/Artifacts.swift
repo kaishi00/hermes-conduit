@@ -37,6 +37,15 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
     /// Hermes' `messages.id` of the message it came from.
     let messageID: Int
     let date: Date
+    /// The profile whose store listed it, when that isn't the profile in
+    /// use: a bot's (a Bot Chat is kept in the bot's own profile), or
+    /// another profile All shows. Its files are read through that profile.
+    var otherProfile: String?
+    /// That profile's name for the detail line, or for a Bot Chat the bot's.
+    var otherProfileLabel: String?
+    /// From a bot's Bot Chat: it goes by the bot's name and opens the way
+    /// Bots opens it, in its store's profile.
+    var isBotChat = false
 
     /// One path or URL is one artifact, listed at its newest mention, even
     /// when several chats sent it (the host lists it the same way).
@@ -123,6 +132,120 @@ struct ArtifactPage: Equatable {
     let nextBefore: Int?
 }
 
+/// A session store an artifacts list reads: the profile in use, another
+/// profile All shows, or a bot's Bot Chat, which is kept in the bot's own
+/// profile.
+struct ArtifactSource: Equatable {
+    let profile: String
+    /// The chat's ids; empty reads every chat in the profile.
+    let sessionIDs: [String]
+    /// The profile's name, or the bot's; nil for the profile in use.
+    var label: String?
+    var isBotChat = false
+    /// A whole profile that is also a bot's: its Bot Chat's ids, whose
+    /// rows go by the bot's name.
+    var botChatIDs: [String] = []
+    var botLabel: String?
+}
+
+/// Several stores' pages as one list, newest first. Each store pages from
+/// its own cursor, so a row shows once no store still paging could hold a
+/// newer one: the list stops at the newest of their oldest rows read.
+struct ArtifactFeed: Equatable {
+    struct Cursor: Equatable {
+        let source: Int
+        let before: Int
+    }
+
+    let sources: [ArtifactSource]
+    private var read: [[ArtifactItem]]
+    private var cursors: [Int?]
+
+    /// `pages` are the sources' first pages, in order; nil for one that
+    /// couldn't be read, which then adds nothing.
+    init(sources: [ArtifactSource], pages: [ArtifactPage?]) {
+        self.sources = sources
+        read = sources.indices.map { index in
+            (index < pages.count ? pages[index]?.items : nil).map { Self.tagged($0, from: sources[index]) } ?? []
+        }
+        cursors = sources.indices.map { index in index < pages.count ? pages[index]?.nextBefore : nil }
+    }
+
+    /// The rows to show, newest first, each artifact once.
+    var items: [ArtifactItem] {
+        let horizon = self.horizon
+        var heads = Array(repeating: 0, count: read.count)
+        var seen = Set<String>()
+        var merged: [ArtifactItem] = []
+        while true {
+            // The newest next row of any store; a tie goes to the earlier one.
+            var pick: Int?
+            for index in read.indices where heads[index] < read[index].count {
+                if let current = pick, read[current][heads[current]].date >= read[index][heads[index]].date { continue }
+                pick = index
+            }
+            guard let index = pick else { break }
+            let item = read[index][heads[index]]
+            heads[index] += 1
+            if let horizon, item.date < horizon { continue }
+            if seen.insert(item.id).inserted { merged.append(item) }
+        }
+        return merged
+    }
+
+    /// The page to read next: from the store still paging whose rows read
+    /// so far reach the least far back. Nil once every store is read.
+    var nextCursor: Cursor? {
+        var best: Cursor?
+        var bestOldest: Date?
+        for index in sources.indices {
+            guard let before = cursors[index] else { continue }
+            // A store with nothing read yet is read before anything else.
+            guard let oldest = read[index].map(\.date).min() else { return Cursor(source: index, before: before) }
+            if bestOldest.map({ oldest > $0 }) ?? true {
+                best = Cursor(source: index, before: before)
+                bestOldest = oldest
+            }
+        }
+        return best
+    }
+
+    /// Adds the page read at `cursor`.
+    mutating func append(_ page: ArtifactPage, at cursor: Cursor) {
+        guard sources.indices.contains(cursor.source), cursors[cursor.source] == cursor.before else { return }
+        read[cursor.source] += Self.tagged(page.items, from: sources[cursor.source])
+        cursors[cursor.source] = page.nextBefore
+    }
+
+    /// Rows older than this wait: a store still paging may hold newer ones.
+    private var horizon: Date? {
+        var horizon: Date?
+        for index in sources.indices where cursors[index] != nil {
+            guard let oldest = read[index].map(\.date).min() else { return .distantFuture }
+            horizon = max(horizon ?? oldest, oldest)
+        }
+        return horizon
+    }
+
+    private static func tagged(_ items: [ArtifactItem], from source: ArtifactSource) -> [ArtifactItem] {
+        let botChat = Set(source.botChatIDs)
+        guard source.label != nil || !botChat.isEmpty else { return items }
+        return items.map { item in
+            var item = item
+            if let label = source.label {
+                item.otherProfile = source.profile
+                item.otherProfileLabel = label
+                item.isBotChat = source.isBotChat
+            }
+            if botChat.contains(item.sessionID) {
+                item.isBotChat = true
+                item.otherProfileLabel = source.botLabel ?? item.otherProfileLabel
+            }
+            return item
+        }
+    }
+}
+
 final class ArtifactsClient {
     static let capability = "artifacts"
     static let path = "/api/plugins/conduit_push/artifacts"
@@ -140,6 +263,13 @@ final class ArtifactsClient {
 
     init(request: @escaping Request) {
         self.request = request
+    }
+
+    @MainActor
+    func page(_ source: ArtifactSource, filter: ArtifactFilter = .all, query: String = "",
+              showMissing: Bool = true, before: Int? = nil) async throws -> ArtifactPage {
+        try await page(profile: source.profile, sessionIDs: source.sessionIDs, filter: filter, query: query,
+                       showMissing: showMissing, before: before)
     }
 
     @MainActor

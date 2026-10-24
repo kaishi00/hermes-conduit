@@ -4,8 +4,9 @@
 //
 //  What a profile's chats produced: files Hermes sent or wrote, the pages it
 //  drew, files the user attached and links. The Artifacts page (Chats bar)
-//  lists every chat in the profile; a chat's … menu opens the same list for
-//  that chat alone. The host's notifier plugin reads them (plugin 0.40+).
+//  lists every chat in the profile (each profile All shows, while it's on)
+//  and every bot's Bot Chat; a chat's … menu opens the same list for that
+//  chat alone. The host's notifier plugin reads them (plugin 0.40+).
 //  Tapping opens the viewer the chat itself uses: Quick Look for files, the
 //  full-screen page for HTML, Safari for links.
 //
@@ -16,7 +17,8 @@ import UIKit
 
 /// Which artifacts a list shows.
 enum ArtifactScope: Equatable {
-    /// Every chat in the active profile.
+    /// Every chat in the active profile (in each profile All shows, while
+    /// it's on), and every bot's Bot Chat.
     case profile
     /// One chat, by every id it's known by.
     case chat([String])
@@ -95,8 +97,7 @@ private struct ArtifactsList: View {
     @AppStorage(ArtifactsClient.showMissingKey) private var showMissing = false
     @State private var filter: ArtifactFilter = .all
     @State private var query = ""
-    @State private var items: [ArtifactItem] = []
-    @State private var nextBefore: Int?
+    @State private var feed: ArtifactFeed?
     @State private var loadedKey: ArtifactsListKey?
     @State private var isLoading = false
     /// The cursor the next page is being read from. Apart from
@@ -105,7 +106,7 @@ private struct ArtifactsList: View {
     /// nothing to list never paged on. A cursor rather than a flag, so a
     /// pager restarted on a new cursor isn't turned away by the old read
     /// still unwinding.
-    @State private var loadingBefore: Int?
+    @State private var loadingBefore: ArtifactFeed.Cursor?
     @State private var failure: String?
     @State private var generation = 0
     @State private var openingID: String?
@@ -127,9 +128,13 @@ private struct ArtifactsList: View {
     }
 
     private var currentKey: ArtifactsListKey {
-        ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile, filter: filter,
+        ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
+                         sources: appState.artifactSources(for: scope), filter: filter,
                          query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
     }
+
+    private var items: [ArtifactItem] { feed?.items ?? [] }
+    private var nextBefore: ArtifactFeed.Cursor? { feed?.nextCursor }
 
     var body: some View {
         ScrollView {
@@ -275,7 +280,9 @@ private struct ArtifactsList: View {
                     // Reaching the end reads the next page.
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 60)
-                        .task(id: nextBefore) { await loadMore() }
+                        // Asked again once the stores' first pages are in:
+                        // the cursor may not change when they land.
+                        .task(id: isLoading ? nil : nextBefore) { await loadMore() }
                 }
             }
         }
@@ -339,8 +346,8 @@ private struct ArtifactsList: View {
         Button {
             open(item)
         } label: {
-            ArtifactThumbnail(item: item, resolver: appState.gatewayMediaResolver,
-                              dashboard: appState.activeDashboardID, profile: appState.activeProfile)
+            ArtifactThumbnail(item: item, resolver: resolver(for: item),
+                              dashboard: appState.activeDashboardID, profile: item.otherProfile ?? appState.activeProfile)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if openingID == item.id {
@@ -455,15 +462,28 @@ private struct ArtifactsList: View {
         }
         if chatIsOpen {
             parts.append(item.date.formatted(date: .omitted, time: .shortened))
-        } else if !item.sessionTitle.isEmpty {
-            parts.append(item.sessionTitle)
+        } else if let chat = chatName(item) {
+            parts.append(chat)
         }
         return parts.joined(separator: " · ")
     }
 
+    /// A Bot Chat goes by its bot's name; another profile's chat is led by
+    /// that profile's.
+    private func chatName(_ item: ArtifactItem) -> String? {
+        if item.isBotChat { return item.otherProfileLabel }
+        let parts = [item.otherProfileLabel ?? "", item.sessionTitle].filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Another profile's files are read through that profile.
+    private func resolver(for item: ArtifactItem) -> GatewayMediaDataURLResolver {
+        item.otherProfile.map { appState.gatewayMediaResolver(for: $0) } ?? appState.gatewayMediaResolver
+    }
+
     private func accessibilityName(_ item: ArtifactItem) -> String {
         [item.name, Self.kindLabel(item.kind), item.exists ? "" : AppLocalization.string("No longer on the host"),
-         chatIsOpen ? "" : item.sessionTitle]
+         chatIsOpen ? "" : chatName(item) ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
     }
@@ -497,7 +517,7 @@ private struct ArtifactsList: View {
         openingID = item.id
         let token = UUID()
         openToken = token
-        let resolver = appState.gatewayMediaResolver
+        let resolver = resolver(for: item)
         openTask = Task { @MainActor in
             // A cancelled open unwinding late leaves a newer open's spinner,
             // also one of the same item on another dashboard.
@@ -555,8 +575,7 @@ private struct ArtifactsList: View {
             // Another server's list isn't shown, even dimmed, under this one,
             // nor a file of it still opening: also when this one has no
             // artifacts to show.
-            items = []
-            nextBefore = nil
+            feed = nil
             failure = nil
             loadedKey = nil
             openTask?.cancel()
@@ -569,43 +588,55 @@ private struct ArtifactsList: View {
         let ticket = generation
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
-        do {
-            let result = try await appState.artifactsClient.page(
-                profile: key.profile, sessionIDs: scope.sessionIDs, filter: key.filter, query: key.query,
-                showMissing: key.showMissing
-            )
+        // One store at a time: the host reads two lists at once at most.
+        // A refresh keeps the list it refreshes until every store answers.
+        let refreshing = loadedKey == key
+        var pages: [ArtifactPage?] = []
+        for (index, source) in key.sources.enumerated() {
+            do {
+                pages.append(try await appState.artifactsClient.page(
+                    source, filter: key.filter, query: key.query, showMissing: key.showMissing
+                ))
+            } catch is CancellationError {
+                return
+            } catch {
+                // A bot's chat that can't be read leaves the rest listed;
+                // the first store is the list itself.
+                if index > 0 {
+                    pages.append(nil)
+                } else {
+                    // A failed refresh keeps the list it was refreshing (and
+                    // the end of it keeps paging).
+                    guard ticket == generation, loadedKey != key else { return }
+                    failure = UserFacingError.message(for: error)
+                    feed = nil
+                    loadedKey = key
+                    return
+                }
+            }
             guard ticket == generation else { return }
-            items = result.items
-            nextBefore = result.nextBefore
+            // Otherwise each store shows as it arrives, so a slow one
+            // doesn't hold the page blank; the feed holds older rows back.
+            guard !refreshing || pages.count == key.sources.count else { continue }
+            feed = ArtifactFeed(sources: Array(key.sources.prefix(pages.count)), pages: pages)
             failure = nil
-            loadedKey = key
-        } catch is CancellationError {
-            return
-        } catch {
-            // A failed refresh keeps the list it was refreshing (and the end
-            // of it keeps paging).
-            guard ticket == generation, loadedKey != key else { return }
-            failure = UserFacingError.message(for: error)
-            items = []
-            nextBefore = nil
             loadedKey = key
         }
     }
 
     private func loadMore() async {
-        guard let before = nextBefore, let key = loadedKey, key == currentKey, !isLoading,
-              loadingBefore != before else { return }
+        guard let cursor = nextBefore, let key = loadedKey, key == currentKey, !isLoading,
+              loadingBefore != cursor, key.sources.indices.contains(cursor.source) else { return }
         let ticket = generation
-        loadingBefore = before
-        defer { if loadingBefore == before { loadingBefore = nil } }
+        loadingBefore = cursor
+        defer { if loadingBefore == cursor { loadingBefore = nil } }
         do {
             let result = try await appState.artifactsClient.page(
-                profile: key.profile, sessionIDs: scope.sessionIDs, filter: key.filter, query: key.query,
-                showMissing: key.showMissing, before: before
+                key.sources[cursor.source], filter: key.filter, query: key.query,
+                showMissing: key.showMissing, before: cursor.before
             )
             guard ticket == generation else { return }
-            items = ArtifactsClient.merged(items, with: result.items)
-            nextBefore = result.nextBefore
+            feed?.append(result, at: cursor)
         } catch is CancellationError {
             return
         } catch {
@@ -622,6 +653,9 @@ private struct ArtifactsList: View {
 struct ArtifactsListKey: Equatable {
     let dashboard: UUID?
     let profile: String
+    /// The stores it reads: the profile's (All's), and bots' for their Bot
+    /// Chats.
+    var sources: [ArtifactSource] = []
     let filter: ArtifactFilter
     let query: String
     var showMissing = true
