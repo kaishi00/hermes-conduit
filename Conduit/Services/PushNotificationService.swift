@@ -1069,7 +1069,10 @@ final class PushNotificationService: ObservableObject {
         }
         pendingRotations[pending.current.gatewayID] = nil
         let now = Date()
-        guard response["ok"] as? Bool == true,
+        // Unregistered or moved relays while the request was out: the key
+        // would belong to a pairing this iPhone no longer has.
+        guard registration?.installationID == pending.current.installationID,
+              response["ok"] as? Bool == true,
               let reply = response["rotation"] as? [String: Any],
               let record = try? NotificationKeyRotation.finish(pending, reply: reply, dashboardID: dashboardID.uuidString,
                                                                 profile: profile, now: now),
