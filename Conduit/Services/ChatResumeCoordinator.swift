@@ -38,10 +38,14 @@ final class ChatResumeCoordinator {
         self.store = store
     }
 
+    /// The newest question or approval card still waiting on the user.
     /// A mixed batch may retain an expired sibling while another question
     /// remains answerable; only request-level expiry makes the whole card stale.
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
         messages.last { message in
+            if let approval = message.approval {
+                return approval.status == .pending || approval.status == .error
+            }
             guard let clarify = message.clarify else { return false }
             return clarify.needsAnswer
         }?.id

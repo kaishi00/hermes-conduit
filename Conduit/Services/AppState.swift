@@ -1056,12 +1056,18 @@ final class AppState: ObservableObject {
     let chatCards = ChatCardsModel()
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
+    /// Whether that card is an approval rather than a question.
+    @Published private(set) var pendingDecisionIsApproval = false
     @Published var messages: [ChatMessage] = [] {
         didSet {
             chatTranscriptRevision &+= 1
             let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
             if pendingClarifyMessageID != pendingClarify {
                 pendingClarifyMessageID = pendingClarify
+            }
+            let isApproval = pendingClarify.map { id in messages.last { $0.id == id }?.approval != nil } ?? false
+            if pendingDecisionIsApproval != isApproval {
+                pendingDecisionIsApproval = isApproval
             }
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // A real transcript replaces the read-only offline copy wholesale;
