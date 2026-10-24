@@ -50,42 +50,53 @@ say about it
 
 | Where | Says it | Answer by voice | Card on screen |
 |---|---|---|---|
-| Classic | approvals, not questions | approvals and phone changes, yes or no | over the voice sheet; not on CarPlay |
-| Gemini, Grok, GPT-Live | a job's approval or question | job approvals, once or deny | none; the job row says "Waiting for you" |
-| Local Live | approvals | yes or no | none |
-| Watch | job approvals | Gemini and Grok, when "Approve from the Watch" is "Tap or voice" | Approve once and Deny |
+| Classic | approvals, and questions with their numbered choices | approvals and phone changes, yes or no; a question's answer, by number, label or own words | over the voice sheet (approval or question card); not on CarPlay |
+| Gemini, Grok, GPT-Live | a job's approval or question, with its choices | job approvals, once or deny; job questions by number or own words | none; the job row says "Waiting for you" |
+| Local Live | approvals and questions, with choices | yes or no; a question's answer | none |
+| Watch | job approvals; a call from Hermes' question or approval | Gemini and Grok answer the call's question, and its approval when "Approve from the Watch" is "Tap or voice"; GPT-Live answers questions only | Approve once and Deny |
 | Group rooms | no voice | no voice | Run and Reject above the composer |
 
-A call Hermes made about an approval or question takes the answer by voice:
-`answer_approval` and `answer_question` on Gemini and Grok, "Approve:",
-"Deny:" and "Answer:" on GPT-Live.
+A call Hermes made about an approval or question is briefed from the
+chat's card: every question with its numbered choices (marked
+"(Recommended)" as Hermes wrote them), the command and why, and what Hermes
+wrote before asking. The user answers by voice: `answer_approval` and
+`answer_question` on Gemini, Grok and Local Live agent mode, "Approve:",
+"Deny:" and "Answer:" on GPT-Live. A number or "the recommended one" sends
+what that choice's tap sends. Hermes is paused while it waits, so asking it
+to explain goes as the answer itself, starting "Before I choose:". On the
+Watch the iPhone reads the plugin's copy (`GET /calls/waiting`) and the
+answer goes to the host through the grant's `answer_call`, bound to the
+call's chat (plugin 0.70.0, capability hermes-call-answers).
 
 **Code**
-- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard), `Conduit/Services/ApprovalDisplayText.swift`
-- Classic and Local Live: `Conduit/Services/AppState+SpokenApprovals.swift`, `Conduit/Voice/SpokenApprovals.swift`, `Conduit/Voice/VoiceConversationController.swift` (noteApprovalWaiting), `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (approvalLine)
-- Live modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (waitingNotice, answerJobApproval), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (jobApprovalRule), `Conduit/Views/LiveVoiceCallJobs.swift`
-- Call from Hermes: `Conduit/Services/AppState+HermesCalls.swift` (answerHermesCallApproval, answerHermesCallQuestion)
+- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard, ClarifyCard), `Conduit/Services/ApprovalDisplayText.swift`
+- What waits, and spoken picks: `Conduit/Voice/HermesCallWaiting.swift` (block, answerRule, pickedChoices, spokenQuestion)
+- Classic and Local Live: `Conduit/Services/AppState+SpokenApprovals.swift` (answerQuestionBySpeech, noteClarifyForClassicVoice, openChatWaitingCards), `Conduit/Voice/SpokenApprovals.swift`, `Conduit/Voice/VoiceConversationController.swift` (noteApprovalWaiting), `Conduit/Views/VoiceConversationSheet.swift` (VoiceApprovalPanel), `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (approvalLine, waitingQuestion)
+- Live modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (waitingNotice, answerJobApproval, answerJobQuestion), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (jobApprovalRule), `Conduit/Views/LiveVoiceCallJobs.swift`
+- Call from Hermes: `Conduit/Voice/HermesCalls.swift` (instructionBlock), `Conduit/Services/AppState+HermesCalls.swift` (liveHermesCallInstructions, noteHermesCallChatWaiting, answerHermesCallApproval, answerHermesCallQuestion, watchHermesCallWaiting)
 - Phone changes: `Conduit/Phone/PhoneChangeConfirmation.swift`, `Conduit/Phone/PhoneVoiceTools.swift` (confirmsChange)
-- Watch: `ConduitWatch/WatchCallView.swift` (WatchApprovalCard), `ConduitWatch/WatchDirectCallModel.swift`, `ConduitWatch/WatchBridgeCallModel.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Conduit/Watch/WatchSettingsSection.swift`
+- Watch: `ConduitWatch/WatchCallView.swift` (WatchApprovalCard), `ConduitWatch/WatchDirectCallModel.swift` (answerCallThroughRelay), `ConduitWatch/WatchBridgeCallModel.swift` (answerCall), `Shared/WatchVoice/WatchCallAnswer.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Conduit/Watch/WatchDirectBroker.swift`, `Conduit/Watch/WatchSettingsSection.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
 - Resume jump: `Conduit/Views/ChatView.swift` ("Go to your question")
 - Settings text: `Conduit/Views/GeminiLiveViews.swift`
-- Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py`, `notifier/phone_tool.py` (the wording models read)
+- Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py` (a call's answer wins), `notifier/calls_store.py` (the waiting copy, map_answer), `notifier/calls.py` (follow_approval), `notifier/__init__.py` (the approval hook), `notifier/dashboard/plugin_api.py` (/calls/waiting, answer_call), `notifier/phone_tool.py` (the wording models read)
 
 **Rulings**
 - A spoken answer counts only when exactly one item is waiting, and it can only approve once or deny (2026-10-20, #991).
 - A phone change needs the user's own yes, as their next words after the reply that asked (2026-10-20, #991, #1051).
 - Only the user's own words answer: never the model's judgment, a web page or a job's output (2026-10-20, #991).
+- A spoken pick that points at one choice ("two", "the recommended one", its label) sends what its tap sends; anything else goes to Hermes as the user's words (2026-10-24, this PR).
+- Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (a deny's reason for an approval), since its turn is paused on the prompt (2026-10-24, this PR).
+- On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice", and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, this PR, notifier 0.70.0).
 
 **Open gaps**
-- Classic: a clarify question sits silently on Thinking (#1161).
-- CarPlay shows no card; the user only hears the approval (#1161).
+- CarPlay shows no card; the user only hears it (#1161).
 - Classic's notice says "Say yes" under push to talk or a paused microphone (#1161).
-- Live call screens show no approval card, only "Waiting for you" on the job row, while Classic and the Watch show one (found seeding this map).
+- Live call screens show no approval or question card, only "Waiting for you" on the job row, while Classic and the Watch show one (found seeding this map).
 - The resume jump finds clarify cards, not approvals (#486).
-- Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
+- A Watch call on Local Live doesn't answer a call from Hermes' question or approval; the user answers on the iPhone.
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #PRNUM.
 
 ## Voice follow-ups
 
@@ -268,7 +279,7 @@ answered.
 
 **Siblings:** CallKit on the phone (unlocked, locked, in another app) ·
 CarPlay · the Apple Watch · each voice mode that answers (Classic, Gemini,
-Grok, GPT-Live; Local Live opens Classic) · the missed-call notification ·
+Grok, GPT-Live, Local Live agent mode; Local Live otherwise opens Classic) · the missed-call notification ·
 Bot Chat calls · the call trace · the notifier's call tool and skill ·
 Pulse (it may call only once the user opts in)
 
@@ -286,6 +297,7 @@ Pulse (it may call only once the user opts in)
 - A declined or missed call is told to Hermes in that chat's next turn, with no second ring (2026-10-10, #518, notifier #78).
 - Hermes speaks first on a call it made (2026-10-11, #546, notifier #89).
 - The call screen names the calling profile; the main profile goes by its Conduit name (2026-10-11, #541).
+- A call about an approval or question is briefed from the chat's card, not the push's short reason, and answered by voice everywhere it can be (see "Hermes is waiting on you"; 2026-10-24, this PR, notifier 0.70.0).
 - A Watch that answers starts the call through the relay, since its link to the iPhone is down under the call screen (2026-10-11, #526, notifier #82).
 - In the car, CarPlay rings and the Watch stays quiet (2026-10-14, #602).
 
@@ -293,7 +305,7 @@ Pulse (it may call only once the user opts in)
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-24, at #1180 (Siblings only).
+**Checked:** 2026-10-24, at #PRNUM.
 
 ## Audio route, Speaker and mute
 

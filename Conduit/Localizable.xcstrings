@@ -40927,84 +40927,84 @@
         }
       }
     },
-    "Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice." : {
+    "Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprich mit Gemini Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Freigaben werden nie per Sprache erteilt."
+            "value" : "Sprich mit Gemini Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Gemini beantwortet, was Hermes dich fragt, nur mit dem, was du sagst, und gibt einen Befehl nur auf dein Ja frei."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Habla con Gemini Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Las aprobaciones nunca se dan por voz."
+            "value" : "Habla con Gemini Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Gemini responde lo que Hermes te pregunta solo con lo que tú dices, y aprueba un comando solo con tu sí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Parlez avec Gemini Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Les approbations ne sont jamais données à la voix."
+            "value" : "Parlez avec Gemini Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Gemini ne répond à ce que Hermes vous demande qu'avec ce que vous dites, et n'approuve une commande que sur votre oui."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Berbicara dengan Gemini Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Persetujuan tidak pernah diberikan lewat suara."
+            "value" : "Berbicara dengan Gemini Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Gemini menjawab pertanyaan Hermes hanya dengan apa yang Anda katakan, dan menyetujui perintah hanya jika Anda bilang ya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Parla con Gemini Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Le approvazioni non vengono mai date a voce."
+            "value" : "Parla con Gemini Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Gemini risponde a ciò che Hermes ti chiede solo con quello che dici, e approva un comando solo con il tuo sì."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermesの音声パイプラインの代わりにGemini Liveで会話します。作業は引き続きHermesが行い、Geminiはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。音声で承認が行われることはありません。"
+            "value" : "Hermesの音声パイプラインの代わりにGemini Liveで会話します。作業は引き続きHermesが行い、Geminiはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。GeminiはHermesからの質問にあなたの言葉でのみ答え、コマンドはあなたが「はい」と言ったときだけ承認します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 음성 처리 대신 Gemini Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. 승인은 절대 음성으로 하지 않아요."
+            "value" : "Hermes 음성 처리 대신 Gemini Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. Gemini는 Hermes의 질문에 내가 말한 내용으로만 답하고, 명령은 내가 '네'라고 할 때만 승인해요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rozmawiaj z Gemini Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Zatwierdzenia nigdy nie są udzielane głosem."
+            "value" : "Rozmawiaj z Gemini Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Gemini odpowiada na pytania Hermesa tylko tym, co powiesz, a polecenie zatwierdza tylko po Twoim „tak”."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Converse com o Gemini Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. Aprovações nunca são dadas por voz."
+            "value" : "Converse com o Gemini Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. O Gemini responde ao que o Hermes pergunta só com o que você diz, e aprova um comando só com o seu sim."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Говорите с Gemini Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Разрешения голосом никогда не даются."
+            "value" : "Говорите с Gemini Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Gemini отвечает на вопросы Hermes только вашими словами и разрешает команду только после вашего «да»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes konuşma işleme hattı yerine Gemini Live ile konuşun. İşi yine Hermes yapar: Gemini bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Onaylar asla sesle verilmez."
+            "value" : "Hermes konuşma işleme hattı yerine Gemini Live ile konuşun. İşi yine Hermes yapar: Gemini bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Gemini, Hermes'in sorduklarını yalnızca sizin söylediklerinizle yanıtlar ve bir komutu yalnızca siz evet dediğinizde onaylar."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 Gemini Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。审批永远不会通过语音进行。"
+            "value" : "使用 Gemini Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。Gemini 只会用你说的话回答 Hermes 的问题，只有在你说“是”时才会批准命令。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "改用 Gemini Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。絕不會透過語音給予核准。"
+            "value" : "改用 Gemini Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。Gemini 只會用你說的話回答 Hermes 的問題，只有在你說「是」時才會核准指令。"
           }
         }
       }
@@ -329932,6 +329932,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示機器人說的內容。"
+          }
+        }
+      }
+    },
+    "%@ asks: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ fragt: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ pregunta: %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ demande : %2$@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ bertanya: %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ chiede: %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@からの確認：%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@의 요청: %2$@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ pyta: %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ pergunta: %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ спрашивает: %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ soruyor: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 问：%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 問：%2$@"
+          }
+        }
+      }
+    },
+    "Answer in your own words." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antworte in deinen eigenen Worten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde con tus propias palabras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réponds avec tes propres mots."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawab dengan kata-katamu sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rispondi con parole tue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご自身の言葉で答えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 말로 답해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiedz własnymi słowami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responda com suas próprias palavras."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ответьте своими словами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi sözlerinle yanıtla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请用你自己的话回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請用你自己的話回答。"
+          }
+        }
+      }
+    },
+    "Say the number of your choice, or answer in your own words." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag die Nummer deiner Wahl oder antworte in deinen eigenen Worten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di el número de tu opción o responde con tus propias palabras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dis le numéro de ton choix, ou réponds avec tes propres mots."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sebutkan nomor pilihanmu, atau jawab dengan kata-katamu sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di' il numero della tua scelta, oppure rispondi con parole tue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだ番号を言うか、ご自身の言葉で答えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 번호를 말하거나 직접 말로 답해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiedz numer swojego wyboru albo odpowiedz własnymi słowami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diga o número da sua escolha ou responda com suas próprias palavras."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назовите номер варианта или ответьте своими словами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçtiğin numarayı söyle ya da kendi sözlerinle yanıtla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说出你选择的编号，或用你自己的话回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說出你選擇的編號，或用你自己的話回答。"
+          }
+        }
+      }
+    },
+    "Hermes is paused in this chat until you answer what it asked, so it can't take another request yet. Answer it first, or ask Hermes to explain more as your answer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes pausiert in diesem Chat, bis du beantwortest, was es gefragt hat, und kann noch keine weitere Anfrage annehmen. Antworte zuerst, oder bitte Hermes als Antwort, mehr zu erklären."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes está en pausa en este chat hasta que respondas lo que preguntó, así que aún no puede aceptar otra solicitud. Responde primero, o pide a Hermes como respuesta que te explique más."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes est en pause dans ce chat tant que tu n'as pas répondu à sa question, il ne peut donc pas encore prendre une autre demande. Réponds d'abord, ou demande à Hermes d'en expliquer plus en guise de réponse."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes dijeda di chat ini sampai kamu menjawab pertanyaannya, jadi belum bisa menerima permintaan lain. Jawab dulu, atau minta Hermes menjelaskan lebih lanjut sebagai jawabanmu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes è in pausa in questa chat finché non rispondi a ciò che ha chiesto, quindi non può ancora accettare un'altra richiesta. Rispondi prima, oppure chiedi a Hermes di spiegare di più come risposta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesは質問への回答があるまでこのチャットで一時停止しているため、まだ別のリクエストを受け付けられません。先に回答するか、回答としてHermesにもっと説明するよう頼んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 질문에 답할 때까지 이 채팅에서 일시 정지되어 있어 아직 다른 요청을 받을 수 없습니다. 먼저 답하거나, 답으로 Hermes에게 더 설명해 달라고 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes czeka w tym czacie, aż odpowiesz na jego pytanie, więc nie może jeszcze przyjąć kolejnej prośby. Najpierw odpowiedz albo w odpowiedzi poproś Hermesa o więcej wyjaśnień."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes está pausado neste chat até você responder o que ele perguntou, então ainda não pode aceitar outro pedido. Responda primeiro ou, como resposta, peça ao Hermes para explicar mais."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes приостановлен в этом чате, пока вы не ответите на его вопрос, поэтому пока не может принять другой запрос. Сначала ответьте или в ответ попросите Hermes объяснить подробнее."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, sorduğu soruya yanıt verene kadar bu sohbette duraklatıldı, bu yüzden henüz başka bir istek alamaz. Önce yanıtla ya da yanıt olarak Hermes'ten daha fazla açıklama iste."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 在这个聊天中暂停，直到你回答它的问题，所以暂时不能接受其他请求。请先回答，或者把“请 Hermes 再解释一下”作为你的回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 在這個聊天中暫停，直到你回答它的問題，所以暫時無法接受其他請求。請先回答，或者把「請 Hermes 再解釋一下」作為你的回答。"
           }
         }
       }

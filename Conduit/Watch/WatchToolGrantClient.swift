@@ -44,9 +44,12 @@ final class WatchToolGrantClient {
     /// profiles a job may run on) go with job tools only. `audio`
     /// adds the call's audio bridge (GPT-Live on the Watch), which starts
     /// on the host with the grant.
-    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil, jobProfiles: [String] = [], audio: Bool = false) async throws -> WatchVoiceWire.DirectToolGrant {
+    /// `answerSessions`: the chat of the call from Hermes the grant's
+    /// answer_call may answer (WatchCallAnswer), with that tool only.
+    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil, jobProfiles: [String] = [], audio: Bool = false, answerSessions: [String] = []) async throws -> WatchVoiceWire.DirectToolGrant {
         var body: [String: Any] = ["tools": tools]
         if audio { body["audio"] = true }
+        if tools.contains(WatchCallAnswer.tool), !answerSessions.isEmpty { body["answer_sessions"] = Array(answerSessions.prefix(4)) }
         if !WatchJobAnswer.tools.isDisjoint(with: tools) {
             if let maxJobs { body["max_jobs"] = maxJobs }
             if !jobOptions.isEmpty { body["job_options"] = jobOptions }

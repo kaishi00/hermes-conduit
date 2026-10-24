@@ -2532,7 +2532,7 @@ final class AppState: ObservableObject {
                         personality: self?.geminiLivePersonality,
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
+                        + (self?.liveHermesCallInstructions(delegation: false) ?? "")
                         + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: .geminiLive) } ?? "")
                         + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2971,7 +2971,7 @@ final class AppState: ObservableObject {
             personality: gptLivePersonality,
             answerLength: liveVoiceStyle.answerLength,
             followedBy: (liveVoiceResumeContext?.summaryInstructionBlock ?? "")
-                + (liveHermesCall?.instructionBlock(delegation: true) ?? "")
+                + liveHermesCallInstructions(delegation: true)
                 + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
                 + hermesCallsInstructions(delegation: true)
                 + VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools)
@@ -3222,7 +3222,7 @@ final class AppState: ObservableObject {
                 )
                 instructions += GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
-                instructions += self?.liveHermesCall?.instructionBlock(delegation: false) ?? ""
+                instructions += self?.liveHermesCallInstructions(delegation: false) ?? ""
                 instructions += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
                 instructions += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 instructions += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
@@ -3449,6 +3449,7 @@ final class AppState: ObservableObject {
         instructions += LocalLiveProtocol.agentInstructions
         instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
         instructions += liveVoiceResumeContext?.instructionBlock ?? ""
+        instructions += liveHermesCallInstructions(delegation: false)
         instructions += liveVoiceThreadInstructions(delegation: false)
         instructions += phoneVoiceSettingHint(for: .localLive)
         instructions += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
@@ -3457,6 +3458,7 @@ final class AppState: ObservableObject {
         let functions = GeminiLiveToolBridge.declarations(
             webSearch: localLiveWebLookUps,
             thread: supervisor.liveThread != nil,
+            waitsOn: liveHermesCall?.kind,
             chats: true,
             jobApprovals: true
         ) + VoiceHostTool.declarations(supervisor.hostTools)
@@ -3595,6 +3597,10 @@ final class AppState: ObservableObject {
         respondToApproval: { [weak self] approval, choice, profile in
             guard let self else { return false }
             return (try? await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)) ?? false
+        },
+        respondToClarify: { [weak self] clarify, questionID, answer in
+            guard let self else { return nil }
+            return try? await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
         }
     ))
 
@@ -3613,7 +3619,8 @@ final class AppState: ObservableObject {
                 // The greeting setting, said by the speech server itself:
                 // Hermes isn't asked, so "own words" is a short fixed line.
                 session.greeting = { [weak self] in
-                    guard let greeting = self?.liveVoiceStyle.greeting else { return nil }
+                    // A call from Hermes opens with why it called instead.
+                    guard self?.liveHermesCall == nil, let greeting = self?.liveVoiceStyle.greeting else { return nil }
                     return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
                 }
                 // The turns follow the newest session: a turn opened on an
@@ -3663,6 +3670,13 @@ final class AppState: ObservableObject {
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
                 return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+            },
+            // A call from Hermes in agent mode: the fast model says why
+            // Hermes called, as on the other live modes. Outside agent mode
+            // a call from Hermes opens Classic voice instead.
+            openingPrompt: { [weak self] in
+                guard let self, self.isLocalLiveAgent else { return nil }
+                return self.liveHermesCall?.openingTurn
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -3872,11 +3886,15 @@ final class AppState: ObservableObject {
             respondToApproval: { [weak self] approval, choice, profile in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
+            },
+            respondToClarify: { [weak self] clarify, questionID, answer in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
         supervisor.callDecisions = VoiceCallDecisions(
-            waitsOn: { [weak self] in self?.liveHermesCall?.kind },
+            waitsOn: { [weak self] in self?.hermesCallWaitsOn },
             approve: { [weak self] choice in await self?.answerHermesCallApproval(choice: choice) ?? .failed },
             answer: { [weak self] answer in await self?.answerHermesCallQuestion(answer) ?? .failed }
         )
@@ -6315,6 +6333,9 @@ final class AppState: ObservableObject {
     /// What the live call now connecting was called about, read by its
     /// session builders (reconnects included) until the call closes.
     private(set) var liveHermesCall: HermesCallOpening?
+    /// The question and approval cards the live call from Hermes has heard
+    /// of, in its instructions or a note, by request id.
+    var hermesCallToldCards: Set<String> = []
     /// The engine of the live call whose work Hermes may call about.
     var hermesCallbackEngine: VoiceCallEngine?
     /// Keeps the host's call presence while a live call runs (#449), and
@@ -6661,6 +6682,7 @@ final class AppState: ObservableObject {
         liveVoiceResumeContext = resume?.context
         liveHermesCall = pendingHermesCall
         pendingHermesCall = nil
+        hermesCallToldCards = []
         hermesCallbackEngine = engine
         beginHermesCallPresence()
         noteVoiceCallStartedForLocation()
@@ -6811,6 +6833,7 @@ final class AppState: ObservableObject {
         voiceCallCheckpointTask = nil
         liveVoiceResumeContext = nil
         liveHermesCall = nil
+        hermesCallToldCards = []
         var attachment = voiceCallAttachment
         attachment?.endedAt = Date()
         voiceCallAttachment = nil
@@ -31098,6 +31121,8 @@ final class AppState: ObservableObject {
         case .clarify(_, let activity):
             applyClarifyActivity(activity, source: .streamEvent)
             setRunning(true)
+            noteHermesCallChatWaiting(sessionID: streamSessionId)
+            noteClarifyForClassicVoice(activity, sessionID: streamSessionId)
 
         case .clarifyExpire(_, let requestId, let reason):
             expireClarifyRequest(requestId: requestId, reason: reason)
@@ -31106,6 +31131,7 @@ final class AppState: ObservableObject {
             applyApprovalActivity(activity, authoritative: false, commitsStreamedText: true)
             setRunning(true)
             noteApprovalForClassicVoice(activity, sessionID: streamSessionId)
+            noteHermesCallChatWaiting(sessionID: streamSessionId)
 
         case .inputPrompt(_, let activity):
             applyInputPromptActivity(activity, authoritative: false, commitsStreamedText: true)
@@ -33599,6 +33625,9 @@ final class AppState: ObservableObject {
         /// the model on them; left out when the setup doesn't fit the Watch.
         var hostTools: [VoiceHostTool] = []
         var hostToolsBriefing = ""
+        /// The chat of the call from Hermes the Watch may answer (the
+        /// grant's answer_call), or none.
+        var answerSessions: [String] = []
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -33626,6 +33655,7 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
         async let hostToolsLookup = watchCallHostTools(for: .geminiLive)
         let status = try await tokens.availability()
         noteWatchCallVoice(.geminiLive, ready: status.isAvailable)
@@ -33636,6 +33666,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
+        // With the chat's choices or command, answered through the host.
+        let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
@@ -33662,15 +33694,16 @@ final class AppState: ObservableObject {
                 answerLength: style.answerLength,
                 asksFirst: false,
                 onWatch: true
-            ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
+            ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
                 memoryRecall: memory?.canRecall == true,
-                chats: true
+                chats: true,
+                answers: waiting?.waiting.kind
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,
-            openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
+            openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             token: token,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
@@ -33680,7 +33713,8 @@ final class AppState: ObservableObject {
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames(),
             hostTools: hostTools.tools,
-            hostToolsBriefing: hostTools.briefing
+            hostToolsBriefing: hostTools.briefing,
+            answerSessions: waiting?.sessionIDs ?? []
         )
     }
 
@@ -33700,6 +33734,9 @@ final class AppState: ObservableObject {
         let jobOptions: [String: String]
         let endPhrases: [String]
         let jobProfiles: [WatchVoiceWire.JobProfileName]
+        /// The chat of the call from Hermes the Watch may answer (the
+        /// grant's answer_call), or none.
+        var answerSessions: [String] = []
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -33722,6 +33759,7 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let waitingLookup = watchHermesCallWaiting(for: target, approvals: false)
         // The host's Watch bridge only starts GPT-Live on the subscription.
         let status = try await gptLiveClient.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable)
@@ -33731,6 +33769,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
+        // "Answer:", "Approve:" and "Deny:" go to the host (WatchCallAnswer).
+        let waiting = await waitingLookup
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let jobSession = preferences.voiceJobSessionOptions(
@@ -33756,11 +33796,11 @@ final class AppState: ObservableObject {
                 // and has no phone to fall back on: briefed only once the host
                 // has reported them.
                 watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability),
-                followedBy: (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions
+                followedBy: (hermesCall?.instructionBlock(delegation: true, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions
             ),
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
-            openingTurn: hermesCall?.watchOpeningTurn,
+            openingTurn: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil),
             voice: gptLiveVoice,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
@@ -33768,7 +33808,8 @@ final class AppState: ObservableObject {
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames()
+            jobProfiles: watchJobProfileNames(),
+            answerSessions: waiting?.sessionIDs ?? []
         )
     }
 
@@ -33790,6 +33831,9 @@ final class AppState: ObservableObject {
         let jobProfiles: [WatchVoiceWire.JobProfileName]
         var hostTools: [VoiceHostTool] = []
         var hostToolsBriefing = ""
+        /// The chat of the call from Hermes the Watch may answer (the
+        /// grant's answer_call), or none.
+        var answerSessions: [String] = []
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -33813,6 +33857,7 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
         async let hostToolsLookup = watchCallHostTools(for: .grokLive)
         let status = try await grokLiveClient.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable)
@@ -33824,6 +33869,7 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
+        let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -33849,14 +33895,15 @@ final class AppState: ObservableObject {
                 asksFirst: false,
                 onWatch: true
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
-                + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
+                + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: false,
                 memoryRecall: memory?.canRecall == true,
-                chats: true
+                chats: true,
+                answers: waiting?.waiting.kind
             ),
             voice: voice,
-            openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
+            openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
@@ -33865,7 +33912,8 @@ final class AppState: ObservableObject {
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames(),
             hostTools: hostTools.tools,
-            hostToolsBriefing: hostTools.briefing
+            hostToolsBriefing: hostTools.briefing,
+            answerSessions: waiting?.sessionIDs ?? []
         )
     }
 

@@ -70,7 +70,7 @@ final class FakeCallDecisions {
             },
             answer: { [self] answer in
                 self.answers.append(answer)
-                return .answered
+                return .answered()
             }
         )
     }

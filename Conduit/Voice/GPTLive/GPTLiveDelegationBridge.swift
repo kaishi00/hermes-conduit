@@ -8,9 +8,10 @@
 //  the same VoiceBackgroundJobSupervisor as the other voice modes, answers
 //  the delegation with quiet progress ("commentary"), and hands the job's
 //  outcome back on it as "speakable" context once it settles. Hermes stays
-//  the worker; a job's approvals are never given by voice. A call Hermes
-//  made about an approval or question it waits on (#449) is answered with
-//  "Approve:", "Deny:" or "Answer: …", only once the user has spoken.
+//  the worker. A job's approval or question, and a call Hermes made about
+//  one it waits on (#449), are answered with "Approve:", "Deny:" or
+//  "Answer: …" (a choice's number or the user's words), only once the user
+//  has spoken.
 //
 //  A correction to work Hermes is still doing goes into it (#451): a
 //  delegation starting "Job 2:" into background job 2, or "Add to job 2:"
@@ -162,7 +163,8 @@ final class GPTLiveDelegationBridge {
         // to what a call from Hermes waits on. Never reaches Hermes as work.
         // Only in such a call: anywhere else the words are a request.
         if let decision = Self.decisionMarker(in: request),
-           decision.answers(supervisor.callWaitsOn) || (decision.isApproval && !supervisor.jobsWaitingOnApproval.isEmpty) {
+           decision.answers(supervisor.callWaitsOn) || (decision.isApproval && !supervisor.jobsWaitingOnApproval.isEmpty)
+            || (!decision.isApproval && !supervisor.jobsWaitingOnQuestion.isEmpty) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
             let outcome: VoiceCallDecisionOutcome
             if (spokenWords?.wordsMark() ?? 0) == 0 {
@@ -1364,6 +1366,10 @@ final class GPTLiveDelegationBridge {
             }
             queuedNotices.insert(item.jobID)
             outgoing.append(.sessionContext(text: text, channel: .speakable, whenIdle: true, jobID: item.jobID))
+        }
+        // The chat of a call from Hermes waits on the user anew: said now.
+        while let prompt = supervisor.takePendingCallPrompt() {
+            outgoing.append(.sessionContext(text: prompt, channel: .speakable, whenIdle: true, jobID: nil))
         }
         // Typed exchanges in the attached chat (#363): quiet context, never
         // read out unless the user asks.

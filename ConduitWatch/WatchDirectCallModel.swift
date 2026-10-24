@@ -1657,6 +1657,15 @@ final class WatchDirectCallModel: ObservableObject {
             answer(.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue, fallback: nil), generation: generation)
             return
         }
+        // The call from Hermes this call answers: the user's answer goes to
+        // the host through the grant, wrist up or down (WatchCallAnswer).
+        // An approval goes there only while no job's waits on the Watch.
+        let jobApproval = !approvals.isEmpty || !(call.arguments["job_id"] ?? "").isEmpty
+        if WatchCallAnswer.answersCall(call.name, jobApprovalsWaiting: jobApproval),
+           let relay = toolRelay, relay.canRun(WatchCallAnswer.tool) {
+            answerCallThroughRelay(call, relay: relay, generation: generation)
+            return
+        }
         if call.name == WatchJobAnswer.answerApproval {
             answerApprovalByVoice(call, generation: generation)
             return
@@ -2276,6 +2285,45 @@ final class WatchDirectCallModel: ObservableObject {
                 self.pendingApproval = self.approvals.first
                 WKInterfaceDevice.current().play(.notification)
             }
+        }
+    }
+
+    /// The user's answer to what the call from Hermes waits on, through the
+    /// call's grant: the host passes it to Hermes and says what came of it
+    /// (and a batch's next question). The log carries the outcome, never
+    /// the answer.
+    private func answerCallThroughRelay(_ call: GeminiLiveProtocol.FunctionCall, relay: WatchToolRelayClient, generation: Int?) {
+        guard let arguments = WatchCallAnswer.arguments(name: call.name, arguments: call.arguments) else {
+            answer(.toolResponse(id: call.id, name: call.name, result: WatchCallAnswer.missingArgument(name: call.name), scheduling: nil, fallback: nil), generation: generation)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        toolsInFlight.insert(call.id)
+        Task { [weak self] in
+            let outcome = await relay.run(name: WatchCallAnswer.tool, arguments: arguments)
+            guard let self, self.callID == id, self.isActive else { return }
+            self.toolsInFlight.remove(call.id)
+            let withdrawn = self.withdrawnToolIDs.remove(call.id) != nil
+            let result: [String: String]
+            switch outcome {
+            case .answered(let body):
+                result = WatchCallAnswer.result(body: body)
+            case .timedOut:
+                result = WatchToolAnswer.tookTooLong
+            case .unavailable:
+                result = ["error": "The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone."]
+            }
+            WatchCallLog.shared.note("directCallAnswer", [
+                "name": call.name,
+                "outcome": outcome.logLabel,
+                "status": result["status"] ?? (result["error"] == nil ? "" : "error"),
+                "ms": Int((self.now - sentAt) * 1000),
+                "withdrawn": withdrawn,
+                "screen": "\(self.scenePhase)",
+            ])
+            guard !withdrawn else { return }
+            self.answer(.toolResponse(id: call.id, name: call.name, result: result, scheduling: nil, fallback: nil), generation: generation)
         }
     }
 

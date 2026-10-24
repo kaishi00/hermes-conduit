@@ -124,6 +124,8 @@ final class WatchDirectBroker {
     private var grantVoiceApprovals = false
     /// The call's grants open the host's audio bridge (a GPT-Live call).
     private var grantAudio = false
+    /// The chat of the call from Hermes the grant's answer_call answers.
+    private var grantAnswerSessions: [String] = []
     /// Why the last grant request failed, for a call that can't start
     /// without one.
     private var lastGrantError: String?
@@ -354,6 +356,9 @@ final class WatchDirectBroker {
             // host can't give one.
             let declared = plan.functions.map(\.name)
             grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
+            // The user's answer to the call from Hermes goes to the host.
+            grantAnswerSessions = plan.answerSessions
+            if !plan.answerSessions.isEmpty { grantTools.append(WatchCallAnswer.tool) }
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
@@ -370,7 +375,11 @@ final class WatchDirectBroker {
             // The model answers approvals only when the user allowed it and
             // the grant carries jobs.
             var functions = plan.functions
-            if grant?.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
+            // A call from Hermes about an approval declares answer_approval
+            // already: one declaration serves it and the jobs' approvals.
+            if grant?.voiceApprovals == true, !functions.contains(where: { $0.name == WatchJobAnswer.answerApproval }) {
+                functions.append(WatchJobAnswer.answerApprovalDeclaration)
+            }
             // With the phone's own tools when the start still fits a Watch
             // message; without them the call goes on as before.
             var chosen: (session: WatchVoiceWire.DirectSession, packed: (data: Data, bytes: Int))?
@@ -474,6 +483,9 @@ final class WatchDirectBroker {
             // GPT-Live delegates its lookups and chats to the Watch, which
             // runs them all through the grant.
             grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
+            // "Answer:", "Approve:" and "Deny:" for the call from Hermes.
+            grantAnswerSessions = plan.answerSessions
+            if !plan.answerSessions.isEmpty { grantTools.append(WatchCallAnswer.tool) }
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
             grantJobOptions = plan.jobOptions
@@ -585,6 +597,8 @@ final class WatchDirectBroker {
             ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
             let declared = plan.functions.map(\.name)
             grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
+            grantAnswerSessions = plan.answerSessions
+            if !plan.answerSessions.isEmpty { grantTools.append(WatchCallAnswer.tool) }
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
@@ -604,7 +618,9 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             var functions = plan.functions
-            if grant.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
+            if grant.voiceApprovals == true, !functions.contains(where: { $0.name == WatchJobAnswer.answerApproval }) {
+                functions.append(WatchJobAnswer.answerApprovalDeclaration)
+            }
             // With the phone's own tools when the reply still fits; without
             // them the call goes on as before.
             var chosen: (reply: WatchVoiceWire.Message, packed: (data: Data, bytes: Int), replyBytes: Int)?
@@ -708,6 +724,7 @@ final class WatchDirectBroker {
             connection = plan.connection
             ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
             grantTools = grantable([WatchToolAnswer.webSearch])
+            grantAnswerSessions = []
             grantMaxJobs = 0
             grantJobTools = []
             grantJobOptions = [:]
@@ -1138,7 +1155,8 @@ final class WatchDirectBroker {
                 jobOptions: withJobs ? grantJobOptions : [:],
                 carryJobsFrom: withJobs ? carryJobsFrom : nil,
                 jobProfiles: withJobs ? Self.grantableJobProfiles(grantJobProfiles) : [],
-                audio: grantAudio
+                audio: grantAudio,
+                answerSessions: grantTools.contains(WatchCallAnswer.tool) ? grantAnswerSessions : []
             )
             grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
             // Every name the user's profiles go by: the Watch tells a
@@ -1233,6 +1251,7 @@ final class WatchDirectBroker {
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
             grantAudio = scope.audio ?? false
+            grantAnswerSessions = scope.answerSessions ?? []
             grantExpiresAt = scope.expiresAt
         }
         lateOutgoing = []
@@ -1255,7 +1274,8 @@ final class WatchDirectBroker {
             voiceApprovals: grantVoiceApprovals,
             grantIDs: grantIDs,
             audio: grantAudio,
-            expiresAt: grantExpiresAt
+            expiresAt: grantExpiresAt,
+            answerSessions: grantAnswerSessions
         )
     }
 
@@ -1271,6 +1291,7 @@ final class WatchDirectBroker {
         grantJobOptions = [:]
         grantJobProfiles = []
         grantAudio = false
+        grantAnswerSessions = []
         guard !ids.isEmpty, let connection else { return }
         guard connection.dashboard == appState.watchDirectConnection.dashboard else {
             link.log.note("watchToolGrantsLeft", ["grants": ids.count])
@@ -1532,6 +1553,9 @@ struct WatchDirectCallLedger {
         /// When the call's last grant ends. Missing in calls stored before
         /// the phone kept it.
         var expiresAt: Date? = nil
+        /// The chat of the call from Hermes its answer_call answers.
+        /// Missing in calls stored before Watch answers.
+        var answerSessions: [String]? = nil
     }
 
     static let defaultsKey = "watchDirect.calls.v1"
