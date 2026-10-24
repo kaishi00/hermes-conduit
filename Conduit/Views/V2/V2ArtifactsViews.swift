@@ -583,9 +583,14 @@ private struct ArtifactsList: View {
             openingID = nil
             openToken = nil
         }
-        guard appState.supportsArtifacts else { return }
+        // Every reload, also one that loads nothing, outdates the request
+        // before it: the previous dashboard's page can't land under this one.
         generation &+= 1
         let ticket = generation
+        guard appState.supportsArtifacts else {
+            isLoading = false
+            return
+        }
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
         // One store at a time: the host reads two lists at once at most.
