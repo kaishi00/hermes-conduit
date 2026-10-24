@@ -14322,10 +14322,14 @@ final class AppState: ObservableObject {
             // conversation's authoritative absence is not evidence about
             // which surface it belonged to.
             chatResumeCoordinator.rememberSession(nil, for: profile)
+            // Its agents go with it, whichever conversation (or new chat) is
+            // opened instead.
+            keepDelegateAgents(of: [])
+        } else {
+            // The saved conversation is alive and may be the fallback: only
+            // the dead rows' agents go.
+            keepDelegateAgents(of: Set(delegateAgents.map(\.sessionId)).subtracting(dead))
         }
-        // Its agents go with it, whichever conversation (or new chat) is
-        // opened instead.
-        keepDelegateAgents(of: [])
         // A catalog full of rows the gateway cannot resume (a profile
         // mis-tag, a pruned state.db) must not cost one resume plus one
         // history request per row: after `deadResumeRowProbeLimit` more dead

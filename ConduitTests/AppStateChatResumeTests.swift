@@ -4817,6 +4817,45 @@ final class AppStateChatResumeTests: XCTestCase {
         }
     }
 
+    func testARetiredRowLeavesTheAgentsOfTheLiveConversationItFallsBackTo() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-dead"), self.session("stored-live")] },
+                openSession: { _, sessionID, _ in
+                    if sessionID == "stored-dead" {
+                        throw RpcError(code: 4007, message: "Session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        // Latest activity picks the newest row, which isn't the saved one.
+        harness.store.setBehavior(.latestActivity)
+        harness.store.setLastSessionID("stored-live", for: "default")
+        harness.appState.activeSessionId = "stored-live"
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: "stored-live", activity: delegateAgent("agent-live")))
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-live"])
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-live")
+        XCTAssertEqual(
+            harness.appState.delegateAgents.map(\.id),
+            ["agent-live"],
+            "the live conversation's agents stay when another row is the dead one"
+        )
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")
