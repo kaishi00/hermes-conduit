@@ -105,12 +105,14 @@ final class DashboardCookieRestoreTests: XCTestCase {
                 return !invalidated
             }
         )
-        let names = Set(await store.allCookies().map(\.name))
+        let stored = await store.allCookies()
+        let names = Set(stored.map(\.name))
         XCTAssertTrue(names.contains("first"))
         XCTAssertFalse(names.contains("second"), "no saved cookie goes in after the invalidation")
 
         await DashboardCookiePersistence.restore([cookie("third", "3", expiresIn: 3600)], into: store, shouldContinue: { false })
-        XCTAssertFalse(Set(await store.allCookies().map(\.name)).contains("third"))
+        let after = await store.allCookies()
+        XCTAssertFalse(after.contains { $0.name == "third" })
         withExtendedLifetime(webView) {}
     }
 }
