@@ -335,7 +335,7 @@ enum WatchVoiceWire {
         case grokStart(callID: UInt32, version: Int, ring: String? = nil)
         /// A Watch call to Local Live wants the grant that opens the host's
         /// audio bridge. Calls from Hermes don't ring a Watch on Local Live.
-        case localLiveStart(callID: UInt32, version: Int)
+        case localLiveStart(callID: UInt32, version: Int, ring: String? = nil)
         /// The Watch's own PushKit token, which calls from Hermes ring on
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
         /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,

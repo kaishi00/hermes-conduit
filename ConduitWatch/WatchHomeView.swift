@@ -55,12 +55,6 @@ struct WatchHomeView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                } else if call.engine == .localLive, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
-                    // WatchCallVoices.rings(engine:).
-                    Text("Calls from Hermes ring only your iPhone while the Watch uses Local Live.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
                 }
             }
             .padding(.horizontal, 4)

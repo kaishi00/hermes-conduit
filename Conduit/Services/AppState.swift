@@ -33937,11 +33937,16 @@ final class AppState: ObservableObject {
         let connection: WatchDirectConnection
         let saveCalls: Bool
         let endPhrases: [String]
+        /// The chat of the call from Hermes whose waiting question or
+        /// approval the user's words answer on the host, or none.
+        var answerSessions: [String] = []
     }
 
     /// Checks Local Live as the phone's call does, and resolves the
     /// greeting setting as `localLiveController` does.
-    func prepareWatchLocalLiveCall() async throws -> WatchLocalLivePlan {
+    /// `target`: the call from Hermes the Watch answered, whose news the
+    /// speech server says in place of the greeting.
+    func prepareWatchLocalLiveCall(answering target: ConduitNotificationTarget? = nil) async throws -> WatchLocalLivePlan {
         if isSceneActive, !PhoneScenePresence.isInForeground {
             isSceneActive = false
             publishVoiceRuntimeGates()
@@ -33951,6 +33956,8 @@ final class AppState: ObservableObject {
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
         let connection = watchDirectConnection
+        async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
         let status = try await localLiveClient.status()
         noteWatchCallVoice(.localLive, ready: status.available)
         if let reason = LocalLiveClient.unavailableReason(status) {
@@ -33959,12 +33966,23 @@ final class AppState: ObservableObject {
         guard watchDirectConnection == connection else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        let greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        var greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        let hermesCall = await hermesCallLookup
+        let waiting = await waitingLookup
+        if let hermesCall {
+            // Why Hermes called, with the question's choices or the
+            // command; one the Watch can't answer is answered on the iPhone.
+            greeting = hermesCall.spokenBrief(waiting: waiting?.waiting)
+            if hermesCall.waitsOnUser, waiting == nil {
+                greeting = (greeting ?? "") + " " + LocalLiveTurnRunner.needsInputLine
+            }
+        }
         return WatchLocalLivePlan(
             greeting: greeting,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
-            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases
+            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases,
+            answerSessions: hermesCall == nil ? [] : waiting?.sessionIDs ?? []
         )
     }
 

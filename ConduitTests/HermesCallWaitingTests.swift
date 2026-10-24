@@ -72,6 +72,9 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesCallWaiting(host: ["kind": "approval", "description": "Deploy", "answered": true]))
         let approval = try XCTUnwrap(HermesCallWaiting(host: ["kind": "approval", "description": "Delete the cache", "command": "rm -rf build"]))
         XCTAssertTrue(approval.block.contains("Command: rm -rf build\nWhy: Delete the cache"))
+        // Classic and the Watch's Local Live say it and ask for a yes or no.
+        let approvalCall = HermesCallOpening(kind: .approval, title: nil, result: nil, reason: "Delete the cache")
+        XCTAssertTrue(approvalCall.spokenBrief(waiting: approval).hasSuffix("Delete the cache. Say yes to allow it once, or no."))
 
         let opening = HermesCallOpening(kind: .question, title: nil, result: nil, reason: "Which tests?", sessionIDs: ["st-1"])
         let watch = opening.instructionBlock(delegation: false, canAnswer: true, waiting: waiting)

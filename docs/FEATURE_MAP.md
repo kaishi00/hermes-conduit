@@ -53,7 +53,7 @@ say about it
 | Classic | approvals, and questions with their numbered choices | approvals and phone changes, yes or no; a question's answer, by number, label or own words | over the voice sheet (approval or question card); not on CarPlay |
 | Gemini, Grok, GPT-Live | a job's approval or question, with its choices | job approvals, once or deny; job questions by number or own words | none; the job row says "Waiting for you" |
 | Local Live | approvals and questions, with choices | yes or no; a question's answer | none |
-| Watch | job approvals; a call from Hermes' question or approval | Gemini and Grok answer the call's question, and its approval when "Approve from the Watch" is "Tap or voice"; GPT-Live answers questions only | Approve once and Deny |
+| Watch | job approvals; a call from Hermes' question or approval | Gemini, Grok and Local Live answer the call's question, and its approval when "Approve from the Watch" is "Tap or voice"; GPT-Live answers questions only | Approve once and Deny |
 | Group rooms | no voice | no voice | Run and Reject above the composer |
 
 A call Hermes made about an approval or question is briefed from the
@@ -66,7 +66,8 @@ what that choice's tap sends. Hermes is paused while it waits, so asking it
 to explain goes as the answer itself, starting "Before I choose:". On the
 Watch the iPhone reads the plugin's copy (`GET /calls/waiting`) and the
 answer goes to the host through the grant's `answer_call`, bound to the
-call's chat (plugin 0.70.0, capability hermes-call-answers).
+call's chat (plugin 0.70.0, capability hermes-call-answers). On Local Live
+the host answers with the user's words (`_local_live_call_answer`).
 
 **Code**
 - Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard, ClarifyCard), `Conduit/Services/ApprovalDisplayText.swift`
@@ -79,7 +80,7 @@ call's chat (plugin 0.70.0, capability hermes-call-answers).
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
 - Resume jump: `Conduit/Views/ChatView.swift` ("Go to your question")
 - Settings text: `Conduit/Views/GeminiLiveViews.swift`
-- Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py` (a call's answer wins), `notifier/calls_store.py` (the waiting copy, map_answer), `notifier/calls.py` (follow_approval), `notifier/__init__.py` (the approval hook), `notifier/dashboard/plugin_api.py` (/calls/waiting, answer_call), `notifier/phone_tool.py` (the wording models read)
+- Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py` (a call's answer wins), `notifier/calls_store.py` (the waiting copy, map_answer), `notifier/calls.py` (follow_approval), `notifier/__init__.py` (the approval hook), `notifier/dashboard/plugin_api.py` (/calls/waiting, answer_call, _local_live_call_answer), `notifier/phone_tool.py` (the wording models read)
 
 **Rulings**
 - A spoken answer counts only when exactly one item is waiting, and it can only approve once or deny (2026-10-20, #991).
@@ -87,14 +88,14 @@ call's chat (plugin 0.70.0, capability hermes-call-answers).
 - Only the user's own words answer: never the model's judgment, a web page or a job's output (2026-10-20, #991).
 - A spoken pick that points at one choice ("two", "the recommended one", its label) sends what its tap sends; anything else goes to Hermes as the user's words (2026-10-24, #1194).
 - Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (a deny's reason for an approval), since its turn is paused on the prompt (2026-10-24, #1194).
-- On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice", and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, #1194, notifier #343).
+- On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice" (the grant's `answer_approvals`), and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, #1194, notifier #343).
+- A call from Hermes rings a Watch on Local Live too: the speech server says why Hermes called, the host takes the user's words as the answer, and what they say after goes to the Watch call's own chat (2026-10-24, #1194, notifier #343).
 
 **Open gaps**
 - CarPlay shows no card; the user only hears it (#1161).
 - Classic's notice says "Say yes" under push to talk or a paused microphone (#1161).
 - Live call screens show no approval or question card, only "Waiting for you" on the job row, while Classic and the Watch show one (found seeding this map).
 - The resume jump finds clarify cards, not approvals (#486).
-- A Watch call on Local Live doesn't answer a call from Hermes' question or approval; the user answers on the iPhone.
 
 **Checked:** 2026-10-24, at #1194.
 
@@ -278,7 +279,7 @@ check), and the call has to ring, start and talk everywhere it can be
 answered.
 
 **Siblings:** CallKit on the phone (unlocked, locked, in another app) ·
-CarPlay · the Apple Watch · each voice mode that answers (Classic, Gemini,
+CarPlay · the Apple Watch (every voice, Local Live included) · each voice mode that answers (Classic, Gemini,
 Grok, GPT-Live, Local Live agent mode; Local Live otherwise opens Classic) · the missed-call notification ·
 Bot Chat calls · the call trace · the notifier's call tool and skill ·
 Pulse (it may call only once the user opts in)
@@ -288,7 +289,7 @@ Pulse (it may call only once the user opts in)
 - Caller name: `Shared/WatchVoice/HermesRing.swift` (HermesCallerName)
 - Trace: `Conduit/Voice/HermesCallTrace.swift`
 - CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`
-- Watch: `ConduitWatch/HermesWatchCalls.swift`, `Conduit/Watch/WatchVoiceLink.swift` (startAnsweredCall)
+- Watch: `ConduitWatch/HermesWatchCalls.swift`, `Conduit/Watch/WatchVoiceLink.swift` (startAnsweredCall), `Shared/WatchVoice/WatchCallVoices.swift` (rings), `Conduit/Watch/WatchDirectBroker.swift` (prepareLocalLive)
 - Settings: `Conduit/Views/HermesCallSettingsViews.swift`
 - Notifier: `notifier/call_tool.py`, `notifier/calls.py`, `notifier/calls_store.py`, `notifier/call_watches.py`, `notifier/skills/calling-the-user/SKILL.md`, `notifier/relay/src/rings.mjs`
 

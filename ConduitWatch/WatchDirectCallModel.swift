@@ -639,8 +639,7 @@ final class WatchDirectCallModel: ObservableObject {
         switch engine {
         case .gemini: return .directStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
         case .grok: return .grokStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
-        // Calls from Hermes don't ring a Watch on Local Live.
-        case .localLive: return .localLiveStart(callID: callID, version: WatchVoiceWire.version)
+        case .localLive: return .localLiveStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
         }
     }
 

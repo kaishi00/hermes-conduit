@@ -192,8 +192,7 @@ final class WatchVoiceCall: ObservableObject {
         switch callEngine {
         case .geminiLive: Task { await direct.start(engine: .gemini, ring: ring, answer: answer) }
         case .grokLive: Task { await direct.start(engine: .grok, ring: ring, answer: answer) }
-        // Calls from Hermes don't ring a Watch on Local Live (WatchCallVoices).
-        case .localLive: Task { await direct.start(engine: .localLive) }
+        case .localLive: Task { await direct.start(engine: .localLive, ring: ring, answer: answer) }
         case .gptLive: Task { await bridge.start(ring: ring, answer: answer) }
         }
     }

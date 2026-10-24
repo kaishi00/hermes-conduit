@@ -151,12 +151,10 @@ final class HermesWatchCalls: NSObject {
         // The iPhone's stop came first.
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
-        // Local Live takes no Hermes calls on the Watch; the iPhone rings.
-        let localLive = WatchVoiceCall.shared.engine == .localLive
-        let rings = ring != nil && !late && !busy && !settled && !localLive
+        let rings = ring != nil && !late && !busy && !settled
         let callerName = Self.callerName(userInfo)
         if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
-        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "localLive": localLive])
+        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "engine": "\(WatchVoiceCall.shared.engine)"])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
         provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in
@@ -270,8 +268,8 @@ final class HermesWatchCalls: NSObject {
         // A Watch call the user started meanwhile keeps going, and the
         // iPhone goes on ringing: nothing is settled.
         let engine = WatchVoiceCall.shared.engine
-        guard !WatchVoiceCall.shared.isActive, engine != .localLive else {
-            WatchCallLog.shared.note("hermesCallNotConnected", ["busy": WatchVoiceCall.shared.isActive, "localLive": engine == .localLive])
+        guard !WatchVoiceCall.shared.isActive else {
+            WatchCallLog.shared.note("hermesCallNotConnected", ["busy": true])
             finish(id, reason: .failed)
             return
         }
