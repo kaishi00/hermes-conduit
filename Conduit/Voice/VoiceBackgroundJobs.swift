@@ -1223,11 +1223,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var lines = cut.components(separatedBy: "\n")
         // A last line cut mid-way may be half a fence; drop it then, and
         // only then: a long paragraph is one line, and dropping it would
-        // leave little more than the heading.
-        if lines.count > 1,
-           let first = lines.last?.trimmingCharacters(in: .whitespaces).first,
-           first == "`" || first == "~" {
-            lines.removeLast()
+        // leave little more than the heading. Half a fence is a fence's
+        // start (three or more marks) or marks alone (a fence cut short);
+        // prose that opens with inline code (`endpoint` restarted…) stays.
+        if lines.count > 1, let last = lines.last?.trimmingCharacters(in: .whitespaces),
+           let mark = last.first, mark == "`" || mark == "~" {
+            let marks = last.prefix { $0 == mark }.count
+            if marks >= 3 || marks == last.count { lines.removeLast() }
         }
         // Read fences as MarkdownText does: a line starting ``` or ~~~
         // opens one, and the next line starting the same way closes it.

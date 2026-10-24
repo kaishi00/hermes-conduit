@@ -339,6 +339,12 @@ extension VoiceConversationControllerTests {
         )
         XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n``"), "intro", "Half a fence goes")
         XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n~~"), "intro")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n```py"), "intro", "A fence's start goes")
+        // Prose opening with inline code isn't a fence.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("intro\n`endpoint` restarted at noon and"),
+            "intro\n`endpoint` restarted at noon and"
+        )
         XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("```swift\nlet a = 1\nlet b"), "```swift\nlet a = 1\nlet b\n```")
     }
 
