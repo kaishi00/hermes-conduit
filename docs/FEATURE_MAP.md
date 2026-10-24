@@ -516,6 +516,7 @@ memory), its routes under /pulse and its capabilities · the
 - Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
 - Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
 - Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py`
+- What happened since an item came up (later chats and cron runs, background processes): `notifier/pulse_evidence.py`
 - Ratings and lessons: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store: `notifier/pulse_store.py`
 - Control: `notifier/pulse_control.py` (shared by the commands and the routes), `notifier/cli.py`, `notifier/dashboard/plugin_api.py` (/pulse)
 - Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_personas.py` (personas over two weeks)
@@ -530,6 +531,7 @@ memory), its routes under /pulse and its capabilities · the
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
+- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks (2026-10-24, Eric; notifier #346, #347).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
@@ -537,7 +539,7 @@ memory), its routes under /pulse and its capabilities · the
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
+**Checked:** 2026-10-24, with notifier #346 and #347.
 
 ## Artifacts
 
