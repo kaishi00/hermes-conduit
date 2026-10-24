@@ -66,7 +66,7 @@ enum WatchCallAnswer {
         if rest(after: "Approve:") != nil { return approves ? ["choice": "once"] : nil }
         if let reason = rest(after: "Deny:") {
             guard approves else { return nil }
-            return reason.hasPrefix(asksFirstLead) ? ["choice": "deny", "reason": reason] : ["choice": "deny"]
+            return reason.lowercased().hasPrefix(asksFirstLead.lowercased()) ? ["choice": "deny", "reason": reason] : ["choice": "deny"]
         }
         return nil
     }

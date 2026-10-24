@@ -330509,6 +330509,88 @@
           }
         }
       }
+    },
+    "Say the numbers of your choices, you may pick several, or answer in your own words." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag die Nummern deiner Wahl, du kannst mehrere wählen, oder antworte in deinen eigenen Worten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di los números de tus opciones, puedes elegir varias, o responde con tus propias palabras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dis les numéros de tes choix, tu peux en choisir plusieurs, ou réponds avec tes propres mots."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sebutkan nomor pilihanmu, boleh lebih dari satu, atau jawab dengan kata-katamu sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di' i numeri delle tue scelte, puoi sceglierne più di una, oppure rispondi con parole tue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだ番号を言ってください（複数選べます）。ご自身の言葉で答えても構いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 번호를 말해 주세요. 여러 개를 골라도 되고, 직접 말로 답해도 됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiedz numery swoich wyborów, możesz wybrać kilka, albo odpowiedz własnymi słowami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diga os números das suas escolhas, você pode escolher várias, ou responda com suas próprias palavras."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назовите номера вариантов, можно несколько, или ответьте своими словами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçtiğin numaraları söyle, birden fazla seçebilirsin, ya da kendi sözlerinle yanıtla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说出你选择的编号，可以选多个，或用你自己的话回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說出你選擇的編號，可以選多個，或用你自己的話回答。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

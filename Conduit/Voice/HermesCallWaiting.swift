@@ -60,8 +60,7 @@ struct HermesCallWaiting: Equatable {
                 text: Self.clipped(question.question, to: Self.maximumTextCharacters) ?? "",
                 choices: question.choices.map { Choice(label: Self.clipped($0.label, to: Self.maximumChoiceCharacters) ?? $0.value, value: $0.value) },
                 multiSelect: question.multiSelect,
-                // Still waiting while its answer is on its way, as an approval is.
-                answered: !(question.status == .pending || question.status == .error || question.status == .submitting)
+                answered: !(question.status == .pending || question.status == .error)
             )
         }
         guard questions.contains(where: { !$0.answered }) else { return nil }
@@ -183,7 +182,9 @@ struct HermesCallWaiting: Equatable {
         }
         line += "\n" + (question.choices.isEmpty
             ? AppLocalization.string("Answer in your own words.")
-            : AppLocalization.string("Say the number of your choice, or answer in your own words."))
+            : question.multiSelect
+                ? AppLocalization.string("Say the numbers of your choices, you may pick several, or answer in your own words.")
+                : AppLocalization.string("Say the number of your choice, or answer in your own words."))
         return line
     }
 
