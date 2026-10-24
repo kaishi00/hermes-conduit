@@ -56,6 +56,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallWaiting.answerValue(for: "7", question: question), "7")
         XCTAssertEqual(HermesCallWaiting.answerValue(for: "Before I choose: what does prod change?", question: question),
                        "Before I choose: what does prod change?")
+        // "The one" names no choice by itself ("the one that's cheaper").
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "the one", question: question), "the one")
         XCTAssertEqual(HermesCallWaiting.pickedChoices(in: "one and three", choices: environmentQuestion(multiSelect: true).choices, multiSelect: true), [0, 2])
     }
 
@@ -105,6 +107,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(WatchCallAnswer.result(body: ["ok": true, "status": "not_waiting"])["status"], "not_pending")
         XCTAssertNotNil(WatchCallAnswer.result(body: ["ok": false, "detail": "choice must be once or deny"])["error"])
 
+        XCTAssertEqual(WatchCallAnswer.asksFirstLead, HermesCallWaiting.asksFirstLead, "One lead on the phone and the Watch")
         XCTAssertEqual(WatchCallAnswer.delegatedArguments("Answer: 2", userWords: "", approves: false)?["answer"] as? String, "2")
         XCTAssertEqual(WatchCallAnswer.delegatedArguments("Answer:", userWords: "the second one", approves: false)?["answer"] as? String, "the second one")
         XCTAssertNil(WatchCallAnswer.delegatedArguments("Approve: run it", userWords: "yes", approves: false), "The user taps approvals on the Watch")
