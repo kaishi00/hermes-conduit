@@ -1942,9 +1942,12 @@ private struct WakePhraseSettingsSection: View {
 
     private func updateLanguageNotes() {
         let usable = phrases.filter(WakePhraseMatcher.isUsable)
+        // Each phrase's recognizer is looked up once.
+        let locales = Dictionary(usable.map { ($0, WakeSpeechLocale.locale(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        let localeFor: (String) -> Locale? = { locales[$0] ?? nil }
         var notes: [String: (text: String, isUnheard: Bool)] = [:]
         for phrase in usable {
-            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: usable)
+            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: usable, localeFor: localeFor)
         }
         languageNotes = notes
     }

@@ -30600,7 +30600,11 @@ final class AppState: ObservableObject {
             if profile == "default" && (key == "context.engine" || key == "memory.provider") {
                 let raw = value.textValue ?? ""
                 let body = key == "context.engine" ? ["context_engine": raw] : ["memory_provider": raw]
-                _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                // Hermes writes the profile config for it: in turn with
+                // every other config save.
+                try await ProfileConfigWriteQueue.runThrowing {
+                    _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                }
                 guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
