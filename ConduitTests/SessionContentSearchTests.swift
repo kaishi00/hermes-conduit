@@ -496,6 +496,20 @@ final class SessionContentSearchTests: XCTestCase {
         ])
     }
 
+    /// A literal `>>>` ahead of a real match stays text, and the match
+    /// after it is still found.
+    func testALiteralOpeningMarkBeforeARealMatchStaysText() {
+        let snippet = SessionSearchSnippet.parse("a >>> b >>>recycling<<< day", query: "x")
+        XCTAssertEqual(snippet.runs, [
+            .init(text: "a >>> b ", isMatch: false),
+            .init(text: "recycling", isMatch: true),
+            .init(text: " day", isMatch: false),
+        ])
+        let twoMatches = SessionSearchSnippet.parse(">>>one<<< >>> >>>two<<<", query: "x")
+        XCTAssertEqual(twoMatches.runs.filter(\.isMatch).map(\.text), ["one", "two"])
+        XCTAssertEqual(twoMatches.plainText, "one >>> two")
+    }
+
     func testUnmarkedSnippetHighlightsTheQueryWords() {
         // A session-id hit's preview, or the LIKE fallback short CJK takes.
         let snippet = SessionSearchSnippet.parse("When is the Recycling pickup? recycling again", query: "recycling pick")

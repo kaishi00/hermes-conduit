@@ -45,30 +45,46 @@ struct SessionSearchSnippet: Equatable {
     /// search short CJK queries take) gets the query's words marked instead.
     static func parse(_ raw: String, query: String) -> SessionSearchSnippet {
         let line = oneLine(raw)
-        guard let open = line.range(of: matchStart), line[open.upperBound...].contains(matchEnd) else {
-            return SessionSearchSnippet(runs: highlighting(words(in: query), in: line))
-        }
         var runs: [Run] = []
         var remaining = Substring(line)
         var inMatch = false
         while !remaining.isEmpty {
-            let marker = inMatch ? matchEnd : matchStart
-            // Hermes closes every mark it opens: a `>>>` with no `<<<` after
-            // it is the message's own text (a Python prompt, a quote).
-            if let range = remaining.range(of: marker),
-               inMatch || remaining[range.upperBound...].contains(matchEnd) {
-                append(String(remaining[..<range.lowerBound]), isMatch: inMatch, to: &runs)
-                remaining = remaining[range.upperBound...]
+            // Hermes closes every mark it opens, before it opens another: a
+            // `>>>` with no `<<<` ahead of the next `>>>` is the message's
+            // own text (a Python prompt, a quote), even before a real match.
+            let marker = inMatch ? remaining.range(of: matchEnd) : openingMark(in: remaining)
+            if let marker {
+                append(String(remaining[..<marker.lowerBound]), isMatch: inMatch, to: &runs)
+                remaining = remaining[marker.upperBound...]
                 inMatch.toggle()
             } else {
                 append(String(remaining), isMatch: inMatch, to: &runs)
                 remaining = ""
             }
         }
+        guard runs.contains(where: \.isMatch) else {
+            return SessionSearchSnippet(runs: highlighting(words(in: query), in: line))
+        }
         // A stray closing mark outside a match is noise, not text.
         runs = runs.map { Run(text: $0.text.replacingOccurrences(of: matchEnd, with: ""), isMatch: $0.isMatch) }
             .filter { !$0.text.isEmpty }
         return SessionSearchSnippet(runs: merged(runs))
+    }
+
+    /// The first `>>>` in `text` that Hermes closed: a `<<<` follows it
+    /// before any other `>>>`.
+    private static func openingMark(in text: Substring) -> Range<Substring.Index>? {
+        var searchStart = text.startIndex
+        while let open = text.range(of: matchStart, range: searchStart..<text.endIndex) {
+            let rest = text[open.upperBound...]
+            guard let close = rest.range(of: matchEnd) else { return nil }
+            if let next = rest.range(of: matchStart), next.lowerBound < close.lowerBound {
+                searchStart = next.lowerBound
+                continue
+            }
+            return open
+        }
+        return nil
     }
 
     /// The snippet for a row: matched words semibold in the accent color.
