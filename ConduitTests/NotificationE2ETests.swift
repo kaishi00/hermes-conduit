@@ -296,6 +296,17 @@ extension NotificationE2ETests {
 
     // MARK: Key rotation and the padlock
 
+    func testHostKeepsReplacedKeysReadsTheRotateFieldFromJSON() throws {
+        func status(_ json: String) throws -> [String: Any] {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        }
+        XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":false}"#)))
+        XCTAssertTrue(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":true}"#)))
+        // Before notifier 0.70 the field is missing.
+        XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true}"#)))
+        XCTAssertFalse(PushNotificationService.hostKeepsReplacedKeys(status: try status(#"{"ok":true,"rotate":null}"#)))
+    }
+
     private func rotated(kid: String, createdAt: Date, retiredAt: Date? = nil) -> E2EKeyRecord {
         E2EKeyRecord(
             kid: kid, secret: Data(repeating: 7, count: 32), installationID: Self.installationID, gatewayID: Self.gatewayID,
