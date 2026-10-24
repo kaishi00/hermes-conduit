@@ -20885,10 +20885,21 @@ final class AppState: ObservableObject {
         }
         var lookSaved = false
         if botOpenFenceIsCurrent(epoch: epoch, client: client) {
-            let result = try? await client.configureBotProfile(name: name, botMeta: BotDuplicate.meta(from: bot))
-            lookSaved = result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
+            // A clone copies the config, not the asset store: the photo is
+            // copied first, so the look only claims one the copy holds.
+            var photoCopied = !bot.hasAvatar
+            if bot.hasAvatar, let png = try? await client.botAvatar(name: bot.name),
+               botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                photoCopied = await storeBotAvatar(png, for: name, client: client, epoch: epoch)
+            }
+            let result = try? await client.configureBotProfile(
+                name: name,
+                botMeta: BotDuplicate.meta(from: bot, photoCopied: photoCopied)
+            )
+            lookSaved = photoCopied && result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
         }
         await refreshBotRosterAfterWrite()
+        await loadProfiles()
         return lookSaved
             ? AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel).")
             : AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its look was not copied.")

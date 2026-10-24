@@ -330697,7 +330697,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tidak ada nama kosong untuk salinan %@."
+            "value" : "Tidak ada nama yang tersedia untuk salinan %@."
           }
         },
         "it" : {
