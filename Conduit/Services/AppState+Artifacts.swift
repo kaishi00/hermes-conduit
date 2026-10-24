@@ -61,6 +61,46 @@ extension AppState {
         return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
     }
 
+    /// The stores an Artifacts list reads. A chat's own list reads the
+    /// chat's store: a Bot Chat is kept in its bot's profile. The Artifacts
+    /// page reads the profile in use (each profile All shows, while it's
+    /// on) and every other bot's Bot Chat.
+    func artifactSources(for scope: ArtifactScope) -> [ArtifactSource] {
+        switch scope {
+        case .chat(let ids):
+            guard let bot = botStoreProfile(forSessionIDs: ids) else {
+                return [ArtifactSource(profile: activeProfile, sessionIDs: ids)]
+            }
+            return [ArtifactSource(profile: bot, sessionIDs: ids, label: botLabel(bot), isBotChat: true)]
+        case .profile:
+            var listed = [activeProfile]
+            if isAllProfilesChatsOn {
+                let included = allProfilesIncluded
+                listed = included.filter { Self.profilesMatch($0, activeProfile) }
+                    + included.filter { !Self.profilesMatch($0, activeProfile) }
+            }
+            var sources = listed.map { profile in
+                ArtifactSource(profile: profile, sessionIDs: [],
+                               label: Self.profilesMatch(profile, activeProfile) ? nil : profileDisplayName(profile))
+            }
+            // A bot whose whole profile is read already has its chat listed.
+            for bot in botRoster where !listed.contains(where: { Self.profilesMatch($0, bot.name) }) {
+                let ids = Set([bot.canonicalSession?.id, bot.canonicalSession?.resolvedID].compactMap { id -> String? in
+                    let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    return trimmed.isEmpty ? nil : trimmed
+                })
+                guard !ids.isEmpty else { continue }
+                sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids.sorted(), label: bot.displayLabel,
+                                              isBotChat: true))
+            }
+            return sources
+        }
+    }
+
+    private func botLabel(_ profile: String) -> String {
+        botRoster.first(where: { $0.name == profile })?.displayLabel ?? profile
+    }
+
     /// Whether the transcript on screen is the chat a reveal waits for.
     func isShowingChat(for reveal: ArtifactReveal) -> Bool {
         guard let opening = reveal.opening else { return true }
@@ -74,6 +114,16 @@ extension AppState {
         pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
         guard !chatIsOpen else { return }
         dismissSidebarDrawer()
-        requestOpenSession(item.sessionID)
+        if let profile = item.otherProfile {
+            // A Bot Chat opens the way Bots opens it, under the bot's
+            // profile; another profile's chat the way All opens it.
+            if item.isBotChat {
+                openLinkedBotChat(profile)
+            } else {
+                openOtherProfileChat(item.sessionID, inProfile: profile)
+            }
+        } else {
+            requestOpenSession(item.sessionID)
+        }
     }
 }

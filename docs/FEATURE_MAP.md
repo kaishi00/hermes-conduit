@@ -835,6 +835,32 @@ speech-server transcription stream (listening, not speaking)
 
 **Checked:** 2026-10-24, at #1190.
 
+## Artifacts
+
+The files, pages and links Hermes made, listed for every chat (the Chats
+bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
+viewers, with Show in Chat.
+
+**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
+(kept in the bot's own profile) · All (every included profile's chats) ·
+the notifier's artifacts route · README.md
+
+**Code**
+- List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
+- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
+- A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
+- Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
+
+**Rulings**
+- A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
+- Stores are read one at a time (the host reads two lists at once at most); a bot's chat or other profile that can't be read leaves the rest listed.
+
+**Open gaps**
+- Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
+
+**Checked:** 2026-10-24, at #1203.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

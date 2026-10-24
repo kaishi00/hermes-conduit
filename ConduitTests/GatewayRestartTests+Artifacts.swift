@@ -162,4 +162,61 @@ extension GatewayRestartTests {
         XCTAssertEqual(ArtifactReveal.rowID(for: 12, in: messages), "u")
         XCTAssertNil(ArtifactReveal.rowID(for: 5, in: messages))
     }
+
+    func testArtifactsPageMergesBotChatsNewestFirst() throws {
+        func item(_ path: String, _ time: Double) -> ArtifactItem {
+            ArtifactItem(artifactRow(["path": path, "timestamp": time]))!
+        }
+        let sources = [
+            ArtifactSource(profile: "default", sessionIDs: []),
+            ArtifactSource(profile: "atlas", sessionIDs: ["bot-chat"], label: "Atlas", isBotChat: true),
+        ]
+        var feed = ArtifactFeed(sources: sources, pages: [
+            ArtifactPage(items: [item("/w1", 100), item("/w2", 80)], nextBefore: 7),
+            ArtifactPage(items: [item("/b1", 90), item("/b2", 50), item("/w2", 40)], nextBefore: nil),
+        ])
+        // The workspace may still hold rows between 80 and 50, so the bot's
+        // older rows wait for its next page.
+        XCTAssertEqual(feed.items.map(\.id), ["/w1", "/b1", "/w2"])
+        XCTAssertEqual(feed.items[1].otherProfile, "atlas")
+        XCTAssertEqual(feed.items[1].otherProfileLabel, "Atlas")
+        XCTAssertTrue(feed.items[1].isBotChat)
+        XCTAssertNil(feed.items[0].otherProfile)
+        XCTAssertEqual(feed.nextCursor, ArtifactFeed.Cursor(source: 0, before: 7))
+        feed.append(ArtifactPage(items: [item("/w3", 60)], nextBefore: nil), at: ArtifactFeed.Cursor(source: 0, before: 7))
+        XCTAssertNil(feed.nextCursor)
+        XCTAssertEqual(feed.items.map(\.id), ["/w1", "/b1", "/w2", "/w3", "/b2"],
+                       "a file both stores list shows once, at its newest mention")
+        // A stale page doesn't land twice.
+        let before = feed
+        feed.append(ArtifactPage(items: [item("/w9", 10)], nextBefore: nil), at: ArtifactFeed.Cursor(source: 0, before: 7))
+        XCTAssertEqual(feed, before)
+    }
+
+    func testArtifactsFeedReadsAnEmptyStoreBeforeShowingOlderRows() {
+        let sources = [
+            ArtifactSource(profile: "default", sessionIDs: []),
+            ArtifactSource(profile: "atlas", sessionIDs: ["bot-chat"], label: "Atlas", isBotChat: true),
+        ]
+        let feed = ArtifactFeed(sources: sources, pages: [
+            ArtifactPage(items: [], nextBefore: 30),
+            ArtifactPage(items: [ArtifactItem(artifactRow(["path": "/b1"]))!], nextBefore: 9),
+        ])
+        XCTAssertTrue(feed.items.isEmpty, "a page the filter emptied may still hold newer rows")
+        XCTAssertEqual(feed.nextCursor, ArtifactFeed.Cursor(source: 0, before: 30))
+        // A store that couldn't be read adds nothing and pages no further.
+        let partial = ArtifactFeed(sources: sources, pages: [
+            ArtifactPage(items: [ArtifactItem(artifactRow(["path": "/w1"]))!], nextBefore: nil), nil,
+        ])
+        XCTAssertEqual(partial.items.map(\.id), ["/w1"])
+        XCTAssertNil(partial.nextCursor)
+    }
+
+    func testArtifactsOneStoreKeepsTheHostsOrder() {
+        let rows = ["/c", "/a", "/b"].map { ArtifactItem(artifactRow(["path": $0]))! }
+        let feed = ArtifactFeed(sources: [ArtifactSource(profile: "default", sessionIDs: [])],
+                                pages: [ArtifactPage(items: rows, nextBefore: 4)])
+        XCTAssertEqual(feed.items.map(\.id), ["/c", "/a", "/b"])
+        XCTAssertEqual(feed.nextCursor, ArtifactFeed.Cursor(source: 0, before: 4))
+    }
 }
