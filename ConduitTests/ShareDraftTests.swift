@@ -372,6 +372,19 @@ final class ShareDraftTests: XCTestCase {
         XCTAssertEqual(result.problems, [.textTruncated(limit: 10)])
     }
 
+    /// Text another app hands over as bytes: UTF-8, or UTF-16 marked by its
+    /// byte order mark, never unreadable bytes guessed into text.
+    func testSharedTextBytesReadAsUTF8OrMarkedUTF16() throws {
+        XCTAssertEqual(ShareDraftCollector.text(from: Data("Café notes".utf8)), "Café notes")
+        let littleEndianBytes = try XCTUnwrap("Café notes".data(using: .utf16LittleEndian))
+        let littleEndian = Data([0xFF, 0xFE]) + littleEndianBytes
+        XCTAssertEqual(ShareDraftCollector.text(from: littleEndian), "Café notes")
+        let bigEndianBytes = try XCTUnwrap("Café notes".data(using: .utf16BigEndian))
+        let bigEndian = Data([0xFE, 0xFF]) + bigEndianBytes
+        XCTAssertEqual(ShareDraftCollector.text(from: bigEndian), "Café notes")
+        XCTAssertNil(ShareDraftCollector.text(from: Data([0xC3, 0x28, 0xA0, 0xA1])), "Not text in either")
+    }
+
     func testProviderKinds() throws {
         XCTAssertEqual(ShareDraftCollector.kind(of: NSItemProvider(object: "x" as NSString)), .text)
         XCTAssertEqual(ShareDraftCollector.kind(of: NSItemProvider(object: URL(string: "https://example.com")! as NSURL)), .link)
