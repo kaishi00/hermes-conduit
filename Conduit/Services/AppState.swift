@@ -15672,6 +15672,8 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Returns the chat it created and opened, nil when it opened none.
+    @discardableResult
     private func createAndReconcileSession(
         using client: HermesClient,
         profile: String,
@@ -15682,12 +15684,12 @@ final class AppState: ObservableObject {
         requiredViewportTransitionGeneration: UInt64? = nil,
         cwd: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
-    ) async {
+    ) async -> String? {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
         ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-              widgetLease?.isCurrent != false else { return }
+              widgetLease?.isCurrent != false else { return nil }
         do {
             let created: (sessionId: String, storedSessionId: String?, profile: String?)
             if let widgetSessionCreatorOverride {
@@ -15712,7 +15714,7 @@ final class AppState: ObservableObject {
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
-                return
+                return nil
             }
             if let returnedProfile = created.profile,
                !profilesMatch(returnedProfile, profile) {
@@ -15721,7 +15723,7 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
                 await loadSessions(forceRefresh: true)
-                return
+                return nil
             }
             let runtimeSessionID = created.sessionId.isEmpty ? (created.storedSessionId ?? "") : created.sessionId
             guard !runtimeSessionID.isEmpty else {
@@ -15729,7 +15731,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
-                return
+                return nil
             }
 
             // `session.create` already returns the active runtime session.
@@ -15835,6 +15837,7 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            return runtimeSessionID
         } catch {
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -15847,7 +15850,7 @@ final class AppState: ObservableObject {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                return
+                return nil
             }
             turnState = .idle
             errorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
@@ -15856,6 +15859,7 @@ final class AppState: ObservableObject {
             if resumePurpose == .automaticReturn {
                 scheduleReconnectAfterFailedSync()
             }
+            return nil
         }
     }
 
@@ -22767,12 +22771,15 @@ final class AppState: ObservableObject {
         requestComposerFocus(on: created)
     }
 
-    func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {
+    /// Returns the chat this call created and opened, nil when it opened
+    /// none (refused, failed, or replaced by a newer navigation).
+    @discardableResult
+    func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async -> String? {
         guard !isProfileSwitching, isConnected, !isConnecting, let client else {
             if isProfileSwitching || isConnecting {
                 errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
             }
-            return
+            return nil
         }
         // A new conversation takes the viewport back from an open room, the
         // same as a session open: otherwise the room stays on screen while
@@ -22786,7 +22793,7 @@ final class AppState: ObservableObject {
             newSessionCreationsInFlight -= 1
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
         }
-        guard widgetLease?.isCurrent != false else { return }
+        guard widgetLease?.isCurrent != false else { return nil }
         let profile = activeProfile
         let previousSessionID = activeSessionId
         let previousTitle = activeSessionTitle
@@ -22796,7 +22803,7 @@ final class AppState: ObservableObject {
         let previousTurnState = turnState
         let token = beginReconciliation()
         turnState = .synchronizing
-        await createAndReconcileSession(
+        let created = await createAndReconcileSession(
             using: client,
             profile: profile,
             token: token,
@@ -22815,7 +22822,8 @@ final class AppState: ObservableObject {
            activeSessionId == previousSessionID, activeSessionTitle == newTitle {
             activeSessionTitle = previousTitle
         }
-        guard widgetLease?.isCurrent != false else { return }
+        guard widgetLease?.isCurrent != false else { return nil }
+        return created
     }
 
     /// Re-resume the currently visible conversation. This uses the same
@@ -23388,21 +23396,25 @@ final class AppState: ObservableObject {
             }
             return nil
         }
-        await createNewSessionMarkingStart()
         // A chat that didn't start has already said why (createNewSession).
-        // Only the chat it created takes the message: another the user
-        // opened while it was created (newChatOpenedSessionID clears when
-        // one replaces it) gets nothing, and the composer keeps the words.
-        guard let created = newChatOpenedSessionID, activeSessionId == created else { return nil }
+        // Only the chat this submission's own creation opened takes the
+        // message, and only while it is still open. Another chat opened or
+        // created meanwhile (a voice action, a screen question, a Hermes
+        // call) gets nothing, and the composer keeps the words: the shared
+        // newChatOpenedSessionID would name that other creation's chat.
+        guard let created = await createNewSessionMarkingStart(),
+              newChatOpenedSessionID == created, activeSessionId == created else { return nil }
         return composerSubmissionContext()
     }
 
     /// Creates a chat as New Chat does, marked as starting until it is
     /// done, so neither New Chat nor a send starts a second one meanwhile.
-    private func createNewSessionMarkingStart() async {
+    /// Returns the chat it created and opened, as createNewSession does.
+    @discardableResult
+    private func createNewSessionMarkingStart() async -> String? {
         isStartingNewChat = true
         defer { isStartingNewChat = false }
-        await createNewSession()
+        return await createNewSession()
     }
 
     private func performComposerSubmission(

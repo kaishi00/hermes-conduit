@@ -491,6 +491,30 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertTrue(prompts.isEmpty, "Never sent into the chat opened meanwhile: \(prompts)")
     }
 
+    func testAMessageNeverGoesIntoAChatAnotherCreationOpenedMeanwhile() async {
+        var prompts: [String] = []
+        let appState = makeConnectedAppState { sessionID, _ in prompts.append(sessionID) }
+        var creations = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            creations += 1
+            if creations == 1 {
+                // A voice action or a screen question creates its own chat
+                // while Hermes creates the composer's.
+                await appState.createNewSession()
+                return ("composer-runtime", "composer-stored", "default")
+            }
+            return ("voice-runtime", "voice-stored", "default")
+        }
+
+        let sent = await appState.submitComposer(text: "hi")
+
+        XCTAssertEqual(creations, 2)
+        XCTAssertEqual(appState.activeSessionId, "voice-runtime", "The newer creation keeps the screen")
+        XCTAssertFalse(sent, "The composer keeps the message")
+        XCTAssertTrue(prompts.isEmpty, "Never sent into the other creation's chat: \(prompts)")
+        XCTAssertFalse(appState.isStartingNewChat)
+    }
+
     func testAMessageSentDisconnectedSaysToConnectOverAnOlderMessage() async {
         var created = 0
         let appState = makeConnectedAppState { _, _ in }
