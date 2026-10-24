@@ -248,6 +248,24 @@ struct ModelPickerYoloDraft: Equatable {
     }
 }
 
+/// What a model list shows before it has rows to pick from: the model
+/// sheet and the Model page's editors tell a fetch that failed (with Try
+/// Again) from a gateway that lists no models, and neither from loading.
+enum ModelCatalogState: Equatable {
+    case loading
+    case failed
+    case empty
+    case ready
+
+    /// `providers` is nil until a load succeeds. A re-load that fails keeps
+    /// the rows it already had.
+    static func of(providers: [ProviderInfo]?, failed: Bool) -> ModelCatalogState {
+        if let providers, !providers.isEmpty { return .ready }
+        if failed { return .failed }
+        return providers == nil ? .loading : .empty
+    }
+}
+
 struct ModelPickerSelection: Equatable {
     var model: String
     var provider: String

@@ -631,6 +631,33 @@ much history an open transcript keeps
 
 **Checked:** 2026-10-24, at #1184.
 
+## Model lists that fail to load
+
+What a model picker shows before Hermes's model catalog has rows: still
+loading, a fetch that failed, or a gateway that lists no models.
+
+**Siblings:** the model sheet · the Model page's Default model, Delegate
+model and Fallback models editors · a bot's model picker · the voice job and
+voice reply model pickers · the Kanban task composer's catalog
+
+**Code**
+- The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, and the model sheet's modelSection, loadModels)
+- Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
+- Bots: `Conduit/Views/BotModelPicker.swift`
+- Voice: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings), `Conduit/Services/AppState.swift` (loadVoiceJobModelProviders)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (catalogSection)
+
+**Rulings**
+- A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
+- A list that didn't load is never edited or saved: Save stays off until the catalog is in.
+
+**Open gaps**
+- The voice job and voice reply pickers get `[]` for a failed fetch (loadVoiceJobModelProviders), so they can't tell failed from empty.
+- The bot model picker says "Could not load models." without Try Again.
+- The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
+
+**Checked:** 2026-10-24, at 78f21daa.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
