@@ -433,6 +433,7 @@ extension NotificationE2ETests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
         var keyRequests = 0
+        var ingestDetail = "This location store was written by a newer plugin; update the plugin"
         let request: LocationSyncEngine.Request = { path, _, body in
             if path.hasSuffix("/key") {
                 keyRequests += 1
@@ -443,9 +444,7 @@ extension NotificationE2ETests {
                 ]
             }
             if path.contains("/status") { return ["ok": true] }
-            throw DashboardTicketBridgeError.http(
-                status: 409, detail: "This location store was written by a newer plugin; update the plugin"
-            )
+            throw DashboardTicketBridgeError.http(status: 409, detail: ingestDetail)
         }
         let keys = LocationKeyStore.memory()
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
@@ -457,6 +456,14 @@ extension NotificationE2ETests {
         XCTAssertEqual(engine.state.pause, .pluginMissing)
         XCTAssertNotNil(keys.load())
         XCTAssertEqual(keyRequests, 1)
+
+        // Once the plugin is updated, a different refusal replaces the
+        // pause: it no longer asks for an update.
+        ingestDetail = "Background location is off on this profile"
+        let next = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(next, .refused)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(engine.lastError, ingestDetail)
     }
 
     func testAnIngest404KeepsTheKeyAndIsThePluginMissingOnlyWhenStatusIsGoneToo() async throws {

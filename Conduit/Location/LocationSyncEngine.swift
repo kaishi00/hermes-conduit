@@ -301,13 +301,17 @@ final class LocationSyncEngine: ObservableObject {
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail):
                 // A store written by a newer plugin: updating the plugin
                 // fixes it. The batch stays to send after the update.
+                Self.log.info("Location ingest answered 409 schema: pausing for a plugin update")
                 state.pause = .pluginMissing
             case .http(let status, let detail) where status == 400 || status == 413:
                 state.pause = .refused(detail)
                 return .refused
             case .http(let status, let detail) where status == 409:
                 // layer_off and the like: what the batch says doesn't match
-                // what's shared. Nothing to retry.
+                // what's shared. Nothing to retry. The host took the key and
+                // the store, so an earlier pause (a plugin update, sign-in)
+                // no longer holds.
+                state.pause = nil
                 lastError = detail
                 return .refused
             default:
