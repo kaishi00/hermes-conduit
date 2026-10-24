@@ -10222,6 +10222,8 @@ final class AppState: ObservableObject {
     private func invalidateGroupChatState() {
         groupChatPhase = .idle
         groupCapabilities = nil
+        // Whether the gateway can make pictures is the outgoing one's answer.
+        canGeneratePictures = false
         groupRooms = []
         desktopGroupChats = []
         groupRoomPictureData = [:]

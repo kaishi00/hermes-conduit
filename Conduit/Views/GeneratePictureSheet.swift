@@ -72,8 +72,8 @@ struct GeneratePictureSheet: View {
                 if !pictures.isEmpty {
                     Section {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 12)], spacing: 12) {
-                            ForEach(pictures) { picture in
-                                pictureButton(picture)
+                            ForEach(Array(pictures.enumerated()), id: \.element.id) { index, picture in
+                                pictureButton(picture, number: index + 1)
                             }
                         }
                         .padding(.vertical, 4)
@@ -100,7 +100,7 @@ struct GeneratePictureSheet: View {
         }
     }
 
-    private func pictureButton(_ picture: GeneratedPicture) -> some View {
+    private func pictureButton(_ picture: GeneratedPicture, number: Int) -> some View {
         let isSelected = picture.id == selection
         return Button {
             Haptics.selection()
@@ -117,7 +117,7 @@ struct GeneratePictureSheet: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(AppLocalization.string("Generated picture")))
+        .accessibilityLabel(Text(AppLocalization.string("Generated picture \(String(number)) of \(String(pictures.count))")))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

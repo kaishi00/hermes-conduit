@@ -854,9 +854,11 @@ struct GroupRoomPicturePicker: ViewModifier {
                     ImagePicker(image: $picked)
                 case .generate:
                     GeneratePictureSheet(
+                        // The open room, until the onChange below captures it.
                         defaultPrompt: PictureGeneration.groupPrompt(
-                            name: room?.name ?? "",
-                            members: room?.members.map { GroupRoomTurns.displayName(of: $0) } ?? []
+                            name: (room ?? appState.activeRoomSurface?.room)?.name ?? "",
+                            members: (room ?? appState.activeRoomSurface?.room)?.members
+                                .map { GroupRoomTurns.displayName(of: $0) } ?? []
                         ),
                         forGroup: true
                     ) { image in
@@ -875,8 +877,12 @@ struct GroupRoomPicturePicker: ViewModifier {
                 guard let roomID = room?.roomID else { return }
                 Task { await appState.setGroupRoomPicture(image, roomID: roomID) }
             }
-            // Whether the menu offers Generate Group Picture.
-            .task { await appState.refreshPictureGeneration() }
+            // Whether the menu offers Generate Group Picture: asked only
+            // where a room is open, again for each room.
+            .task(id: appState.activeRoomSurface?.room.roomID) {
+                guard appState.activeRoomSurface != nil else { return }
+                await appState.refreshPictureGeneration()
+            }
     }
 }
 
