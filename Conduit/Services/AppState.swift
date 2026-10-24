@@ -13031,11 +13031,13 @@ final class AppState: ObservableObject {
         return client
     }
 
-    /// Match the React Native client's recovery order: the securely persisted
-    /// connection is the first cold-start attempt. The dashboard bridge is
-    /// only needed to mint a replacement ticket after that socket actually
-    /// disconnects or fails. Requiring a freshly restored WebKit cookie before
-    /// every launch was what turned a healthy saved Hermes session into login.
+    /// Cold-start restore of the saved connection. Its ticket was spent when
+    /// it last opened the socket, so the dashboard bridge mints a fresh one
+    /// first; the saved record is only the fallback when that mint fails,
+    /// and its refusal then schedules the reconnect. A failed mint never
+    /// sends the user to login: requiring a freshly restored WebKit cookie
+    /// before every launch was what turned a healthy saved Hermes session
+    /// into login.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
