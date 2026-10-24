@@ -29433,7 +29433,9 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
-        // Optimistic update
+        // Optimistic update. A list read still on its way was read before
+        // this flip: it no longer commits (as CapabilitiesStore, #867).
+        capabilityLoadGeneration &+= 1
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
@@ -29458,7 +29460,9 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
-        // Optimistic update
+        // Optimistic update. A list read still on its way was read before
+        // this flip: it no longer commits (as CapabilitiesStore, #867).
+        capabilityLoadGeneration &+= 1
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
