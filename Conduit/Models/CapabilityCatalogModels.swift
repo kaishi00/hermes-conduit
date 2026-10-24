@@ -145,12 +145,20 @@ enum CapabilityToolsetOrdering {
         guard !raw.isEmpty else {
             return toolset.name.replacingOccurrences(of: "_", with: " ").capitalized
         }
+        return strippedLabel(raw) ?? raw
+    }
+
+    /// A toolset title without its leading emoji (an older Hermes keeps it
+    /// in the dashboard's label). Nil when nothing else is left. Also names
+    /// a step's tool (`ToolCatalog`).
+    static func strippedLabel(_ label: String?) -> String? {
+        let raw = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let stripped = String(raw.drop { character in
             character.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.properties.generalCategory == .otherSymbol }
                 || character.unicodeScalars.allSatisfy { $0.properties.isVariationSelector || $0 == "\u{200D}" }
                 || character.isWhitespace
         })
-        return stripped.isEmpty ? raw : stripped
+        return stripped.isEmpty ? nil : stripped
     }
 
     /// Calls of every tool in the set.

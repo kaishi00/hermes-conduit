@@ -475,30 +475,37 @@ stays quiet.
 phone changes · missed call · Pulse (pulse.noticed, pulse.brief, pulse.followup; app
 side on the `pulse` branch only, see Pulse) · the Watch (mirrors the iPhone) · Bot Chat ·
 the notification service extension · the relay's plain copy ·
-Settings > Notifications
+Settings > Notifications · end-to-end encryption (keys, rotation, the
+padlock in Settings > Notifications and on the dashboard rows of Saved
+Dashboards and the Profiles sheet)
 
 **Code**
 - Extension: `ConduitNotificationService/NotificationService.swift`, `ConduitNotificationService/NotificationLocalization.swift`
 - Shared copy: `Shared/Notifications/NotificationCopy.swift`, `Shared/NotificationE2E.swift`
 - App: `Conduit/Services/PushNotificationService.swift` (showPreviews; the relay registration and its updates), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
 - Missed calls: `Conduit/Voice/HermesCalls.swift`
-- Settings: `Conduit/Views/AuxiliaryViews.swift`
-- Notifier: `notifier/events.py` (push_event, plain_text, media_free), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
+- Settings: `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/SavedDashboardsView.swift` (padlock on dashboard rows, also drawn by `Conduit/Views/ProfilePickerSheet.swift`)
+- Notifier: `notifier/events.py` (push_event, plain_text, media_free, sanitize_decision, sanitize_call), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
 
 **Rulings**
 - Notifications follow the App Language: the extension builds the words from the event's title_label and session_title (2026-10-23, #1158, notifier #326).
 - Pushes are titled with the Hermes session title (2026-10-12, notifier #93 and #94).
-- No push shows a host path: replies, background tasks, questions, approvals, calls, updates and phone changes show each MEDIA tag as 📎 and the file's name, or its type when the name is only a hash, in the plain and the sealed copy alike; a reply's fenced code stays as written (2026-10-24, Eric's review, #1212, notifier #348).
+- No push shows a host path: replies (Bot Chat and Pulse included), background tasks, failed turns, questions, approvals, calls, updates and phone changes show each MEDIA tag as 📎 and the file's name, or its type when the name is only a hash, in the plain and the sealed copy alike, and so do the answer card and the call screen that come with them; a reply's fenced code stays as written (2026-10-24, Eric's review, #1212, notifier #348).
 - A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301).
 - A push from a Bot Chat opens the Bot Chat (2026-10-16, #654), and a call from one opens the bot (2026-10-16, #630).
 - Notification status in Settings is for the active dashboard only (2026-10-05, #395).
+- Encryption keys rotate: every 30 days, on Settings > Notifications > Rotate, or when the host asks (`hermes conduit-push e2e rotate`). The phone saves the new key before sending it, and both sides keep the replaced key 7 days for pushes and answers in flight. Rotation is per pairing and below every event kind, so reply, approval, question, failed turn, tasks and cron, phone changes, missed call, Pulse and Bot Chat pushes need no change. On the condition that nothing already working is disrupted: a pairing that never rotates (an older app or notifier) keeps sealing and opening pushes and answers with its one key, tested on both sides (2026-10-24, #1197 and notifier #344, Eric).
+- The relay's plain copy is for pairings with no key. Rotation leaves it untouched: it neither reads nor changes the copy, and a pairing with no key never rotates (2026-10-24, #1197 and notifier #344, Eric).
+- The padlock is closed only when the host confirmed it seals with the key this iPhone holds, and that key isn't past 30 days plus the 7-day overlap. A host whose notifier can't rotate (before 0.71) keeps a closed padlock at any key age, with a caption asking for an update, since nothing on the phone could rotate it. A host that can't rotate is never shown as broken, so pairing with an older notifier is not disrupted (2026-10-24, #1197 and notifier #344, Eric).
 
 **Open gaps**
+- The Watch shows no padlock; it mirrors the iPhone's notifications.
+- Rotation narrows what a leaked key opens, but a key copied while in use still opens the pushes captured with it; there is no per-message ratchet.
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, #1212 (MEDIA tags in the push body); the registration update race at #1191.
+**Checked:** 2026-10-24, #1212 (MEDIA tags in pushes, answer cards and the call screen); at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
 
 ## Pulse
 
@@ -521,6 +528,7 @@ memory), its routes under /pulse and its capabilities · the
 - Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
 - Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
 - Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py`
+- What happened since an item came up: `notifier/pulse_evidence.py` (later chats and cron runs, background processes); follow-up, held-reminder, brief-card and Do it checks read it with the item's chat in `notifier/pulse_followup.py`, its continuation through `notifier/pulse_hermes.py` (`chain_messages`), the phone's calendar and reminders and the report in `notifier/pulse_report.py`
 - Ratings and lessons: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store: `notifier/pulse_store.py`
 - Control: `notifier/pulse_control.py` (shared by the commands and the routes), `notifier/cli.py`, `notifier/dashboard/plugin_api.py` (/pulse)
 - Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_personas.py` (personas over two weeks)
@@ -535,6 +543,7 @@ memory), its routes under /pulse and its capabilities · the
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
+- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
@@ -542,7 +551,7 @@ memory), its routes under /pulse and its capabilities · the
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
+**Checked:** 2026-10-24, #1211, with notifier #346 and #347.
 
 ## Artifacts
 
@@ -1153,6 +1162,66 @@ extension · the notifier's three stores and their refusals
 
 **Checked:** 2026-10-24, at main e9d9592.
 
+## Steps in a turn
+
+How a turn's thinking and tool calls read in the chat while it runs and
+once it is done.
+
+**Siblings:** the step rows (chats, project chats, Bot Chats, the saved
+offline copy) · the collapsed run of steps ("7 steps · 12s") · the working
+line ("Home · Searching the web") · the Live Activity's tool line · the
+notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row) ·
+the run's one-sentence summary and its switch in Settings > Chat · /btw
+
+**Code**
+- Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent)
+- Hermes' tools catalog: `Conduit/Models/ToolCatalog.swift`, toolset names shared with Settings > Capabilities in `Conduit/Models/CapabilityCatalogModels.swift` (CapabilityToolsetOrdering.label), `Conduit/Services/AppState.swift` (loadToolCatalogIfNeeded), `Conduit/Views/ChatRowState.swift` (toolCatalog)
+- Tool Search wrapper: `Conduit/Models/ToolSearchBridge.swift`
+- Run summaries: `Conduit/Services/ChatStepSummaries.swift`, `Conduit/Services/AppState+StepSummaries.swift`, `Conduit/Views/AuxiliaryViews.swift` (StepSummarySettings), sent with `Conduit/Services/HermesClient.swift` (startSideAgent)
+- Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`)
+- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`, `ConduitTests/ChatTypographyTests+StepSummaries.swift`
+
+**Rulings**
+- A step Conduit has words for keeps them, translated ("Searched the web"). Any other step is named: an MCP or connector tool by its app with the action as its subject line (a Tool Search batch: its apps' names with the connector icon, then every action it ran), else by the toolset Hermes' catalog (`/api/tools/toolsets`) puts it in, else by its own name made readable. "Used a tool" is only for a call with no name. Names are shown as Hermes writes them (2026-10-24, #1201).
+- The catalog is read once per profile per run and saved on the device, so a chat opened offline or before the dashboard answers still names its steps. An empty answer keeps the saved catalog and is asked again (2026-10-24, #1201).
+- The Live Activity stays on categories: its state goes through the push relay, which never sees tool names, so neither it nor the notifier's `tool_category` names tools (2026-10-24, #1201).
+- A run's summary is opt-in and device-only, off by default. Once a turn has settled (its reply in place, nothing running) with 3 or more tool calls in its last run, Conduit asks a hidden `/btw` (Hermes' cache-sharing fork, no tools, the chat untouched) for one sentence in the app's language, and shows it folded over "7 steps · 12s". It is kept per dashboard and profile, by the run's first tool call, so only a run whose call ids are its own is described (not ids numbered per turn, like `functions.web_search:0`); switching off hides the kept ones at once. Questions unanswered after two minutes are forgotten, and so is an answer that comes later; that run keeps the count. The kept sentences describe chats, so they go with a dashboard's saved chats (sign-out, removal, a new interactive sign-in) and with Delete Saved Chats. In Conduit its answer never shows as a /btw note, late, replayed or asked by another device, and the user's own /btw is never taken for one (only the exact question is) (2026-10-24, #1202).
+
+**Open gaps**
+- Summaries are kept on the device that saw the turn end: other devices, the Watch and turns that ended elsewhere show the count only. Sharing them would need the plugin to store them.
+- A turn that ends while another chat is open on this device isn't asked about either; opening its chat later shows the count. Asking then would spend a model call on each old chat opened.
+- An older Hermes without the hidden `/btw` (`prompt.btw`) leaves the count, with no notice that the switch does nothing there.
+- A Hermes that routes `auxiliary.side_question` to another model answers from a transcript digest, not the cached prefix.
+- Other clients on the same chat (Hermes Desktop, the TUI, an older Conduit) show the hidden question and its answer as a `[btw …]` note.
+- Runs from a provider that numbers its tool call ids per turn (`functions.web_search:0`) get no sentence; keying them would need the chat's durable id.
+- The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
+- An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
+
+**Checked:** 2026-10-24, at #1202, carried in #1215.
+
+## Review labels
+
+Whose turn a contributor's PR is: `waiting on contributor` while it waits on
+its author, `waiting on Eric` once the author has answered.
+
+**Siblings:** this repo's label workflow · the notifier's copy of it ·
+CONTRIBUTING.md's Review labels section here and in the notifier · docs/CI.md's
+workflow table
+
+**Code**
+- Workflow: `.github/workflows/contributor-label.yml`
+- Notifier: `notifier/.github/workflows/contributor-label.yml`, `notifier/CONTRIBUTING.md` (Review labels)
+- Text: `CONTRIBUTING.md` (Review labels), `docs/CI.md` (the workflow table)
+
+**Rulings**
+- `waiting on contributor` marks a PR waiting on its author; a push or a PR comment by the author swaps it for `waiting on Eric`, and adding `waiting on contributor` again takes `waiting on Eric` off (2026-10-24, notifier #351, Eric asked for the flip).
+- The workflow only edits labels: nothing from the PR is checked out or run, so it can run on forks' PRs (2026-10-24, notifier #351).
+
+**Open gaps**
+- A reply inside a review thread doesn't flip the label, since a fork's review events get a read-only token; the docs tell contributors to comment on the PR or push.
+
+**Checked:** 2026-10-24, at #1216.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
@@ -1182,4 +1251,4 @@ point at the map and its check
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
 
-**Checked:** 2026-10-24, at #1209.
+**Checked:** 2026-10-24, at #1216.

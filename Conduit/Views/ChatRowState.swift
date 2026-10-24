@@ -40,6 +40,10 @@ struct ChatRowState: Equatable {
     /// The bots' names as the chat shows them: a "Messaged" step reads its
     /// teammate's name from the roster, and this redraws it when that loads.
     var botLabels: [String] = []
+    /// Names the steps Conduit has no words of its own for.
+    var toolCatalog = ToolCatalog()
+    /// Finished runs' sentences, by their first tool call.
+    var stepSummaries: [String: String] = [:]
 
     init() {}
 
@@ -66,6 +70,9 @@ struct ChatRowState: Equatable {
             streamingMessageID: appState.isBusy ? BotTeammateMessages.runningReplyID(in: appState.messages) : nil
         )
         botLabels = appState.botRoster.map { "\($0.name)=\($0.displayLabel)" }
+        toolCatalog = appState.toolCatalog
+        // ChatStepRow hides them while the switch is off.
+        stepSummaries = appState.stepSummaries[appState.toolCatalogKey] ?? [:]
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

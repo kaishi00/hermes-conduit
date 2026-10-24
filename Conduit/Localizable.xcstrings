@@ -334035,6 +334035,1564 @@
           }
         }
       }
+    },
+    "Using %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzt %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usando %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilise %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menggunakan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sta usando %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を使用中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 사용 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Używa: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usando %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использует: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kullanılıyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在使用 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在使用 %@"
+          }
+        }
+      }
+    },
+    "Used %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat %@ verwendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usó %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A utilisé %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menggunakan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ha usato %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 사용함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Użyto: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usou %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использовано: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kullanıldı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@"
+          }
+        }
+      }
+    },
+    "Looking for tools" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sucht nach Tools"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscando herramientas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cherche des outils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencari alat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sta cercando strumenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ツールを検索中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도구 찾는 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szuka narzędzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Procurando ferramentas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ищет инструменты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Araç arıyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在查找工具"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在尋找工具"
+          }
+        }
+      }
+    },
+    "Looked for tools" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat nach Tools gesucht"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscó herramientas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cherché des outils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencari alat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ha cercato strumenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ツールを検索"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도구 찾음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szukał narzędzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Procurou ferramentas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Искал инструменты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Araç aradı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已查找工具"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已尋找工具"
+          }
+        }
+      }
+    },
+    "Reading tool details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest Tool-Details"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leyendo detalles de herramientas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lit les détails des outils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membaca detail alat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sta leggendo i dettagli degli strumenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ツールの詳細を確認中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도구 세부 정보 읽는 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czyta szczegóły narzędzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lendo detalhes das ferramentas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читает описание инструментов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Araç ayrıntılarını okuyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取工具详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取工具詳細資料"
+          }
+        }
+      }
+    },
+    "Read tool details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat Tool-Details gelesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leyó detalles de herramientas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A lu les détails des outils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membaca detail alat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ha letto i dettagli degli strumenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ツールの詳細を確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도구 세부 정보 읽음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeczytał szczegóły narzędzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leu detalhes das ferramentas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прочитал описание инструментов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Araç ayrıntılarını okudu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已读取工具详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已讀取工具詳細資料"
+          }
+        }
+      }
+    },
+    "Step summaries" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritt-Zusammenfassungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resúmenes de pasos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Résumés des étapes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ringkasan langkah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riepiloghi dei passaggi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ステップの要約"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단계 요약"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podsumowania kroków"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resumos das etapas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сводки шагов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adım özetleri"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤摘要"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步驟摘要"
+          }
+        }
+      }
+    },
+    "When a reply took several steps, Hermes writes one sentence about what they did, shown on the folded steps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn eine Antwort mehrere Schritte brauchte, schreibt Hermes einen Satz dazu, was sie getan haben. Er steht auf den eingeklappten Schritten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando una respuesta necesitó varios pasos, Hermes escribe una frase sobre lo que hicieron, que se muestra en los pasos plegados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand une réponse a pris plusieurs étapes, Hermes écrit une phrase sur ce qu’elles ont fait, affichée sur les étapes repliées."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat sebuah balasan memakai beberapa langkah, Hermes menulis satu kalimat tentang apa yang dilakukan, ditampilkan pada langkah yang dilipat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando una risposta ha richiesto più passaggi, Hermes scrive una frase su ciò che hanno fatto, mostrata sui passaggi compressi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信に複数のステップがかかったとき、Hermes がその内容を一文で書き、折りたたんだステップに表示します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답변에 여러 단계가 걸렸을 때 Hermes가 무엇을 했는지 한 문장으로 써서 접힌 단계에 표시합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy odpowiedź wymagała kilku kroków, Hermes pisze jedno zdanie o tym, co zrobiły, widoczne na zwiniętych krokach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando uma resposta levou várias etapas, o Hermes escreve uma frase sobre o que elas fizeram, mostrada nas etapas recolhidas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда ответ занял несколько шагов, Hermes пишет одно предложение о том, что они сделали. Оно показывается на свёрнутых шагах."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir yanıt birkaç adım sürdüğünde Hermes bu adımların ne yaptığını tek cümleyle yazar ve katlanmış adımlarda gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当一条回复用了多个步骤时，Hermes 会用一句话说明这些步骤做了什么，显示在折叠的步骤上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當一則回覆用了多個步驟時，Hermes 會用一句話說明這些步驟做了什麼，顯示在收合的步驟上。"
+          }
+        }
+      }
+    },
+    "Each sentence is one more short request to your model. It reuses the chat's prompt cache and never changes the chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Satz ist eine weitere kurze Anfrage an dein Modell. Sie nutzt den Prompt-Cache des Chats und ändert den Chat nie."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada frase es una solicitud breve más a tu modelo. Reutiliza la caché de prompts del chat y nunca cambia el chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque phrase est une courte requête de plus à votre modèle. Elle réutilise le cache de prompt de la conversation et ne la modifie jamais."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap kalimat adalah satu permintaan singkat tambahan ke model Anda. Permintaan ini memakai ulang cache prompt obrolan dan tidak pernah mengubah obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni frase è una breve richiesta in più al tuo modello. Riutilizza la cache dei prompt della chat e non modifica mai la chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各文はモデルへの短いリクエストが 1 回増えます。チャットのプロンプトキャッシュを再利用し、チャットは変更しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문장마다 모델에 짧은 요청이 하나 더 갑니다. 채팅의 프롬프트 캐시를 재사용하며 채팅은 바꾸지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każde zdanie to jedno dodatkowe krótkie zapytanie do modelu. Korzysta z pamięci podręcznej promptu czatu i nigdy nie zmienia czatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada frase é mais uma solicitação curta ao seu modelo. Ela reutiliza o cache de prompt do chat e nunca altera o chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое предложение — ещё один короткий запрос к модели. Он использует кеш промпта чата и никогда не меняет чат."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her cümle modelinize bir kısa istek daha demektir. Sohbetin istem önbelleğini yeniden kullanır ve sohbeti asla değiştirmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每句话都会向你的模型多发一次简短请求。它复用聊天的提示缓存，绝不会更改聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每句話都會向你的模型多送一次簡短請求。它會重用聊天的提示快取，絕不會更改聊天。"
+          }
+        }
+      }
+    },
+    "Describe finished steps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertige Schritte beschreiben"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Describir los pasos terminados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Décrire les étapes terminées"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jelaskan langkah yang selesai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descrivi i passaggi completati"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了したステップを説明"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끝난 단계 설명"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opisuj zakończone kroki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descrever etapas concluídas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Описывать завершённые шаги"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biten adımları açıkla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述已完成的步骤"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述已完成的步驟"
+          }
+        }
+      }
+    },
+    "Sentences are kept on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sätze bleiben auf diesem Gerät."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las frases se guardan en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les phrases restent sur cet appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalimat disimpan di perangkat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le frasi restano su questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文はこのデバイスに保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문장은 이 기기에 보관됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zdania są przechowywane na tym urządzeniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As frases ficam neste dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Предложения хранятся на этом устройстве."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cümleler bu cihazda saklanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些句子保存在此设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些句子保存在此裝置上。"
+          }
+        }
+      }
+    },
+    "Rotate encryption keys" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschlüsselungsschlüssel erneuern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renovar claves de cifrado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renouveler les clés de chiffrement"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui kunci enkripsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rinnova le chiavi di crittografia"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暗号化キーを更新"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호화 키 갱신"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odnów klucze szyfrowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renovar chaves de criptografia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновить ключи шифрования"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şifreleme anahtarlarını yenile"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轮换加密密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輪換加密金鑰"
+          }
+        }
+      }
+    },
+    "Conduit gives this dashboard's hosts new keys by itself every 30 days. The old keys still open notifications already on their way for 7 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit gibt den Hosts dieses Dashboards alle 30 Tage von selbst neue Schlüssel. Die alten Schlüssel öffnen bereits unterwegs befindliche Mitteilungen noch 7 Tage lang."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit da nuevas claves a los hosts de este panel cada 30 días por sí solo. Las claves antiguas siguen abriendo durante 7 días las notificaciones que ya están en camino."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit donne de nouvelles clés aux hôtes de ce tableau de bord tous les 30 jours, de lui-même. Les anciennes clés ouvrent encore pendant 7 jours les notifications déjà en route."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memberi host dasbor ini kunci baru dengan sendirinya setiap 30 hari. Kunci lama masih membuka notifikasi yang sudah dalam perjalanan selama 7 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit dà da solo nuove chiavi agli host di questa dashboard ogni 30 giorni. Le vecchie chiavi aprono ancora per 7 giorni le notifiche già in arrivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはこのダッシュボードのホストに30日ごとに自動で新しいキーを渡します。古いキーは、すでに配信中の通知を7日間引き続き開けます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit는 30일마다 이 대시보드의 호스트에 자동으로 새 키를 줍니다. 이전 키는 이미 전송 중인 알림을 7일 동안 계속 열 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sam co 30 dni daje hostom tego panelu nowe klucze. Stare klucze jeszcze przez 7 dni otwierają powiadomienia, które są już w drodze."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit dá novas chaves aos hosts deste painel a cada 30 dias, sozinho. As chaves antigas ainda abrem por 7 dias as notificações que já estão a caminho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit сам выдаёт хостам этой панели новые ключи каждые 30 дней. Старые ключи ещё 7 дней открывают уведомления, которые уже в пути."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu panonun ana bilgisayarlarına her 30 günde bir kendiliğinden yeni anahtarlar verir. Eski anahtarlar, yolda olan bildirimleri 7 gün daha açar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 每 30 天会自动为此仪表板的主机提供新密钥。旧密钥在 7 天内仍可打开已在途中的通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 每 30 天會自動為此儀表板的主機提供新金鑰。舊金鑰在 7 天內仍可開啟已在途中的通知。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted with a key from %@. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 30 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt mit einem Schlüssel vom %@. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Der Schlüssel wechselt alle 30 Tage."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo con una clave del %@. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. La clave cambia cada 30 días."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout avec une clé du %@. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. La clé change tous les 30 jours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end dengan kunci dari %@. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Kunci berganti setiap 30 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end con una chiave del %@. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. La chiave cambia ogni 30 giorni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のキーでエンドツーエンド暗号化済み。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーは30日ごとに変わります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 만든 키로 종단 간 암호화됨. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키는 30일마다 바뀝니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end kluczem z %@. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Klucz zmienia się co 30 dni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta com uma chave de %@. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. A chave muda a cada 30 dias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование ключом от %@. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Ключ меняется каждые 30 дней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tarihli bir anahtarla uçtan uca şifreli. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtar her 30 günde bir değişir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的密钥进行端到端加密。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。密钥每 30 天更换一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 %@ 的金鑰進行端對端加密。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。金鑰每 30 天更換一次。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 30 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt. Nur dieses iPhone kann diese Mitteilungen lesen; das Relay sieht, wann sie ankommen, nicht, was sie sagen. Aktualisiere den Notifier dieses Hosts, damit der Schlüssel alle 30 Tage wechselt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo. Solo este iPhone puede leer estas notificaciones; el relé ve cuándo llegan, no lo que dicen. Actualiza el notificador de este host para que la clave cambie cada 30 días."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout. Seul cet iPhone peut lire ces notifications ; le relais voit quand elles arrivent, pas ce qu’elles disent. Mettez à jour le notificateur de cet hôte pour que la clé change tous les 30 jours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end. Hanya iPhone ini yang bisa membaca notifikasi ini; relay melihat kapan notifikasi tiba, bukan isinya. Perbarui notifier host ini agar kunci berganti setiap 30 hari."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end. Solo questo iPhone può leggere queste notifiche; il relay vede quando arrivano, non cosa dicono. Aggiorna il notifier di questo host perché la chiave cambi ogni 30 giorni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化済み。この通知を読めるのはこのiPhoneだけです。リレーには届いた時刻はわかりますが、内容はわかりません。キーが30日ごとに変わるよう、このホストの通知プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종단 간 암호화됨. 이 알림은 이 iPhone만 읽을 수 있습니다. 릴레이는 알림이 도착한 시간만 보고 내용은 보지 못합니다. 키가 30일마다 바뀌도록 이 호스트의 알림 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end. Tylko ten iPhone może czytać te powiadomienia; przekaźnik widzi, kiedy przychodzą, a nie, co zawierają. Zaktualizuj notifier tego hosta, aby klucz zmieniał się co 30 dni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta. Só este iPhone pode ler estas notificações; o relay vê quando elas chegam, não o que dizem. Atualize o notificador deste host para que a chave mude a cada 30 dias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование. Только этот iPhone может читать эти уведомления; ретранслятор видит, когда они приходят, но не их содержание. Обновите notifier этого хоста, чтобы ключ менялся каждые 30 дней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreli. Bu bildirimleri yalnızca bu iPhone okuyabilir; aktarıcı ne zaman geldiklerini görür, ne dediklerini görmez. Anahtarın her 30 günde bir değişmesi için bu ana bilgisayarın bildiricisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端到端加密。只有这台 iPhone 能读取这些通知；中继只能看到通知何时到达，看不到内容。请更新此主机的通知插件，让密钥每 30 天更换一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端對端加密。只有這支 iPhone 能讀取這些通知；中繼只能看到通知何時送達，看不到內容。請更新此主機的通知外掛，讓金鑰每 30 天更換一次。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted, but the key is overdue for rotation. Open this host's dashboard in Conduit so it can hand over a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende-zu-Ende-verschlüsselt, aber der Schlüssel hätte längst erneuert werden sollen. Öffne das Dashboard dieses Hosts in Conduit, damit es einen neuen übergeben kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cifrado de extremo a extremo, pero la clave debería haberse renovado. Abre el panel de este host en Conduit para que pueda entregar una nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiffré de bout en bout, mais la clé aurait dû être renouvelée. Ouvrez le tableau de bord de cet hôte dans Conduit pour qu’il puisse en remettre une nouvelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terenkripsi end-to-end, tetapi kuncinya sudah lewat waktu untuk diperbarui. Buka dasbor host ini di Conduit agar host bisa menerima kunci baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crittografia end-to-end, ma la chiave andava rinnovata da tempo. Apri la dashboard di questo host in Conduit perché possa consegnarne una nuova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化済みですが、キーの更新期限を過ぎています。新しいキーを渡せるよう、Conduitでこのホストのダッシュボードを開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종단 간 암호화되어 있지만 키 갱신 기한이 지났습니다. 새 키를 전달할 수 있도록 Conduit에서 이 호스트의 대시보드를 여세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end, ale klucz powinien był już zostać odnowiony. Otwórz panel tego hosta w Conduit, aby mógł przekazać nowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criptografado de ponta a ponta, mas a chave já deveria ter sido renovada. Abra o painel deste host no Conduit para que ele possa entregar uma nova."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование, но ключ давно пора обновить. Откройте панель этого хоста в Conduit, чтобы он мог передать новый."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreli, ancak anahtarın yenilenme zamanı çoktan geçti. Yeni bir anahtar verebilmesi için bu ana bilgisayarın panosunu Conduit’te açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端到端加密，但密钥早已过了轮换期限。请在 Conduit 中打开此主机的仪表板，以便它交出新密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端對端加密，但金鑰早已超過輪換期限。請在 Conduit 中開啟此主機的儀表板，讓它交出新金鑰。"
+          }
+        }
+      }
+    },
+    "This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Verschlüsselungsschlüssel dieses Hosts passt nicht zu dem dieses iPhones, daher zeigen seine Mitteilungen nur allgemeinen Text. Conduit richtet beim nächsten Verbinden mit diesem Dashboard einen neuen Schlüssel ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clave de cifrado de este host no coincide con la de este iPhone, así que sus notificaciones solo muestran texto genérico. Conduit crea una clave nueva la próxima vez que se conecte a este panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clé de chiffrement de cet hôte ne correspond pas à celle de cet iPhone : ses notifications n’affichent donc qu’un texte générique. Conduit crée une nouvelle clé à sa prochaine connexion à ce tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci enkripsi host ini tidak cocok dengan kunci iPhone ini, jadi notifikasinya hanya menampilkan teks umum. Conduit menyiapkan kunci baru saat berikutnya terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La chiave di crittografia di questo host non corrisponde a quella di questo iPhone, quindi le sue notifiche mostrano solo testo generico. Conduit imposta una nuova chiave alla prossima connessione a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの暗号化キーがこのiPhoneのキーと一致しないため、通知には一般的なテキストだけが表示されます。Conduitは次にこのダッシュボードに接続したときに新しいキーを設定します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 암호화 키가 이 iPhone의 키와 일치하지 않아 알림에 일반 텍스트만 표시됩니다. Conduit는 다음에 이 대시보드에 연결할 때 새 키를 설정합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucz szyfrowania tego hosta nie pasuje do klucza tego iPhone’a, więc jego powiadomienia pokazują tylko ogólny tekst. Conduit ustawi nowy klucz przy następnym połączeniu z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A chave de criptografia deste host não corresponde à deste iPhone, então as notificações dele mostram só texto genérico. O Conduit configura uma nova chave na próxima vez que se conectar a este painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключ шифрования этого хоста не совпадает с ключом этого iPhone, поэтому его уведомления показывают только общий текст. Conduit создаст новый ключ при следующем подключении к этой панели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana bilgisayarın şifreleme anahtarı bu iPhone’unkiyle eşleşmiyor, bu yüzden bildirimleri yalnızca genel metin gösteriyor. Conduit bu panoya bir sonraki bağlanışında yeni bir anahtar kurar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的加密密钥与这台 iPhone 的不一致，因此它的通知只显示通用文本。Conduit 下次连接此仪表板时会设置新密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的加密金鑰與這支 iPhone 的不一致，因此它的通知只顯示一般文字。Conduit 下次連線到此儀表板時會設定新金鑰。"
+          }
+        }
+      }
+    },
+    "End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Ende-zu-Ende-Verschlüsselung ist auf diesem iPhone eingerichtet. Conduit prüft sie mit dem Host beim nächsten Verbinden mit diesem Dashboard."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El cifrado de extremo a extremo está configurado en este iPhone. Conduit lo comprueba con el host la próxima vez que se conecte a este panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiffrement de bout en bout est configuré sur cet iPhone. Conduit le vérifie avec l’hôte à sa prochaine connexion à ce tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enkripsi end-to-end sudah disiapkan di iPhone ini. Conduit memeriksanya dengan host saat berikutnya terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La crittografia end-to-end è configurata su questo iPhone. Conduit la verifica con l’host alla prossima connessione a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneでエンドツーエンド暗号化が設定されています。Conduitは次にこのダッシュボードに接続したときにホストと確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone에 종단 간 암호화가 설정되었습니다. Conduit는 다음에 이 대시보드에 연결할 때 호스트와 확인합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szyfrowanie end-to-end jest skonfigurowane na tym iPhonie. Conduit sprawdzi je z hostem przy następnym połączeniu z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A criptografia de ponta a ponta está configurada neste iPhone. O Conduit a confere com o host na próxima vez que se conectar a este painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сквозное шифрование настроено на этом iPhone. Conduit проверит его с хостом при следующем подключении к этой панели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uçtan uca şifreleme bu iPhone’da kuruldu. Conduit bunu bu panoya bir sonraki bağlanışında ana bilgisayarla doğrular."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPhone 上已设置端到端加密。Conduit 下次连接此仪表板时会与主机核对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支 iPhone 已設定端對端加密。Conduit 下次連線到此儀表板時會與主機核對。"
+          }
+        }
+      }
+    },
+    "Notifications end-to-end encrypted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen Ende-zu-Ende-verschlüsselt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones cifradas de extremo a extremo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications chiffrées de bout en bout"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi terenkripsi end-to-end"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche con crittografia end-to-end"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知はエンドツーエンド暗号化済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 종단 간 암호화됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia szyfrowane end-to-end"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações criptografadas de ponta a ponta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления со сквозным шифрованием"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler uçtan uca şifreli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端到端加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知已端對端加密"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

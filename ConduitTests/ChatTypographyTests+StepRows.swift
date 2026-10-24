@@ -195,4 +195,86 @@ extension ChatTypographyTests {
         let tools = messages.compactMap(\.tool)
         XCTAssertEqual(tools.map(\.duration), [7, 2.5])
     }
+
+    // MARK: - Names from Hermes' tools catalog
+
+    private var stepCatalog: ToolCatalog {
+        ToolCatalog(toolsets: [
+            CapabilityToolset(name: "web", description: "web_search, web_extract", enabled: true, label: "Web Search & Scraping", tools: ["web_search", "web_extract"]),
+            CapabilityToolset(name: "spotify", description: "playback, search", enabled: true, label: "Spotify", tools: ["spotify_play", "spotify_search"]),
+            CapabilityToolset(name: "searxng", description: "SearXNG metasearch", enabled: true, label: "🔌 Searxng", tools: ["searxng_search"]),
+            // A composite that also lists it: the smaller toolset names it.
+            CapabilityToolset(name: "everything", description: nil, enabled: true, label: "Everything", tools: ["searxng_search", "spotify_play", "terminal"]),
+        ])
+    }
+
+    func testKnownKindsKeepConduitsOwnWords() {
+        XCTAssertEqual(ChatStepLabel(toolName: "web_search", catalog: stepCatalog).kind, .category(.web))
+        XCTAssertEqual(ChatStepLabel(toolName: "conduit_calendar", catalog: stepCatalog).kind, .category(.phone))
+    }
+
+    func testOtherToolsAreNamedByTheirToolset() {
+        let spotify = ChatStepLabel(toolName: "spotify_play", catalog: stepCatalog)
+        XCTAssertEqual(spotify.kind, .named("Spotify"))
+        XCTAssertEqual(spotify.detail, "playback, search")
+        let searxng = ChatStepLabel(toolName: "searxng_search", catalog: stepCatalog)
+        XCTAssertEqual(searxng.kind, .named("Searxng"))
+        XCTAssertEqual(searxng.detail, "SearXNG metasearch")
+    }
+
+    func testToolsMissingFromTheCatalogShowTheirOwnNameReadably() {
+        XCTAssertEqual(ChatStepLabel(toolName: "crawl4ai_md").kind, .named("Crawl4ai md"))
+        XCTAssertEqual(ChatStepLabel(toolName: "  ").kind, .category(.tool))
+        XCTAssertEqual(ChatStepLabel(toolName: "").kind, .category(.tool))
+    }
+
+    func testMcpAndConnectorToolsNameTheirAppAndAction() {
+        let notion = ChatStepLabel(toolName: "mcp__notion__create_page")
+        XCTAssertEqual(notion.kind, .named("Notion"))
+        XCTAssertEqual(notion.action, "create page")
+        let github = ChatStepLabel(toolName: "connectors__github__GITHUB_LIST_ISSUES")
+        XCTAssertEqual(github.kind, .named("GitHub"))
+        XCTAssertEqual(github.action, "list issues")
+        XCTAssertEqual(ChatStepStyle(toolName: "connectors__github__list_issues").symbol, "puzzlepiece.extension")
+        // An older single-underscore MCP name keeps the connector words.
+        XCTAssertEqual(ChatStepLabel(toolName: "mcp_notion_create_page").kind, .category(.connector))
+    }
+
+    func testToolSearchStepsHaveTheirOwnWords() {
+        XCTAssertEqual(ChatStepLabel(toolName: "tool_search").kind, .toolSearch)
+        XCTAssertEqual(ChatStepLabel(toolName: "tool_describe").kind, .toolDescribe)
+        XCTAssertEqual(ChatStepStyle(toolName: "tool_search").symbol, "magnifyingglass")
+    }
+
+    func testAWrapperNamesWhatItRan() {
+        let one = ChatStepLabel(
+            toolName: "tool_call",
+            input: #"{"calls": [{"name": "connectors__github__list_issues", "arguments": {}}, {"name": "connectors__github__get_issue"}]}"#
+        )
+        XCTAssertEqual(one.kind, .named("GitHub"))
+        XCTAssertEqual(one.action, "list issues, get issue")
+        XCTAssertEqual(ChatStepStyle(toolName: "tool_call").symbol, ChatStepStyle(toolName: "connectors__github__get_issue").symbol)
+        let two = ChatStepLabel(
+            toolName: "tool_call",
+            input: #"{"calls": [{"name": "connectors__github__list_issues"}, {"name": "spotify_play"}]}"#,
+            catalog: stepCatalog
+        )
+        guard case .named(let names) = two.kind else { return XCTFail("\(two.kind)") }
+        XCTAssertTrue(names.contains("GitHub") && names.contains("Spotify"), names)
+        XCTAssertEqual(two.action, "list issues")
+        XCTAssertEqual(ChatStepLabel(toolName: "tool_call", input: "not json").kind, .category(.tool))
+    }
+
+    func testTheCatalogDropsAnOlderHermesEmojiAndRoundTrips() throws {
+        XCTAssertEqual(CapabilityToolsetOrdering.strippedLabel("🔍 Web Search & Scraping"), "Web Search & Scraping")
+        XCTAssertEqual(CapabilityToolsetOrdering.strippedLabel("X (Twitter) Search"), "X (Twitter) Search")
+        XCTAssertEqual(CapabilityToolsetOrdering.strippedLabel("元宝 群聊"), "元宝 群聊")
+        XCTAssertNil(CapabilityToolsetOrdering.strippedLabel("🔌"))
+        XCTAssertNil(CapabilityToolsetOrdering.strippedLabel("  "))
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ToolCatalogTests-\(UUID().uuidString)"))
+        stepCatalog.save(key: "d.default", defaults: defaults)
+        XCTAssertEqual(ToolCatalog.saved(key: "d.default", defaults: defaults), stepCatalog)
+        XCTAssertTrue(ToolCatalog.saved(key: "d.other", defaults: defaults).isEmpty)
+    }
 }

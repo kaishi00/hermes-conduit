@@ -17,6 +17,7 @@ per account, waiting for a runner had become the main cost.
 |---|---|---|---|
 | `.github/workflows/ci.yml` | every PR and every push to `main` | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the curated unit smoke classes and the curated UI smoke classes on that build and simulator | yes, through the single `CI Gate` check |
 | `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, all with no retry | no; a failed scheduled run emails the owner |
+| `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
 
 **Releases** have no workflow of their own: a release candidate is validated
 by dispatching Nightly on the release ref (Actions > Nightly > Run workflow,

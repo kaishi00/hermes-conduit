@@ -1639,6 +1639,7 @@ struct ChatSettingsDetail: View {
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
+                    StepSummarySettings()
                     DeviceHapticsSettings()
                 }
             ),
@@ -1850,6 +1851,31 @@ private struct ChatTakeoverSettings: View {
             Toggle("Take over automatically", isOn: $automatic)
                 .tint(.conduitAccent)
                 .accessibilityHint("Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host.")
+        }
+    }
+}
+
+/// Device-only and off by default: one sentence for a finished run of
+/// steps, asked of Hermes with a hidden /btw (ChatStepSummaries).
+private struct StepSummarySettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatStepSummaries.preferenceKey) private var enabled = ChatStepSummaries.defaultEnabled
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Step summaries"),
+            symbol: "text.line.first.and.arrowtriangle.forward",
+            tint: .conduitAura
+        ) {
+            Text("When a reply took several steps, Hermes writes one sentence about what they did, shown on the folded steps.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("Each sentence is one more short request to your model. It reuses the chat's prompt cache and never changes the chat.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Describe finished steps", isOn: $enabled)
+                .tint(.conduitAccent)
+                .accessibilityHint("Sentences are kept on this device.")
         }
     }
 }
@@ -3654,6 +3680,21 @@ private struct NotificationsSettingsDetail: View {
                         ForEach(pairings.thisDashboard) { gateway in
                             gatewayRow(gateway)
                         }
+                        if notifications.canRotateEncryptionKeys(gatewayIDs: pairings.thisDashboard.map(\.id)) {
+                            Button {
+                                notifications.requestEncryptionKeyRotation()
+                                Task { await appState.provisionNotificationEncryptionNow() }
+                            } label: {
+                                Label(AppLocalization.string("Rotate encryption keys"), systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .font(.footnote)
+                            // A tap while keys are being set up would only
+                            // wait for the next connect.
+                            .disabled(notifications.isProvisioningEncryption)
+                            Text("Conduit gives this dashboard's hosts new keys by itself every 30 days. The old keys still open notifications already on their way for 7 days.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         // One host, one set of commands, however many of its
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
@@ -3937,8 +3978,28 @@ private struct NotificationsSettingsDetail: View {
         // #431: whether this pairing's notifications are sealed so the relay
         // can't read them. Keys are set up automatically over the dashboard
         // connection once the host's notifier supports it.
-        if notifications.encryptedGatewayIDs.contains(gateway.id) {
-            Label(AppLocalization.string("End-to-end encrypted"), systemImage: "lock.fill")
+        // The padlock is closed only when the host confirmed it seals with
+        // the key this iPhone holds, and that key isn't long overdue.
+        let assurance = notifications.encryptionAssurance(gatewayID: gateway.id)
+        if case .ensured(let createdAt, let rotates) = assurance {
+            Label(
+                rotates
+                    ? AppLocalization.string("End-to-end encrypted with a key from \(createdAt.formatted(date: .abbreviated, time: .omitted)). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 30 days.")
+                    : AppLocalization.string("End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 30 days."),
+                systemImage: "lock.fill"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } else if case .overdue = assurance {
+            Label(AppLocalization.string("End-to-end encrypted, but the key is overdue for rotation. Open this host's dashboard in Conduit so it can hand over a new one."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        } else if case .mismatched = assurance {
+            Label(AppLocalization.string("This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if case .unconfirmed = assurance {
+            Label(AppLocalization.string("End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard."), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if NotificationSharedSettings.keysProvisioned, notifications.encryptedGatewayIDs.isEmpty {

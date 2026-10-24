@@ -1,0 +1,58 @@
+name: contributor-label
+# When a PR is labeled "waiting on contributor" and its author pushes or
+# comments, swap the label for "waiting on Eric", so the PR list shows whose
+# turn it is. Adding "waiting on contributor" again clears "waiting on Eric".
+# It only edits labels: nothing from the PR is checked out or run. Replies on
+# review threads don't count, since a fork's review events get a read-only
+# token; a push or a comment on the PR does.
+on:
+  pull_request_target:
+    types: [synchronize, labeled]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: contributor-label-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  flip:
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
+        github.event.label.name == 'waiting on contributor') ||
+      (github.event_name == 'pull_request_target' && github.event.action == 'synchronize' &&
+        github.actor == github.event.pull_request.user.login &&
+        contains(github.event.pull_request.labels.*.name, 'waiting on contributor')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.issue.state == 'open' &&
+        github.event.comment.user.login == github.event.issue.user.login && github.event.comment.user.type == 'User' &&
+        contains(github.event.issue.labels.*.name, 'waiting on contributor'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Labeling a pull request through the issues API takes both.
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          RELABEL: ${{ github.event.action == 'labeled' }}
+        run: |
+          labels="repos/$REPO/issues/$PR/labels"
+          # The event carries the labels as they were when it fired; act on
+          # the PR's labels now. A removal racing a person's can 404, which
+          # is fine; a failed add is a misconfiguration and fails the run.
+          current=$(gh api "$labels?per_page=100" --jq '.[].name')
+          if [ "$RELABEL" = true ]; then
+            if grep -qx 'waiting on Eric' <<<"$current" && grep -qx 'waiting on contributor' <<<"$current"; then
+              gh api -X DELETE "$labels/waiting%20on%20Eric" >/dev/null || true
+            fi
+          elif grep -qx 'waiting on contributor' <<<"$current"; then
+            # Creates the label the first time (an existing one answers 422).
+            gh api "repos/$REPO/labels" -f name='waiting on Eric' -f color=1d76db >/dev/null 2>&1 || true
+            gh api "$labels" -f 'labels[]=waiting on Eric' >/dev/null
+            gh api -X DELETE "$labels/waiting%20on%20contributor" >/dev/null || true
+          fi

@@ -185,6 +185,7 @@ struct SavedDashboardRowModel: Identifiable {
 struct SavedDashboardRowLabel: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var notifications = PushNotificationService.shared
     let row: SavedDashboardRowModel
     let isSwitching: Bool
 
@@ -194,8 +195,16 @@ struct SavedDashboardRowLabel: View {
                 .fill(statusColor)
                 .frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: row.dashboard.label)
-                    .font(.subheadline.weight(.semibold))
+                HStack(spacing: 4) {
+                    Text(verbatim: row.dashboard.label)
+                        .font(.subheadline.weight(.semibold))
+                    if notificationsEncrypted {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(AppLocalization.string("Notifications end-to-end encrypted"))
+                    }
+                }
                 Text(verbatim: row.dashboard.normalizedURL)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -229,6 +238,18 @@ struct SavedDashboardRowLabel: View {
         return row.hasReusableAuth
             ? AppLocalization.string("Saved")
             : AppLocalization.string("Sign In required")
+    }
+
+    /// Every pairing of this dashboard's hosts is end-to-end encrypted with
+    /// a key the host confirmed (the details are in Settings >
+    /// Notifications).
+    private var notificationsEncrypted: Bool {
+        guard notifications.isEnabled else { return false }
+        let gatewayIDs = appState.relayGatewayIDs(of: row.dashboard.id)
+        return !gatewayIDs.isEmpty && gatewayIDs.allSatisfy { gatewayID in
+            if case .ensured = notifications.encryptionAssurance(gatewayID: gatewayID) { return true }
+            return false
+        }
     }
 
     private var actionText: String {
