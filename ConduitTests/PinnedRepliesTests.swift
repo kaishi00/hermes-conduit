@@ -349,6 +349,24 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertTrue(appState.isShowingChat(for: reveal))
     }
 
+    /// A reveal made in the open chat that is still waiting when another
+    /// chat opens does not scroll (or announce) in that chat.
+    @MainActor
+    func testARevealMadeInTheOpenChatDoesNotFireInAnotherChat() throws {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Answer", rowId: 1)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        appState.showPinnedReply(try XCTUnwrap(appState.activePinnedReplies.first))
+        let reveal = try XCTUnwrap(appState.pendingPinnedReplyReveal)
+        XCTAssertNil(reveal.opening)
+
+        appState.activeSessionId = "chat-2"
+        appState.messages = [reply("b", "Answer", rowId: 1)]
+        XCTAssertFalse(appState.isShowingChat(for: reveal))
+    }
+
     private func row(_ id: String, alternates: [String] = []) -> SessionSummary {
         SessionSummary(
             id: id, alternateIds: alternates, title: "Plan", model: "Hermes", updatedLabel: "",
