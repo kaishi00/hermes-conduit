@@ -296,6 +296,9 @@ final class LocationSyncEngine: ObservableObject {
                     Self.log.info("Location status answered 404 too: plugin missing")
                     state.pause = .pluginMissing
                 } else {
+                    // A fresher failure replaces an earlier pause, so its
+                    // error shows (as in the phone and health passes).
+                    state.pause = nil
                     lastError = detail
                 }
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail):
@@ -308,13 +311,14 @@ final class LocationSyncEngine: ObservableObject {
                 return .refused
             case .http(let status, let detail) where status == 409:
                 // layer_off and the like: what the batch says doesn't match
-                // what's shared. Nothing to retry. The host took the key and
-                // the store, so an earlier pause (a plugin update, sign-in)
-                // no longer holds.
+                // what's shared. Nothing to retry. The request reached the
+                // host's store, so an earlier pause's cause (a plugin
+                // update, sign-in) is gone.
                 state.pause = nil
                 lastError = detail
                 return .refused
             default:
+                state.pause = nil
                 lastError = UserFacingError.message(for: error)
             }
             return .failed
@@ -324,6 +328,7 @@ final class LocationSyncEngine: ObservableObject {
             state.pause = .pluginMissing
             return .failed
         } catch {
+            state.pause = nil
             lastError = UserFacingError.message(for: error)
             Self.log.info("Location send failed: \(LogRedaction.redactingURLs(Self.describe(error)), privacy: .public)")
             return .failed

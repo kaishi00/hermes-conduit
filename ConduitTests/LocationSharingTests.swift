@@ -433,7 +433,9 @@ extension NotificationE2ETests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
         var keyRequests = 0
-        var ingestDetail = "This location store was written by a newer plugin; update the plugin"
+        let newer = "This location store was written by a newer plugin; update the plugin"
+        var ingestDetail = newer
+        var ingestFailure: Error?
         let request: LocationSyncEngine.Request = { path, _, body in
             if path.hasSuffix("/key") {
                 keyRequests += 1
@@ -444,7 +446,7 @@ extension NotificationE2ETests {
                 ]
             }
             if path.contains("/status") { return ["ok": true] }
-            throw DashboardTicketBridgeError.http(status: 409, detail: ingestDetail)
+            throw ingestFailure ?? DashboardTicketBridgeError.http(status: 409, detail: ingestDetail)
         }
         let keys = LocationKeyStore.memory()
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")), keys: keys)
@@ -456,6 +458,23 @@ extension NotificationE2ETests {
         XCTAssertEqual(engine.state.pause, .pluginMissing)
         XCTAssertNotNil(keys.load())
         XCTAssertEqual(keyRequests, 1)
+
+        // A later timeout, or a 404 while the plugin's status route answers,
+        // replaces the pause so its own error shows.
+        ingestFailure = URLError(.timedOut)
+        let timedOut = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(timedOut, .failed)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertNotNil(engine.lastError)
+        ingestFailure = nil
+        _ = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(engine.state.pause, .pluginMissing)
+        ingestFailure = DashboardTicketBridgeError.http(status: 404, detail: "Not found")
+        let notFound = await engine.send(batch, config: config, request: request)
+        XCTAssertEqual(notFound, .failed)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(engine.lastError, "Not found")
+        ingestFailure = nil
 
         // Once the plugin is updated, a different refusal replaces the
         // pause: it no longer asks for an update.
