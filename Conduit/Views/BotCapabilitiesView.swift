@@ -9,9 +9,6 @@ struct BotCapabilitiesView: View {
     let skillsSkipped: Bool
     /// The profile the lists were read from, for New Bot's footer.
     let sourceLabel: String?
-    /// New Bot starting fresh: the lists are the main profile's, though
-    /// the bot gets Hermes' bundled skills (as on Desktop).
-    var freshProfile = false
 
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var skillFilter = ""
@@ -40,9 +37,7 @@ struct BotCapabilitiesView: View {
             } header: {
                 Text(AppLocalization.string("Skills"))
             } footer: {
-                if freshProfile {
-                    Text(AppLocalization.string("A fresh profile gets Hermes' bundled skills. These lists show the main profile's."))
-                } else if let sourceLabel, !skillsSkipped {
+                if let sourceLabel, !skillsSkipped {
                     Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
                 }
             }
@@ -56,6 +51,9 @@ struct BotCapabilitiesView: View {
                             // Hermes reads no tools as its default tools, so
                             // the last one on stays on.
                             .disabled(!capabilities.canTurnOffToolset(at: index))
+                            .accessibilityHint(capabilities.canTurnOffToolset(at: index)
+                                ? Text(verbatim: "")
+                                : Text(AppLocalization.string("At least one tool stays on.")))
                     }
                 }
             } header: {

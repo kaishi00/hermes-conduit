@@ -489,7 +489,8 @@ struct BotCapabilities: Equatable {
     /// `original`; an untouched section is never written. Toolsets all on
     /// clear the pin so the platform default applies, as Desktop does.
     /// Hermes reads an empty list the same way, so all off can't be said:
-    /// the editor keeps the last tool on (`canTurnOffToolset`).
+    /// the editor keeps the last tool on (`canTurnOffToolset`). MCP is a
+    /// plain on/off per server, so an empty list does mean none.
     static func configureParams(original: BotCapabilities, edited: BotCapabilities) -> [String: Any] {
         func enabledNames(_ rows: [BotCapability]) -> Set<String> { Set(rows.filter(\.enabled).map(\.name)) }
         var params: [String: Any] = [:]

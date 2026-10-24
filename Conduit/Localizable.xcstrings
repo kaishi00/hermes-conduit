@@ -328050,84 +328050,84 @@
         }
       }
     },
-    "A fresh profile gets Hermes' bundled skills. These lists show the main profile's." : {
+    "A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein neues Profil bekommt die mitgelieferten Skills von Hermes. Diese Listen zeigen die des Hauptprofils."
+            "value" : "Ein neues Profil startet mit den mitgelieferten Skills und Standard-Tools von Hermes. Bearbeite den Bot danach, um sie zu ändern."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un perfil nuevo recibe las habilidades incluidas de Hermes. Estas listas muestran las del perfil principal."
+            "value" : "Un perfil nuevo empieza con las habilidades incluidas y las herramientas predeterminadas de Hermes. Edita el bot después para cambiarlas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un nouveau profil reçoit les compétences fournies avec Hermes. Ces listes montrent celles du profil principal."
+            "value" : "Un nouveau profil démarre avec les compétences fournies et les outils par défaut de Hermes. Modifiez le bot ensuite pour les changer."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Profil baru mendapat skill bawaan Hermes. Daftar ini menampilkan milik profil utama."
+            "value" : "Profil baru dimulai dengan skill bawaan dan alat default Hermes. Edit bot setelahnya untuk mengubahnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un profilo nuovo riceve le skill incluse in Hermes. Questi elenchi mostrano quelle del profilo principale."
+            "value" : "Un profilo nuovo parte con le skill incluse e gli strumenti predefiniti di Hermes. Modifica il bot in seguito per cambiarli."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しいプロファイルには Hermes の同梱スキルが入ります。この一覧はメインプロファイルのものです。"
+            "value" : "新しいプロファイルは Hermes の同梱スキルと既定のツールで始まります。変更するには、あとでボットを編集してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 프로필은 Hermes 기본 제공 스킬을 받습니다. 이 목록은 기본 프로필의 항목입니다."
+            "value" : "새 프로필은 Hermes 기본 제공 스킬과 기본 도구로 시작합니다. 바꾸려면 나중에 봇을 편집하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nowy profil dostaje umiejętności dołączone do Hermesa. Te listy pokazują listy profilu głównego."
+            "value" : "Nowy profil zaczyna z umiejętnościami dołączonymi do Hermesa i domyślnymi narzędziami. Aby je zmienić, edytuj potem bota."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um perfil novo recebe as habilidades incluídas do Hermes. Estas listas mostram as do perfil principal."
+            "value" : "Um perfil novo começa com as habilidades incluídas e as ferramentas padrão do Hermes. Edite o bot depois para mudá-las."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Новый профиль получает встроенные навыки Hermes. В этих списках — данные основного профиля."
+            "value" : "Новый профиль начинает со встроенными навыками и инструментами Hermes по умолчанию. Чтобы изменить их, потом отредактируйте бота."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yeni bir profil Hermes'in paketli becerilerini alır. Bu listeler ana profilinkileri gösterir."
+            "value" : "Yeni bir profil Hermes'in paketli becerileri ve varsayılan araçlarıyla başlar. Değiştirmek için botu daha sonra düzenle."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新配置文件会获得 Hermes 内置技能。这些列表显示的是主配置文件的内容。"
+            "value" : "新配置文件以 Hermes 内置技能和默认工具开始。之后可编辑机器人来更改。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新設定檔會取得 Hermes 內建技能。這些清單顯示的是主設定檔的內容。"
+            "value" : "新設定檔以 Hermes 內建技能和預設工具開始。之後可編輯機器人來更改。"
           }
         }
       }

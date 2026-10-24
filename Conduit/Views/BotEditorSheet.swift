@@ -399,7 +399,13 @@ struct BotEditorSheet: View {
 
     @ViewBuilder
     private var capabilitiesRow: some View {
-        if draft.capabilities != nil {
+        if isCreating, draft.cloneFrom.isEmpty {
+            // Nothing to diff against before the profile exists: a fresh
+            // one starts with Hermes' own defaults.
+            Text(AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if draft.capabilities != nil {
             NavigationLink {
                 BotCapabilitiesView(
                     capabilities: Binding(
@@ -407,10 +413,7 @@ struct BotEditorSheet: View {
                         set: { draft.capabilities = $0 }
                     ),
                     skillsSkipped: isCreating && draft.noSkills,
-                    // A fresh profile gets the bundled skills, not the main
-                    // profile's, though its lists are read from there.
-                    sourceLabel: isCreating && !draft.cloneFrom.isEmpty ? startFromLabel : nil,
-                    freshProfile: isCreating && draft.cloneFrom.isEmpty
+                    sourceLabel: isCreating ? startFromLabel : nil
                 )
             } label: {
                 Text(AppLocalization.string("Skills, Tools and MCP"))
@@ -431,11 +434,13 @@ struct BotEditorSheet: View {
     }
 
     /// The profile a new bot's skills, tools and MCP lists are read from
-    /// while Advanced is open: its Start From profile (the main profile for
-    /// a fresh start, as on Desktop). Nil when nothing should load.
+    /// while Advanced is open: its Start From profile. Nil when nothing
+    /// should load, a fresh start included: its real set is Hermes'
+    /// defaults, which no profile here shows (Desktop reads the main
+    /// profile's and diffs against it).
     private var capabilitySource: String? {
-        guard isCreating, showsAdvanced else { return nil }
-        return draft.cloneFrom.isEmpty ? BotCreateRequest.mainProfile : draft.cloneFrom
+        guard isCreating, showsAdvanced, !draft.cloneFrom.isEmpty else { return nil }
+        return draft.cloneFrom
     }
 
     private var startFromLabel: String {
@@ -447,8 +452,17 @@ struct BotEditorSheet: View {
     /// A new Start From pick replaces the staged lists: picks made against
     /// another profile's set don't carry over.
     private func loadStartFromCapabilities() async {
-        guard let source = capabilitySource,
-              source != capabilitiesSource || draft.capabilities == nil else { return }
+        guard let source = capabilitySource else {
+            // Picks made against another profile don't carry to a fresh one.
+            if isCreating, draft.cloneFrom.isEmpty {
+                capabilitiesSource = nil
+                draft.capabilities = nil
+                draft.capabilitiesBaseline = nil
+                capabilitiesLoadFailed = false
+            }
+            return
+        }
+        guard source != capabilitiesSource || draft.capabilities == nil else { return }
         capabilitiesSource = source
         draft.capabilities = nil
         draft.capabilitiesBaseline = nil
