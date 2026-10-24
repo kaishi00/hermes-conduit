@@ -42,11 +42,13 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
 
     /// The typed refusal for a handshake: a redirect counts as sign-in only
     /// when its target is one (`DashboardSignInRedirect`: another origin,
-    /// or a sign-in page on the dashboard's own). A same-origin redirect to
-    /// an ordinary address (a load balancer's 307, the same host moving to
-    /// https/wss) and a redirect without a target stay a closed connection
-    /// for the reconnect path, like a 401 or 403, which says nothing about
-    /// the account (Hermes answers a spent ticket with 403).
+    /// or a sign-in page on the dashboard's own, where the same host moving
+    /// to https/wss counts as its own). A redirect to an ordinary address on
+    /// the dashboard's origin (a load balancer's 307, the same host moving
+    /// to https/wss) and a redirect without a target stay a closed
+    /// connection for the reconnect path, like a 401 or 403, which says
+    /// nothing about the account (Hermes answers a spent ticket with 403);
+    /// one to a sign-in page there, upgraded or not, is sign-in.
     static func failure(status: Int?, redirectTarget: URL?, dashboardURL: String) -> DashboardSocketHandshakeError? {
         guard let status, (300...399).contains(status),
               let target = redirectTarget.map(httpEquivalent),

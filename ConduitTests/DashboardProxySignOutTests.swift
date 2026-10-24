@@ -74,6 +74,11 @@ final class DashboardProxySignOutTests: XCTestCase {
         XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test/login"), forDashboard: plain))
         XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://sso.example.test/"), forDashboard: plain),
                       "Another host on https is still another origin")
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:443/"), forDashboard: plain))
+        XCTAssertFalse(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:9119/"), forDashboard: plain),
+                       "TLS on the dashboard's own port is the dashboard moving")
+        XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "https://dashboard.example.test:9443/dashboard"), forDashboard: plain),
+                      "Another port on the same host is another origin")
         XCTAssertTrue(DashboardSignInRedirect.isSignIn(URL(string: "http://dashboard.example.test/"), forDashboard: dashboardURL),
                       "https moving down to http is never the same dashboard")
         XCTAssertFalse(DashboardSignInRedirect.redirectIsSignIn(

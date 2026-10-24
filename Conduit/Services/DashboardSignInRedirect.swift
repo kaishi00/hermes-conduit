@@ -22,9 +22,9 @@ enum DashboardSignInRedirect {
     /// Whether `url`, a page or redirect target for a request to the
     /// dashboard at `dashboardURL`, is a sign-in: any web address on another
     /// origin, or a sign-in page on the dashboard's own. The dashboard's own
-    /// host moving from http to https (an edge that forces TLS) counts as
-    /// its own origin. Nil (no address at all) and other schemes are not
-    /// evidence of anything.
+    /// host moving from http to https (an edge that forces TLS), on https's
+    /// port or the dashboard's, counts as its own origin. Nil (no address
+    /// at all) and other schemes are not evidence of anything.
     static func isSignIn(_ url: URL?, forDashboard dashboardURL: URL) -> Bool {
         guard let url, let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -34,10 +34,14 @@ enum DashboardSignInRedirect {
         return isSignInPath(url.path)
     }
 
-    /// The dashboard's own host on https, its http address upgraded.
+    /// The dashboard's own host on https, its http address upgraded: on
+    /// https's own port (an edge in front of the dashboard's port) or on
+    /// the dashboard's port. Another port on that host is another origin.
     private static func isSecureUpgrade(_ target: URL, of dashboard: URL) -> Bool {
-        dashboard.scheme?.lowercased() == "http" && target.scheme?.lowercased() == "https"
-            && target.host?.lowercased() == dashboard.host?.lowercased()
+        guard dashboard.scheme?.lowercased() == "http", target.scheme?.lowercased() == "https",
+              target.host?.lowercased() == dashboard.host?.lowercased() else { return false }
+        let targetPort = target.port ?? 443
+        return targetPort == 443 || targetPort == (dashboard.port ?? 80)
     }
 
     /// The redirect a response to `requestURL` answered with, resolved the
