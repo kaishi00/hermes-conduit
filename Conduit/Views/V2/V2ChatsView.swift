@@ -695,6 +695,9 @@ struct V2ChatsView: View, Equatable {
                     .transition(.opacity)
             }
         }
+        // Ahead of the bar's spacer, so the pill or the field takes the
+        // whole row up to the controls instead of sharing it.
+        .layoutPriority(1)
         // Set by the layout that shows, never on disappearing: a chat
         // pushed over the list hides both, and the list keeps its rows.
         .onAppear { barStacked = true }
