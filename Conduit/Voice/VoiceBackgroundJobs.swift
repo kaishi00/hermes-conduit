@@ -1997,7 +1997,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
                 jobs[index].followUp = nil
                 jobs[index].heldCompletion = nil
-            case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
+            case .messageStart, .messageDelta, .messageInterim, .reasoningDelta, .toolStart, .toolComplete:
                 if followUp == .accepted {
                     jobs[index].followUp = nil
                     jobs[index].heldCompletion = nil
@@ -2010,7 +2010,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return
         }
         switch event {
-        case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
+        case .messageStart, .messageDelta, .messageInterim, .reasoningDelta, .toolStart, .toolComplete:
             if before.status == .needsInput || before.status == .starting {
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
@@ -2206,7 +2206,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     private static func sessionID(for event: StreamEvent) -> String? {
         switch event {
-        case .messageStart(let id), .messageDelta(let id, _), .reasoningDelta(let id, _),
+        case .messageStart(let id), .messageDelta(let id, _), .messageInterim(let id, _, _), .reasoningDelta(let id, _),
              .messageComplete(let id, _, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
              .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
