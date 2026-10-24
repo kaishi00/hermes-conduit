@@ -79,8 +79,11 @@ run_with_deadline() {
   local finalize_grace grace_granted budget_deadline
   # Same guard as the poll cadence below: a non-numeric override would make
   # the deadline arithmetic read it as 0 (an instant kill) or abort the script.
+  # The grace, unlike the poll, enters $(( )), so it is also read as base 10:
+  # a leading zero (08, 09) would otherwise be invalid octal there.
   finalize_grace="${XCODEBUILD_FINALIZE_GRACE_S:-180}"
   case "$finalize_grace" in ''|*[!0-9]*) finalize_grace=180 ;; esac
+  finalize_grace=$((10#$finalize_grace))
   [ "$finalize_grace" -lt 1 ] && finalize_grace=1
   # Poll cadence. 15s keeps hosted-lane log streaming and deadline checks
   # cheap for minute-scale invocations; the state-machine tests shrink it so
