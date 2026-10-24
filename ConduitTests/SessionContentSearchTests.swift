@@ -473,12 +473,27 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(snippet.runs.filter(\.isMatch).map(\.text), ["recycling"])
     }
 
-    func testUnbalancedMarksNeverShowAsText() {
-        let open = SessionSearchSnippet.parse("the >>>recycling bins", query: "x")
-        XCTAssertEqual(open.runs, [.init(text: "the ", isMatch: false), .init(text: "recycling bins", isMatch: true)])
+    func testAStrayClosingMarkNeverShowsAsText() {
         let stray = SessionSearchSnippet.parse("the recycling<<< bins >>>day<<<", query: "x")
         XCTAssertEqual(stray.plainText, "the recycling bins day")
         XCTAssertEqual(stray.runs.filter(\.isMatch).map(\.text), ["day"])
+    }
+
+    /// A `>>>` Hermes didn't close is the message's own text (a Python
+    /// prompt, a quote), not the start of a match running to the end.
+    func testAnUnclosedOpeningMarkIsTheMessagesOwnText() {
+        let prompt = SessionSearchSnippet.parse(">>> print(recycling) done", query: "recycling")
+        XCTAssertEqual(prompt.runs, [
+            .init(text: ">>> print(", isMatch: false),
+            .init(text: "recycling", isMatch: true),
+            .init(text: ") done", isMatch: false),
+        ])
+        let after = SessionSearchSnippet.parse("the >>>recycling<<< bins >>> more", query: "x")
+        XCTAssertEqual(after.runs, [
+            .init(text: "the ", isMatch: false),
+            .init(text: "recycling", isMatch: true),
+            .init(text: " bins >>> more", isMatch: false),
+        ])
     }
 
     func testUnmarkedSnippetHighlightsTheQueryWords() {

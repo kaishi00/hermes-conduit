@@ -45,7 +45,7 @@ struct SessionSearchSnippet: Equatable {
     /// search short CJK queries take) gets the query's words marked instead.
     static func parse(_ raw: String, query: String) -> SessionSearchSnippet {
         let line = oneLine(raw)
-        guard line.contains(matchStart) || line.contains(matchEnd) else {
+        guard let open = line.range(of: matchStart), line[open.upperBound...].contains(matchEnd) else {
             return SessionSearchSnippet(runs: highlighting(words(in: query), in: line))
         }
         var runs: [Run] = []
@@ -53,7 +53,10 @@ struct SessionSearchSnippet: Equatable {
         var inMatch = false
         while !remaining.isEmpty {
             let marker = inMatch ? matchEnd : matchStart
-            if let range = remaining.range(of: marker) {
+            // Hermes closes every mark it opens: a `>>>` with no `<<<` after
+            // it is the message's own text (a Python prompt, a quote).
+            if let range = remaining.range(of: marker),
+               inMatch || remaining[range.upperBound...].contains(matchEnd) {
                 append(String(remaining[..<range.lowerBound]), isMatch: inMatch, to: &runs)
                 remaining = remaining[range.upperBound...]
                 inMatch.toggle()
