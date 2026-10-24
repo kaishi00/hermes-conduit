@@ -450,6 +450,7 @@ struct V2PulsePage: View {
                 if appState.pulseCardHasChat(card) {
                     chatLink(card)
                 }
+                whyNote(card)
                 actionRow(card)
             }
         }
@@ -594,14 +595,7 @@ struct V2PulsePage: View {
             if appState.pulseCardHasChat(card) {
                 chatLink(card)
             }
-            if expandedWhy.contains(card.id), !card.why.isEmpty {
-                Text(verbatim: card.why)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary))
-            }
+            whyNote(card)
             actionRow(card)
             if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason) {
                 Text(verbatim: reason.title)
@@ -664,6 +658,18 @@ struct V2PulsePage: View {
     }
 
     /// The chat it came from, a tap away.
+    /// Why Pulse brought the card up, once "Why?" is tapped.
+    @ViewBuilder private func whyNote(_ card: PulseCard) -> some View {
+        if expandedWhy.contains(card.id), !card.why.isEmpty {
+            Text(verbatim: card.why)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary))
+        }
+    }
+
     private func chatLink(_ card: PulseCard) -> some View {
         Button {
             appState.openPulseCardChat(card)
