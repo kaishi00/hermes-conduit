@@ -6,6 +6,7 @@
 //  This is a NATIVE SwiftUI app, not a React Native port.
 //
 
+import Combine
 import SwiftUI
 import UIKit
 import UserNotifications
@@ -282,6 +283,15 @@ struct ConduitApp: App {
             .task(id: accentChoice) {
                 guard (try? await Task.sleep(for: .milliseconds(600))) != nil else { return }
                 appState.shareWatchCallVoices()
+            }
+            // So does the padlock or shield: shared once a key, its
+            // confirmation or the notifications switch settles.
+            .task {
+                let changes = PushNotificationService.shared.objectWillChange
+                    .debounce(for: .milliseconds(600), scheduler: RunLoop.main)
+                for await _ in changes.values {
+                    appState.shareWatchCallVoices()
+                }
             }
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))

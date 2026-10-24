@@ -190,6 +190,20 @@ struct WatchSettingsView: View {
             } footer: {
                 Text("Calls need Conduit on your iPhone to start. Once a call is on, it carries on with your wrist down and your iPhone locked.")
             }
+            // As the padlock or shield on the iPhone's dashboard row.
+            if let encryption = link.phoneContext?.encryption {
+                Section {
+                    Label {
+                        Text(encryption == .quantumSafe ? String(localized: "Notifications quantum-safe") : String(localized: "Notifications encrypted"))
+                    } icon: {
+                        Image(systemName: encryption == .quantumSafe ? "lock.shield.fill" : "lock.fill")
+                            .foregroundStyle(accent)
+                    }
+                    .font(.footnote)
+                } footer: {
+                    Text("Your active dashboard's notifications are end-to-end encrypted: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details.")
+                }
+            }
             if let version {
                 Section {
                     Text("Version \(version)")

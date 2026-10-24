@@ -837,6 +837,21 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.accent, "An older iPhone app picks no accent: the Watch draws gold")
     }
 
+    func testTheWatchShowsTheActiveDashboardsPadlockOrShield() throws {
+        XCTAssertNil(AppState.watchNotificationsEncryption(nil), "Not encrypted: the Watch shows nothing")
+        XCTAssertEqual(AppState.watchNotificationsEncryption(false), "encrypted")
+        XCTAssertEqual(AppState.watchNotificationsEncryption(true), "quantumSafe")
+
+        let shield = WatchPhoneContext(callsRing: true, notificationsEncryption: AppState.watchNotificationsEncryption(true))
+        let decoded = try XCTUnwrap(WatchPhoneContext.decode(shield.encoded()))
+        XCTAssertEqual(decoded, shield)
+        XCTAssertEqual(decoded.encryption, .quantumSafe)
+        XCTAssertEqual(WatchPhoneContext(notificationsEncryption: "encrypted").encryption, .encrypted)
+        let older = try JSONEncoder().encode(WatchPhoneContext(voices: [:], callsRing: true))
+        XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.encryption, "An older iPhone app claims no padlock")
+        XCTAssertNil(WatchPhoneContext(notificationsEncryption: "someday").encryption, "A word from a newer iPhone app the Watch doesn't know claims nothing")
+    }
+
     func testAVoIPPushSaysWhenItWasSentAndTheRelayLearnsTheToken() throws {
         XCTAssertEqual(PushNotificationService.voipSentAt(["conduit": ["sent_at": 1_800_000_000]]), Date(timeIntervalSince1970: 1_800_000_000))
         XCTAssertEqual(PushNotificationService.voipSentAt(["body": ["conduit": ["sent_at": 1_800_000_001]]]), Date(timeIntervalSince1970: 1_800_000_001))

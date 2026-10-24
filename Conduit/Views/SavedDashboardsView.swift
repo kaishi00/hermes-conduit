@@ -242,19 +242,11 @@ struct SavedDashboardRowLabel: View {
             : AppLocalization.string("Sign In required")
     }
 
-    /// Nil unless every pairing of this dashboard's hosts is end-to-end
-    /// encrypted with a key the host confirmed; true when every one is also
-    /// quantum-safe (the details are in Settings > Notifications).
+    /// Nil unless this dashboard's notifications are end-to-end encrypted;
+    /// true when also quantum-safe (AppState.notificationsEncryption).
+    /// Observing `notifications` redraws it when a key changes.
     private var notificationsEncryption: Bool? {
-        guard notifications.isEnabled else { return nil }
-        let gatewayIDs = appState.relayGatewayIDs(of: row.dashboard.id)
-        guard !gatewayIDs.isEmpty else { return nil }
-        var allQuantumSafe = true
-        for gatewayID in gatewayIDs {
-            guard case .ensured(_, _, let quantumSafe) = notifications.encryptionAssurance(gatewayID: gatewayID) else { return nil }
-            allQuantumSafe = allQuantumSafe && quantumSafe
-        }
-        return allQuantumSafe
+        appState.notificationsEncryption(of: row.dashboard.id)
     }
 
     private var actionText: String {

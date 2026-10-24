@@ -11676,6 +11676,23 @@ final class AppState: ObservableObject {
         Set(storedRelayGatewayIDs()[dashboardID.uuidString]?.values.map { $0 } ?? [])
     }
 
+    /// Nil unless every pairing of this dashboard's hosts is end-to-end
+    /// encrypted with a key the host confirmed; true when every one is also
+    /// quantum-safe (the details are in Settings > Notifications). Drawn on
+    /// dashboard rows and shared with the Watch.
+    func notificationsEncryption(of dashboardID: UUID) -> Bool? {
+        let notifications = PushNotificationService.shared
+        guard notifications.isEnabled else { return nil }
+        let gatewayIDs = relayGatewayIDs(of: dashboardID)
+        guard !gatewayIDs.isEmpty else { return nil }
+        var allQuantumSafe = true
+        for gatewayID in gatewayIDs {
+            guard case .ensured(_, _, let quantumSafe) = notifications.encryptionAssurance(gatewayID: gatewayID) else { return nil }
+            allQuantumSafe = allQuantumSafe && quantumSafe
+        }
+        return allQuantumSafe
+    }
+
     /// Remembers that `dashboardID`'s host pairs `profile` with this iPhone
     /// through `gatewayID`, as that host said over its signed-in connection.
     /// The profile's last report replaces its earlier one, so a re-pairing
