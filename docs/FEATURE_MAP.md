@@ -482,7 +482,7 @@ memory), its routes under /pulse and its capabilities · the
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
 - Create Pulse chat in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
-- Pulse pushes follow the Notifications rulings (App Language from title_label, titled with the session title); the Pulse screen is phone-only, so a Pulse push mirrored to the Watch opens nothing there.
+- Pulse pushes follow the Notifications rulings (App Language from title_label, titled with the session title); what a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
 **Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
 
