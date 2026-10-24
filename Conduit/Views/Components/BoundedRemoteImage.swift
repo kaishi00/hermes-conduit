@@ -66,7 +66,9 @@ enum BoundedRemoteImage {
     /// The picture downsampled to `maxPixelSize` on its longer side. The
     /// pixel count is read from the header before anything is decoded.
     static func decode(_ data: Data, maxPixelSize: CGFloat, maxPixelCount: Int = maxPixelCount) -> Outcome {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+        // Nothing decoded is cached on the source: only the thumbnail is
+        // kept (a flat PNG within the pixel ceiling still decodes to 256 MB).
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               CGImageSourceGetCount(source) > 0,
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
@@ -77,6 +79,7 @@ enum BoundedRemoteImage {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCache: false,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {

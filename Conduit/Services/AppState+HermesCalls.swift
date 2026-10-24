@@ -62,6 +62,7 @@ extension AppState {
             let status = try await hermesCallsClient.status(profile: activeProfile)
             // A read asked later, or a save, answered first: theirs is newer.
             guard generation > hermesCallsStatusAcceptedGeneration,
+                  generation > hermesCallsStatusSavedGeneration[key, default: 0],
                   key == hermesCallsKey(profile: activeProfile) else { return }
             hermesCallsStatusAcceptedGeneration = generation
             hermesCallsStatus = status
@@ -84,11 +85,14 @@ extension AppState {
         let key = hermesCallsKey(profile: profile)
         do {
             let saved = try await hermesCallsClient.save(settings, profile: profile)
+            // Reads of the saved profile still out were asked before this
+            // save, whichever profile is shown now: one mustn't land after
+            // it when the user comes back to it. Another profile's read is
+            // not older than anything this save wrote, so it still lands.
+            hermesCallsStatusGeneration &+= 1
+            hermesCallsStatusSavedGeneration[key] = hermesCallsStatusGeneration
             // Saved; shown only while that profile still is.
             guard key == hermesCallsKey(profile: activeProfile) else { return true }
-            // Reads still out were asked before this save.
-            hermesCallsStatusGeneration &+= 1
-            hermesCallsStatusAcceptedGeneration = hermesCallsStatusGeneration
             if var status = activeHermesCallsStatus {
                 status.settings = saved
                 hermesCallsStatus = status
@@ -120,9 +124,9 @@ extension AppState {
 
     /// A new chat with `prefill` in the composer, for the user to send.
     private func startHermesCallsChat(prefill: String) async {
-        let previous = activeSessionId
-        await createNewSession()
-        guard let created = activeSessionId, created != previous else {
+        // Only the chat this creation opened, while it is still open: the
+        // prompt never lands in a chat another creation opened meanwhile.
+        guard let created = await createNewSession(), activeSessionId == created else {
             // Settings has closed: a chat that didn't start says so.
             if errorMessage == nil {
                 errorMessage = AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")

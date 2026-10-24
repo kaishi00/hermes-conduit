@@ -85,4 +85,34 @@ final class DashboardCookieRestoreTests: XCTestCase {
         XCTAssertEqual(byName["other"], "added")
         withExtendedLifetime(webView) {}
     }
+
+    /// A Sign Out that invalidates the bridge while its restore is out:
+    /// nothing the restore had still to write goes into the store, so the
+    /// store clear scheduled behind the invalidation has the last word.
+    func testRestoreStopsWritingOnceItsBridgeIsInvalidated() async {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        var invalidated = false
+        var writes = 0
+        await DashboardCookiePersistence.restore(
+            [cookie("first", "1", expiresIn: 3600), cookie("second", "2", expiresIn: 3600)],
+            into: store,
+            shouldContinue: {
+                // Invalidated after the first write went in.
+                defer { writes += 1; if writes == 1 { invalidated = true } }
+                return !invalidated
+            }
+        )
+        let stored = await store.allCookies()
+        let names = Set(stored.map(\.name))
+        XCTAssertTrue(names.contains("first"))
+        XCTAssertFalse(names.contains("second"), "no saved cookie goes in after the invalidation")
+
+        await DashboardCookiePersistence.restore([cookie("third", "3", expiresIn: 3600)], into: store, shouldContinue: { false })
+        let after = await store.allCookies()
+        XCTAssertFalse(after.contains { $0.name == "third" })
+        withExtendedLifetime(webView) {}
+    }
 }

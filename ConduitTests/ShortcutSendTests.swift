@@ -552,6 +552,27 @@ extension ScreenQuestionTests {
         XCTAssertNil(appState.errorMessage, "the composer's failed try doesn't stay on screen")
         XCTAssertEqual(appState.activeSessionId, "fresh")
     }
+
+    /// The same "Failed to send" already on screen from an earlier send:
+    /// the composer's failed try still counts as this run's, so it goes
+    /// once the retry lands.
+    @MainActor
+    func testAFailedTryWhoseTextRepeatsTheBannerLeavesNoErrorOnceTheRetryLands() async throws {
+        let (appState, chats, _) = openChatAfterColdLaunch(probeFails: true)
+        let failure = AppLocalization.string(
+            "Failed to send: \(UserFacingError.message(for: RpcError(code: 4001, message: "session not found")))"
+        )
+        appState.errorMessage = failure
+        var backend = appState.makeShortcutSendBackend()
+        backend.connect = { _ in true }
+
+        let outcome = try await ShortcutSender(backend: backend, chats: chats)
+            .send(ShortcutSendRequest(text: "No more mayo", chatName: "Drop box", profile: nil, waitsForAnswer: false),
+                  deadline: Date().addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertNil(appState.errorMessage, "the repeated failed try doesn't stay on screen")
+    }
 }
 
 /// What the open-chat tests' Hermes was asked.

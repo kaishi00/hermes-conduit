@@ -4823,6 +4823,45 @@ final class AppStateChatResumeTests: XCTestCase {
         }
     }
 
+    func testARetiredRowLeavesTheAgentsOfTheLiveConversationItFallsBackTo() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-dead"), self.session("stored-live")] },
+                openSession: { _, sessionID, _ in
+                    if sessionID == "stored-dead" {
+                        throw RpcError(code: 4007, message: "Session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        // Latest activity picks the newest row, which isn't the saved one.
+        harness.store.setBehavior(.latestActivity)
+        harness.store.setLastSessionID("stored-live", for: "default")
+        harness.appState.activeSessionId = "stored-live"
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: "stored-live", activity: delegateAgent("agent-live")))
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-live"])
+
+        await harness.appState.syncSession(
+            purpose: .automaticReturn,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-live")
+        XCTAssertEqual(
+            harness.appState.delegateAgents.map(\.id),
+            ["agent-live"],
+            "the live conversation's agents stay when another row is the dead one"
+        )
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")
@@ -6343,14 +6382,16 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(sendSessionIDs, ["runtime-recovered"])
     }
 
-    func testRejectedBusyAttachmentPreservesPendingRestoration() async {
+    /// Since #1154 a busy attachment goes as Queue; the one the app still
+    /// refuses before sending anything is on a Hermes already known to
+    /// refuse Queue. Nothing went, so the pending restoration stays.
+    func testRejectedBusyAttachmentPreservesPendingRestoration() async throws {
         let harness = makeHarness()
         let active = session("stored-a")
         let request = publishRestoration(in: harness, session: active)
-        installComposerClient(in: harness)
-        // Files sent mid-reply go as Queue (#1154); a Hermes known to
-        // refuse Queue turns them away before anything is cancelled.
-        harness.appState.client?.gatewayRefusesQueued = true
+        let client = try await installQueueRefusingComposerClient(in: harness)
+        XCTAssertTrue(client.refusesQueuedPrompts)
+        XCTAssertEqual(harness.appState.chatResumeRestorationRequest, request)
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
         let attachment = Attachment(
             id: "notes",
@@ -6369,6 +6410,41 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.errorMessage, HermesClient.QueueUnsupportedError.attachmentsMessage)
         XCTAssertEqual(harness.appState.chatResumeRestorationRequest, request)
         XCTAssertTrue(harness.coordinator.isCurrent(generation: request.generation))
+        client.disconnect()
+    }
+
+    /// A busy attachment Hermes takes as Queue (#1154) is a send like any
+    /// other: its bubble scrolls to the latest, so the restoration goes.
+    func testAcceptedBusyAttachmentInvalidatesRestorationBeforeQueueRPCResumes() async {
+        let rpcGate = ControlledSuspension()
+        var operations = ChatResumeLifecycleOperations()
+        operations.uploadAttachment = { _, _, _ in nil }
+        operations.sendQueuedPrompt = { _, _, _ in
+            await rpcGate.suspend()
+            return .queued
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        let active = session("stored-a")
+        let request = publishRestoration(in: harness, session: active)
+        installComposerClient(in: harness)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        let attachment = Attachment(
+            id: "notes",
+            name: "notes.txt",
+            uri: "file:///tmp/notes.txt",
+            mimeType: "text/plain",
+            kind: .document
+        )
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "With notes", attachments: [attachment])
+        }
+        await rpcGate.waitUntilSuspended()
+
+        assertRestorationCancelled(request, in: harness)
+        rpcGate.resume()
+        let submitted = await submission.value
+        XCTAssertTrue(submitted)
     }
 
     private func assertProfileSwitchCancelsStaleReconnectMint(
@@ -7548,6 +7624,59 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         harness.appState.connection = connection
         harness.appState.client = HermesClient(connection: connection, profile: "default")
+    }
+
+    /// A composer client whose Hermes has already refused `prompt.submit`'s
+    /// `queued` key, so later Queue sends are refused before anything goes.
+    private func installQueueRefusingComposerClient(
+        in harness: (
+            appState: AppState,
+            coordinator: ChatResumeCoordinator,
+            store: ChatResumeStore,
+            recoverySequence: ChatResumeRecoverySequence,
+            cacheClearSpy: CacheClearSpy,
+            defaults: UserDefaults,
+            suite: String
+        )
+    ) async throws -> HermesClient {
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        let client = HermesClient(
+            connection: connection,
+            profile: "default",
+            transportFactory: { transport }
+        )
+        let connectTask = Task { try await client.connect() }
+        transport.open(socket)
+        _ = try await connectTask.value
+
+        let sent = ClarifyGate()
+        socket.onSend = { sent.signal() }
+        let probe = Task { try await client.sendPrompt("probe", text: "Probe", queued: true) }
+        try await sent.wait("the queued prompt.submit")
+        socket.onSend = nil
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let refusal: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": try XCTUnwrap(request["id"] as? Int),
+            "error": [
+                "code": 4000,
+                "message": "invalid params for prompt.submit: queued: Extra inputs are not permitted"
+            ]
+        ]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: refusal), encoding: .utf8)))
+        do {
+            _ = try await probe.value
+            XCTFail("The probe's Queue must be refused")
+        } catch is HermesClient.QueueUnsupportedError {}
+
+        harness.appState.connection = connection
+        harness.appState.client = client
+        return client
     }
 
     private func assertRestorationCancelled(

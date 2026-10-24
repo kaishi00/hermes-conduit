@@ -63,8 +63,12 @@ enum DashboardCookiePersistence {
         }
     }
 
-    static func restore(into cookieStore: WKHTTPCookieStore, dashboardID: UUID? = nil) async {
-        await restore(mirroredCookies(dashboardID: dashboardID), into: cookieStore)
+    static func restore(
+        into cookieStore: WKHTTPCookieStore,
+        dashboardID: UUID? = nil,
+        shouldContinue: @MainActor () -> Bool = { true }
+    ) async {
+        await restore(mirroredCookies(dashboardID: dashboardID), into: cookieStore, shouldContinue: shouldContinue)
     }
 
     /// Puts `cookies` into WebKit's store only where it lacks them. WebKit's
@@ -74,7 +78,15 @@ enum DashboardCookiePersistence {
     /// refresh token with it. Writing an older copy back on a cold launch
     /// would replay a spent refresh token, which the provider answers with
     /// invalid_grant and the proxy with a cleared session: signed out.
-    static func restore(_ cookies: [HTTPCookie], into cookieStore: WKHTTPCookieStore) async {
+    ///
+    /// `shouldContinue` is asked before each write, after the store read:
+    /// a Sign Out that invalidates the bridge while the read is out has its
+    /// clear scheduled behind it, and no saved cookie may go in after that.
+    static func restore(
+        _ cookies: [HTTPCookie],
+        into cookieStore: WKHTTPCookieStore,
+        shouldContinue: @MainActor () -> Bool = { true }
+    ) async {
         guard !cookies.isEmpty else { return }
         var live: [String: HTTPCookie] = [:]
         for cookie in await cookieStore.allCookies() {
@@ -82,6 +94,7 @@ enum DashboardCookiePersistence {
         }
         let now = Date()
         for cookie in cookies where shouldRestore(cookie, over: live[cookieIdentity(cookie)], now: now) {
+            guard shouldContinue() else { return }
             await cookieStore.setCookie(cookie)
         }
     }
@@ -195,11 +208,12 @@ enum DashboardCookiePersistence {
     static func restoreNativeCookies(
         into cookieStore: WKHTTPCookieStore,
         for baseURL: String,
-        dashboardID: UUID? = nil
+        dashboardID: UUID? = nil,
+        shouldContinue: @MainActor () -> Bool = { true }
     ) async {
         guard let host = URL(string: baseURL)?.host?.lowercased() else { return }
         let cookies = nativeCookieStorage(for: dashboardID).cookies ?? []
-        await restore(cookies.filter { cookieMatchesHost($0, host: host) }, into: cookieStore)
+        await restore(cookies.filter { cookieMatchesHost($0, host: host) }, into: cookieStore, shouldContinue: shouldContinue)
     }
 
     static func capture(
@@ -237,18 +251,29 @@ enum DashboardCookiePersistence {
     /// disconnect clears. WebKit answers over IPC, so a clear outlives the
     /// Sign Out or disconnect that started it; a bridge or sign-in page on
     /// the same store waits for it first (`awaitPendingStoreClear`), or the
-    /// late clear could delete the new session's cookies (#788).
+    /// late clear could delete the new session's cookies (#788). That holds
+    /// within the 10 s bound only: a clear whose WebKit reply takes longer
+    /// is no longer waited for (and once a later clear of the store
+    /// finishes, no longer recorded here), so its reply can still delete a
+    /// session signed in after it. Sign-in not hanging on a WebKit reply
+    /// that never comes is worth that rare risk.
     private static var pendingStoreClears: [UUID?: (generation: UInt64, task: Task<Void, Never>)] = [:]
     private static var storeClearGeneration: UInt64 = 0
 
     /// Runs `clear` after any clear of the same store already running, and
-    /// records it until it is done.
-    private static func scheduleStoreClear(for dashboardID: UUID?, _ clear: @escaping @MainActor () async -> Void) {
+    /// records it until it is done. The wait for the earlier clear is
+    /// bounded like `awaitPendingStoreClear`: one WebKit reply that never
+    /// comes must not stop every later clear of the store.
+    static func scheduleStoreClear(
+        for dashboardID: UUID?,
+        predecessorTimeout: Duration = .seconds(10),
+        _ clear: @escaping @MainActor () async -> Void
+    ) {
         storeClearGeneration &+= 1
         let generation = storeClearGeneration
         let previous = pendingStoreClears[dashboardID]?.task
         let task = Task { @MainActor in
-            await previous?.value
+            if let previous { await awaitClear(previous, timeout: predecessorTimeout) }
             await clear()
             if pendingStoreClears[dashboardID]?.generation == generation {
                 pendingStoreClears[dashboardID] = nil
@@ -788,14 +813,21 @@ final class DashboardTicketBridge: NSObject {
             // The Sign Out or disconnect before this bridge may still be
             // clearing its store (#788).
             await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
+            // Invalidated meanwhile (a Sign Out clearing this store): no
+            // cookies go back in.
+            guard !self.isInvalidated else { return }
+            // Each write checks again: an invalidation while a restore's
+            // store read is out must not see the cookie written back.
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
-                dashboardID: self.dashboardID
+                dashboardID: self.dashboardID,
+                shouldContinue: { [weak self] in self?.isInvalidated == false }
             )
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 for: self.baseURL,
-                dashboardID: self.dashboardID
+                dashboardID: self.dashboardID,
+                shouldContinue: { [weak self] in self?.isInvalidated == false }
             )
             guard !self.isInvalidated else { return }
             self.loadDashboardSession()
@@ -883,14 +915,21 @@ final class DashboardTicketBridge: NSObject {
             // The Sign Out or disconnect before this bridge may still be
             // clearing its store (#788).
             await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
+            // Invalidated meanwhile (a Sign Out clearing this store): no
+            // cookies go back in.
+            guard !self.isInvalidated else { return }
+            // Each write checks again: an invalidation while a restore's
+            // store read is out must not see the cookie written back.
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
-                dashboardID: self.dashboardID
+                dashboardID: self.dashboardID,
+                shouldContinue: { [weak self] in self?.isInvalidated == false }
             )
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 for: self.baseURL,
-                dashboardID: self.dashboardID
+                dashboardID: self.dashboardID,
+                shouldContinue: { [weak self] in self?.isInvalidated == false }
             )
             guard !self.isInvalidated else { return }
             self.loadDashboardSession()

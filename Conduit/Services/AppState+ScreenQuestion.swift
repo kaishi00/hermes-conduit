@@ -306,10 +306,10 @@ extension AppState {
     /// Starts a chat and moves the screenshot onto it. When none starts,
     /// the screenshot goes back where it was and the user is told.
     private func startChatForScreenshot(_ entry: PendingScreenshot) async -> String? {
-        let previous = activeSessionId
         let earlierError = errorMessage
-        await createNewSession()
-        guard let created = activeSessionId, created != previous else {
+        // Only the chat this creation opened, while it is still open: one
+        // another creation opened meanwhile doesn't take the screenshot.
+        guard let created = await createNewSession(), activeSessionId == created else {
             restorePendingScreenshot(entry)
             // Where the screenshot is first, then Hermes's own reason when
             // this attempt gave one.
@@ -426,8 +426,9 @@ extension AppState {
         // Off screen, voice can't start: it waits with the keyboard.
         let isOffScreen = !isSceneActive
         if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: isLate || isOffScreen)) {
-            // The connection dropped again before a chat opened.
-            holdScreenQuestion(parked.request, profile: parked.profile)
+            // The connection dropped again before a chat opened. It still
+            // belongs to its own dashboard, even if another opened meanwhile.
+            holdScreenQuestion(parked.request, profile: parked.profile, dashboardID: parked.dashboardID)
         }
     }
 
@@ -465,7 +466,7 @@ extension AppState {
     /// Keeps a screenshot no chat could take yet, without a revision bump:
     /// it is tried again when the connection changes, never in a loop. A
     /// newer screenshot parked meanwhile wins.
-    private func holdScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+    private func holdScreenQuestion(_ request: ScreenQuestionRequest, profile: String?, dashboardID: UUID?) {
         // A newer screenshot placed while this one waited wins.
         guard !isOutdated(request) else {
             Self.deleteStagedScreenshot(request.attachment)
@@ -478,7 +479,7 @@ extension AppState {
             return
         }
         parkedScreenQuestion = ParkedScreenQuestion(
-            request: request, profile: profile, dashboardID: activeDashboardID
+            request: request, profile: profile, dashboardID: dashboardID
         )
     }
 
@@ -492,6 +493,9 @@ extension AppState {
             Self.deleteStagedScreenshot(request.attachment)
             return true
         }
+        // The dashboard the screenshot is for: the awaits below can let
+        // another one open.
+        let dashboardID = activeDashboardID
         // A newer press replaces a screenshot kept from an outage.
         if !resumingParked, let parked = parkedScreenQuestion {
             parkedScreenQuestion = nil
@@ -552,13 +556,12 @@ extension AppState {
         if let open = activeSessionId, continuesOpenChat || openChatIsEmpty {
             sessionID = open
         } else {
-            let previous = activeSessionId
-            await createNewSession()
-            guard let created = activeSessionId, created != previous else {
+            // Only the chat this creation opened, while it is still open.
+            guard let created = await createNewSession(), activeSessionId == created else {
                 guard isConnected else { return false }
                 // Kept, not dropped: tried again once the connection settles.
                 // A profile that couldn't open is tried again too.
-                holdScreenQuestion(request, profile: requestedProfile)
+                holdScreenQuestion(request, profile: requestedProfile, dashboardID: dashboardID)
                 errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready.")
                 return true
             }

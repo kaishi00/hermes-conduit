@@ -995,6 +995,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         let events: [StreamEvent] = [
             .messageStart(sessionId: origin.id),
             .messageDelta(sessionId: origin.id, text: "Hi"),
+            .messageInterim(sessionId: origin.id, text: "Looking", alreadyStreamed: false),
             .toolStart(sessionId: origin.id, toolName: "terminal", toolInput: nil),
             .messageComplete(sessionId: origin.id, messageId: nil, content: "Hi", reasoning: nil)
         ]

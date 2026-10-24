@@ -1232,12 +1232,20 @@ enum ProfileSettingValue: Equatable {
 
     /// What someone typed in a number field. The decimal pad shows a comma in
     /// locales like fr-CA, so "0,8" reads as 0.8 as well as "0.8"; spaces
-    /// around the number are ignored.
+    /// around the number are ignored. "nan" and "inf" (or an overflow) are
+    /// refused: the config goes out as JSON, which has neither, and
+    /// JSONSerialization raises on them.
     static func parseNumber(_ raw: String) -> Double? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let value = Double(trimmed) { return value }
-        guard !trimmed.contains("."), trimmed.filter({ $0 == "," }).count == 1 else { return nil }
-        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
+        let value: Double?
+        if let plain = Double(trimmed) {
+            value = plain
+        } else {
+            guard !trimmed.contains("."), trimmed.filter({ $0 == "," }).count == 1 else { return nil }
+            value = Double(trimmed.replacingOccurrences(of: ",", with: "."))
+        }
+        guard let value, value.isFinite else { return nil }
+        return value
     }
 }
 

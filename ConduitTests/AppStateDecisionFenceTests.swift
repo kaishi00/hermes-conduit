@@ -2549,6 +2549,99 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertEqual(responses.choices, ["deny"])
         XCTAssertEqual(appState.messages.first?.approval?.status, .rejected)
     }
+
+    /// A legacy card the next command replaces while the queue is read is
+    /// not answered: a session-queue answer would go to the new command.
+    func testLegacyCardReplacedWhileTheQueueIsReadSendsNothing() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        weak var weakState: AppState?
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in
+                weakState?.messages[0].approval?.command = "rm -rf ~"
+                weakState?.messages[0].approval?.description = "Delete the home folder?"
+                return [shown]
+            },
+            respondToApproval: { _, _, _, choice, _ in
+                responses.choices.append(choice)
+                return true
+            }
+        ))
+        weakState = appState
+        installShownApproval(shown, in: appState)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+
+        XCTAssertEqual(responses.choices, [], "the tap on the old command must not answer the new one")
+        XCTAssertEqual(appState.messages.first?.approval?.status, .pending)
+        XCTAssertNil(appState.messages.first?.approval?.choice)
+    }
+
+    /// A legacy card the next command replaces while its answer is in
+    /// flight does not show that answer: the card now asks something else.
+    func testLegacyCardReplacedWhileItsAnswerIsInFlightIsNotStampedWithIt() async {
+        let shown = shownApproval()
+        weak var weakState: AppState?
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in [shown] },
+            respondToApproval: { _, _, _, _, _ in
+                weakState?.messages[0].approval?.command = "rm -rf ~"
+                weakState?.messages[0].approval?.description = "Delete the home folder?"
+                return true
+            }
+        ))
+        weakState = appState
+        installShownApproval(shown, in: appState)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+
+        let card = appState.messages.first?.approval
+        XCTAssertEqual(card?.command, "rm -rf ~")
+        XCTAssertEqual(card?.status, .pending, "the new command is still unanswered")
+        XCTAssertNil(card?.choice)
+        XCTAssertNil(card?.error)
+    }
+
+    /// A queue read that fails sent nothing, so the card says why it
+    /// failed (not that Hermes refused) and the queue is read again.
+    func testLegacyCardWhoseQueueReadFailsSaysWhyAndRefreshes() async {
+        let responses = RecordedApprovalResponses()
+        let shown = shownApproval()
+        let failure = URLError(.timedOut)
+        var queueReads = 0
+        let appState = makeAppState(chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
+            pendingApprovals: { _, _ in
+                queueReads += 1
+                throw failure
+            },
+            respondToApproval: { _, _, _, choice, _ in
+                responses.choices.append(choice)
+                return true
+            }
+        ))
+        installShownApproval(shown, in: appState)
+
+        await appState.respondToApproval(messageId: "approval-shown", choice: "once", shown: shown)
+        for _ in 0..<1_000 where queueReads < 2 { await Task.yield() }
+
+        let card = appState.messages.first?.approval
+        XCTAssertEqual(responses.choices, [])
+        XCTAssertEqual(card?.status, .error)
+        XCTAssertEqual(card?.error, UserFacingError.message(for: failure))
+        XCTAssertGreaterThanOrEqual(queueReads, 2, "the queue is read again to recover the card")
+    }
+
+    private func installShownApproval(_ approval: ApprovalActivity, in appState: AppState) {
+        appState.activeSessionId = approval.sessionId
+        appState.client = makeReplacementClient(baseURL: "https://one.example")
+        appState.messages = [ChatMessage(
+            id: "approval-shown",
+            role: .approval,
+            content: approval.description,
+            timestamp: "1",
+            approval: approval
+        )]
+    }
 }
 
 private final class Gate: @unchecked Sendable {

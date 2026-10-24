@@ -324,6 +324,8 @@ extension KanbanTests {
         var overlapped = false
         var held: [CheckedContinuation<Void, Never>] = []
         var outcomes: [Bool: CapabilityToggleWrites.Outcome] = [:]
+        /// Outcomes that would show "Could not update" to the user.
+        var failuresReported = 0
         private var running = 0
 
         init(row: Bool) { self.row = row }
@@ -342,6 +344,7 @@ extension KanbanTests {
                     if fails { throw URLError(.timedOut) }
                 }
                 if let restore = outcome.restore { row = restore }
+                if outcome.error != nil { failuresReported += 1 }
                 running -= 1
             }
             for _ in 0..<10 { await Task.yield() }
@@ -385,6 +388,26 @@ extension KanbanTests {
         await confirmed.answerAll()
 
         XCTAssertTrue(confirmed.row)
+    }
+
+    func testAFailedCapabilitySwitchANewerFlipReplacedSaysNothingFailed() async {
+        // On fails, then off is saved: off stands, and no banner says the
+        // switch couldn't be updated.
+        let harness = SwitchHarness(row: false)
+        await harness.flip(true, fails: true)
+        await harness.flip(false, fails: false)
+        await harness.answerAll()
+
+        XCTAssertFalse(harness.row)
+        XCTAssertEqual(harness.failuresReported, 0, "the newer flip decides, and it went through")
+
+        // The newest flip failing still says so.
+        let newest = SwitchHarness(row: false)
+        await newest.flip(true, fails: false)
+        await newest.flip(false, fails: true)
+        await newest.answerAll()
+
+        XCTAssertEqual(newest.failuresReported, 1)
     }
 
     // MARK: Store

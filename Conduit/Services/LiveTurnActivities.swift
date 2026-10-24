@@ -20,7 +20,8 @@ enum LiveTurnProgress {
         case .messageStart, .reasoningDelta:
             next.phase = HermesTurnPhase.thinking.rawValue
             next.tool = nil
-        case .messageDelta:
+        case .messageDelta, .messageInterim:
+            // Interim commentary is the Codex runtime's only text carrier.
             next.phase = HermesTurnPhase.writing.rawValue
             next.tool = nil
         case .toolStart(_, let name, _, _):

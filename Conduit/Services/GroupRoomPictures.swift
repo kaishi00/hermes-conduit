@@ -220,8 +220,12 @@ extension AppState {
             let left = (groupRoomPicturesChanging[roomID] ?? 1) - 1
             groupRoomPicturesChanging[roomID] = left > 0 ? left : nil
         }
-        // A newer change to the room has taken over: this one fails quietly.
-        var superseded: Bool { groupRoomPictureGenerations[roomID] != generation }
+        // A newer change to the room, another room or another dashboard has
+        // taken over: this one fails quietly.
+        var superseded: Bool {
+            groupRoomPictureGenerations[roomID] != generation
+                || activeDashboardID != dashboard || groupRoomEpoch != epoch
+        }
         do {
             if let image {
                 // Scaling and encoding a large photo stays off the main actor.
@@ -239,8 +243,7 @@ extension AppState {
                     encodedBody: upload.body,
                     timeoutMilliseconds: GroupRoomPictures.uploadTimeoutMilliseconds
                 )
-                guard activeDashboardID == dashboard, groupRoomEpoch == epoch,
-                      groupRoomPictureGenerations[roomID] == generation else { return }
+                guard !superseded else { return }
                 guard let revision = GroupRoomPictures.storedRevision(from: answer) else {
                     errorMessage = AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
                     return
@@ -249,8 +252,7 @@ extension AppState {
                 groupRoomPictureRevisions[roomID] = revision
             } else {
                 _ = try await bridge.requestJSON(path: path, method: "DELETE")
-                guard activeDashboardID == dashboard, groupRoomEpoch == epoch,
-                      groupRoomPictureGenerations[roomID] == generation else { return }
+                guard !superseded else { return }
                 groupRoomPictureData.removeValue(forKey: roomID)
                 groupRoomPictureRevisions.removeValue(forKey: roomID)
             }

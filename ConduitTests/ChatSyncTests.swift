@@ -424,6 +424,8 @@ final class ChatSyncTests: XCTestCase {
         var catalog: [SessionSummary] = []
         var loads = 0
         var now = Date(timeIntervalSince1970: 2_000_000)
+        /// Runs while the registry read is on its way.
+        var onProbe: (@MainActor () -> Void)?
     }
 
     private func makeAppState(_ box: Box) -> AppState {
@@ -435,7 +437,10 @@ final class ChatSyncTests: XCTestCase {
                 return box.catalog
             },
             chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
-                probeActiveSessions: { _ in box.live }
+                probeActiveSessions: { _ in
+                    box.onProbe?()
+                    return box.live
+                }
             )
         )
         appState.client = HermesClient(
@@ -649,6 +654,105 @@ final class ChatSyncTests: XCTestCase {
         appState.noteChatListInteraction()
         let wait = await pollWait(appState)
         XCTAssertEqual(wait, 4)
+    }
+
+    /// A Bot Chat open behind the list: its running turn isn't one of the
+    /// list's chats and mustn't keep the list at 4 s. A listed chat's turn
+    /// still does.
+    func testAnOpenBotChatsTurnDoesNotKeepTheListQuick() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.showSidebar = false
+        let profile = appState.activeProfile
+        appState.sessions = [row("listed", profile: profile)]
+        box.catalog = [row("listed", profile: profile)]
+        box.live = [LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "idle", messageCount: 2)]
+        appState.activeSessionId = "bot-chat"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "bot-chat", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+
+        var waits: [TimeInterval] = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "The bot's turn leaves the list to back off")
+
+        // The bot's turn ends and a listed chat opens, idle: still backs off.
+        appState.handleStreamEvent(.sessionBusy(sessionId: "bot-chat", busy: false))
+        XCTAssertFalse(appState.turnState.isRunning)
+        appState.activeSessionId = "listed"
+        appState.noteChatListInteraction()
+        waits = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "An idle listed chat leaves the list to back off")
+
+        // Its own turn starts: that keeps the list quick.
+        appState.handleStreamEvent(.sessionBusy(sessionId: "listed", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+        appState.noteChatListInteraction()
+        waits = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 4, 4], "The open listed chat's turn keeps it quick")
+    }
+
+    /// A chat the catalog has but the list hides (here another profile's;
+    /// a Bot Chat is hidden the same way): its turn and its registry row
+    /// don't pace the list.
+    func testAHiddenCatalogChatsTurnDoesNotKeepTheListQuick() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.showSidebar = false
+        let profile = appState.activeProfile
+        let hidden = row("hidden", profile: "other-profile")
+        appState.sessions = [row("listed", profile: profile), hidden]
+        box.catalog = [row("listed", profile: profile), hidden]
+        XCTAssertEqual(appState.activeProfileSessions.map(\.id), ["listed"])
+        box.live = [
+            LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "idle", messageCount: 2),
+            LiveSessionStatus(runtimeSessionId: "rt-hidden", storedSessionId: "hidden", status: "working", messageCount: 2),
+        ]
+        appState.activeSessionId = "hidden"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "hidden", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+
+        var waits: [TimeInterval] = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "The hidden chat's turn leaves the list to back off")
+    }
+
+    /// The poll that was stopped while the registry read was on its way
+    /// (the list left, the app gone to the background) starts no catalog
+    /// read after it.
+    func testAPollStoppedDuringTheRegistryReadReadsNoCatalog() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        box.catalog = [row("listed", profile: appState.activeProfile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+        box.now += 60 // the list's fallback read is due
+
+        var poll: Task<TimeInterval, Never>?
+        box.onProbe = { poll?.cancel() }
+        poll = Task { await appState.chatListPollTick() }
+        _ = await poll?.value
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 1, "No catalog read after the poll was stopped")
     }
 
     func testLowPowerModeStretchesTheListPoll() async {

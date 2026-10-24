@@ -1216,13 +1216,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return closingCutFence(String(markdown.prefix(maximumScreenCardCharacters - 16)))
     }
 
-    /// `cut`, the start of longer markdown, with its last line dropped (it
-    /// may be half a fence) and a code fence it leaves open closed. Never
+    /// `cut`, the start of longer markdown, with its last line dropped when
+    /// it may be half a fence and a code fence it leaves open closed. Never
     /// longer than `cut` plus a newline and a three-character fence.
     static func closingCutFence(_ cut: String) -> String {
         var lines = cut.components(separatedBy: "\n")
-        // A last line cut mid-way may be half a fence; drop it.
-        if lines.count > 1 { lines.removeLast() }
+        // A last line cut mid-way may be half a fence; drop it then, and
+        // only then: a long paragraph is one line, and dropping it would
+        // leave little more than the heading. Half a fence is a fence's
+        // start (three or more marks) or marks alone (a fence cut short);
+        // prose that opens with inline code (`endpoint` restarted…) stays.
+        if lines.count > 1, let last = lines.last?.trimmingCharacters(in: .whitespaces),
+           let mark = last.first, mark == "`" || mark == "~" {
+            let marks = last.prefix { $0 == mark }.count
+            if marks >= 3 || marks == last.count { lines.removeLast() }
+        }
         // Read fences as MarkdownText does: a line starting ``` or ~~~
         // opens one, and the next line starting the same way closes it.
         var openFence: String?
@@ -2063,7 +2071,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
                 jobs[index].followUp = nil
                 jobs[index].heldCompletion = nil
-            case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
+            case .messageStart, .messageDelta, .messageInterim, .reasoningDelta, .toolStart, .toolComplete:
                 if followUp == .accepted {
                     jobs[index].followUp = nil
                     jobs[index].heldCompletion = nil
@@ -2076,7 +2084,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return
         }
         switch event {
-        case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
+        case .messageStart, .messageDelta, .messageInterim, .reasoningDelta, .toolStart, .toolComplete:
             if before.status == .needsInput || before.status == .starting {
                 jobs[index].status = .running
                 jobs[index].inputRequestDelivered = false
@@ -2298,7 +2306,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     private static func sessionID(for event: StreamEvent) -> String? {
         switch event {
-        case .messageStart(let id), .messageDelta(let id, _), .reasoningDelta(let id, _),
+        case .messageStart(let id), .messageDelta(let id, _), .messageInterim(let id, _, _), .reasoningDelta(let id, _),
              .messageComplete(let id, _, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
              .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
@@ -3129,12 +3137,33 @@ enum VoiceThreadRouting {
             words.indices.contains { words[$0...].starts(with: phrase) }
         }) { return true }
         if words.contains(where: koreanNegates) { return true }
+        // A refusal said with its verb ("reject", "deny", "refuse"): the
+        // handset's own words, whatever Hermes listed as a yes.
+        if words.contains(where: { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }) {
+            return true
+        }
         // "别" / "別" says don't when it opens a clause or comes with the
         // verb; inside "别人" or "特別" it doesn't.
         let clauses = folded.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
         if clauses.contains(where: { $0.hasPrefix("别") || $0.hasPrefix("別") }) { return true }
         return cjkRefusals.contains { folded.contains($0) }
     }
+
+    /// Verbs that refuse, in the shipped languages with word breaks
+    /// (Korean is matched by its stem, Chinese and Japanese in
+    /// `cjkRefusals`).
+    private static let answerRefusalVerbs: Set<String> = [
+        "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
+        "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",
+        "rechaza", "rechazar", "rechazo", "recházalo", "rechazalo", "deniega", "denegar", "deniégalo",
+        "refuser", "refusé", "refusez", "rejette", "rejeter", "rejetez", "décline", "décliner", "déclinez",
+        "rejeita", "rejeitar", "rejeite", "recusa", "recusar", "recuse", "recuso",
+        "отклонить", "отклони", "отклоните", "отклоняю", "откажи", "откажись", "отказать", "отказываюсь", "отказ",
+        "rifiuta", "rifiutare", "rifiuto", "respingi", "respingere",
+        "odrzuć", "odrzucić", "odrzucam", "odmów", "odmówić", "odmawiam",
+        "reddet", "reddediyorum", "reddedin", "reddetmek",
+        "tolak", "tolaklah", "menolak",
+    ]
 
     private static let answerRefusalPhraseWords = (answerNoLeads + answerNotYetLeads)
         .filter { !answerTimeWords.contains($0) }
@@ -3165,6 +3194,7 @@ enum VoiceThreadRouting {
         "不想", "不要", "不用", "不必", "不发", "不發", "不送", "别发", "別發", "别送", "別送", "没有", "沒有", "不需", "先不",
         "ないで", "なくて", "しない", "らない", "しません", "送りません", "いりません", "要りません",
         "できません", "やめ", "だめ", "ダメ", "嫌",
+        "拒绝", "拒絕", "拒否", "却下", "断る", "断って",
     ]
 
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {

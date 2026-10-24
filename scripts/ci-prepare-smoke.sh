@@ -29,7 +29,7 @@ if ! shutdown_own_simulator; then
   echo "::warning::own-device shutdown unavailable - continuing best-effort (xcodebuild boots the destination itself)"
 fi
 shutdown_s=$(( $(date +%s) - started ))
-sleep $(( 3 * ${GATE_SLEEP_SCALE:-1} ))
+sleep $(( 3 * $(decimal_seconds "${GATE_SLEEP_SCALE:-}" 1) ))
 
 boot_s=0
 readiness_s=0

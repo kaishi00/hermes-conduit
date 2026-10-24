@@ -289,7 +289,8 @@ final class LocalLiveTurnRunner {
             showedCard = true
         }
         switch event {
-        case .messageStart(let id), .reasoningDelta(let id, _), .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _):
+        case .messageStart(let id), .reasoningDelta(let id, _), .messageInterim(let id, _, _),
+             .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _):
             guard id == current.runtimeID else { return }
             // Hermes is writing again after the correction: a marker after
             // this ends the reply.

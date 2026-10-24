@@ -929,8 +929,9 @@ final class KanbanStore: ObservableObject {
     enum KanbanEventRefreshDisposition: Equatable {
         /// The authoritative reload ran to completion.
         case refreshed
-        /// Store was mutating/loading - the caller should retry the SAME
-        /// batch once; the ordinary poll converges regardless.
+        /// Store was mutating/loading, or the reload failed - the caller
+        /// should retry the SAME batch once; the ordinary poll converges
+        /// regardless.
         case deferred
         /// Context no longer matches the actionable loaded snapshot - the
         /// batch is dropped permanently (zero requests).
@@ -943,6 +944,7 @@ final class KanbanStore: ObservableObject {
     ///   stale context / non-actionable snapshot -> .stale (zero request)
     ///   mutating or loading                     -> .deferred
     ///   actionable + idle                       -> authoritative reload
+    ///                                              (.deferred if it failed)
     @discardableResult
     func refreshFromEvent(
         expectedContext: KanbanBoardContextStamp,
@@ -968,7 +970,9 @@ final class KanbanStore: ObservableObject {
             mutationErrorMessage = previousMutationErrorMessage
             return .stale
         }
-        return .refreshed
+        // A reload that failed refreshed nothing: the batch is retried soon
+        // instead of leaving the board stale until the slow poll.
+        return errorMessage == nil ? .refreshed : .deferred
     }
 
     /// Publish a coalesced invalidation AFTER a refreshed reload so detail

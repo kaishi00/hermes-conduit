@@ -261,7 +261,8 @@ final class PresentedScreensSync: ObservableObject {
             return
         }
         syncing = true
-        defer { syncing = false }
+        // The request holds the dashboard bridge: not kept past the sync.
+        defer { syncing = false; latest = nil }
         // Every round answers a call that came meanwhile (an answer to send,
         // a tool that finished), and that call has already returned: none is
         // dropped. Rounds never ask for more themselves, so this ends.

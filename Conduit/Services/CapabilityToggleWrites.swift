@@ -6,7 +6,8 @@
 //  Hermes saves each one by rewriting config.yaml, so they reach it one
 //  after another, in the order they were flipped. A failed write puts a
 //  switch back to what Hermes last confirmed, and only when no newer flip
-//  of that switch is still to come.
+//  of that switch is still to come; that flip decides, and reports its own
+//  failure.
 //
 
 import Foundation
@@ -14,6 +15,8 @@ import Foundation
 @MainActor
 final class CapabilityToggleWrites {
     struct Outcome {
+        /// Nil also when a newer flip of the switch replaced this one: the
+        /// newer one says whether it went through.
         let error: Error?
         /// The value to show again after a failure; nil to leave the row.
         let restore: Bool?
@@ -58,7 +61,7 @@ final class CapabilityToggleWrites {
         // A newer flip of this switch is still on its way: it decides.
         guard state.newest == flip else {
             pending[key] = state
-            return Outcome(error: error, restore: nil)
+            return Outcome(error: nil, restore: nil)
         }
         pending[key] = nil
         return Outcome(error: error, restore: error == nil ? nil : state.confirmed)

@@ -683,6 +683,64 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 7, "the newer read is the host's latest")
     }
 
+    func testACallSettingsReadAskedBeforeASaveMadeFromAnotherProfileNeverShowsAfterIt() async throws {
+        let suite = "HermesCallsTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.48.0", capabilities: ["hermes-calls"]))
+        var reads: [CheckedContinuation<[String: Any], Never>] = []
+        appState.hermesCallsClient = HermesCallsClient { _, method, body in
+            if method == "PUT" { return ["ok": true, "settings": body?["settings"] ?? [:]] }
+            return await withCheckedContinuation { reads.append($0) }
+        }
+        func status(perDay: Int) -> [String: Any] {
+            ["ok": true, "settings": ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": perDay]]
+        }
+
+        // A read of the default profile leaves; the user moves to another
+        // profile, and the default profile's edit is saved from there.
+        let beforeSave = Task { await appState.refreshHermesCallsStatus() }
+        let started = await waitForHermesCalls { reads.count == 1 }
+        guard started else { return XCTFail("The status read never started") }
+        appState.setActiveProfileForTesting("work")
+        let edited = try XCTUnwrap(HermesCallSettings(json: ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 5]))
+        let saved = await appState.saveHermesCallSettings(edited, profile: "default", dashboardID: appState.activeDashboardID)
+        XCTAssertTrue(saved)
+
+        // Back on the default profile, the read asked before the save answers.
+        appState.setActiveProfileForTesting("default")
+        reads[0].resume(returning: status(perDay: 20))
+        await beforeSave.value
+        XCTAssertNotEqual(appState.activeHermesCallsStatus?.settings.perDay, 20, "the read is older than the save")
+    }
+
+    func testASaveOfAnotherProfileLeavesTheShownProfilesReadStanding() async throws {
+        let suite = "HermesCallsTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.48.0", capabilities: ["hermes-calls"]))
+        var reads: [CheckedContinuation<[String: Any], Never>] = []
+        appState.hermesCallsClient = HermesCallsClient { _, method, body in
+            if method == "PUT" { return ["ok": true, "settings": body?["settings"] ?? [:]] }
+            return await withCheckedContinuation { reads.append($0) }
+        }
+
+        // The work profile's read is out when an edit of the default
+        // profile is saved; the work read still lands.
+        appState.setActiveProfileForTesting("work")
+        let workRead = Task { await appState.refreshHermesCallsStatus() }
+        let started = await waitForHermesCalls { reads.count == 1 }
+        guard started else { return XCTFail("The status read never started") }
+        let edited = try XCTUnwrap(HermesCallSettings(json: ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 5]))
+        let saved = await appState.saveHermesCallSettings(edited, profile: "default", dashboardID: appState.activeDashboardID)
+        XCTAssertTrue(saved)
+        reads[0].resume(returning: ["ok": true, "settings": ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 12]])
+        await workRead.value
+        XCTAssertEqual(appState.activeHermesCallsStatus?.settings.perDay, 12, "another profile's save is not newer than this read")
+    }
+
     func testCallSettingsSendOnlyWhatTheHostHas() {
         let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
         XCTAssertNil(old?.decides)
