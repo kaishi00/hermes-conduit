@@ -955,5 +955,6 @@ point at the map and its check
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
+- A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
 
 **Checked:** 2026-10-24, at #1209.

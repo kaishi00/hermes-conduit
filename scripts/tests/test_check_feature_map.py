@@ -139,6 +139,11 @@ class CheckFeatureMapTests(unittest.TestCase):
             code, out = self.run_check(edited.replace("#1\n", "#1201\n"), extra=["--pr", "1201", "--base-map", base])
             self.assertEqual(code, 0, out)
         self.assertEqual(self.run_check(edited)[0], 0)
+        code, out = self.run_check(edited, extra=["--pr", "1201", "--base-map", "/nonexistent/base.md"])
+        self.assertEqual(code, 1)
+        self.assertIn("Couldn't read the base's map", out)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            check.main(["--repo-root", ROOT, "--pr", "1201"])
 
     def test_code_names_at_least_one_path(self):
         code, out = self.run_check(ENTRY.replace("- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard)\n- Notifier: `notifier/clarify_loop.py`\n", "- Chat card: ApprovalCard\n"))

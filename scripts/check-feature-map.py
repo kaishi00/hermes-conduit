@@ -181,6 +181,8 @@ def main(argv=None):
                         help="the pull request's number: entries it adds or edits name it")
     parser.add_argument("--base-map", help="the map on the PR's base, to tell which entries it edits")
     args = parser.parse_args(argv)
+    if bool(args.pr) != bool(args.base_map):
+        parser.error("--pr and --base-map go together")
 
     try:
         with open(os.path.join(args.repo_root, MAP), encoding="utf-8") as fh:
@@ -190,12 +192,13 @@ def main(argv=None):
               f"({error.strerror}).")
         return 1
     problems = shape_problems(text)
-    if args.pr and args.base_map:
+    if args.pr:
         try:
             with open(args.base_map, encoding="utf-8") as fh:
                 base_text = fh.read()
-        except OSError:
-            base_text = ""
+        except OSError as error:
+            print(f"::error::Couldn't read the base's map {args.base_map} ({error.strerror}).")
+            return 1
         problems += unchecked_edits(base_text, text, args.pr)
     notifier = {}
     found = paths(text)

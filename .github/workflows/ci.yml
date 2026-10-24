@@ -127,7 +127,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$PR_NUMBER" ]; then
-            git show HEAD^1:docs/FEATURE_MAP.md > "$RUNNER_TEMP/base-map.md" || : > "$RUNNER_TEMP/base-map.md"
+            if ! git show HEAD^1:docs/FEATURE_MAP.md > "$RUNNER_TEMP/base-map.md"; then
+              echo "::error::Couldn't read docs/FEATURE_MAP.md at HEAD^1, the PR's base."
+              exit 1
+            fi
             python3 scripts/check-feature-map.py --repo-root . \
               --pr "$PR_NUMBER" --base-map "$RUNNER_TEMP/base-map.md"
           else
