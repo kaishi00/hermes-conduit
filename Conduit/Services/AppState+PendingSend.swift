@@ -276,11 +276,18 @@ extension AppState {
         guard pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id }),
               !composerRestoreRequests.contains(where: { $0.pending?.id == pending.id }) else { return }
         let onScreen = isOnScreen(pending)
+        // Its chat went while it was being sent: as when it's handed back.
+        let chatIsGone = !onScreen && pendingComposerSendChatIsGone(pending)
         composerRestoreRequests.append(
-            restoreRequest(for: pending, key: submittedDraftKey, focuses: false)
+            restoreRequest(
+                for: pending,
+                key: chatIsGone ? durableComposerDraftKeyOnScreen : submittedDraftKey,
+                redirects: chatIsGone,
+                focuses: false
+            )
         )
         if !onScreen, pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
-            composerNotice = pendingComposerSendNotice(for: pending, onScreen: false)
+            composerNotice = pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
         }
     }
 
@@ -301,19 +308,44 @@ extension AppState {
 
     /// The waiting message isn't sent: its words go back into its chat's
     /// draft, or the composer when that chat is the one on screen, with a
-    /// line saying so.
+    /// line saying so. A chat Hermes no longer has can't be opened again,
+    /// so its words go into the composer on screen instead, unsent.
     func returnPendingComposerSendToDraft(_ pending: PendingComposerSend, saysWhy: Bool = true) {
         let onScreen = isOnScreen(pending)
+        let chatIsGone = !onScreen && pendingComposerSendChatIsGone(pending)
         if pendingComposerSend?.id == pending.id {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
         }
         composerRestoreRequests.append(
-            restoreRequest(for: pending, key: onScreen ? durableComposerDraftKeyOnScreen : nil, focuses: false)
+            restoreRequest(
+                for: pending,
+                key: onScreen || chatIsGone ? durableComposerDraftKeyOnScreen : nil,
+                redirects: chatIsGone,
+                focuses: false
+            )
         )
         if pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
-            composerNotice = saysWhy ? pendingComposerSendNotice(for: pending, onScreen: onScreen) : nil
+            composerNotice = saysWhy
+                ? pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
+                : nil
         }
+    }
+
+    /// The waiting message's chat is one Hermes said it no longer has: the
+    /// composer on screen takes its words instead (with no chat open, the
+    /// next New Chat's draft).
+    private func pendingComposerSendChatIsGone(_ pending: PendingComposerSend) -> Bool {
+        guard !pending.isNewChat,
+              pending.dashboardID == activeDashboardID,
+              pending.profile == activeProfile else { return false }
+        // By its durable id only: a runtime alias says nothing about
+        // whether the conversation itself is gone.
+        return conversationIsGone(
+            sessionIDs: [pending.draftSessionID],
+            dashboardID: pending.dashboardID,
+            profile: pending.profile
+        )
     }
 
     /// A time away long enough that the chat may have moved on: the
@@ -356,23 +388,28 @@ extension AppState {
         }
     }
 
+    /// `redirects`: the message's own chat is gone, so `key` takes its words.
     private func restoreRequest(
         for pending: PendingComposerSend,
         key: ComposerDraftKey? = nil,
+        redirects: Bool = false,
         focuses: Bool
     ) -> ComposerRestoreRequest {
         ComposerRestoreRequest(
             dashboardID: pending.dashboardID,
             // Normal chats keep their captured durable key. Historical
             // runtime aliases must not redirect a deferred restoration.
-            key: pending.isNewChat ? key ?? pending.draftKey : pending.draftKey,
+            key: pending.isNewChat || redirects ? key ?? pending.draftKey : pending.draftKey,
             draft: pending.draft,
             focuses: focuses,
             pending: pending
         )
     }
 
-    func pendingComposerSendNotice(for pending: PendingComposerSend, onScreen: Bool) -> String {
+    func pendingComposerSendNotice(for pending: PendingComposerSend, onScreen: Bool, chatIsGone: Bool = false) -> String {
+        if chatIsGone {
+            return AppLocalization.string("Your message to “\(pending.title)” wasn't sent: Hermes no longer has that chat. It's in the composer now.")
+        }
         if pending.isNewChat {
             return AppLocalization.string("Your message for a new chat wasn't sent. It's saved for your next new chat.")
         }

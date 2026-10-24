@@ -420,6 +420,38 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 
 **Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups.
 
+## Conduit plugin update
+
+Updating (or installing) the Conduit plugin on the dashboard's host from
+Conduit, and telling the user when it's done.
+
+**Siblings:** the update notice over the main screen · Settings > Conduit
+plugin (same status rows, Update and Cancel) · the Settings and Chats notice
+that opens it · Finish setting up's plugin row · the host-run update on the
+notifier (`/self/update`) and its push when it ends · the phone-run steps for
+a plugin without it · the plugin's CHANGELOG.md (What's New) · what the
+confirmation and README say about restarts
+
+**Code**
+- Updater and state: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater, NotifierPluginUpdateSlot), `Conduit/Services/AppState+NotifierPluginUpdate.swift` (the run, reconnecting after it, settled outcomes)
+- Status and offer: `Conduit/Services/NotifierPluginStatus.swift`, `Conduit/Services/NotifierPluginLatestVersion.swift`, `Conduit/Services/NotifierPluginNoticeChannel.swift`, `Conduit/Services/NotifierPluginChangelog.swift`
+- Views: `Conduit/Views/ConduitPluginViews.swift` (NotifierPluginUpdateBanner, NotifierPluginUpdateStatusView, ConduitPluginSettingsDetail), `Conduit/Views/AuxiliaryViews.swift` (NotifierPluginUpdateNotice), `Conduit/Views/V2/V2FinishSetupCard.swift`
+- Gateway restart it reuses: `Conduit/Services/GatewayRestart.swift`
+- Notifier: `notifier/dashboard/plugin_api.py` (/self/update, /self/restart, /capabilities, finish_self_update_after_restart), `notifier/CHANGELOG.md`, `notifier/channels.yaml`
+- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`
+
+**Rulings**
+- No automatic updates: restarts are the user's call; the notice offers each version once, and Update runs the whole update (2026-10-13, #582, Eric).
+- App Store builds are asked only below the stable floor, TestFlight and Xcode builds for every version on notifier main (2026-10-20, #984; 2026-10-23, #1166, Eric).
+- The notice stays until the update truly ends: after the host is done, it shows Reconnecting until Conduit is back, has read the new plugin and the gateway serves, and only then says the plugin is ready. A failure the plugin's report contradicts (the new version runs) reads as ready, not as a silent close (2026-10-24, Eric's report on build 228).
+- A gateway restart that takes the dashboard down with it (a service manager restarting both) still finishes the host job: the restarted dashboard marks it done when it loaded the new version (2026-10-24, notifier 0.69.1).
+
+**Open gaps**
+- Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
+- A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
+
+**Checked:** 2026-10-24, at main 79a5319.
+
 ## Notifications
 
 What a push says, in which language, where tapping it goes, and when it
@@ -611,6 +643,63 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Checked:** 2026-10-23, at #1175.
 
+## Composer drafts
+
+Unsent words, files and a quoted reply wait in the composer they were typed
+in until they're sent, whichever way the user leaves.
+
+**Siblings:** chat composer (chats, project chats, Bot Chat) · New Chat ·
+a saved copy's composer and its waiting message ("Sends when connected") ·
+group rooms · the full editor · the notices that say where words went
+
+| Leaving by | Chat composer | Group room |
+|---|---|---|
+| Back, or another chat from the list | text, files and quote kept | text and files kept |
+| A room opened over the chat | kept | not applicable |
+| Sign-out or another server | dropped | dropped, files deleted |
+| The room disbanded or left the list | not applicable | dropped, files deleted |
+
+**Code**
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (loadDraft, saveDraft, handoffComposer, onDisappear, draftKeyToKeep, restoreSubmittedDraftIfNeeded), `Conduit/Views/Components/ComposerDraftStore.swift` (clearCount)
+- Waiting message: `Conduit/Services/AppState+PendingSend.swift` (returnPendingComposerSendToDraft, restoreFailedPendingComposerSend, pendingComposerSendNotice), `Conduit/Services/AppState.swift` (conversationIsGone), `Conduit/Models/PendingComposerSend.swift`
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Services/AppState.swift` (activeRoomDraft, activeRoomAttachments, pruneRoomStores)
+- Tests: `ConduitTests/ComposerDraftStoreTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/AppStateChatResumeTests.swift`
+
+**Rulings**
+- Drafts live in memory per (profile, chat), and a sign-out or server switch clears them on purpose; nothing the composer held before the clear goes back in after it: not when it goes away, hands off to another chat or a room, nor when a send that was on its way fails (2026-10-24, #1185).
+- A waiting message is never sent on its own after it's handed back. When Hermes says its chat is gone, its words go into the composer on screen, unsent, with a notice saying so (2026-10-24, #1185).
+
+**Open gaps**
+- Drafts don't outlive Conduit being stopped; only a waiting message does (as a file).
+- A waiting message left from an earlier run whose chat is gone still goes back into that chat's draft: the gone chats are only known for this run.
+- A room's quoted message and its "To" picks aren't kept when the room is left.
+- A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
+
+**Checked:** 2026-10-24, at #1185.
+
+## A chat's last reply
+
+Reading the newest reply in a chat without opening it, from the open chat's
+transcript or else its saved history.
+
+**Siblings:** the Send to Hermes Shortcut ("Wait for Answer") · live voice
+calls reading a job's chat · the Watch's answer to a call from Hermes
+
+**Code**
+- Reader: `Conduit/Services/AppState.swift` (latestLiveVoiceThreadReply, latestLiveVoiceThreadReplyMessage, latestReplyTurn)
+- Shortcut: `Conduit/Intents/SendToHermesIntent.swift` (ShortcutReply.mayBe), `Conduit/Services/AppState+ShortcutSend.swift`
+- Live calls: `Conduit/Voice/VoiceBackgroundJobs.swift` (latestThreadReply)
+- Tests: `ConduitTests/ShortcutSendTests.swift`
+
+**Rulings**
+- Only the Shortcut has to tell a new reply from the one before it. Its row ids decide first, then the user's message each reply answers (this run's against another), and the wording last (2026-10-24, #1185).
+- Voice calls and the Watch use only the reply's text (2026-10-24, #1185).
+
+**Open gaps**
+- The same message sent twice and answered in the same words, read once from saved history and once from the open chat, still can't be told apart.
+
+**Checked:** 2026-10-24, at #1185.
+
 ## Following the latest message
 
 Whether a transcript keeps itself at the newest message as replies and
@@ -761,6 +850,111 @@ block, drawn in slices · Copy
 - `MarkdownCodeSlicer.slice` still splits on a Character `"\n"`, where `"\r\n"` is one Character, so a block with Windows line endings is sliced by its byte budget only.
 
 **Checked:** 2026-10-24, at #1191.
+
+## Model lists that fail to load
+
+What a model picker shows before Hermes's model catalog has rows: still
+loading, a fetch that failed, or a gateway that lists no models.
+
+**Siblings:** the model sheet · the Model page's Default model, Delegate
+model and Fallback models editors · a bot's model picker · the voice job and
+voice reply model pickers · the Kanban task composer's catalog
+
+**Code**
+- The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, and the model sheet's modelSection, loadModels)
+- Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
+- Bots: `Conduit/Views/BotModelPicker.swift`
+- Voice: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings), `Conduit/Services/AppState.swift` (loadVoiceJobModelProviders)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (catalogSection)
+
+**Rulings**
+- A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
+- A list that didn't load is never edited or saved: Save stays off until the catalog is in.
+
+**Open gaps**
+- The voice job and voice reply pickers get `[]` for a failed fetch (loadVoiceJobModelProviders), so they can't tell failed from empty.
+- The bot model picker says "Could not load models." without Try Again.
+- The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Files over the size limit
+
+What Conduit says when a file is too large to attach, and which limit it
+names.
+
+**Siblings:** the chat composer (picker, drop, camera) · pasting into the
+composer · the share extension · Ask Hermes About Screen · a recorded voice
+message · the group room composer · the Settings caption for the limit
+
+**Code**
+- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift`
+- Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
+- Share extension: `Conduit/Services/AppState+ShareDraft.swift`
+- Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
+- Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
+
+**Rulings**
+- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB), it names that cap and offers no setting (2026-10-24, from #935's review, #1190).
+
+**Open gaps**
+- The voice message says "larger than your attachment size limit" without the size or where to change it.
+- The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
+
+**Checked:** 2026-10-24, at #1190.
+
+## Phone change errors
+
+What Hermes and the user are told when a calendar, reminder or alarm change
+can't be made on the phone.
+
+**Siblings:** a change from a voice call (PhoneVoiceTools) · a change queued
+by Hermes through the notifier (its result note) · the phone sync status line
+· alarms and timers · the wording the notifier's tools give models
+
+**Code**
+- Calendar and reminder errors: `Conduit/Phone/EventKitPhoneSource.swift` (PhoneCalendarSourceError, apply, moveDestination)
+- Alarm errors: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmError)
+- Voice tools: `Conduit/Phone/PhoneVoiceTools.swift` (the add, change, delete and alarm tools' catches)
+- Queued changes and status: `Conduit/Phone/PhoneSyncEngine.swift` (record, lastError, describe)
+- Notifier: `notifier/phone_tool.py` (the wording models read)
+
+**Rulings**
+- An error names what is missing: the item ("That item isn't on this iPhone any more."), or the calendar or list it was to move to, which leaves the item in place (2026-10-24, from #876's review, #1190).
+- Voice tools turn only a missing item on a change or delete into "read the calendar again for its id"; every other error reaches the model as "It couldn't be changed: <reason>" (or added, deleted, set, cancelled) with the error's own text (2026-10-24, #1190).
+
+**Open gaps**
+- Adding an event or reminder when the phone has no default calendar or list (and the one named is gone) says "That item isn't on this iPhone any more."
+
+**Checked:** 2026-10-24, at #1190.
+
+## Speech stream failures
+
+What a spoken reply says when its speech stream fails partway: Classic voice
+and Read Aloud speak through Hermes's speech stream or the user's speech
+server.
+
+**Siblings:** the Hermes speech stream · the speech-server speech stream ·
+the one-shot fallback a Hermes stream falls back to before any audio · the
+speech-server transcription stream (listening, not speaking)
+
+**Code**
+- Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
+- Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
+- Listening: `Conduit/Voice/SpeechServerTranscription.swift`
+- Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
+
+**Rulings**
+- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
+
+**Open gaps**
+- The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
+
+**Checked:** 2026-10-24, at #1190.
 
 ## Feature map rules
 

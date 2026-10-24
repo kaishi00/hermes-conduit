@@ -35,6 +35,9 @@ final class ComposerDraftStore {
     private var drafts: [ComposerDraftKey: ComposerDraft] = [:]
     private var order: [ComposerDraftKey] = []
     private var generations: [ComposerDraftKey: UUID] = [:]
+    /// How many times `removeAll` ran: a composer loaded before a clear
+    /// doesn't put its draft back after it.
+    private(set) var clearCount: UInt64 = 0
 
     init(capacity: Int = 12) {
         self.capacity = max(0, capacity)
@@ -101,6 +104,7 @@ final class ComposerDraftStore {
     }
 
     func removeAll() {
+        clearCount &+= 1
         drafts.removeAll()
         generations.removeAll()
         order.removeAll()

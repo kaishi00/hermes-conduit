@@ -479,6 +479,7 @@ struct NotifierPluginUpdateStatusView: View {
         case .waitingForChats(let count):
             return AppLocalization.string("Waiting for \(count) running chats to finish…")
         case .restartingDashboard: return AppLocalization.string("Restarting the dashboard…")
+        case .reconnecting: return AppLocalization.string("Reconnecting…")
         }
     }
 }
@@ -494,6 +495,12 @@ struct NotifierPluginUpdateBanner: View {
     /// The notes as they were when What's New was tapped: an hourly
     /// changelog read can't empty the open sheet.
     @State private var shownNotes: NotifierPluginReleaseNotes?
+
+    /// The finished update's timer starts over when Conduit reconnects.
+    private struct AutoDismissKey: Equatable {
+        let update: NotifierPluginUpdateState
+        let connected: Bool
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -627,10 +634,10 @@ struct NotifierPluginUpdateBanner: View {
             guard !update.isInProgress else { return }
             UIAccessibility.post(notification: .announcement, argument: text)
         }
-        // A finished update leaves on its own; with VoiceOver on it stays
-        // until closed.
-        .task(id: update) {
-            guard case .updated = update, !UIAccessibility.isVoiceOverRunning else { return }
+        // A finished update leaves on its own once Conduit is connected
+        // again; with VoiceOver on it stays until closed.
+        .task(id: AutoDismissKey(update: update, connected: appState.isConnected)) {
+            guard case .updated = update, appState.isConnected, !UIAccessibility.isVoiceOverRunning else { return }
             try? await Task.sleep(for: .seconds(8))
             if !Task.isCancelled, appState.activeNotifierPluginUpdate == update { appState.dismissNotifierPluginUpdateOutcome() }
         }

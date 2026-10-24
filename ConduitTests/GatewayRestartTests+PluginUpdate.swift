@@ -474,12 +474,30 @@ extension GatewayRestartTests {
         XCTAssertEqual(slot.state(on: dashboard), .idle)
     }
 
+    /// A failure the plugin's report contradicts reads as done: the gateway
+    /// restart can take the dashboard, and the job it ran, down with it.
+    func testASettledOutcomeBecomesTheUpdateButARunningOneStays() {
+        let dashboard = UUID()
+        var slot = NotifierPluginUpdateSlot()
+        let run = slot.start(on: dashboard)
+        slot.settle(as: .updated(version: "0.69.0"))
+        XCTAssertEqual(slot.state(on: dashboard), .updating(.downloading))
+        slot.finish(.failed(detail: "The plugin is updated, but the gateway didn't restart."), run: run, activeDashboardID: dashboard)
+        slot.settle(as: .updated(version: "0.69.0"))
+        XCTAssertEqual(slot.state(on: dashboard), .updated(version: "0.69.0"))
+        slot.dismiss()
+        slot.settle(as: .updated(version: "0.69.0"))
+        XCTAssertEqual(slot.state(on: dashboard), .idle)
+    }
+
     func testProgressCountsStepsAndTimesTheRun() {
         XCTAssertEqual(NotifierPluginUpdateStep.downloading.number, 1)
         XCTAssertEqual(NotifierPluginUpdateStep.installing.number, 1)
         XCTAssertEqual(NotifierPluginUpdateStep.restartingGateway(nil).number, 2)
         XCTAssertEqual(NotifierPluginUpdateStep.waitingForChats(count: 2).number, 3)
-        XCTAssertEqual(NotifierPluginUpdateStep.restartingDashboard.number, NotifierPluginUpdateStep.count)
+        XCTAssertEqual(NotifierPluginUpdateStep.restartingDashboard.number, 3)
+        // Reconnecting after the host finished is the last step.
+        XCTAssertEqual(NotifierPluginUpdateStep.reconnecting.number, NotifierPluginUpdateStep.count)
         var slot = NotifierPluginUpdateSlot()
         XCTAssertNil(slot.startedAt)
         let run = slot.start(on: UUID())

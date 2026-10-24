@@ -54,6 +54,9 @@ struct ComposerBar: View, Equatable {
     /// The latest replacement puts the cursor after the text.
     @State private var composerCursorAtEnd = false
     @State private var loadedDraftKey: ComposerDraftKey?
+    /// The store's clear count when the draft was loaded: a sign-out or a
+    /// server switch since then cleared the store on purpose.
+    @State private var loadedDraftClearCount: UInt64 = 0
     @State private var photoImportContext: AsyncAttachmentContext?
     @State private var photoImportGeneration: UInt64 = 0
     @State private var documentImportContext: AsyncAttachmentContext?
@@ -124,6 +127,18 @@ struct ComposerBar: View, Equatable {
             profile: profile,
             sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID
         )
+    }
+
+    /// The draft a composer that's leaving it (going away, or handing off
+    /// to another chat) keeps: the one in the field, unless the store was
+    /// cleared since it was loaded.
+    static func draftKeyToKeep(
+        loaded: ComposerDraftKey?,
+        loadedClearCount: UInt64,
+        storeClearCount: UInt64
+    ) -> ComposerDraftKey? {
+        guard loadedClearCount == storeClearCount else { return nil }
+        return loaded
     }
 
     /// A prefill goes in only over the draft it was made for, or the same
@@ -497,8 +512,12 @@ struct ComposerBar: View, Equatable {
             // The room surface unmounts this composer's subtree. Persist the
             // typed draft BEFORE it goes, so returning to the session
             // restores exactly what the user had typed.
-            if roomActive {
-                saveDraft(for: activeDraftKey)
+            if roomActive, let key = Self.draftKeyToKeep(
+                loaded: loadedDraftKey,
+                loadedClearCount: loadedDraftClearCount,
+                storeClearCount: draftStore.clearCount
+            ) {
+                saveDraft(for: key)
             }
         }
         .onChange(of: updates.inputs.takesText) { _, takesText in
@@ -522,11 +541,17 @@ struct ComposerBar: View, Equatable {
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil
-            // Dependable second hook: whether this view leaves for a room,
-            // a session switch, or teardown, the typed text lands in the
-            // app-lifetime store first.
-            if appState.activeRoomSurface != nil {
-                saveDraft(for: activeDraftKey)
+            // Dependable second hook: whether this view leaves for a room
+            // or the chat is closed (Back, another chat from the list), the
+            // field lands in the app-lifetime store under the draft it
+            // holds. A sign-out or server switch cleared the store on
+            // purpose, so nothing goes back in after one.
+            if let key = Self.draftKeyToKeep(
+                loaded: loadedDraftKey,
+                loadedClearCount: loadedDraftClearCount,
+                storeClearCount: draftStore.clearCount
+            ) {
+                saveDraft(for: key)
             }
         }
         // A session resume can complete before the gateway has refreshed its
@@ -1507,6 +1532,7 @@ struct ComposerBar: View, Equatable {
         let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
+        let submittedClearCount = draftStore.clearCount
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
@@ -1530,7 +1556,8 @@ struct ComposerBar: View, Equatable {
                     text: submittedText,
                     attachments: submittedAttachments,
                     replyReference: submittedReply,
-                    for: submittedDraftKey
+                    for: submittedDraftKey,
+                    clearCount: submittedClearCount
                 )
                 Haptics.error()
                 return
@@ -1844,8 +1871,14 @@ struct ComposerBar: View, Equatable {
         text submittedText: String,
         attachments submittedAttachments: [Attachment],
         replyReference submittedReply: ComposerReplyReference?,
-        for key: ComposerDraftKey
+        for key: ComposerDraftKey,
+        clearCount: UInt64
     ) {
+        // A sign-out or server switch cleared the drafts while it was on
+        // its way: the outgoing account's words don't come back.
+        guard Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount, storeClearCount: draftStore.clearCount) != nil else {
+            return
+        }
         let failed = ComposerDraft(
             text: submittedText,
             attachments: submittedAttachments,
@@ -2108,6 +2141,7 @@ struct ComposerBar: View, Equatable {
         attachments = draft.attachments
         replyReference = draft.replyReference
         loadedDraftKey = key
+        loadedDraftClearCount = draftStore.clearCount
         composerTextHeight = ComposerPasteTextView.minimumHeight
         isFocused = false
         isShowingSlashSuggestions = false
@@ -2115,10 +2149,17 @@ struct ComposerBar: View, Equatable {
 
     private func handoffComposer(to destinationKey: ComposerDraftKey) {
         guard loadedDraftKey != destinationKey else { return }
+        // A sign-out or server switch cleared the store on the way here:
+        // the field's draft isn't put back, and the destination's loads.
+        let keptKey = Self.draftKeyToKeep(
+            loaded: loadedDraftKey,
+            loadedClearCount: loadedDraftClearCount,
+            storeClearCount: draftStore.clearCount
+        )
         // The same chat under another id (a saved copy's chat opening, the
         // chat a New Chat created): the field stays as it is, focus and
         // dictation with it.
-        if let loadedDraftKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
+        if let loadedDraftKey = keptKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
             saveDraft(for: destinationKey)
             draftStore.removeDraft(for: loadedDraftKey)
             self.loadedDraftKey = destinationKey
@@ -2129,7 +2170,7 @@ struct ComposerBar: View, Equatable {
         // editor to the chat it was opened in.
         dictation.cancel()
         isShowingFullEditor = false
-        if let loadedDraftKey {
+        if let loadedDraftKey = keptKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(
                 loadedDraftKey,

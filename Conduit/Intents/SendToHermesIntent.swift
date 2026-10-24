@@ -72,6 +72,12 @@ struct ShortcutSendError: LocalizedError, Equatable {
     static var notConnected: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection."))
     }
+
+    /// The chat's runtime was gone and reopening it failed too: Hermes's
+    /// own error ("session not found") would mean nothing to the listener.
+    static var reopenFailed: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again."))
+    }
 }
 
 /// Hermes operations a run needs. Closures, so AppState binds them to the
@@ -105,11 +111,17 @@ struct ShortcutReply: Equatable {
     var rowID: Int? = nil
     /// The message's id when it was read from the open chat.
     var openChatID: String? = nil
+    /// The user's message it answers, when the read reached it.
+    var prompt: String? = nil
 
     /// Whether this may be `earlier` read again. The text decides only when
-    /// nothing else can.
-    func mayBe(_ earlier: ShortcutReply) -> Bool {
+    /// nothing else can. `sent`: what this run sent.
+    func mayBe(_ earlier: ShortcutReply, sent: String? = nil) -> Bool {
         if let rowID, let earlierRow = earlier.rowID { return rowID == earlierRow }
+        // Read from the saved history once and the open chat once, the ids
+        // can't be compared: a reply to what this run sent, when the
+        // earlier one answered something else, is a new turn's.
+        if let sent, prompt == sent, let earlierPrompt = earlier.prompt, earlierPrompt != sent { return false }
         // A streamed reply saved since: the same one or a new one, by its
         // id alone it can't tell.
         if earlier.rowID == nil, rowID != nil { return text == earlier.text }
@@ -217,12 +229,25 @@ struct ShortcutSender {
             // Right after a cold launch the open chat's id is the one from
             // before, until the chat's own resume: reopen the chat and send
             // once more.
-            runtimeID = try await backend.reopenChat(chat)
+            do {
+                runtimeID = try await backend.reopenChat(chat)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HermesError.notConnected {
+                throw ShortcutSendError.notConnected
+            } catch {
+                throw ShortcutSendError.reopenFailed
+            }
             try Task.checkCancellation()
             chat.runtimeSessionID = runtimeID
             if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
             guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
-            outcome = try await backend.submit(chat, runtimeID, text)
+            do {
+                outcome = try await backend.submit(chat, runtimeID, text)
+            } catch let error where HermesClient.isSessionNotFoundError(error) {
+                // The reopened runtime is gone too: nothing was sent.
+                throw ShortcutSendError.reopenFailed
+            }
             backend.retryLanded()
         }
         switch outcome {
@@ -231,7 +256,7 @@ struct ShortcutSender {
         case .steered, .redirected: return .joinedRunningReply
         }
         guard request.waitsForAnswer else { return .sent }
-        return try await waitForReply(in: chat, runtimeID: runtimeID, earlier: earlier, deadline: deadline)
+        return try await waitForReply(in: chat, runtimeID: runtimeID, earlier: earlier, sent: text, deadline: deadline)
     }
 
     /// The saved chat's runtime, or nil when Hermes no longer has it (a new
@@ -247,7 +272,7 @@ struct ShortcutSender {
     }
 
     /// Throws only when the run is cancelled.
-    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: ShortcutReply?, deadline: Date) async throws -> ShortcutSendOutcome {
+    private func waitForReply(in chat: VoiceThreadTarget, runtimeID: String, earlier: ShortcutReply?, sent: String, deadline: Date) async throws -> ShortcutSendOutcome {
         var sawRunning = false
         var missed = 0
         while backend.now().addingTimeInterval(Self.pollInterval) < deadline {
@@ -278,39 +303,39 @@ struct ShortcutSender {
                 // does) or it finished between two polls. Only a reply says
                 // which, so keep waiting until one comes.
                 if !sawRunning {
-                    if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+                    if let reply = await newReply(in: chat, earlier: earlier, sent: sent) { return .answered(reply) }
                     continue
                 }
             } else {
                 // Absence proves nothing until the turn was seen running (a
                 // new chat can be slow to list): only a reply ends the wait.
                 if !sawRunning {
-                    if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+                    if let reply = await newReply(in: chat, earlier: earlier, sent: sent) { return .answered(reply) }
                     continue
                 }
                 // After it ran, absence counts only when it repeats.
                 missed += 1
                 if missed < 2 { continue }
             }
-            if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+            if let reply = await newReply(in: chat, earlier: earlier, sent: sent) { return .answered(reply) }
             // The reply can land a moment after the turn ends.
             guard backend.now().addingTimeInterval(1) < deadline else { break }
             try await backend.sleep(1)
-            if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+            if let reply = await newReply(in: chat, earlier: earlier, sent: sent) { return .answered(reply) }
             return .stillWorking
         }
         // Out of time: a reply that landed in the last moments still counts.
-        if let reply = await newReply(in: chat, earlier: earlier) { return .answered(reply) }
+        if let reply = await newReply(in: chat, earlier: earlier, sent: sent) { return .answered(reply) }
         return .stillWorking
     }
 
-    private func newReply(in chat: VoiceThreadTarget, earlier: ShortcutReply?) async -> String? {
+    private func newReply(in chat: VoiceThreadTarget, earlier: ShortcutReply?, sent: String) async -> String? {
         guard var reply = await backend.latestReply(chat) else { return nil }
         reply.text = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.text.isEmpty else { return nil }
         if var earlier {
             earlier.text = earlier.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if reply.mayBe(earlier) { return nil }
+            if reply.mayBe(earlier, sent: sent) { return nil }
         }
         return reply.text
     }

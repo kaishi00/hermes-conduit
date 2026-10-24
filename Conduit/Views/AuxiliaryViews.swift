@@ -1764,6 +1764,9 @@ private struct ChatFontStyleSettings: View {
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    /// A Mac has no on-screen keyboard to mention, and starts with the
+    /// preference on.
+    private let onMac = ProcessInfo.processInfo.isiOSAppOnMac
 
     var body: some View {
         ConduitSettingsSection(
@@ -1774,12 +1777,17 @@ private struct ComposerReturnKeySettings: View {
             Text("Press Return to send. Use Shift-Return for a new line.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+            Text(ComposerReturnKey.defaultFootnote(onMac: onMac))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if !onMac {
+                Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
-                .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+                .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
         }
     }
 }
@@ -2125,6 +2133,32 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     }
 }
 
+/// A Model page editor's stand-in for its pickers until the catalog has
+/// rows: loading, a failed fetch with Try Again, or a gateway with none.
+private struct ModelCatalogPlaceholder: View {
+    let state: ModelCatalogState
+    let retry: () -> Void
+
+    var body: some View {
+        switch state {
+        case .loading:
+            ProgressView("Loading available models…")
+        case .ready:
+            // Callers show their pickers instead; never a spinner that
+            // can't end.
+            EmptyView()
+        case .failed:
+            Text(AppLocalization.string("Could not load models."))
+                .font(.footnote).foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again"), action: retry)
+                .buttonStyle(.settings)
+        case .empty:
+            Text("No models are available from this gateway.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct ProfileModelSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let load: () async -> ProfileModelDefaults?
@@ -2135,6 +2169,7 @@ private struct ProfileModelSettingsDetail: View {
     @State private var reasoning = "medium"
     @State private var saving = false
     @State private var error: String?
+    @State private var loadFailed = false
 
     private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
     /// Keeps a saved model the catalog no longer lists visible instead of
@@ -2159,7 +2194,8 @@ private struct ProfileModelSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
                 Text("Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.")
                     .font(.footnote).foregroundStyle(.secondary)
-                if let defaults, !defaults.providers.isEmpty {
+                let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
+                if catalog == .ready, let defaults {
                     ConduitMenuPicker(
                         value: provider,
                         choices: providerChoices(defaults.providers),
@@ -2176,7 +2212,7 @@ private struct ProfileModelSettingsDetail: View {
                     }
                     .disabled(modelChoices.isEmpty)
                 } else {
-                    ProgressView("Loading available models…")
+                    ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
                 }
             }
             ConduitSettingsSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
@@ -2196,7 +2232,11 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     private func reload() async {
-        guard let loaded = await load() else { return }
+        loadFailed = false
+        guard let loaded = await load() else {
+            loadFailed = true
+            return
+        }
         defaults = loaded
         (provider, model) = loaded.selection
         reasoning = loaded.reasoning
@@ -2238,6 +2278,7 @@ private struct DelegationModelSettings: View {
     @State private var reasoning = "medium"
     @State private var saving = false
     @State private var error: String?
+    @State private var loadFailed = false
     /// An inherited provider offers the chat row's models, since that is the
     /// provider the delegate will run on.
     private var models: [ModelInfo] {
@@ -2263,7 +2304,8 @@ private struct DelegationModelSettings: View {
         ConduitSettingsSection(title: AppLocalization.string("Delegate model"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAccent) {
             Text("Leave both selections empty to inherit the chat model. Set a provider and model to route delegate agents separately.")
                 .font(.footnote).foregroundStyle(.secondary)
-            if let defaults, !defaults.providers.isEmpty {
+            let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
+            if catalog == .ready {
                 ConduitMenuPicker(
                     value: provider,
                     choices: providerChoices,
@@ -2287,7 +2329,9 @@ private struct DelegationModelSettings: View {
                 ) {
                     Text("Delegate reasoning").foregroundStyle(.secondary)
                 }
-            } else { ProgressView("Loading available models…") }
+            } else {
+                ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
+            }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
                 .disabled(saving || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -2296,10 +2340,13 @@ private struct DelegationModelSettings: View {
     }
 
     private func reload() async {
+        loadFailed = false
         async let modelRequest = loadModels()
         async let settingRequest = loadSettings(["delegation.provider", "delegation.model", "delegation.reasoning_effort"])
         let (loaded, settings) = await (modelRequest, settingRequest)
-        defaults = loaded
+        // A catalog that didn't load says so, with Try Again, instead of
+        // loading forever; a re-load that fails keeps the one it had.
+        if let loaded { defaults = loaded } else { loadFailed = true }
         let configuredProvider = settings["delegation.provider"]?.textValue ?? ""
         let configuredModel = settings["delegation.model"]?.textValue ?? ""
         (provider, model) = loaded?.delegateSelection(provider: configuredProvider, model: configuredModel)

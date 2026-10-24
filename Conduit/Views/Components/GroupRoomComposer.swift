@@ -149,9 +149,11 @@ struct GroupRoomComposer: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         // The view is keyed by room, so appear/change bracket exactly one
-        // room: the draft comes back on reopen and is kept as it changes.
+        // room: the draft and its files come back on reopen and are kept
+        // as they change.
         .onAppear {
             draft = appState.activeRoomDraft()
+            attachments = appState.activeRoomAttachments()
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
         }
@@ -175,11 +177,16 @@ struct GroupRoomComposer: View {
                 dictation.yieldToTyping()
             }
         }
+        .onChange(of: attachments) { _, files in
+            appState.saveActiveRoomAttachments(files)
+        }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             if inUse { dictation.cancel() }
         }
         .onDisappear {
+            // A send whose files were still going up stops here; they stay
+            // in the room's draft for the next visit.
             dictation.cancel()
             uploadTask?.cancel()
         }
@@ -518,23 +525,17 @@ struct GroupRoomComposer: View {
             do {
                 message = try await appState.roomMessageText(text, attachments: files)
             } catch {
-                if Task.isCancelled {
-                    files.forEach(ComposerBar.discardStagedFile)
-                    return
-                }
+                // Left the room: the files stay in its draft.
+                if Task.isCancelled { return }
                 composerError = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 Haptics.error()
                 restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
                 return
             }
             // Left for another room while the files went up: they never go
-            // to the room open now. The typed text stays in this room's
-            // draft; the picked files went with the composer, so their local
-            // copies are dropped.
-            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else {
-                files.forEach(ComposerBar.discardStagedFile)
-                return
-            }
+            // to the room open now. The typed text and the files stay in
+            // this room's draft.
+            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
             // Typed on after it while the files went up: only the sent
@@ -783,7 +784,7 @@ struct GroupRoomComposer: View {
                     await ComposerBar.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
+            finishImport(outcomes, roomID: roomID)
         }
     }
 
@@ -806,7 +807,7 @@ struct GroupRoomComposer: View {
                     ComposerBar.stageDocument(at: url, limitMegabytes: limit)
                 }.value)
             }
-            finishImport(outcomes, limitMegabytes: limit, roomID: roomID)
+            finishImport(outcomes, roomID: roomID)
         }
     }
 
@@ -817,13 +818,13 @@ struct GroupRoomComposer: View {
             let outcome = await Task.detached(priority: .userInitiated) {
                 ComposerBar.stageCapturedPhoto(image, limitMegabytes: limit)
             }.value
-            finishImport([outcome], limitMegabytes: limit, roomID: roomID)
+            finishImport([outcome], roomID: roomID)
         }
     }
 
     /// One cue per selection: the error and its message when anything was
     /// left out, otherwise a light tap.
-    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], limitMegabytes: Int, roomID: String?) {
+    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?) {
         // Left the room while the files were staged: this composer is gone,
         // so their local copies are dropped.
         guard appState.activeRoomSurface?.room.roomID == roomID else {
@@ -843,7 +844,7 @@ struct GroupRoomComposer: View {
         }
         var messages: [String] = []
         if !oversized.isEmpty {
-            messages.append(AttachmentSizeLimit.tooLargeMessage(names: oversized, megabytes: limitMegabytes))
+            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes))
         }
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")
