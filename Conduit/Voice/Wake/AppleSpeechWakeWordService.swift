@@ -66,9 +66,6 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private var engineGeneration: UInt64 = 0
 
     private static let maximumConsecutiveFailures = 5
-    /// Each recognizer runs the whole time wake listens, so phrases in
-    /// more languages than this are heard in the first ones only.
-    static let maximumLanguages = 3
 
     init(
         audioCoordinator: VoiceAudioSessionCoordinator? = nil,
@@ -112,6 +109,12 @@ final class AppleSpeechWakeWordService: WakeWordService {
         }
         makeRecognizers()
         guard !recognizers.isEmpty else {
+            let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
+            // The phrase's own language when that's what is missing, as
+            // Settings says beside it.
+            if let note = phrases.lazy.compactMap({ WakeSpeechLocale.note(for: $0, among: phrases) }).first {
+                throw WakeWordServiceError.unavailable(note.text)
+            }
             let locale = Locale.current
             throw WakeWordServiceError.unavailable(
                 AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
@@ -378,22 +381,15 @@ final class AppleSpeechWakeWordService: WakeWordService {
     /// phrase no on-device recognizer here writes is left out; Settings
     /// says so beside it.
     private func makeRecognizers() {
-        var made: [WakeRecognizer] = []
-        for binding in bindings where WakePhraseMatcher.isUsable(binding.phrase) {
-            guard let locale = WakeSpeechLocale.locale(for: binding.phrase) else { continue }
-            if let index = made.firstIndex(where: { $0.locale.identifier == locale.identifier }) {
-                made[index].phrases.append(binding.phrase)
-                continue
-            }
-            guard made.count < Self.maximumLanguages else { continue }
+        let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
+        recognizers = WakeSpeechLocale.listening(for: phrases).compactMap { group -> WakeRecognizer? in
             // Reused while its language stays, so a phrase edit doesn't
             // rebuild a recognizer that is listening.
-            let recognizer = recognizers.first(where: { $0.locale.identifier == locale.identifier })?.recognizer
-                ?? SFSpeechRecognizer(locale: locale)
-            guard let recognizer, recognizer.supportsOnDeviceRecognition else { continue }
-            made.append(WakeRecognizer(locale: locale, recognizer: recognizer, phrases: [binding.phrase]))
+            let recognizer = recognizers.first(where: { $0.locale.identifier == group.locale.identifier })?.recognizer
+                ?? SFSpeechRecognizer(locale: group.locale)
+            guard let recognizer, recognizer.supportsOnDeviceRecognition else { return nil }
+            return WakeRecognizer(locale: group.locale, recognizer: recognizer, phrases: group.phrases)
         }
-        recognizers = made
     }
 
     private func cancelRecognition() {

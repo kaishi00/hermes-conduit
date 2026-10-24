@@ -892,12 +892,13 @@ create and edit)
 **Rulings**
 - A list read that started before a switch was flipped commits nothing, in AppState and in CapabilitiesStore alike (#867; AppState's lists at #1191).
 - Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
+- Switches and the store's other config-changing writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-24, at #1222.
 
 ## Reply progress signals
 
@@ -1059,17 +1060,20 @@ old config and the later one puts back what the earlier one changed.
 **Siblings:** voice settings (providers, typed fields, live transcription) ·
 the speech server page · Local Live settings · the toolset provider endpoint
 (Hermes writes the config) · the Model page's savers and fallback models ·
-display preferences
+display preferences · Capabilities' skill and toolset switches, backends,
+terminal backend, connectors and installs (Hermes writes the config; see
+Skill and tool switches)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
-- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels)
+- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, toggleSkill, toggleToolset)
+- Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
 
 **Rulings**
 - Every profile config write, whichever page or service makes it, runs in the one app-wide queue, one at a time; a failed one doesn't hold up the next (2026-10-24, #1222, from #1004).
-- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, so neither waits in the queue.
+- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, and connector tests and sign-ins change no config, so none of them waits in the queue.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
@@ -1093,6 +1097,7 @@ other ways to start, in Starting a call)
 **Rulings**
 - Recognition is on-device only, and nothing is recorded or kept (#174).
 - A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first, up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
+- A phrase past the third language isn't heard, and Settings says so beside it (2026-10-24, #1222 review).
 - After an interruption with no end from iOS, listening resumes only when no phone call is in progress, no other Conduit audio owner has the session and the session activates again (2026-10-24, #1222, from #1004).
 
 **Open gaps**

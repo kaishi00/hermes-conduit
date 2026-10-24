@@ -57,8 +57,8 @@ enum WakeSpeechLocale {
         var found: Script?
         for scalar in phrase.unicodeScalars {
             switch scalar.value {
-            case 0x3040...0x30FF, 0x31F0...0x31FF: return .kana
-            case 0x3400...0x9FFF, 0xF900...0xFAFF: found = found ?? .han
+            case 0x3040...0x30FF, 0x31F0...0x31FF, 0xFF66...0xFF9F: return .kana
+            case 0x3007, 0x3400...0x9FFF, 0xF900...0xFAFF, 0x20000...0x323AF: found = found ?? .han
             case 0x1100...0x11FF, 0x3130...0x318F, 0xAC00...0xD7AF: found = found ?? .hangul
             case 0x0400...0x052F: found = found ?? .cyrillic
             case 0x0370...0x03FF: found = found ?? .greek
@@ -108,12 +108,44 @@ enum WakeSpeechLocale {
         return script.localeScripts.contains(code)
     }
 
-    /// What Settings says beside a phrase heard in another language than
-    /// the app's, or not heard at all. Nil for a phrase the app's locale
-    /// hears.
-    static func note(for phrase: String, appLocale: Locale = .current) -> (text: String, isUnheard: Bool)? {
+    /// Each recognizer runs the whole time wake listens, so phrases in
+    /// more languages than this are heard in the first ones only.
+    static let maximumLanguages = 3
+
+    /// The languages wake listens in for `phrases`, in the phrases' order,
+    /// each with its phrases: at most `maximumLanguages`, and none for a
+    /// phrase no on-device recognizer here writes.
+    static func listening(
+        for phrases: [String],
+        localeFor: (String) -> Locale? = { WakeSpeechLocale.locale(for: $0) }
+    ) -> [(locale: Locale, phrases: [String])] {
+        var groups: [(locale: Locale, phrases: [String])] = []
+        for phrase in phrases {
+            guard let found = localeFor(phrase) else { continue }
+            if let index = groups.firstIndex(where: { $0.locale.identifier == found.identifier }) {
+                groups[index].phrases.append(phrase)
+            } else if groups.count < maximumLanguages {
+                groups.append((found, [phrase]))
+            }
+        }
+        return groups
+    }
+
+    /// What Settings says beside one of `phrases` that is heard in another
+    /// language than the app's, or not heard at all. Nil for a phrase the
+    /// app's locale hears.
+    static func note(
+        for phrase: String,
+        among phrases: [String],
+        appLocale: Locale = .current,
+        localeFor: (String) -> Locale? = { WakeSpeechLocale.locale(for: $0) }
+    ) -> (text: String, isUnheard: Bool)? {
+        let heard = listening(for: phrases, localeFor: localeFor).contains { $0.phrases.contains(phrase) }
+        if !heard, localeFor(phrase) != nil {
+            return (AppLocalization.string("“\(phrase)” isn't heard: wake listens in three languages at most."), true)
+        }
         guard let script = Self.script(of: phrase), !writes(script, appLocale.identifier) else { return nil }
-        guard let locale = Self.locale(for: phrase, appLocale: appLocale) else {
+        guard let locale = localeFor(phrase) else {
             let language = script.defaultLanguages.first.map { languageName(Locale(identifier: $0)) } ?? phrase
             return (AppLocalization.string("“\(phrase)” can't be heard: this iPhone has no on-device speech recognition for \(language)."), true)
         }

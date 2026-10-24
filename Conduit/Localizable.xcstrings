@@ -335757,6 +335757,88 @@
           }
         }
       }
+    },
+    "“%@” isn't heard: wake listens in three languages at most." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird nicht gehört: Das Aktivierungswort hört in höchstens drei Sprachen zu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» no se oye: la frase de activación escucha en tres idiomas como máximo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« %@ » n'est pas entendu : l'écoute du mot d'activation se limite à trois langues."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” tidak didengar: frasa pemicu mendengarkan dalam paling banyak tiga bahasa."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” non viene sentita: l'ascolto della frase di attivazione è limitato a tre lingue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」は聞き取られません：ウェイクフレーズは最大3つの言語で聞き取ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”은(는) 들리지 않아요. 호출 문구는 최대 세 가지 언어로만 들어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@” nie zostanie usłyszane: fraza wybudzająca działa najwyżej w trzech językach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” não é ouvida: a frase de ativação escuta em no máximo três idiomas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» не будет услышана: фраза активации слушает не больше чем на трёх языках."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” duyulmaz: Uyandırma ifadesi en fazla üç dilde dinler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法听到“%@”：唤醒词最多同时聆听三种语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法聽到「%@」：喚醒片語最多同時聆聽三種語言。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

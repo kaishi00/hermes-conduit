@@ -61,7 +61,22 @@ extension SpeechRecognitionLocaleTests {
     func testAWakePhraseNoOnDeviceRecognizerWritesIsNotHeard() {
         XCTAssertNil(wakeLocale("小爱同学", onDevice: { $0.language.languageCode != "zh" && $0.language.languageCode != "ja" }))
         XCTAssertNil(wakeLocale("Γεια σου Ερμή"), "no Greek recognizer is offered here")
-        XCTAssertNil(WakeSpeechLocale.note(for: "Hey Hermes", appLocale: Locale(identifier: "en_US")))
-        XCTAssertNil(WakeSpeechLocale.note(for: "小爱同学", appLocale: Locale(identifier: "zh_CN")))
+        XCTAssertNil(WakeSpeechLocale.note(for: "Hey Hermes", among: ["Hey Hermes"], appLocale: Locale(identifier: "en_US")))
+        XCTAssertNil(WakeSpeechLocale.note(for: "小爱同学", among: ["小爱同学"], appLocale: Locale(identifier: "zh_CN"), localeFor: { _ in Locale(identifier: "zh_CN") }))
+        XCTAssertEqual(WakeSpeechLocale.script(of: "ﾊﾅｺ"), .kana, "halfwidth katakana")
+    }
+
+    func testWakeListensInThreeLanguagesAtMost() {
+        let languages = ["Hey Hermes": "en_US", "小爱同学": "zh_CN", "안녕 헤르메스": "ko_KR", "Привет Гермес": "ru_RU"]
+        let phrases = ["Hey Hermes", "小爱同学", "안녕 헤르메스", "Привет Гермес", "Hey Hermes work"]
+        let localeFor: (String) -> Locale? = { Locale(identifier: languages[$0] ?? "en_US") }
+        let groups = WakeSpeechLocale.listening(for: phrases, localeFor: localeFor)
+        XCTAssertEqual(groups.map { $0.locale.identifier }, ["en_US", "zh_CN", "ko_KR"])
+        XCTAssertEqual(groups[0].phrases, ["Hey Hermes", "Hey Hermes work"])
+        // Settings says the fourth language's phrase isn't heard, rather
+        // than naming a recognizer the listener left out.
+        let note = WakeSpeechLocale.note(for: "Привет Гермес", among: phrases, appLocale: Locale(identifier: "en_US"), localeFor: localeFor)
+        XCTAssertEqual(note?.isUnheard, true)
+        XCTAssertEqual(WakeSpeechLocale.note(for: "小爱同学", among: phrases, appLocale: Locale(identifier: "en_US"), localeFor: localeFor)?.isUnheard, false)
     }
 }

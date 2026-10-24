@@ -20,21 +20,27 @@ enum ProfileConfigWriteQueue {
     /// Runs `operation` after every earlier one has finished, failed or
     /// not. Writes are rare, so one queue covers every dashboard and
     /// profile.
-    static func run<T: Sendable>(_ operation: @escaping @MainActor () async -> T) async -> T {
+    static func run<T>(_ operation: @escaping @MainActor () async -> T) async -> T {
         let previous = tail
-        let task = Task { @MainActor in
+        let task = Task { @MainActor () -> Handoff<T> in
             await previous?.value
-            return await operation()
+            return Handoff(value: await operation())
         }
         tail = Task { _ = await task.value }
-        return await task.value
+        return await task.value.value
     }
 
     /// `run`, for an operation that throws.
-    static func runThrowing<T: Sendable>(_ operation: @escaping @MainActor () async throws -> T) async throws -> T {
+    static func runThrowing<T>(_ operation: @escaping @MainActor () async throws -> T) async throws -> T {
         let result: Result<T, Error> = await run {
             do { return .success(try await operation()) } catch { return .failure(error) }
         }
         return try result.get()
+    }
+
+    /// Carries a result (often a JSON dictionary) from the queue's task to
+    /// its caller. Both run on the main actor.
+    private struct Handoff<T>: @unchecked Sendable {
+        let value: T
     }
 }

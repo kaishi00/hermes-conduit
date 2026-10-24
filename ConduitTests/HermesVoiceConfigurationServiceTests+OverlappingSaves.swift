@@ -32,11 +32,14 @@ extension HermesVoiceConfigurationServiceTests {
         requester.failsPUTsSettingURL = true
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
 
-        async let first = service.save(value: "http://10.0.0.2:8000", for: SpeechServerSettingsView.urlKey)
-        async let second = service.save(value: "sk-secret", for: SpeechServerSettingsView.apiKeyKey)
-        let saved = await [first, second]
+        // Either may reach the queue first: the address save fails either way.
+        async let urlSave = service.save(value: "http://10.0.0.2:8000", for: SpeechServerSettingsView.urlKey)
+        async let keySave = service.save(value: "sk-secret", for: SpeechServerSettingsView.apiKeyKey)
+        let urlSaved = await urlSave
+        let keySaved = await keySave
 
-        XCTAssertEqual(saved, [false, true])
+        XCTAssertFalse(urlSaved)
+        XCTAssertTrue(keySaved)
         let server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
         XCTAssertNil(server?["url"])
         XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
@@ -79,5 +82,20 @@ private final class SlowConfigRequester: VoiceConfigurationRequesting {
             config = sent
             return ["ok": true]
         }
+    }
+}
+
+extension HermesVoiceConfigurationServiceTests {
+    /// Capabilities changes Hermes keeps in the profile config wait their
+    /// turn with the config saves; keys, tests and reads don't.
+    func testCapabilityWritesThatChangeTheConfigJoinTheQueue() {
+        XCTAssertTrue(CapabilitiesStore.writesProfileConfig(method: "PUT", path: "/api/tools/toolsets/web/provider?profile=work"))
+        XCTAssertTrue(CapabilitiesStore.writesProfileConfig(method: "PUT", path: "/api/mcp/servers/github/enabled"))
+        XCTAssertTrue(CapabilitiesStore.writesProfileConfig(method: "DELETE", path: "/api/mcp/servers/github"))
+        XCTAssertTrue(CapabilitiesStore.writesProfileConfig(method: "POST", path: "/api/mcp/catalog/install"))
+        XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "GET", path: "/api/mcp/servers"))
+        XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "PUT", path: "/api/env?profile=work"))
+        XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "POST", path: "/api/mcp/servers/github/test"))
+        XCTAssertFalse(CapabilitiesStore.writesProfileConfig(method: "DELETE", path: "/api/mcp/oauth/flows/abc"))
     }
 }

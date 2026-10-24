@@ -1865,8 +1865,9 @@ private struct WakePhraseSettingsSection: View {
                 }
                 // A phrase in another writing system is heard by a
                 // recognizer for its own language, when this iPhone has one.
-                ForEach(phrases.filter(WakePhraseMatcher.isUsable), id: \.self) { phrase in
-                    if let note = WakeSpeechLocale.note(for: phrase) {
+                let usable = phrases.filter(WakePhraseMatcher.isUsable)
+                ForEach(usable, id: \.self) { phrase in
+                    if let note = WakeSpeechLocale.note(for: phrase, among: usable) {
                         Label(note.text, systemImage: note.isUnheard ? "exclamationmark.circle" : "globe")
                             .font(.caption)
                             .foregroundStyle(note.isUnheard ? Color.orange : Color.secondary)
