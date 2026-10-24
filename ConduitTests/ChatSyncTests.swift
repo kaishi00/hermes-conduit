@@ -656,6 +656,41 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(wait, 4)
     }
 
+    /// A Bot Chat open behind the list: its running turn isn't one of the
+    /// list's chats and mustn't keep the list at 4 s. A listed chat's turn
+    /// still does.
+    func testAnOpenBotChatsTurnDoesNotKeepTheListQuick() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.showSidebar = false
+        let profile = appState.activeProfile
+        appState.sessions = [row("listed", profile: profile)]
+        box.catalog = [row("listed", profile: profile)]
+        box.live = [LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "idle", messageCount: 2)]
+        appState.activeSessionId = "bot-chat"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "bot-chat", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+
+        var waits: [TimeInterval] = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15], "The bot's turn leaves the list to back off")
+
+        appState.activeSessionId = "listed"
+        appState.noteChatListInteraction()
+        waits = []
+        for _ in 0..<3 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 4, 4], "The open listed chat's turn keeps it quick")
+    }
+
     /// The poll that was stopped while the registry read was on its way
     /// (the list left, the app gone to the background) starts no catalog
     /// read after it.

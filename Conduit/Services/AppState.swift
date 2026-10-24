@@ -19170,9 +19170,11 @@ final class AppState: ObservableObject {
             return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
         }
         var registry: Set<String>?
-        var turnRunning = turnState.isRunning
+        let listed = chatListListedIDs()
+        // The open chat's turn paces the list only when it is one of the
+        // list's chats: a Bot Chat's turn behind it isn't (see below).
+        var turnRunning = turnState.isRunning && activeSessionId.map(listed.contains) == true
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {
-            let listed = chatListListedIDs()
             // A chat started elsewhere is about to be listed: the poll
             // stays quick to follow it.
             if noteActiveListForChatList(snapshot.rows, listed: listed) { chatListPollPacer.reset() }
