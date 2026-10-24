@@ -85,9 +85,9 @@ call's chat (plugin 0.70.0, capability hermes-call-answers).
 - A spoken answer counts only when exactly one item is waiting, and it can only approve once or deny (2026-10-20, #991).
 - A phone change needs the user's own yes, as their next words after the reply that asked (2026-10-20, #991, #1051).
 - Only the user's own words answer: never the model's judgment, a web page or a job's output (2026-10-20, #991).
-- A spoken pick that points at one choice ("two", "the recommended one", its label) sends what its tap sends; anything else goes to Hermes as the user's words (2026-10-24, this PR).
-- Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (a deny's reason for an approval), since its turn is paused on the prompt (2026-10-24, this PR).
-- On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice", and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, this PR, notifier 0.70.0).
+- A spoken pick that points at one choice ("two", "the recommended one", its label) sends what its tap sends; anything else goes to Hermes as the user's words (2026-10-24, #1194).
+- Asking Hermes to explain while it waits is the answer itself, starting "Before I choose:" (a deny's reason for an approval), since its turn is paused on the prompt (2026-10-24, #1194).
+- On the Watch, an approval is answered by voice only with "Approve from the Watch" on "Tap or voice", and never by GPT-Live; `answer_call` answers only the call's own chat (2026-10-24, #1194, notifier #343).
 
 **Open gaps**
 - CarPlay shows no card; the user only hears it (#1161).
@@ -96,7 +96,7 @@ call's chat (plugin 0.70.0, capability hermes-call-answers).
 - The resume jump finds clarify cards, not approvals (#486).
 - A Watch call on Local Live doesn't answer a call from Hermes' question or approval; the user answers on the iPhone.
 
-**Checked:** 2026-10-24, at #PRNUM.
+**Checked:** 2026-10-24, at #1194.
 
 ## Voice follow-ups
 
@@ -297,7 +297,7 @@ Pulse (it may call only once the user opts in)
 - A declined or missed call is told to Hermes in that chat's next turn, with no second ring (2026-10-10, #518, notifier #78).
 - Hermes speaks first on a call it made (2026-10-11, #546, notifier #89).
 - The call screen names the calling profile; the main profile goes by its Conduit name (2026-10-11, #541).
-- A call about an approval or question is briefed from the chat's card, not the push's short reason, and answered by voice everywhere it can be (see "Hermes is waiting on you"; 2026-10-24, this PR, notifier 0.70.0).
+- A call about an approval or question is briefed from the chat's card, not the push's short reason, and answered by voice everywhere it can be (see "Hermes is waiting on you"; 2026-10-24, #1194, notifier #343).
 - A Watch that answers starts the call through the relay, since its link to the iPhone is down under the call screen (2026-10-11, #526, notifier #82).
 - In the car, CarPlay rings and the Watch stays quiet (2026-10-14, #602).
 
@@ -305,7 +305,7 @@ Pulse (it may call only once the user opts in)
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-24, at #PRNUM.
+**Checked:** 2026-10-24, at #1194.
 
 ## Audio route, Speaker and mute
 
