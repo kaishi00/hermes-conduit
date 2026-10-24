@@ -304,7 +304,7 @@ final class LocationSyncEngine: ObservableObject {
             case .http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail):
                 // A store written by a newer plugin: updating the plugin
                 // fixes it. The batch stays to send after the update.
-                Self.log.info("Location ingest answered 409 schema: pausing for a plugin update")
+                Self.log.info("Location host answered 409 schema: pausing for a plugin update")
                 state.pause = .pluginMissing
             case .http(let status, let detail) where status == 400 || status == 413:
                 state.pause = .refused(detail)
