@@ -35241,6 +35241,7 @@ enum KeychainHelper {
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
     private static let phoneSyncKeyAccount = "hermes-conduit.phone-sync-key.v1"
+    private static let shortcutInboxKeyAccount = "hermes-conduit.shortcut-inbox-key.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -35388,6 +35389,21 @@ enum KeychainHelper {
 
     static func clearPhoneSyncKey() {
         delete(account: phoneSyncKeyAccount)
+    }
+
+    /// The key this phone agreed with the profile its Log to Hermes
+    /// Shortcuts action posts to. Readable after first unlock, as above:
+    /// automations run while the phone is locked.
+    static func saveShortcutInboxKey(_ data: Data) {
+        save(data, account: shortcutInboxKeyAccount)
+    }
+
+    static func loadShortcutInboxKey() -> Data? {
+        load(account: shortcutInboxKeyAccount)
+    }
+
+    static func clearShortcutInboxKey() {
+        delete(account: shortcutInboxKeyAccount)
     }
 
     // MARK: Dashboard registry (multi-server, #148)
