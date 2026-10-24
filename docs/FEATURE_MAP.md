@@ -842,11 +842,11 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 
 **Rulings**
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
-- In the stacked bar, search is a magnifier leading the controls. Tapping it turns the filter row into the field with Cancel, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
-- A typed chat's row keeps its grey bubble; the icon shows the source, the unread dot and, in All, the profile badge (2026-10-24, #1199, Eric).
+- In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
+- A typed chat's row keeps its grey bubble; the icon shows the source, the unread dot and, in All, the profile badge (2026-10-24, Eric, in the design review that led to #1199).
 
 **Open gaps**
-- None known.
+- The bar reports stacking from its row's onAppear, so the list can show its search row for a frame before it moves into the bar (launch, rotation).
 
 **Checked:** 2026-10-24, at #1199.
 

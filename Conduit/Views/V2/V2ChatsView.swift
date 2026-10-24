@@ -597,8 +597,8 @@ struct V2ChatsView: View, Equatable {
                     V2CapsuleIcon(systemImage: "magnifyingglass")
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(searchPrompt)
-                .macTooltip(searchPrompt)
+                .accessibilityLabel(AppLocalization.string("Search"))
+                .macTooltip(AppLocalization.string("Search"))
             }
 
             Button {
@@ -695,7 +695,12 @@ struct V2ChatsView: View, Equatable {
             }
         }
         .onAppear { barStacked = true }
-        .onDisappear { barStacked = false }
+        .onDisappear {
+            // A query carries over to the list's field; an empty open one
+            // doesn't come back on the next stack.
+            barStacked = false
+            barSearchOpen = false
+        }
     }
 
     /// A query keeps the field up after the keyboard goes away; Cancel
@@ -707,6 +712,7 @@ struct V2ChatsView: View, Equatable {
     private var barSearchField: some View {
         HStack(spacing: 10) {
             searchCapsule(minHeight: 44)
+                .frame(maxHeight: 44)
             Button(AppLocalization.string("Cancel")) {
                 searchText = ""
                 searchFocused = false
@@ -717,6 +723,7 @@ struct V2ChatsView: View, Equatable {
             .buttonStyle(.plain)
             .frame(minHeight: 44)
         }
+        .frame(maxWidth: .infinity)
         .onAppear {
             // Opened by the magnifier: straight to typing. Not when a
             // running search moved here because the bar stacked.
@@ -1513,6 +1520,7 @@ struct V2ChatsView: View, Equatable {
                 Button(AppLocalization.string("Cancel")) {
                     searchText = ""
                     searchFocused = false
+                    barSearchOpen = false
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
