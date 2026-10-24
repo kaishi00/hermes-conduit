@@ -2291,6 +2291,19 @@ final class AppState: ObservableObject {
     @Published var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
     @Published private(set) var toolCatalog = ToolCatalog()
+    /// One sentence per finished run of steps: by dashboard and profile
+    /// (`toolCatalogKey`), then by the run's first tool call
+    /// (AppState+StepSummaries.swift).
+    @Published var stepSummaries: [String: [String: String]] = ChatStepSummaries.saved()
+    /// Summary questions Hermes accepted, by btw task id, to their run.
+    var stepSummaryTasks: [String: ChatStepSummaries.Run] = [:]
+    /// Summary questions sent whose task id hasn't come back yet.
+    var stepSummaryUnclaimed = 0
+    /// Answers that came before their question's task id did; cleared
+    /// once no question is waiting for its id.
+    var stepSummaryEarlyAnswers: [String: String] = [:]
+    /// Runs asked about and not answered yet, with when they were asked.
+    var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     private var toolCatalogOwner: String?
@@ -5266,6 +5279,8 @@ final class AppState: ObservableObject {
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
+        // So do the sentences describing its runs of steps.
+        forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -5300,6 +5315,8 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         TranscriptImageCache.purge()
+        // The sentences describing runs of steps go with the chats.
+        forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
             // the app and its Retry up: it stays, with nothing saved in it.
@@ -29999,7 +30016,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Tools catalog for step rows
 
-    private var toolCatalogKey: String {
+    /// The active dashboard and profile, for what is kept per profile on
+    /// this device (the tools catalog, step summaries).
+    var toolCatalogKey: String {
         "\(Self.dashboardPreferenceBucket(activeDashboardID)).\(activeProfile)"
     }
 
@@ -31018,6 +31037,8 @@ final class AppState: ObservableObject {
     // MARK: - Stream event handling
 
     func handleStreamEvent(_ event: StreamEvent) {
+        // A step summary's answer is never a /btw reply, in any chat.
+        if takeStepSummaryAnswer(event) { return }
         // Voice background jobs are not the active conversation, so they
         // observe every event before the active-session filter below.
         voiceBackgroundJobSupervisor.observe(event)
@@ -35113,6 +35134,8 @@ final class AppState: ObservableObject {
         activeAssistantMessageId = nil
         resetReasoningTurn()
         setRunning(false)
+        // The turn has settled, its reply in place.
+        requestStepSummaryIfWanted(sessionId: sessionId)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state. One
         // write covering the stream's session id too; this used to write the

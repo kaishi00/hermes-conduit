@@ -432,6 +432,8 @@ struct ChatStepGroupMember: Equatable {
     let messageID: String
     /// Nil for thinking.
     let toolName: String?
+    /// The tool call's own id, the same live and in history.
+    let toolID: String?
     /// The run's card changes with it (placement equality re-renders the
     /// rows when a step settles).
     let running: Bool
@@ -441,6 +443,7 @@ struct ChatStepGroupMember: Equatable {
     init(_ message: ChatMessage) {
         messageID = message.id
         toolName = message.role == .tool ? message.tool?.name : nil
+        toolID = message.role == .tool ? message.tool?.id : nil
         running = message.tool?.status == .running
         timestamp = message.timestamp
         duration = message.tool?.duration ?? message.stepDuration
@@ -461,6 +464,9 @@ struct ChatStepGroup: Equatable {
 
     /// The run's first row; it keeps the run's open or closed choice.
     var id: String { members.first?.messageID ?? "" }
+
+    /// Where the run's sentence is kept (ChatStepSummaries).
+    var summaryKey: String? { ChatStepSummaries.key(toolIDs: members.map(\.toolID)) }
 
     static func isStep(_ message: ChatMessage) -> Bool {
         switch message.role {
@@ -564,6 +570,8 @@ struct ChatStepRow: View {
     let placement: ChatStepPlacement
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowDisclosure) private var disclosure
+    /// Read here, so switching summaries off hides them at once.
+    @AppStorage(ChatStepSummaries.preferenceKey) private var describeStepRuns = ChatStepSummaries.defaultEnabled
 
     var body: some View {
         let preferences = rowState.displayPreferences
@@ -576,7 +584,8 @@ struct ChatStepRow: View {
                 showReasoning: preferences.showReasoning,
                 showTools: preferences.showToolProgress,
                 expandToolsByDefault: preferences.expandToolsByDefault,
-                isBusy: rowState.isBusy
+                isBusy: rowState.isBusy,
+                summary: describeStepRuns ? placement.group.summaryKey.flatMap { rowState.stepSummaries[$0] } : nil
             )
         } else {
             ChatStepRowBody.single(message)
@@ -593,6 +602,8 @@ private struct ChatStepRowBody: View {
     let showTools: Bool
     let expandToolsByDefault: Bool
     let isBusy: Bool
+    /// The run's sentence, once Hermes wrote one.
+    var summary: String?
 
     @ViewBuilder
     static func single(_ message: ChatMessage, grouped: Bool = false) -> some View {
@@ -641,6 +652,7 @@ private struct ChatStepRowBody: View {
                         members: visible,
                         isLive: live,
                         expanded: false,
+                        summary: summary,
                         toggle: { toggle(group, to: true) }
                     )
                     .chatStepCard()
@@ -663,6 +675,8 @@ private struct ChatStepGroupHeader: View {
     let members: [ChatStepGroupMember]
     let isLive: Bool
     let expanded: Bool
+    /// What the run did, in one sentence: shown folded, over the count.
+    var summary: String?
     let toggle: () -> Void
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
@@ -713,11 +727,28 @@ private struct ChatStepGroupHeader: View {
                         }
                     }
                 }
-                Text(title.shown)
-                    .font(expanded ? .subheadline.weight(.semibold) : .subheadline)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .accessibilityLabel(title.spoken)
+                if !expanded, let summary {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text(title.shown)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .accessibilityLabel(title.spoken)
+                    }
+                    // Read as one: the sentence, then the count and time;
+                    // the button's own value says folded or open.
+                    .accessibilityElement(children: .combine)
+                } else {
+                    Text(title.shown)
+                        .font(expanded ? .subheadline.weight(.semibold) : .subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .accessibilityLabel(title.spoken)
+                }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))

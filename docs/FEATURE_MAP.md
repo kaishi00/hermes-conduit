@@ -507,7 +507,7 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings)
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, at #1197 and #1213 (encryption keys, padlock and shield, the Watch's row; fork CI #82 and #85); the registration update race at #1191.
+**Checked:** 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row; fork CI #85); keys and padlock at #1197, carried in #1217; the registration update race at #1191.
 
 ## Pulse
 
@@ -1172,25 +1172,57 @@ once it is done.
 **Siblings:** the step rows (chats, project chats, Bot Chats, the saved
 offline copy) · the collapsed run of steps ("7 steps · 12s") · the working
 line ("Home · Searching the web") · the Live Activity's tool line · the
-notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row)
+notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row) ·
+the run's one-sentence summary and its switch in Settings > Chat · /btw
 
 **Code**
 - Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent)
 - Hermes' tools catalog: `Conduit/Models/ToolCatalog.swift`, toolset names shared with Settings > Capabilities in `Conduit/Models/CapabilityCatalogModels.swift` (CapabilityToolsetOrdering.label), `Conduit/Services/AppState.swift` (loadToolCatalogIfNeeded), `Conduit/Views/ChatRowState.swift` (toolCatalog)
 - Tool Search wrapper: `Conduit/Models/ToolSearchBridge.swift`
+- Run summaries: `Conduit/Services/ChatStepSummaries.swift`, `Conduit/Services/AppState+StepSummaries.swift`, `Conduit/Views/AuxiliaryViews.swift` (StepSummarySettings), sent with `Conduit/Services/HermesClient.swift` (startSideAgent)
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`)
-- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`
+- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`, `ConduitTests/ChatTypographyTests+StepSummaries.swift`
 
 **Rulings**
 - A step Conduit has words for keeps them, translated ("Searched the web"). Any other step is named: an MCP or connector tool by its app with the action as its subject line (a Tool Search batch: its apps' names with the connector icon, then every action it ran), else by the toolset Hermes' catalog (`/api/tools/toolsets`) puts it in, else by its own name made readable. "Used a tool" is only for a call with no name. Names are shown as Hermes writes them (2026-10-24, #1201).
 - The catalog is read once per profile per run and saved on the device, so a chat opened offline or before the dashboard answers still names its steps. An empty answer keeps the saved catalog and is asked again (2026-10-24, #1201).
 - The Live Activity stays on categories: its state goes through the push relay, which never sees tool names, so neither it nor the notifier's `tool_category` names tools (2026-10-24, #1201).
+- A run's summary is opt-in and device-only, off by default. Once a turn has settled (its reply in place, nothing running) with 3 or more tool calls in its last run, Conduit asks a hidden `/btw` (Hermes' cache-sharing fork, no tools, the chat untouched) for one sentence in the app's language, and shows it folded over "7 steps · 12s". It is kept per dashboard and profile, by the run's first tool call, so only a run whose call ids are its own is described (not ids numbered per turn, like `functions.web_search:0`); switching off hides the kept ones at once. Questions unanswered after two minutes are forgotten, and so is an answer that comes later; that run keeps the count. The kept sentences describe chats, so they go with a dashboard's saved chats (sign-out, removal, a new interactive sign-in) and with Delete Saved Chats. In Conduit its answer never shows as a /btw note, late, replayed or asked by another device, and the user's own /btw is never taken for one (only the exact question is) (2026-10-24, #1202).
 
 **Open gaps**
+- Summaries are kept on the device that saw the turn end: other devices, the Watch and turns that ended elsewhere show the count only. Sharing them would need the plugin to store them.
+- A turn that ends while another chat is open on this device isn't asked about either; opening its chat later shows the count. Asking then would spend a model call on each old chat opened.
+- An older Hermes without the hidden `/btw` (`prompt.btw`) leaves the count, with no notice that the switch does nothing there.
+- A Hermes that routes `auxiliary.side_question` to another model answers from a transcript digest, not the cached prefix.
+- Other clients on the same chat (Hermes Desktop, the TUI, an older Conduit) show the hidden question and its answer as a `[btw …]` note.
+- Runs from a provider that numbers its tool call ids per turn (`functions.web_search:0`) get no sentence; keying them would need the chat's durable id.
 - The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
 
-**Checked:** 2026-10-24, at #1201.
+**Checked:** 2026-10-24, at #1202, carried in #1215.
+
+## Review labels
+
+Whose turn a contributor's PR is: `waiting on contributor` while it waits on
+its author, `waiting on Eric` once the author has answered.
+
+**Siblings:** this repo's label workflow · the notifier's copy of it ·
+CONTRIBUTING.md's Review labels section here and in the notifier · docs/CI.md's
+workflow table
+
+**Code**
+- Workflow: `.github/workflows/contributor-label.yml`
+- Notifier: `notifier/.github/workflows/contributor-label.yml`, `notifier/CONTRIBUTING.md` (Review labels)
+- Text: `CONTRIBUTING.md` (Review labels), `docs/CI.md` (the workflow table)
+
+**Rulings**
+- `waiting on contributor` marks a PR waiting on its author; a push or a PR comment by the author swaps it for `waiting on Eric`, and adding `waiting on contributor` again takes `waiting on Eric` off (2026-10-24, notifier #351, Eric asked for the flip).
+- The workflow only edits labels: nothing from the PR is checked out or run, so it can run on forks' PRs (2026-10-24, notifier #351).
+
+**Open gaps**
+- A reply inside a review thread doesn't flip the label, since a fork's review events get a read-only token; the docs tell contributors to comment on the PR or push.
+
+**Checked:** 2026-10-24, at #1216.
 
 ## Feature map rules
 
@@ -1221,4 +1253,4 @@ point at the map and its check
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
 
-**Checked:** 2026-10-24, at #1209.
+**Checked:** 2026-10-24, at #1216.
