@@ -1415,6 +1415,18 @@ final class CompactResumeTranscriptTests: XCTestCase {
     /// explicit tail-anchored bounded page — never the implicit default and
     /// never an unbounded one-shot — and older pages continue the same
     /// contract at the next offset.
+    /// A JSON boolean in the pagination echo is not a count (as
+    /// `AppState.integerValue` reads one): `returned: true` falls back to
+    /// the rows fetched, not 1.
+    func testPaginationEchoReadsJSONBooleansAsNoCount() throws {
+        let data = Data(#"{"pagination": {"limit": true, "offset": false, "returned": true, "order": "latest"}}"#.utf8)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let page = try XCTUnwrap(PersistedTranscriptPagination.parse(payload, rawRowCount: 7))
+        XCTAssertNil(page.limit)
+        XCTAssertNil(page.offset)
+        XCTAssertEqual(page.returned, 7)
+    }
+
     func testPersistedHistoryRequestContractIsBoundedTailPaging() {
         XCTAssertEqual(PersistedTranscriptPagination.pageSize, 120)
         XCTAssertEqual(

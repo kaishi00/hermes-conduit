@@ -330,6 +330,24 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.showOnScreen(title: eighty + "u", markdown: "pie")?.title, eighty)
     }
 
+    func testACutScreenCardKeepsItsLastLineUnlessItCouldBeHalfAFence() {
+        // A long one-paragraph card is one line under its heading: dropping
+        // the cut line left only the heading.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("# Router\nThe router restarted at noon and"),
+            "# Router\nThe router restarted at noon and"
+        )
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n``"), "intro", "Half a fence goes")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n~~"), "intro")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n```py"), "intro", "A fence's start goes")
+        // Prose opening with inline code isn't a fence.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("intro\n`endpoint` restarted at noon and"),
+            "intro\n`endpoint` restarted at noon and"
+        )
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("```swift\nlet a = 1\nlet b"), "```swift\nlet a = 1\nlet b\n```")
+    }
+
     func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
         let (supervisor, _) = makeSupervisor()
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")

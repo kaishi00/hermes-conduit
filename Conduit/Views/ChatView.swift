@@ -3725,7 +3725,9 @@ struct ApprovalCard: View {
                     let explanation = approval.error?.isEmpty == false
                         ? approval.error!
                         : AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
-                    Text(explanation)
+                    // The gateway's text can carry the same hidden marks
+                    // as the command.
+                    Text(verbatim: ApprovalDisplayText.revealingHidden(explanation))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -3763,7 +3765,7 @@ struct ApprovalCard: View {
                 }
 
                 if approval.status != .expired, let error = approval.error, !error.isEmpty {
-                    Label(error, systemImage: "exclamationmark.circle")
+                    Label(ApprovalDisplayText.revealingHidden(error), systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }

@@ -759,7 +759,10 @@ struct LocationSettingsPage: View {
         deletingRules.insert(rule.id)
         Task {
             defer { deletingRules.remove(rule.id) }
-            guard let request = await controller.hostRequest() else { return }
+            guard let request = await controller.hostRequest() else {
+                errorMessage = LocationSharingError.noDashboard.errorDescription
+                return
+            }
             do {
                 try await controller.engine.deleteRule(rule.id, request: request)
                 rules.removeAll { $0.id == rule.id }

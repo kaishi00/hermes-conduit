@@ -6394,6 +6394,10 @@ final class AppState: ObservableObject {
     /// late can't replace what a newer read or a save set.
     var hermesCallsStatusGeneration: UInt64 = 0
     var hermesCallsStatusAcceptedGeneration: UInt64 = 0
+    /// Per dashboard and profile, the number of its last save: a read of
+    /// that profile asked before it is older than what was saved. Other
+    /// profiles' reads still land.
+    var hermesCallsStatusSavedGeneration: [String: UInt64] = [:]
     lazy var hermesCallsClient = HermesCallsClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
@@ -11926,7 +11930,12 @@ final class AppState: ObservableObject {
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
-            if restoreOwnsFlow(switchGeneration) { isConnecting = false }
+            if restoreOwnsFlow(switchGeneration) {
+                isConnecting = false
+                // As for the saved-ticket restore: no synchronizing state
+                // left with nothing to clear it.
+                if turnState == .synchronizing { setRunning(false) }
+            }
         } catch {
             guard restoreOwnsFlow(switchGeneration) else { return }
             // A rejected grant can clear storage while the bridge still owns
@@ -13161,11 +13170,23 @@ final class AppState: ObservableObject {
         // minted with the dashboard's cookies first, as the OAuth restore
         // does. A mint that fails leaves the saved record, which `connect`
         // handles like any other: a refused handshake goes to sign-in, any
-        // other failure schedules a reconnect.
+        // other failure schedules a reconnect. A cancelled one (the bridge
+        // torn down by a switch or a sign-out) ends this restore, as it
+        // does the OAuth restore's: the spent ticket is never tried.
         var connection = saved
-        if let ticket = try? await mintChatResumeTicket(for: saved) {
+        do {
+            let ticket = try await mintChatResumeTicket(for: saved)
             connection = HermesConnection(baseUrl: saved.baseUrl, ticket: ticket)
-        }
+        } catch is CancellationError {
+            if restoreOwnsFlow(switchGeneration), widgetLease?.isCurrent != false {
+                isConnecting = false
+                // The synchronizing state loadSavedConnection set goes too,
+                // as a foreground boundary leaves an aborted recovery's: it
+                // would keep the composer off with nothing left to clear it.
+                if turnState == .synchronizing { setRunning(false) }
+            }
+            return
+        } catch {}
         // Re-fence after the mint await.
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
@@ -13791,6 +13812,7 @@ final class AppState: ObservableObject {
         let preservedIdentity = purpose == .preserveCurrent
             ? captureConversationIdentity(for: activeSessionId)
             : nil
+        let turnStateBeforeSync = turnState
         turnState = .synchronizing
         noteConnectionStep("Chat sync started")
 
@@ -14365,7 +14387,11 @@ final class AppState: ObservableObject {
             // is no news (as for loadSessions). The chat still did not
             // resume, so the reconnect below still runs.
             let catalogFailureIsSuperseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
-            if !catalogFailureIsSuperseded {
+            // A read cancelled under it says nothing about the catalog
+            // either (as for loadSessions): the next showing reads again.
+            let wasCancelled = error is CancellationError
+                || (error as? URLError)?.code == .cancelled || Task.isCancelled
+            if !catalogFailureIsSuperseded, !wasCancelled {
                 errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
                 sessionCatalogLoadState.markFailed(
                     UserFacingError.message(for: error),
@@ -14378,6 +14404,17 @@ final class AppState: ObservableObject {
             )
             if purpose == .automaticReturn {
                 scheduleReconnectAfterFailedSync()
+            } else if wasCancelled, isConnected, turnState == .reconnecting {
+                // Nothing retries a cancelled sync of the open chat, and the
+                // socket is still up: the chat gets back the state it had,
+                // a running reply included (the cancelled read says nothing
+                // about it). Only a transitional one settles, as a
+                // foreground boundary settles an aborted recovery's.
+                if turnStateBeforeSync == .synchronizing || turnStateBeforeSync == .reconnecting {
+                    setRunning(false)
+                } else {
+                    turnState = turnStateBeforeSync
+                }
             }
             return .completed
         }
@@ -14428,10 +14465,14 @@ final class AppState: ObservableObject {
             // conversation's authoritative absence is not evidence about
             // which surface it belonged to.
             chatResumeCoordinator.rememberSession(nil, for: profile)
+            // Its agents go with it, whichever conversation (or new chat) is
+            // opened instead.
+            keepDelegateAgents(of: [])
+        } else {
+            // The saved conversation is alive and may be the fallback: only
+            // the dead rows' agents go.
+            keepDelegateAgents(of: Set(delegateAgents.map(\.sessionId)).subtracting(dead))
         }
-        // Its agents go with it, whichever conversation (or new chat) is
-        // opened instead.
-        keepDelegateAgents(of: [])
         // A catalog full of rows the gateway cannot resume (a profile
         // mis-tag, a pruned state.db) must not cost one resume plus one
         // history request per row: after `deadResumeRowProbeLimit` more dead
@@ -15090,6 +15131,15 @@ final class AppState: ObservableObject {
             case .success:
                 context?.resolvedSessionId = result.sessionId
                 context?.acceptedSessionIDs.insert(result.sessionId)
+                // A row this run found dead (4007) that resumes after all is
+                // alive: later automatic returns may pick it again.
+                let deadRowKey = Self.deadResumeRowKey(dashboardID: activeDashboardID, profile: profile)
+                if deadResumeRowIDs[deadRowKey] != nil {
+                    deadResumeRowIDs[deadRowKey]?.subtract(
+                        acceptedSessionIDs.union([sessionId, result.sessionId])
+                            .union([result.storedSessionId].compactMap { $0 })
+                    )
+                }
                 // A response that explicitly names the durable identity may
                 // ESTABLISH it for a runtime-only conversation (the same
                 // adoption the create path performs) or confirm the selected
@@ -15665,6 +15715,8 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Returns the chat it created and opened, nil when it opened none.
+    @discardableResult
     private func createAndReconcileSession(
         using client: HermesClient,
         profile: String,
@@ -15675,12 +15727,12 @@ final class AppState: ObservableObject {
         requiredViewportTransitionGeneration: UInt64? = nil,
         cwd: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
-    ) async {
+    ) async -> String? {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
         ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-              widgetLease?.isCurrent != false else { return }
+              widgetLease?.isCurrent != false else { return nil }
         do {
             let created: (sessionId: String, storedSessionId: String?, profile: String?)
             if let widgetSessionCreatorOverride {
@@ -15705,7 +15757,7 @@ final class AppState: ObservableObject {
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
-                return
+                return nil
             }
             if let returnedProfile = created.profile,
                !profilesMatch(returnedProfile, profile) {
@@ -15714,7 +15766,7 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
                 await loadSessions(forceRefresh: true)
-                return
+                return nil
             }
             let runtimeSessionID = created.sessionId.isEmpty ? (created.storedSessionId ?? "") : created.sessionId
             guard !runtimeSessionID.isEmpty else {
@@ -15722,7 +15774,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
-                return
+                return nil
             }
 
             // `session.create` already returns the active runtime session.
@@ -15828,6 +15880,7 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            return runtimeSessionID
         } catch {
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -15840,7 +15893,7 @@ final class AppState: ObservableObject {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                return
+                return nil
             }
             turnState = .idle
             errorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
@@ -15849,6 +15902,7 @@ final class AppState: ObservableObject {
             if resumePurpose == .automaticReturn {
                 scheduleReconnectAfterFailedSync()
             }
+            return nil
         }
     }
 
@@ -16841,6 +16895,13 @@ final class AppState: ObservableObject {
         serverCompactionClaims.removeAll()
     }
 
+    #if DEBUG
+    /// Test seam: the chat socket closing under the app.
+    func handleDisconnectForTesting() {
+        handleDisconnect()
+    }
+    #endif
+
     private func handleDisconnect() {
         let wasRunning = isBusy
         isConnected = false
@@ -16857,8 +16918,13 @@ final class AppState: ObservableObject {
         if let connectedAt, Date().timeIntervalSince(connectedAt) > 10 {
             reconnectAttempts = 0
         }
+        // A reply on its way reconnects at once, but only over a usable
+        // path: without one no attempt can work, and the path coming back
+        // reconnects at once anyway (networkPathChanged). The gate is here,
+        // not in scheduleReconnect: a path change's own immediate reconnect
+        // runs before the path monitor's current value has the new path.
         scheduleReconnect(
-            immediately: wasRunning,
+            immediately: wasRunning && deviceConditions().pathSatisfied,
             purpose: chatResumePurposeForDisconnect()
         )
     }
@@ -19283,10 +19349,20 @@ final class AppState: ObservableObject {
             return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
         }
         let registryRead = await refreshLiveSessionStatuses()
+        // Left the screen, or the poll stopped, while the registry read was
+        // on its way: nothing more reads.
+        guard isSceneActive, !Task.isCancelled else {
+            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+        }
         var registry: Set<String>?
-        var turnRunning = turnState.isRunning
+        let listed = chatListListedIDs()
+        // Only the chats the list shows pace it: not a Bot Chat or another
+        // profile's chat the catalog has but the list hides.
+        let displayed = chatListDisplayedIDs()
+        // The open chat's turn paces the list only when it is one of the
+        // list's chats: a Bot Chat's turn behind it isn't (see below).
+        var turnRunning = turnState.isRunning && activeSessionId.map(displayed.contains) == true
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {
-            let listed = chatListListedIDs()
             // A chat started elsewhere is about to be listed: the poll
             // stays quick to follow it.
             if noteActiveListForChatList(snapshot.rows, listed: listed) { chatListPollPacer.reset() }
@@ -19297,7 +19373,7 @@ final class AppState: ObservableObject {
             // runtime working all day mustn't keep it at 4 s. A chat the
             // list doesn't have yet is read above, and the read that lists
             // it changes the list.
-            let listedRows = snapshot.rows.filter { listed.contains($0.storedSessionId) }
+            let listedRows = snapshot.rows.filter { displayed.contains($0.storedSessionId) }
             registry = ChatListPollPacer.registryKeys(listedRows)
             turnRunning = turnRunning || listedRows.contains(where: ChatListPollPacer.isTurnRunning)
         } else if registryRead {
@@ -19325,10 +19401,21 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Every id the list's chats go by.
+    /// Every id the catalog's chats go by, shown or hidden: a live chat
+    /// with none of these reads the catalog again.
     private func chatListListedIDs() -> Set<String> {
+        Self.chatListIDs(of: sessions + cronSessions + archivedSessions)
+    }
+
+    /// Every id the chats the list shows go by: the profile's own, without
+    /// the Bot Chats it hides.
+    private func chatListDisplayedIDs() -> Set<String> {
+        Self.chatListIDs(of: activeProfileSessions + activeProfileCronSessions + archivedSessions)
+    }
+
+    private static func chatListIDs(of rows: [SessionSummary]) -> Set<String> {
         var listed = Set<String>()
-        for session in sessions + cronSessions + archivedSessions {
+        for session in rows {
             listed.insert(session.id)
             if let stored = session.storedSessionId { listed.insert(stored) }
             if let root = session.lineageRootId { listed.insert(root) }
@@ -21092,7 +21179,10 @@ final class AppState: ObservableObject {
         }
         // Its pinned replies keep reply text: they go while the dashboard
         // is still the open one, even if its bridge was rebuilt meanwhile.
-        if activeDashboardID == dashboardID { forgetPinnedReplies(profile: bot.name) }
+        if activeDashboardID == dashboardID {
+            forgetPinnedReplies(profile: bot.name)
+            forgetBotChatPinnedReplies(of: bot)
+        }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -21105,6 +21195,33 @@ final class AppState: ObservableObject {
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
+    }
+
+    /// A Bot Chat's pins are kept under the profile in use, not the bot's,
+    /// so deleting the bot drops the ones made in its chats under every
+    /// profile (a pin made while another profile was active stays under
+    /// that one): the sessions this process saw opened as the bot's, and
+    /// its canonical chat.
+    func forgetBotChatPinnedReplies(of bot: BotProfile) {
+        var ids = Set(botChatSessionProfiles.compactMap { id, owner in
+            owner.caseInsensitiveCompare(bot.name) == .orderedSame ? id : nil
+        })
+        for id in [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID] {
+            if let id = ChatScrollIdentityNormalization.sessionID(id) { ids.insert(id) }
+        }
+        guard !ids.isEmpty else { return }
+        var changed = false
+        for (profile, stored) in pinnedRepliesByProfile {
+            let remaining = stored.filter { !ids.contains($0.sessionID) }
+            guard remaining.count != stored.count else { continue }
+            pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+            changed = true
+        }
+        guard changed else { return }
+        if let reveal = pendingPinnedReplyReveal, ids.contains(reveal.pin.sessionID) {
+            pendingPinnedReplyReveal = nil
+        }
+        persistPinnedReplies()
     }
 
     private func storeBotAvatar(_ png: Data, for name: String, client: HermesClient, epoch: Int) async -> Bool {
@@ -22667,9 +22784,10 @@ final class AppState: ObservableObject {
         if canStartNewChatNow {
             isStartingNewChat = true
             Task {
-                let previousSessionID = activeSessionId
-                await createNewSessionMarkingStart()
-                if activeSessionId != previousSessionID { focusNewChatComposer() }
+                // Only the chat this New Chat created, while it's open.
+                if let created = await createNewSessionMarkingStart(), activeSessionId == created {
+                    focusNewChatComposer()
+                }
             }
             return
         }
@@ -22697,12 +22815,15 @@ final class AppState: ObservableObject {
         requestComposerFocus(on: created)
     }
 
-    func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {
+    /// Returns the chat this call created and opened, nil when it opened
+    /// none (refused, failed, or replaced by a newer navigation).
+    @discardableResult
+    func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async -> String? {
         guard !isProfileSwitching, isConnected, !isConnecting, let client else {
             if isProfileSwitching || isConnecting {
                 errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
             }
-            return
+            return nil
         }
         // A new conversation takes the viewport back from an open room, the
         // same as a session open: otherwise the room stays on screen while
@@ -22716,7 +22837,7 @@ final class AppState: ObservableObject {
             newSessionCreationsInFlight -= 1
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
         }
-        guard widgetLease?.isCurrent != false else { return }
+        guard widgetLease?.isCurrent != false else { return nil }
         let profile = activeProfile
         let previousSessionID = activeSessionId
         let previousTitle = activeSessionTitle
@@ -22726,7 +22847,7 @@ final class AppState: ObservableObject {
         let previousTurnState = turnState
         let token = beginReconciliation()
         turnState = .synchronizing
-        await createAndReconcileSession(
+        let created = await createAndReconcileSession(
             using: client,
             profile: profile,
             token: token,
@@ -22745,7 +22866,8 @@ final class AppState: ObservableObject {
            activeSessionId == previousSessionID, activeSessionTitle == newTitle {
             activeSessionTitle = previousTitle
         }
-        guard widgetLease?.isCurrent != false else { return }
+        guard widgetLease?.isCurrent != false else { return nil }
+        return created
     }
 
     /// Re-resume the currently visible conversation. This uses the same
@@ -23318,18 +23440,25 @@ final class AppState: ObservableObject {
             }
             return nil
         }
-        await createNewSessionMarkingStart()
         // A chat that didn't start has already said why (createNewSession).
-        guard activeSessionId != nil else { return nil }
+        // Only the chat this submission's own creation opened takes the
+        // message, and only while it is still open. Another chat opened or
+        // created meanwhile (a voice action, a screen question, a Hermes
+        // call) gets nothing, and the composer keeps the words: the shared
+        // newChatOpenedSessionID would name that other creation's chat.
+        guard let created = await createNewSessionMarkingStart(),
+              newChatOpenedSessionID == created, activeSessionId == created else { return nil }
         return composerSubmissionContext()
     }
 
     /// Creates a chat as New Chat does, marked as starting until it is
     /// done, so neither New Chat nor a send starts a second one meanwhile.
-    private func createNewSessionMarkingStart() async {
+    /// Returns the chat it created and opened, as createNewSession does.
+    @discardableResult
+    private func createNewSessionMarkingStart() async -> String? {
         isStartingNewChat = true
         defer { isStartingNewChat = false }
-        await createNewSession()
+        return await createNewSession()
     }
 
     private func performComposerSubmission(
@@ -29102,8 +29231,9 @@ final class AppState: ObservableObject {
         /// A card without its command matches queued requests that run
         /// different commands: the queue's own cards are shown instead.
         case ambiguous
-        /// The queue could not be read; nothing is sent.
-        case unknown
+        /// The queue could not be read; nothing is sent. Carries why, for
+        /// the card.
+        case unknown(String)
     }
 
     /// A card without a request id (one a push restored, or one from a
@@ -29134,7 +29264,7 @@ final class AppState: ObservableObject {
             if HermesClient.isMissingRPCMethod(error) { return .sessionQueue }
             // The card's runtime is gone, and with it the wait.
             if HermesClient.isSessionNotFoundError(error) { return .noLongerPending }
-            return .unknown
+            return .unknown(UserFacingError.message(for: error))
         }
         return Self.legacyApprovalTarget(for: card, in: queued)
     }
@@ -29235,6 +29365,9 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client,
                   let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // The next command replaced the card while the queue was read:
+            // a session-queue answer would go to it. Nothing is sent.
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
             switch target {
             case .sessionQueue:
                 break
@@ -29255,11 +29388,18 @@ final class AppState: ObservableObject {
                 cacheMessagePresentation()
                 schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
                 return
-            case .unknown:
+            case .unknown(let reason):
+                // Nothing was sent, so not "Hermes did not accept": why
+                // the queue couldn't be read, and another read to recover.
                 messages[updatedIndex].approval?.status = .error
                 messages[updatedIndex].approval?.choice = nil
-                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
+                messages[updatedIndex].approval?.error = reason
                 cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(
+                    sessionId: current.sessionId,
+                    using: client,
+                    replacingLegacyErrorMessageID: messageId
+                )
                 return
             }
         }
@@ -29284,6 +29424,12 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client else { return }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // A legacy card the next command replaced in flight asks
+            // something this answer never saw.
+            if rearmIfReplaced(at: updatedIndex, asking: current) {
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            }
             if accepted {
                 messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
             } else {
@@ -29297,6 +29443,7 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client else { return }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
             messages[updatedIndex].approval?.status = .error
             messages[updatedIndex].approval?.choice = nil
             if Self.isExpiredPromptError(error) {
@@ -29333,6 +29480,20 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// When the legacy card at `index` no longer asks what `answered`
+    /// asked (it is updated in place by the next command), it goes back to
+    /// pending for the new question, and true is returned. An identified
+    /// card is the same request whatever its text says now.
+    private func rearmIfReplaced(at index: Int, asking answered: ApprovalActivity) -> Bool {
+        guard answered.requestId == nil,
+              let approval = messages[index].approval, !approval.asksSameAs(answered) else { return false }
+        messages[index].approval?.status = .pending
+        messages[index].approval?.choice = nil
+        messages[index].approval?.error = nil
+        cacheMessagePresentation()
+        return true
     }
 
     /// Project navigation is always present in the drawer because every current
@@ -29763,7 +29924,9 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
-        // Optimistic update
+        // Optimistic update. A list read still on its way was read before
+        // this flip: it no longer commits (as CapabilitiesStore, #867).
+        capabilityLoadGeneration &+= 1
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
@@ -29788,7 +29951,9 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
-        // Optimistic update
+        // Optimistic update. A list read still on its way was read before
+        // this flip: it no longer commits (as CapabilitiesStore, #867).
+        capabilityLoadGeneration &+= 1
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
@@ -30939,7 +31104,7 @@ final class AppState: ObservableObject {
         switch event {
         case .messageStart(let id):
             sessionId = id
-        case .messageDelta(let id, _), .reasoningDelta(let id, _):
+        case .messageDelta(let id, _), .reasoningDelta(let id, _), .messageInterim(let id, _, _):
             sessionId = id
         case .messageComplete(let id, _, _, _, _):
             sessionId = id
@@ -33743,15 +33908,19 @@ final class AppState: ObservableObject {
         let previousSessionID = activeSessionId
         classicVoiceChatToArchive = nil
         if startsFreshConversation || activeSessionId == nil {
-            await createNewSession(widgetLease: widgetLease)
+            let created = await createNewSession(widgetLease: widgetLease)
             guard widgetLease?.isCurrent != false else { return .deferred }
-            if startsFreshConversation, activeSessionId == previousSessionID {
+            // Only the chat this creation opened, while it is still open,
+            // is the call's own: a chat another creation opened meanwhile
+            // is neither filed under Voice nor archived with the call.
+            let ownChat = created.flatMap { activeSessionId == $0 ? $0 : nil }
+            if startsFreshConversation, ownChat == nil {
                 errorMessage = AppLocalization.string("Hermes could not create the requested voice conversation.")
                 return .failed(AppLocalization.string("Hermes could not create the requested voice conversation."))
             }
             // A chat voice started is filed under Voice; one the user spoke
             // into partway stays a chat.
-            if let created = activeSessionId, created != previousSessionID {
+            if let created = ownChat, created != previousSessionID {
                 tagVoiceSessions(Array(knownSessionIDs(for: created)), kind: .classic)
                 // Archived when this call ends, like a live call's own row (#1124).
                 classicVoiceChatToArchive = (created, activeProfile, activeDashboardID)

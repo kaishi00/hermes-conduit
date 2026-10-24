@@ -144,6 +144,12 @@ final class CronScheduleTextTests: XCTestCase {
         XCTAssertTrue(nextYear.hasPrefix("Jan 4, 2027") && nextYear.hasSuffix("8:00 AM"), nextYear)
     }
 
+    /// A run later today but 20 hours or more away says "today", never a
+    /// bare weekday that reads like next week's.
+    func testALateRunTodayReadsAsToday() {
+        XCTAssertEqual(runText("2026-10-17T23:00:00-04:00", now: "2026-10-17T00:30:00-04:00"), "today at 11:00 PM")
+    }
+
     func testAnOverdueRunSaysHowLongAgo() {
         XCTAssertEqual(runText("2026-10-17T08:40:00-04:00", now: "2026-10-17T08:52:00-04:00"), "12 minutes ago")
         // Days overdue read in days, not hours.

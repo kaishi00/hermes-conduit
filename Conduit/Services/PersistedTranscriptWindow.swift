@@ -73,14 +73,9 @@ enum PersistedTranscriptPagination {
         )
     }
 
+    /// The app's one JSON integer reading: a JSON boolean is no count.
     private static func integerValue(_ value: Any?) -> Int? {
-        switch value {
-        case let number as Int: return number
-        case let number as Int64: return Int(number)
-        case let number as Double: return Int(exactly: number.rounded(.towardZero))
-        case let string as String: return Int(string)
-        default: return nil
-        }
+        AppState.integerValue(value)
     }
 }
 

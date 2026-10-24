@@ -2281,13 +2281,25 @@ final class PushNotificationService: ObservableObject {
         let sentPreferences = preferences
         var body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: sentPreferences, voipToken: voipChange, watchVoipToken: watchChange, locationToken: locationChange)
         let path = "/v1/installations/\(registration.installationID)"
-        var (data, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
-        // A new device token needs the same proof as registering it.
-        if Self.requiresTokenProof(response: response, data: data), let token = body.deviceToken {
-            body.tokenProof = try await proveDeviceToken(token)
-            (data, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
+        let data: Data
+        do {
+            var (sent, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
+            // A new device token needs the same proof as registering it.
+            if Self.requiresTokenProof(response: response, data: sent), let token = body.deviceToken {
+                body.tokenProof = try await proveDeviceToken(token)
+                (sent, response) = try await sendRegistrationUpdate(jsonRequest(path: path, method: "PUT", body: body, credential: registration.credential))
+            }
+            try validate(response: response, data: sent)
+            data = sent
+        } catch {
+            // Superseded meanwhile: its failure is about an installation
+            // that is gone, not one to report.
+            guard self.registration?.installationID == registration.installationID else { return }
+            throw error
         }
-        try validate(response: response, data: data)
+        // The relay moved (or push was turned off) while this was on its
+        // way: its answer describes an installation that is gone.
+        guard self.registration?.installationID == registration.installationID else { return }
         self.registration?.preferences = sentPreferences
         if let token = body.deviceToken {
             self.registration?.deviceToken = token

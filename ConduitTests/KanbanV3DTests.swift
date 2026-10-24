@@ -506,6 +506,24 @@ final class KanbanV3DTests: XCTestCase {
         XCTAssertEqual(converged, .refreshed, "the pending invalidation converges through one refresh")
     }
 
+    /// An event-triggered reload that fails hasn't refreshed anything: the
+    /// batch is retried soon rather than left to the slow poll.
+    func testAFailedEventRefreshAsksForARetry() async throws {
+        let requester = V3DMockRequester()
+        let store = try makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        requester.failsBoardFetch = true
+        let failed = await store.refreshFromEvent(expectedContext: stampA, includeArchived: false)
+        XCTAssertEqual(failed, .deferred, "a failed read is retried, not reported refreshed")
+
+        requester.failsBoardFetch = false
+        let converged = await store.refreshFromEvent(expectedContext: stampA, includeArchived: false)
+        XCTAssertEqual(converged, .refreshed)
+        XCTAssertNil(store.errorMessage)
+    }
+
     func testDeferredWhileLoadingIsNotLost() async throws {
         let requester = V3DMockRequester()
         let store = try makeStore(requester: requester)
@@ -1567,6 +1585,8 @@ private final class V3DMockRequester: DashboardJSONRequester {
 
     var boardPayload: [String: Any] = [:]
     var bulkUpdateResponse: [String: Any] = ["results": []]
+    /// The board read fails, as a dropped connection would.
+    var failsBoardFetch = false
     private(set) var calls: [Call] = []
     private(set) var boardsFetches = 0
     private(set) var boardFetches = 0
@@ -1616,6 +1636,7 @@ private final class V3DMockRequester: DashboardJSONRequester {
         }
         if method == "GET", basePath == "/api/plugins/kanban/board" {
             boardFetches += 1
+            if failsBoardFetch { throw URLError(.networkConnectionLost) }
             var board: [String: Any] = [
                 "columns": [
                     ["name": "triage", "tasks": []],

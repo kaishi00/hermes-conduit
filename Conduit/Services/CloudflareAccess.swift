@@ -144,7 +144,10 @@ struct CloudflareAccessCredentials: Equatable, CustomStringConvertible {
 extension CloudflareAccessCredentials {
     static func from(clientID: String, clientSecret: String) -> CloudflareAccessCredentials? {
         let id = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty, !clientSecret.isEmpty else { return nil }
-        return CloudflareAccessCredentials(clientID: id, clientSecret: clientSecret)
+        // A pasted secret often carries a stray space or newline; one of
+        // only whitespace is as half-typed as an empty one.
+        let secret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, !secret.isEmpty else { return nil }
+        return CloudflareAccessCredentials(clientID: id, clientSecret: secret)
     }
 }

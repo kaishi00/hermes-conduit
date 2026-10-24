@@ -361,6 +361,33 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         XCTAssertEqual(transport.signIns, [], "No password went to the edited address")
         XCTAssertTrue(flow.showsCredentials, "The edited address gets its own sign-in step")
     }
+
+    /// The same code, its address then changed in Connection Setup: the
+    /// setup hands back the new address with the code's username and
+    /// password, and the code sheet's Sign in must not send them there.
+    func testAnAddressChangedInConnectionSetupNeverGetsTheCodesPassword() async {
+        let transport = RecordingTransport(unreachable: ["https://code.example.test"])
+        let flow = LoginFlowModel(makeTransport: { baseURL, _ in transport.client(for: baseURL) })
+        flow.attach(makeAppState())
+        flow.address = "https://code.example.test"
+        flow.username = "code-user"
+        flow.password = "code-fixture"
+
+        await flow.signInFromLink()
+        XCTAssertEqual(flow.failurePlace, .address, "The code's dashboard didn't answer")
+
+        flow.applySetupResult(ConnectionSetupResult(
+            serverURL: "https://other.example.test",
+            username: "code-user",
+            password: "code-fixture"
+        ))
+        XCTAssertEqual(flow.address, "https://other.example.test")
+        XCTAssertTrue(flow.password.isEmpty, "The code's password stays with the code's dashboard")
+        await flow.signInFromLink()
+
+        XCTAssertEqual(transport.signIns, [], "No password went to the address set in Connection Setup")
+        XCTAssertTrue(flow.showsCredentials, "The new address gets its own sign-in step")
+    }
 }
 
 // MARK: - Scripted transport
