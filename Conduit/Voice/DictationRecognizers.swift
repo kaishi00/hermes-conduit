@@ -323,7 +323,7 @@ final class HermesDictationRecognizer: DictationRecognizer {
     private var recorded = Data()
     /// The dictation limit's worth of audio, with a second to spare for
     /// buffers still on their way when it stops.
-    nonisolated static let maximumRecordedBytes = Int(sampleRate) * 2 * Int(VoiceMessageRecorder.maximumDuration + 1)
+    static let maximumRecordedBytes = Int(sampleRate) * 2 * Int(VoiceMessageRecorder.maximumDuration + 1)
     private var sentBytes = 0
     private var partial = ""
 

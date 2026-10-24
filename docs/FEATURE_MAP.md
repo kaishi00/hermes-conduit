@@ -270,11 +270,12 @@ Hermes · Resume Call · memory at call end (notifier)
 - A call joined to a chat is kept with the chat, not in a second session, and a reconnect within 120 seconds continues the same call (2026-10-13, #574, notifier #98).
 - A call that stands alone, and a chat a Classic call created, are archived when the call ends; a typed turn brings them back (2026-10-22, #1127, notifier #295).
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
+- A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
+**Checked:** 2026-10-24, at #1222; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
 
 ## Calls from Hermes
 
@@ -1048,6 +1049,79 @@ speech-server transcription stream (listening, not speaking)
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
 **Checked:** 2026-10-24, at #1190.
+
+## Profile config saves
+
+Every change Conduit makes to a profile's Hermes config. Most are a GET, a
+change and a PUT of the whole document, so two that overlap read the same
+old config and the later one puts back what the earlier one changed.
+
+**Siblings:** voice settings (providers, typed fields, live transcription) ·
+the speech server page · Local Live settings · the toolset provider endpoint
+(Hermes writes the config) · the Model page's savers and fallback models ·
+display preferences
+
+**Code**
+- Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
+- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
+
+**Rulings**
+- Every profile config write, whichever page or service makes it, runs in the one app-wide queue, one at a time; a failed one doesn't hold up the next (2026-10-24, #1222, from #1004).
+- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, so neither waits in the queue.
+
+**Open gaps**
+- A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
+
+**Checked:** 2026-10-24, at #1222.
+
+## Wake phrase
+
+Saying a phrase while Conduit is open starts voice on that phrase's profile.
+
+**Siblings:** the foreground listener (iPhone and CarPlay) · Settings' Wake
+phrase section and its captions · Siri, Shortcuts and the Action button (the
+other ways to start, in Starting a call)
+
+**Code**
+- Listener: `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (makeRecognizers, watchInterruption), `Conduit/Voice/Wake/WakeSpeechLocale.swift`, `Conduit/Voice/Wake/WakePhraseMatcher.swift`
+- When it listens: `Conduit/Services/AppState+WakePhrase.swift`, `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
+- Settings: `Conduit/Views/VoiceSettingsView.swift` (the Wake phrase section)
+- Tests: `ConduitTests/WakePhraseCompilerTests.swift`, `ConduitTests/SpeechRecognitionLocaleTests+WakePhrases.swift`
+
+**Rulings**
+- Recognition is on-device only, and nothing is recorded or kept (#174).
+- A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first, up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
+- After an interruption with no end from iOS, listening resumes only when no phone call is in progress, no other Conduit audio owner has the session and the session activates again (2026-10-24, #1222, from #1004).
+
+**Open gaps**
+- Han-only phrases on a phone with no Chinese or Japanese language set are heard in Simplified Chinese; a Japanese kanji-only name may be missed.
+
+**Checked:** 2026-10-24, at #1222.
+
+## Dictation and voice message length
+
+How long the microphone stays open for words that become text, and how much
+audio is kept for them.
+
+**Siblings:** composer dictation (chats, project chats, Bot Chat, group
+rooms; Apple, Apple's new model and Hermes engines) · voice messages ·
+Classic voice utterances
+
+**Code**
+- Dictation: `Conduit/Voice/ComposerDictationService.swift` (maximumDuration), `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer.maximumRecordedBytes)
+- Voice messages: `Conduit/Voice/VoiceMessageRecorder.swift` (maximumDuration)
+- Classic: `Conduit/Voice/VoiceConversationController.swift` (maximumUtterance)
+
+**Rulings**
+- Dictation and voice messages stop by themselves at 15 minutes and keep what was said; Hermes dictation keeps at most that much audio for its upload (2026-10-24, #1222, from #1004).
+- A Classic utterance ends at 60 seconds.
+
+**Open gaps**
+- Dictation stopping at the limit says nothing; the words are in the draft.
+
+**Checked:** 2026-10-24, at #1222.
 
 ## Chats top bar and search
 
