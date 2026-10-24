@@ -898,8 +898,8 @@ what it does when the host refuses.
 
 **Siblings:** phone sync (calendar, reminders, alarms, contacts, Focus and
 status) · health sync · location sharing · the voice reads that use the same
-keys · each one's pause message in Settings · the notifier's three stores and
-their refusals
+keys · each one's pause message in Settings · a locate answered from the push
+extension · the notifier's three stores and their refusals
 
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
@@ -912,7 +912,8 @@ their refusals
 
 **Rulings**
 - Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
-- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, #1196) A later refusal, timeout or 404 replaces that pause with its own message, as for any other pause.
+- A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, #1196).
+- A later refusal, timeout or 404 replaces that plugin-update pause with its own message, as for any other pause (2026-10-24, #1196).
 
 **Open gaps**
 - The dashboard sends the store's code beside its message, but the phone keeps only the message: a reworded notifier message is missed until `Conduit/Services/HostKeyConflict.swift` learns it. Phone and health then pause with the host's reason; location drops the waiting fix and events as refused.
