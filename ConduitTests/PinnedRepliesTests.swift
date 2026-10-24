@@ -425,6 +425,31 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
     }
 
+    /// Pins made in a Bot Chat are kept under the profile in use; deleting
+    /// the bot drops them, and only them.
+    @MainActor
+    func testDeletingABotDropsThePinsMadeInItsBotChat() {
+        let appState = makeAppState(freshDefaults())
+        appState.noteBotChatSessionForTesting("bot-chat-1", profile: "helper")
+        appState.activeSessionId = "bot-chat-1"
+        let botAnswer = reply("a", "From the bot", rowId: 7)
+        appState.messages = [botAnswer]
+        appState.togglePinnedReply(botAnswer)
+        appState.activeSessionId = "chat-2"
+        let other = reply("b", "From a chat", rowId: 8)
+        appState.messages = [other]
+        appState.togglePinnedReply(other)
+        XCTAssertEqual(appState.activePinnedReplies.count, 2)
+
+        appState.forgetBotChatPinnedReplies(of: BotProfile(
+            name: "helper", botTitle: nil, displayName: "", profileDescription: "", model: nil, provider: nil,
+            hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: nil, lastActive: nil, lastPreview: nil
+        ))
+
+        XCTAssertEqual(appState.activePinnedReplies.map(\.sessionID), ["chat-2"])
+    }
+
     @MainActor
     func testDeletingAChatDropsItsPinnedReplies() {
         let appState = makeAppState(freshDefaults())

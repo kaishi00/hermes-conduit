@@ -20789,7 +20789,10 @@ final class AppState: ObservableObject {
         }
         // Its pinned replies keep reply text: they go while the dashboard
         // is still the open one, even if its bridge was rebuilt meanwhile.
-        if activeDashboardID == dashboardID { forgetPinnedReplies(profile: bot.name) }
+        if activeDashboardID == dashboardID {
+            forgetPinnedReplies(profile: bot.name)
+            forgetBotChatPinnedReplies(of: bot)
+        }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -20802,6 +20805,28 @@ final class AppState: ObservableObject {
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
+    }
+
+    /// A Bot Chat's pins are kept under the profile in use, not the bot's,
+    /// so deleting the bot drops the ones made in its chats there: the
+    /// sessions this process saw opened as the bot's, and its canonical
+    /// chat.
+    func forgetBotChatPinnedReplies(of bot: BotProfile) {
+        var ids = Set(botChatSessionProfiles.compactMap { id, owner in
+            owner.caseInsensitiveCompare(bot.name) == .orderedSame ? id : nil
+        })
+        for id in [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID] {
+            if let id = ChatScrollIdentityNormalization.sessionID(id) { ids.insert(id) }
+        }
+        guard !ids.isEmpty else { return }
+        let stored = pinnedRepliesByProfile[activeProfile] ?? []
+        let remaining = stored.filter { !ids.contains($0.sessionID) }
+        guard remaining.count != stored.count else { return }
+        pinnedRepliesByProfile[activeProfile] = remaining.isEmpty ? nil : remaining
+        if let reveal = pendingPinnedReplyReveal, ids.contains(reveal.pin.sessionID) {
+            pendingPinnedReplyReveal = nil
+        }
+        persistPinnedReplies()
     }
 
     private func storeBotAvatar(_ png: Data, for name: String, client: HermesClient, epoch: Int) async -> Bool {
