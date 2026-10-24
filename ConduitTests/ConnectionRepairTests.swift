@@ -878,6 +878,7 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertEqual(mints, 1)
         XCTAssertEqual(connectCount.value, 0, "the spent ticket is never tried")
         XCTAssertFalse(harness.appState.isConnecting, "the restore that still owns the flow stops connecting")
+        XCTAssertNotEqual(harness.appState.turnState, .synchronizing, "nor leaves the composer synchronizing")
     }
 
     private func coldStartLifecycle(

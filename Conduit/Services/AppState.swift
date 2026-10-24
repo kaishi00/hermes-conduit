@@ -11910,7 +11910,12 @@ final class AppState: ObservableObject {
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
-            if restoreOwnsFlow(switchGeneration) { isConnecting = false }
+            if restoreOwnsFlow(switchGeneration) {
+                isConnecting = false
+                // As for the saved-ticket restore: no synchronizing state
+                // left with nothing to clear it.
+                if turnState == .synchronizing { setRunning(false) }
+            }
         } catch {
             guard restoreOwnsFlow(switchGeneration) else { return }
             // A rejected grant can clear storage while the bridge still owns
@@ -13153,7 +13158,13 @@ final class AppState: ObservableObject {
             let ticket = try await mintChatResumeTicket(for: saved)
             connection = HermesConnection(baseUrl: saved.baseUrl, ticket: ticket)
         } catch is CancellationError {
-            if restoreOwnsFlow(switchGeneration), widgetLease?.isCurrent != false { isConnecting = false }
+            if restoreOwnsFlow(switchGeneration), widgetLease?.isCurrent != false {
+                isConnecting = false
+                // The synchronizing state loadSavedConnection set goes too,
+                // as a foreground boundary leaves an aborted recovery's: it
+                // would keep the composer off with nothing left to clear it.
+                if turnState == .synchronizing { setRunning(false) }
+            }
             return
         } catch {}
         // Re-fence after the mint await.
@@ -14372,6 +14383,10 @@ final class AppState: ObservableObject {
             )
             if purpose == .automaticReturn {
                 scheduleReconnectAfterFailedSync()
+            } else if wasCancelled, isConnected, turnState == .reconnecting {
+                // Nothing retries a cancelled sync of the open chat, and the
+                // socket is still up: the composer isn't left off waiting.
+                setRunning(false)
             }
             return .completed
         }

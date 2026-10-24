@@ -459,6 +459,8 @@ final class SessionCatalogLoadTests: XCTestCase {
             XCTAssertNil(appState.errorMessage, "\(cancellation)")
             XCTAssertEqual(appState.sessionCatalogPhase, .notLoaded, "\(cancellation)")
             XCTAssertEqual(placeholder(appState), .loading, "\(cancellation)")
+            // Nothing retries it: the composer isn't left reconnecting.
+            XCTAssertTrue(appState.turnState.acceptsComposerActions, "\(cancellation): \(appState.turnState)")
         }
     }
 }
