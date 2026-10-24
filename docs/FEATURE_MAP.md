@@ -539,7 +539,7 @@ memory), its routes under /pulse and its capabilities · the
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-24, with notifier #346 and #347.
+**Checked:** 2026-10-24, #1211, with notifier #346 and #347.
 
 ## Artifacts
 
