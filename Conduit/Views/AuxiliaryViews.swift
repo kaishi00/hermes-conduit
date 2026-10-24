@@ -2539,8 +2539,11 @@ private struct FallbackModelsSettings: View {
             return
         }
         defaults = models
-        entries = loadedEntries
-        saved = loadedEntries
+        // A re-load keeps fallbacks the user is still editing.
+        if !loaded || entries == saved {
+            entries = loadedEntries
+            saved = loadedEntries
+        }
         loaded = true
     }
 
