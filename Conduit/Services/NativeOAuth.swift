@@ -765,7 +765,7 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
             if values["error"]?.isEmpty == false {
                 sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit."))
             } else {
-                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("✓ Signed in. You can return to Conduit."))
+                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Finishing the sign-in. You can return to Conduit."))
             }
             finish(.success(NativeOAuthFlow.encodedQuery(values)))
         } catch NativeOAuthError.stateMismatch {

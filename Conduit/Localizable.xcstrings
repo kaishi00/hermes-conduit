@@ -332395,6 +332395,252 @@
           }
         }
       }
+    },
+    "Conduit switched to another Hermes, so the setup stopped." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hat zu einem anderen Hermes gewechselt, daher wurde die Einrichtung beendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit cambió a otro Hermes, así que la configuración se detuvo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit est passé à un autre Hermes, la configuration s’est donc arrêtée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit beralih ke Hermes lain, jadi penyiapan dihentikan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit è passato a un altro Hermes, quindi la configurazione si è interrotta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit が別の Hermes に切り替わったため、設定を中止しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 다른 Hermes로 전환되어 설정이 중단되었습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit przełączył się na inny Hermes, więc konfiguracja została przerwana."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit mudou para outro Hermes, então a configuração parou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit переключился на другой Hermes, поэтому настройка остановлена."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit başka bir Hermes'e geçtiği için kurulum durdu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已切换到另一个 Hermes，因此设置已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已切換到另一個 Hermes，因此設定已停止。"
+          }
+        }
+      }
+    },
+    "Finishing the sign-in. You can return to Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldung wird abgeschlossen. Du kannst zu Conduit zurückkehren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminando el inicio de sesión. Puedes volver a Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finalisation de la connexion. Vous pouvez revenir à Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menyelesaikan proses masuk. Anda dapat kembali ke Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completamento dell’accesso. Puoi tornare a Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインインを完了しています。Conduit に戻れます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인을 마무리하는 중입니다. Conduit으로 돌아가세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kończenie logowania. Możesz wrócić do Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Concluindo o login. Você pode voltar ao Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершаем вход. Можно вернуться в Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum açma tamamlanıyor. Conduit'e dönebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成登录。你可以返回 Conduit。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成登入。你可以返回 Conduit。"
+          }
+        }
+      }
+    },
+    "Made %@, a full copy of %@, but its picture was not copied." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erstellt, eine vollständige Kopie von %@, aber das Bild wurde nicht übernommen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se creó %@, una copia completa de %@, pero no se copió su imagen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ créé, une copie complète de %@, mais son image n’a pas été copiée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dibuat, salinan lengkap %@, tetapi gambarnya tidak disalin."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creato %@, una copia completa di %@, ma la sua immagine non è stata copiata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を作成しました（%@ の完全なコピー）が、画像はコピーされませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 생성됨: %@의 전체 사본이지만 사진은 복사되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utworzono %@, pełną kopię %@, ale jego obraz nie został skopiowany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ criado, uma cópia completa de %@, mas a imagem não foi copiada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Создан %@ — полная копия %@, но его изображение не скопировано."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ oluşturuldu, %@ botunun tam kopyası, ancak resmi kopyalanmadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已创建 %@，即 %@ 的完整副本，但未复制其图片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已建立 %@，即 %@ 的完整副本，但未複製其圖片。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

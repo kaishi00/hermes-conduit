@@ -443,10 +443,11 @@ extension BotModeTests {
         source.botMeta = [
             "title": .string("Trip Scout"), "color": .string("blue"),
             "created": .number(1), "chat": .string("old"),
-            "hidden": .bool(true), "imageKind": .string("photo")
+            "hidden": .bool(true), "pinned": .bool(true), "imageKind": .string("photo")
         ]
-        // The copy shows in the list, not under Hidden.
+        // The copy shows in the list, neither under Hidden nor pinned.
         XCTAssertNil(BotDuplicate.meta(from: source)["hidden"])
+        XCTAssertNil(BotDuplicate.meta(from: source)["pinned"])
         // A photo that didn't copy isn't claimed.
         XCTAssertEqual(BotDuplicate.meta(from: source)["imageKind"] as? String, "photo")
         XCTAssertNil(BotDuplicate.meta(from: source, photoCopied: false)["imageKind"])

@@ -354,6 +354,21 @@ final class BotMentionTests: XCTestCase {
         ChatMessage(id: id, role: role, content: content, timestamp: "1", tool: tool)
     }
 
+    func testOnlyTheRunningTurnsReplyStaysOpen() {
+        let folded = [
+            row("u1", .user, "Message from 🤖 Atlas (@atlas): check the flights"),
+            row("a1", .assistant, "On it, Atlas."),
+        ]
+        XCTAssertEqual(BotTeammateMessages.runningReplyID(in: folded), "a1")
+        // A new turn before its reply: the folded one isn't the running one.
+        let next = folded + [row("u2", .user, "thanks")]
+        XCTAssertNil(BotTeammateMessages.runningReplyID(in: next))
+        XCTAssertEqual(BotTeammateMessages.teammateReplies(
+            in: next,
+            streamingMessageID: BotTeammateMessages.runningReplyID(in: next)
+        )["a1"], "Atlas")
+    }
+
     func testARepliesToATeammateFoldUnlessTheBotAskedFirst() {
         let unsolicited = [
             row("u1", .user, "hi"),

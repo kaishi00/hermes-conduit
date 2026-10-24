@@ -277,11 +277,11 @@ enum BotDuplicate {
     }
 
     /// The copy's ui_meta: the original's look without its `chat` or
-    /// `created`, titled "<title> (copy)". Not `hidden`: the copy should
-    /// show where it can be found. `photoCopied` false drops a photo
+    /// `created`, titled "<title> (copy)". Not `hidden` or `pinned`: the
+    /// copy is a new bot, shown in the list where it can be found. `photoCopied` false drops a photo
     /// `imageKind` the copy's asset store doesn't hold.
     static func meta(from source: BotProfile, photoCopied: Bool = true) -> [String: Any] {
-        var meta = BotMetaPatch.merged(existing: source.botMeta, patch: ["created": nil, "hidden": nil])
+        var meta = BotMetaPatch.merged(existing: source.botMeta, patch: ["created": nil, "hidden": nil, "pinned": nil])
         if !photoCopied, (meta["imageKind"] as? String)?.lowercased() == "photo" {
             meta["imageKind"] = nil
         }

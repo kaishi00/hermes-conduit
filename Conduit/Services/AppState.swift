@@ -20287,6 +20287,10 @@ final class AppState: ObservableObject {
         guard let client, isConnected else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
+        // Every step is checked against the Hermes it started on: after a
+        // switch, keys and tests must not go to the other one.
+        let epoch = botRosterEpoch
+        let moved = BotMcpInstallOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         var oauth = false
         if !entry.installed {
             do {
@@ -20301,6 +20305,7 @@ final class AppState: ObservableObject {
         for envVar in entry.requires {
             let value = (keys[envVar] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !value.isEmpty else { continue }
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
             do {
                 try await client.setBotMcpKey(profile: profile, name: entry.name, envVar: envVar, value: value)
             } catch {
@@ -20308,6 +20313,7 @@ final class AppState: ObservableObject {
             }
         }
         if oauth { return .needsSignIn }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
         do {
             let tested = BotMcpSetup.testResult(try await client.testBotMcpServer(profile: profile, name: entry.name))
             return tested.ok
@@ -20330,6 +20336,8 @@ final class AppState: ObservableObject {
         guard let client, isConnected else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
+        let epoch = botRosterEpoch
+        let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
         defer { loopback.stop() }
         var sessionID: String?
@@ -20358,6 +20366,7 @@ final class AppState: ObservableObject {
             try Task.checkCancellation()
             open(flow.authURL)
             let query = try await loopback.waitForCallback()
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
             var params = BotMcpSetup.callbackParams(NativeOAuthFlow.queryValues(query))
             params["profile"] = profile
             params["name"] = name
@@ -20367,6 +20376,7 @@ final class AppState: ObservableObject {
             var pollFailures = 0
             for _ in 0..<BotMcpSetup.pollAttempts {
                 try Task.checkCancellation()
+                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return moved }
                 let polled: AnyCodable
                 do {
                     polled = try await client.botMcpOAuth(
@@ -20852,8 +20862,9 @@ final class AppState: ObservableObject {
     }
 
     /// Hides or shows a bot in the Bots list (ui_meta `hidden`, shared with
-    /// Desktop). Presentation only: a hidden bot keeps working, stays
-    /// mentionable and keeps its group rooms.
+    /// Desktop). A hidden bot keeps working, stays mentionable and keeps its
+    /// group rooms; it just isn't offered for a new group, whose picker
+    /// lists visible bots only.
     func setBotHidden(_ bot: BotProfile, hidden: Bool) async -> String? {
         guard let client, isConnected else {
             return AppLocalization.string("Connect to Hermes to manage bots.")
@@ -20896,6 +20907,7 @@ final class AppState: ObservableObject {
             return AppLocalization.string("Could not duplicate the bot: \(UserFacingError.message(for: error))")
         }
         var lookSaved = false
+        var metaSaved = false
         if botOpenFenceIsCurrent(epoch: epoch, client: client) {
             // A clone copies the config, not the asset store: the photo is
             // copied first, so the look only claims one the copy holds.
@@ -20904,16 +20916,23 @@ final class AppState: ObservableObject {
                botOpenFenceIsCurrent(epoch: epoch, client: client) {
                 photoCopied = await storeBotAvatar(png, for: name, client: client, epoch: epoch)
             }
-            let result = try? await client.configureBotProfile(
-                name: name,
-                botMeta: BotDuplicate.meta(from: bot, photoCopied: photoCopied)
-            )
+            var result: AnyCodable?
+            if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                result = try? await client.configureBotProfile(
+                    name: name,
+                    botMeta: BotDuplicate.meta(from: bot, photoCopied: photoCopied)
+                )
+            }
+            metaSaved = result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
             lookSaved = photoCopied && result.map { BotMetaWriteOutcome(configureResult: $0) != .failed } ?? false
         }
         await refreshBotRosterAfterWrite()
         await loadProfiles()
-        return lookSaved
-            ? AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel).")
+        if lookSaved {
+            return AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel).")
+        }
+        return metaSaved
+            ? AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its picture was not copied.")
             : AppLocalization.string("Made \(name), a full copy of \(bot.displayLabel), but its look was not copied.")
     }
 

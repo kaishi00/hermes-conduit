@@ -181,6 +181,17 @@ enum BotTeammateMessages {
         return replies
     }
 
+    /// The reply the running turn is writing: the last assistant row after
+    /// the user last wrote (a steer joins the turn). Nil before it has one,
+    /// so an earlier turn's folded reply stays folded meanwhile.
+    static func runningReplyID(in messages: [ChatMessage]) -> String? {
+        for message in messages.reversed() {
+            if message.role == .user && !message.isSteer { return nil }
+            if message.role == .assistant { return message.id }
+        }
+        return nil
+    }
+
     /// Whether this bot messaged one of `keys` since the last thing the
     /// user said (or that teammate's last delivery).
     private static func dispatched(in earlier: ArraySlice<ChatMessage>, to keys: [String]) -> Bool {

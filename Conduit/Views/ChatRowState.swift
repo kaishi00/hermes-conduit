@@ -63,7 +63,7 @@ struct ChatRowState: Equatable {
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
         teammateReplies = BotTeammateMessages.teammateReplies(
             in: appState.messages,
-            streamingMessageID: appState.isBusy ? latestAssistantMessageID : nil
+            streamingMessageID: appState.isBusy ? BotTeammateMessages.runningReplyID(in: appState.messages) : nil
         )
         botLabels = appState.botRoster.map { "\($0.name)=\($0.displayLabel)" }
     }
