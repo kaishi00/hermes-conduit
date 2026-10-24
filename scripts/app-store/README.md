@@ -11,7 +11,11 @@ Results:
 - Artifact `app-store-screenshots`: one folder per device with `01-chats.png`
   and the rest, `preview-<device>.mp4` (ready to upload) and the raw
   `preview-<device>.mov`. Artifact `app-store-watch-screenshots` holds
-  the Watch shots.
+  the Watch shots, including the approval card (`04-approval.png`).
+- `clips/`: short silent MP4s for the README and hermesconduit.app, recorded
+  by `record-clip.sh` from the same fixtures: `voice-<device>.mp4` (the live
+  voice orb mid-reply, 10 s) in each device's run, and `watch-speaking.mp4`
+  and `watch-approval.mp4` (8 s) in the Watch run.
 - Artifacts `app-store-logs` and `app-store-watch-logs`: the demo Hermes,
   seeding, recorder and xcodebuild logs.
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
@@ -36,7 +40,8 @@ Results:
    screens and saves each as a named attachment. Live voice screens use the
    DEBUG-only `-conduitScreenshotCall listening|speaking` fixture
    (`Conduit/Services/ScreenshotCallFixture.swift`); the Watch job launches the
-   Watch app with the same argument (`home|speaking|listening|ended`).
+   Watch app with the same argument (`home|speaking|listening|approval`;
+   `ended` and `approvalDenyOnly` also exist).
 5. `testRecordPreview` runs while `simctl io recordVideo` records; its
    `PREVIEW_MARK` lines and the recorder's stop time let `cut-preview.sh` cut
    the 30 s preview.

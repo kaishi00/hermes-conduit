@@ -58,6 +58,7 @@ jobs:
         timeout-minutes: 75
         run: |
           set -euo pipefail
+          command -v ffmpeg >/dev/null || brew install ffmpeg >/dev/null
           mkdir -p shots
           IFS=',' read -r -a NAMES <<< "$DEVICES"
           for name in "${NAMES[@]}"; do
@@ -153,6 +154,13 @@ jobs:
                   if os.path.exists(src):
                       os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
           PY
+            fi
+            # Showcase clip for the README and website: the live voice orb
+            # mid-reply. Needs the sign-in the screenshot test saved.
+            if [ "$rc" -eq 0 ]; then
+              mkdir -p shots/clips
+              scripts/app-store/record-clip.sh "$udid" com.milim.relay speaking "shots/clips/voice-$slug.mp4" 10 \
+                || echo "$name voice clip not recorded" >> failures.txt
             fi
             xcrun simctl shutdown "$udid" || true
             if [ "$rc" -ne 0 ]; then echo "$name capture exited $rc" >> failures.txt; fi
@@ -283,14 +291,21 @@ jobs:
             || echo "::warning::the Watch status bar time could not be set"
           mkdir -p shots/watch
           n=1
-          for state in home speaking listening; do
+          for state in home speaking listening approval; do
             xcrun simctl terminate "$udid" com.milim.relay.watchkitapp 2>/dev/null || true
             xcrun simctl launch "$udid" com.milim.relay.watchkitapp -conduitScreenshotCall "$state"
             sleep 6
             xcrun simctl io "$udid" screenshot "shots/watch/0$n-$state.png"
             n=$((n + 1))
           done
-          ls -l shots/watch
+          # Showcase clips for the README and website.
+          command -v ffmpeg >/dev/null || brew install ffmpeg >/dev/null
+          mkdir -p shots/clips
+          for state in speaking approval; do
+            scripts/app-store/record-clip.sh "$udid" com.milim.relay.watchkitapp "$state" "shots/clips/watch-$state.mp4" 8 \
+              || { echo "::error::Watch $state clip not recorded"; exit 1; }
+          done
+          ls -l shots/watch shots/clips
 
       - name: Stage the git ref's files
         # The publish job pushes these as refs/app-store-shots/<run id>-watch.
