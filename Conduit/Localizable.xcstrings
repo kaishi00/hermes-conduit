@@ -330345,6 +330345,170 @@
           }
         }
       }
+    },
+    "On by default on a Mac. Turn it off to make Return insert a new line." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf einem Mac standardmäßig an. Schalte es aus, damit die Eingabetaste eine neue Zeile einfügt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activado de forma predeterminada en un Mac. Desactívalo para que Intro inserte una nueva línea."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé par défaut sur un Mac. Désactivez-le pour que la touche Retour insère une nouvelle ligne."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktif secara default di Mac. Matikan agar Return menyisipkan baris baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attivo per impostazione predefinita su un Mac. Disattivalo perché Invio inserisca una nuova riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Macでは最初からオンです。オフにすると、Returnキーで改行が入力されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac에서는 기본적으로 켜져 있어요. 끄면 Return 키가 줄 바꿈을 입력해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na Macu domyślnie włączone. Wyłącz, aby Return wstawiał nowy wiersz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ativado por padrão no Mac. Desative para que Retorno insira uma nova linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На Mac включено по умолчанию. Выключите, чтобы Return вставлял новую строку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac'te varsayılan olarak açık. Return tuşunun yeni satır eklemesi için kapatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上默认开启。关闭后，Return 键会插入换行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上預設為開啟。關閉後，Return 鍵會插入新行。"
+          }
+        }
+      }
+    },
+    "Off by default on iPhone and iPad." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf iPhone und iPad standardmäßig aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado de forma predeterminada en iPhone y iPad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivé par défaut sur iPhone et iPad."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nonaktif secara default di iPhone dan iPad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disattivato per impostazione predefinita su iPhone e iPad."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneとiPadでは最初はオフです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과 iPad에서는 기본적으로 꺼져 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na iPhonie i iPadzie domyślnie wyłączone."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desativado por padrão no iPhone e no iPad."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На iPhone и iPad выключено по умолчанию."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone ve iPad'de varsayılan olarak kapalı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 iPhone 和 iPad 上默认关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 iPhone 和 iPad 上預設為關閉。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

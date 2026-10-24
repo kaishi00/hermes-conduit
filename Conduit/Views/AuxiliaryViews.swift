@@ -1764,6 +1764,9 @@ private struct ChatFontStyleSettings: View {
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    /// A Mac has no on-screen keyboard to mention, and starts with the
+    /// preference on.
+    private let onMac = ProcessInfo.processInfo.isiOSAppOnMac
 
     var body: some View {
         ConduitSettingsSection(
@@ -1774,12 +1777,17 @@ private struct ComposerReturnKeySettings: View {
             Text("Press Return to send. Use Shift-Return for a new line.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+            Text(ComposerReturnKey.defaultFootnote(onMac: onMac))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if !onMac {
+                Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
-                .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+                .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
         }
     }
 }
